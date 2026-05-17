@@ -24,6 +24,7 @@ import { skillsService } from '@/lib/vfs/skills';
 import { track } from '@/lib/telemetry';
 import { extractToolAnalytics } from '@/lib/telemetry/tool-analytics';
 import { apiFetch } from '@/lib/api/backend-status';
+import type { ServerOrchestratorContext } from '@/lib/server-generate/types';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -243,11 +244,12 @@ export class MultiAgentOrchestrator {
   private toolCallCount = 0; // Telemetry: total tool calls executed
   private turnCount = 0; // Telemetry: total LLM turns completed
   private apiErrorCount = 0; // Telemetry: total API errors encountered
+  private serverContext: ServerOrchestratorContext | null = null;
 
   /** Check if the current model supports native tool/function calling */
   private checkModelSupportsTools(): boolean {
     const { provider, model } = this.getProviderConfig();
-    const cached = configManager.getCachedModels(provider);
+    const cached = this.getConfig().getCachedModels(provider);
     if (cached?.models?.length) {
       const entry = (cached.models as import('@/lib/llm/providers/types').ProviderModel[])
         .find(m => m.id === model);
@@ -263,12 +265,13 @@ export class MultiAgentOrchestrator {
     projectId: string,
     agentType: AgentType = 'orchestrator',
     onProgress?: (message: string, step?: unknown) => void,
-    options?: { chatMode?: boolean; model?: string }
+    options?: { chatMode?: boolean; model?: string; serverContext?: ServerOrchestratorContext }
   ) {
     this.projectId = projectId;
     this.onProgress = onProgress;
     this.chatMode = options?.chatMode ?? false;
     this.model = options?.model;
+    this.serverContext = options?.serverContext ?? null;
 
     // Get root agent (default to orchestrator)
     const agent = agentRegistry.get(agentType);
@@ -279,6 +282,72 @@ export class MultiAgentOrchestrator {
 
     // Create root conversation
     this.currentConversationId = this.createConversation(agentType);
+  }
+
+  /** Get config — server context shim or browser configManager */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getConfig(): any {
+    if (this.serverContext) {
+      const cfg = this.serverContext.config;
+      // Return a shim that mirrors configManager's method API using plain config fields
+      return {
+        getSelectedProvider: () => cfg.provider,
+        getProviderApiKey: () => cfg.apiKey,
+        getProviderModel: () => cfg.model,
+        getReasoningEnabled: () => cfg.reasoningEnabled ?? false,
+        getDebugStreamEnabled: () => cfg.debugStreamEnabled ?? false,
+        isCompactionEnabled: () => cfg.compactionEnabled ?? false,
+        getCompactionLimit: () => cfg.compactionLimit,
+        getModelContextLengthFromCache: () => undefined,
+        getCachedModels: (provider: string) => {
+          if (provider === 'openrouter' && cfg.cachedModels) {
+            return { models: cfg.cachedModels };
+          }
+          return cfg.cachedModels ? { models: cfg.cachedModels } : null;
+        },
+        getModelPricing: (provider: string, model: string) => cfg.modelPricing?.[`${provider}:${model}`] ?? cfg.modelPricing?.[model],
+        updateSessionCost: () => {}, // No-op server-side
+        getCurrentSession: () => null,
+      };
+    }
+    return configManager;
+  }
+
+  /** Get VFS — server context VFS or browser singleton */
+  private getVFS() {
+    return this.serverContext?.vfs ?? vfs;
+  }
+
+  /** Emit a toast notification or route through server context */
+  private notify(level: 'info' | 'error', message: string, options?: { duration?: number }) {
+    if (this.serverContext) {
+      this.serverContext.onEvent('notification', { level, message });
+    } else {
+      toast[level](message, options);
+    }
+  }
+
+  /** Reset runtime errors (no-op in server context) */
+  private resetErrors() {
+    if (!this.serverContext) {
+      resetRuntimeErrors();
+    }
+  }
+
+  /** Drain runtime errors (returns [] in server context) */
+  private drainErrors() {
+    if (this.serverContext) return [];
+    return drainRuntimeErrors();
+  }
+
+  /** Get API generate URL */
+  private getApiUrl(): string {
+    if (this.serverContext) {
+      return this.serverContext.apiBaseUrl + '/api/generate';
+    }
+    return typeof window !== 'undefined'
+      ? `${window.location.origin}/api/generate`
+      : '/api/generate';
   }
 
   /**
@@ -389,7 +458,7 @@ export class MultiAgentOrchestrator {
       // Get file tree for context
       let fileTreeStr: string | undefined;
       try {
-        const files = await vfs.listDirectory(this.projectId, '/');
+        const files = await this.getVFS().listDirectory(this.projectId, '/');
         if (files.length > 0) {
           fileTreeStr = buildFileTree(files);
         }
@@ -398,7 +467,7 @@ export class MultiAgentOrchestrator {
       }
 
       // Get server context metadata from VFS (already computed when context was mounted)
-      const serverContext = vfs.getServerContextMetadata();
+      const serverContext = this.getVFS().getServerContextMetadata();
 
       // Build system prompt (behavioral instructions only — skills/tree go in user message)
       const modelSupportsTools = this.checkModelSupportsTools();
@@ -446,7 +515,7 @@ export class MultiAgentOrchestrator {
               this.totalUsage.promptTokens += evalUsage.promptTokens;
               this.totalUsage.completionTokens += evalUsage.completionTokens;
               this.totalUsage.totalTokens += evalUsage.totalTokens;
-              configManager.updateSessionCost({ ...evalUsage, cost }, cost);
+              this.getConfig().updateSessionCost({ ...evalUsage, cost }, cost);
             }
 
             // Emit debug event
@@ -564,7 +633,7 @@ export class MultiAgentOrchestrator {
     let lastIteration = 0;
 
     // Clear runtime error state so previous generation errors don't leak in
-    resetRuntimeErrors();
+    this.resetErrors();
 
     for (let iteration = 0; iteration < maxIterations; iteration++) {
       lastIteration = iteration;
@@ -709,7 +778,7 @@ export class MultiAgentOrchestrator {
           if (this.lastStatusResult.complete) {
             // Gate: check for runtime errors before allowing completion
             await new Promise(resolve => setTimeout(resolve, 400));
-            const runtimeErrors = drainRuntimeErrors();
+            const runtimeErrors = this.drainErrors();
             if (runtimeErrors.length > 0) {
               logger.info(`[MultiAgentOrchestrator] Completion blocked: ${runtimeErrors.length} runtime error(s)`);
               this.addMessage(conversationId, {
@@ -734,7 +803,7 @@ export class MultiAgentOrchestrator {
             if (!rem || rem === 'none' || rem === 'n/a' || rem === 'nothing') {
               // Gate: check for runtime errors before allowing completion
               await new Promise(resolve => setTimeout(resolve, 400));
-              const runtimeErrors = drainRuntimeErrors();
+              const runtimeErrors = this.drainErrors();
               if (runtimeErrors.length > 0) {
                 logger.info(`[MultiAgentOrchestrator] Completion blocked: ${runtimeErrors.length} runtime error(s)`);
                 this.addMessage(conversationId, {
@@ -824,7 +893,7 @@ export class MultiAgentOrchestrator {
       // per-response usage (depends on stream_options support).
       if (this.rootAgent.type === 'orchestrator' && this.totalUsage.promptTokens > 0) {
         const { provider } = this.getProviderConfig();
-        if (configManager.isCompactionEnabled(provider)) {
+        if (this.getConfig().isCompactionEnabled(provider)) {
           const compactionLimit = this.resolveCompactionLimit();
           if (this.totalUsage.promptTokens >= compactionLimit) {
             logger.info(`[Compaction] Triggering compaction (promptTokens=${this.totalUsage.promptTokens}, limit=${compactionLimit})`);
@@ -844,7 +913,7 @@ export class MultiAgentOrchestrator {
           // Gate: check for runtime errors before allowing completion.
           // Wait for the latest compilation to settle, then drain.
           await new Promise(resolve => setTimeout(resolve, 400));
-          const runtimeErrors = drainRuntimeErrors();
+          const runtimeErrors = this.drainErrors();
           if (runtimeErrors.length > 0) {
             logger.info(`[MultiAgentOrchestrator] Completion blocked: ${runtimeErrors.length} runtime error(s)`);
             this.addMessage(conversationId, {
@@ -1641,9 +1710,7 @@ Please revise your approach.`;
 
     const tools = toolRegistry.getDefinitions(agent.tools, agent.type);
 
-    const apiUrl = typeof window !== 'undefined'
-      ? `${window.location.origin}/api/generate`
-      : '/api/generate';
+    const apiUrl = this.getApiUrl();
 
     const modelSupportsTools = this.checkModelSupportsTools();
 
@@ -1673,7 +1740,7 @@ Please revise your approach.`;
     }
 
     // Check if reasoning is enabled for this model
-    const reasoningEnabled = configManager.getReasoningEnabled(model);
+    const reasoningEnabled = this.getConfig().getReasoningEnabled(model);
 
     const requestBody = {
       messages: sanitizedMessages,
@@ -1686,7 +1753,7 @@ Please revise your approach.`;
       ...(reasoningEnabled && { reasoning: { enabled: true } })
     };
 
-    if (configManager.getDebugStreamEnabled()) {
+    if (this.getConfig().getDebugStreamEnabled()) {
       const toolNames = modelSupportsTools && tools ? tools.map(t => t.name) : [];
       logger.info(`[DebugStream] llm_request → ${provider}/${model} (agent=${agent.type}, msgs=${sanitizedMessages.length}, tools=${toolNames.length})`);
       const { apiKey: _redacted, ...redactedBody } = requestBody as typeof requestBody & { apiKey?: string };
@@ -1884,7 +1951,7 @@ DO NOT use ss with << 'EOF' blocks. Try again with sed or simpler commands.`
     const { provider, model } = this.getProviderConfig();
 
     // 1. User override
-    const userLimit = configManager.getCompactionLimit(provider);
+    const userLimit = this.getConfig().getCompactionLimit(provider);
     if (userLimit) return userLimit;
 
     // 2. Registry lookup (hardcoded models)
@@ -1892,7 +1959,7 @@ DO NOT use ss with << 'EOF' blocks. Try again with sed or simpler commands.`
     if (registryLimit) return registryLimit;
 
     // 3. Cached model metadata (dynamically discovered models)
-    const cachedLimit = configManager.getModelContextLengthFromCache(provider, model);
+    const cachedLimit = this.getConfig().getModelContextLengthFromCache(provider, model);
     if (cachedLimit) return cachedLimit;
 
     // 4. Fallback
@@ -2051,7 +2118,7 @@ DO NOT use ss with << 'EOF' blocks. Try again with sed or simpler commands.`
       max_tokens: summaryMaxTokens,
     };
 
-    const response = await apiFetch('/api/generate', {
+    const response = await apiFetch(this.getApiUrl(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody),
@@ -2084,12 +2151,12 @@ DO NOT use ss with << 'EOF' blocks. Try again with sed or simpler commands.`
     }
 
     // 4. Re-gather fresh system prompt from current VFS state
-    const serverContext = vfs.getServerContextMetadata();
+    const serverContext = this.getVFS().getServerContextMetadata();
     const systemPrompt = await buildShellSystemPrompt(this.chatMode, serverContext, this.projectId, this.rootAgent.type);
 
     let fileTreeStr = '';
     try {
-      const files = await vfs.listDirectory(this.projectId, '/');
+      const files = await this.getVFS().listDirectory(this.projectId, '/');
       if (files.length > 0) {
         fileTreeStr = buildFileTree(files);
       }
@@ -2152,6 +2219,16 @@ DO NOT use ss with << 'EOF' blocks. Try again with sed or simpler commands.`
    * Get provider configuration
    */
   private getProviderConfig() {
+    if (this.serverContext) {
+      // Server context: config is a plain object with provider/model/apiKey
+      const cfg = this.serverContext.config;
+      return {
+        provider: cfg.provider,
+        apiKey: cfg.apiKey || '',
+        model: cfg.model || 'default-model'
+      };
+    }
+
     const provider = configManager.getSelectedProvider();
     const providerConfig = getProvider(provider);
     const apiKey = configManager.getProviderApiKey(provider);
@@ -2184,7 +2261,7 @@ DO NOT use ss with << 'EOF' blocks. Try again with sed or simpler commands.`
       message
     });
 
-    toast.info(message, {
+    this.notify('info', message, {
       duration: delay > 2000 ? delay - 500 : 2000,
     });
   }
@@ -2203,15 +2280,15 @@ DO NOT use ss with << 'EOF' blocks. Try again with sed or simpler commands.`
       return;
     }
 
-    if (configManager.getModelPricing('openrouter', model)) {
+    if (this.getConfig().getModelPricing('openrouter', model)) {
       this.pricingEnsured.add(key);
       return;
     }
 
-    const cachedModels = configManager.getCachedModels('openrouter');
+    const cachedModels = this.getConfig().getCachedModels('openrouter');
     if (cachedModels?.models?.length) {
       registerPricingFromProviderModels('openrouter', cachedModels.models);
-      if (configManager.getModelPricing('openrouter', model)) {
+      if (this.getConfig().getModelPricing('openrouter', model)) {
         this.pricingEnsured.add(key);
         return;
       }
@@ -2220,7 +2297,7 @@ DO NOT use ss with << 'EOF' blocks. Try again with sed or simpler commands.`
     try {
       const models = await fetchAvailableModels();
       registerOpenRouterPricingFromApi(models);
-      if (configManager.getModelPricing('openrouter', model)) {
+      if (this.getConfig().getModelPricing('openrouter', model)) {
         this.pricingEnsured.add(key);
       }
     } catch (error) {
@@ -2273,7 +2350,7 @@ DO NOT use ss with << 'EOF' blocks. Try again with sed or simpler commands.`
     const result = await parseStreamingResponse(response, {
       provider,
       model,
-      debugStream: configManager.getDebugStreamEnabled(),
+      debugStream: this.getConfig().getDebugStreamEnabled(),
       onProgress: this.onProgress
     });
 
@@ -2291,11 +2368,11 @@ DO NOT use ss with << 'EOF' blocks. Try again with sed or simpler commands.`
       this.totalUsage.totalTokens += usage.totalTokens;
       this.totalCost += cost;
 
-      configManager.updateSessionCost(usage, cost);
+      this.getConfig().updateSessionCost(usage, cost);
 
-      const sessionId = configManager.getCurrentSession()?.sessionId;
+      const sessionId = this.getConfig().getCurrentSession?.()?.sessionId;
       if (!this.projectId.startsWith('test-') && this.rootAgent.type !== 'setup') {
-        vfs.updateProjectCost(this.projectId, {
+        this.getVFS().updateProjectCost(this.projectId, {
           cost,
           provider: usage.provider || provider || 'unknown',
           tokenUsage: {
