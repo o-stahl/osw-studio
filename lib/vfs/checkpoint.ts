@@ -1,4 +1,4 @@
-import { vfs } from './index';
+import { getActiveVFS } from './index';
 import { logger } from '@/lib/utils';
 import { compressToUTF16, decompressFromUTF16 } from 'lz-string';
 
@@ -108,7 +108,8 @@ class CheckpointManager {
       return;
     }
     // Initialize VFS which also initializes the shared database
-    await vfs.init();
+    const activeVFS = getActiveVFS();
+    await activeVFS.init();
     this.isInitialized = true;
     await this.loadCheckpointMetadataFromDB();
   }
@@ -117,7 +118,8 @@ class CheckpointManager {
    * Get shared database connection from VFS
    */
   private getDB(): IDBDatabase {
-    return vfs.getDatabase();
+    const activeVFS = getActiveVFS();
+    return activeVFS.getDatabase();
   }
 
   /**
@@ -305,9 +307,10 @@ class CheckpointManager {
     options: CreateCheckpointOptions = {}
   ): Promise<Checkpoint> {
     await this.initDB();
-    await vfs.init();
+    const activeVFS = getActiveVFS();
+    await activeVFS.init();
 
-    const files = await vfs.listDirectory(projectId, '/');
+    const files = await activeVFS.listDirectory(projectId, '/');
     const fileContents = new Map<string, string | CheckpointFileContent>();
     const directories = new Set<string>();
 
@@ -328,7 +331,7 @@ class CheckpointManager {
         });
       } else {
         try {
-          const fullFile = await vfs.readFile(projectId, file.path);
+          const fullFile = await activeVFS.readFile(projectId, file.path);
           if (typeof fullFile.content === 'string') {
             fileContents.set(file.path, fullFile.content);
           } else if (fullFile.content instanceof ArrayBuffer) {
@@ -416,11 +419,12 @@ class CheckpointManager {
       return false;
     }
     
-    await vfs.init();
-    
+    const activeVFS = getActiveVFS();
+    await activeVFS.init();
+
     try {
-      const currentFiles = await vfs.listDirectory(checkpoint.projectId, '/');
-      
+      const currentFiles = await activeVFS.listDirectory(checkpoint.projectId, '/');
+
       const currentDirs = new Set<string>();
       for (const file of currentFiles) {
         const pathParts = file.path.split('/').filter(Boolean);
@@ -429,38 +433,38 @@ class CheckpointManager {
           currentDirs.add(dirPath);
         }
       }
-      
+
       for (const file of currentFiles) {
         if (!checkpoint.files.has(file.path)) {
-          await vfs.deleteFile(checkpoint.projectId, file.path);
+          await activeVFS.deleteFile(checkpoint.projectId, file.path);
         }
       }
-      
+
       const dirsToDelete = Array.from(currentDirs)
         .filter(dir => !checkpoint.directories || !checkpoint.directories.has(dir))
         .sort((a, b) => b.length - a.length);
-      
+
       for (const dir of dirsToDelete) {
         try {
-          await vfs.deleteDirectory(checkpoint.projectId, dir);
+          await activeVFS.deleteDirectory(checkpoint.projectId, dir);
         } catch {
         }
       }
-      
+
       if (checkpoint.directories) {
         const dirsToCreate = Array.from(checkpoint.directories)
           .sort((a, b) => a.length - b.length);
-        
+
         for (const dir of dirsToCreate) {
           if (!currentDirs.has(dir)) {
             try {
-              await vfs.createDirectory(checkpoint.projectId, dir);
+              await activeVFS.createDirectory(checkpoint.projectId, dir);
             } catch {
             }
           }
         }
       }
-      
+
       // Restore each file silently so listeners (preview compile, file-tree
       // reload) don't fire N times — one event is dispatched after the loop.
       // Without this, restoring a checkpoint with many files (e.g. 250 image
@@ -477,9 +481,9 @@ class CheckpointManager {
 
         const exists = currentFiles.some(f => f.path === path);
         if (exists) {
-          await vfs.updateFile(checkpoint.projectId, path, actualContent, { silent: true });
+          await activeVFS.updateFile(checkpoint.projectId, path, actualContent, { silent: true });
         } else {
-          await vfs.createFile(checkpoint.projectId, path, actualContent, { silent: true });
+          await activeVFS.createFile(checkpoint.projectId, path, actualContent, { silent: true });
         }
       }
 

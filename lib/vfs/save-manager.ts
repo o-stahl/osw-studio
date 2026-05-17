@@ -1,5 +1,5 @@
 import { checkpointManager, Checkpoint } from './checkpoint';
-import { vfs } from './index';
+import { getActiveVFS } from './index';
 import { logger } from '@/lib/utils';
 
 interface DirtyEvent {
@@ -83,8 +83,9 @@ class SaveManager {
   }
 
   async save(projectId: string, description?: string): Promise<Checkpoint> {
-    await vfs.init();
-    const project = await vfs.getProject(projectId);
+    const activeVFS = getActiveVFS();
+    await activeVFS.init();
+    const project = await activeVFS.getProject(projectId);
     const fallbackDescription = `Manual save @ ${new Date().toLocaleTimeString()}`;
     const checkpoint = await checkpointManager.createCheckpoint(projectId, description || fallbackDescription, {
       kind: 'manual',
@@ -93,11 +94,11 @@ class SaveManager {
 
     project.lastSavedCheckpointId = checkpoint.id;
     project.lastSavedAt = new Date(checkpoint.timestamp);
-    await vfs.updateProject(project);
+    await activeVFS.updateProject(project);
 
     // Trigger auto-sync after save (only place that should trigger sync)
     // Use the internal triggerAutoSync method which has debouncing
-    (vfs as any).triggerAutoSync?.(projectId);
+    (activeVFS as any).triggerAutoSync?.(projectId);
 
     this.manualCheckpoints.set(projectId, checkpoint.id);
     this.markClean(projectId);
@@ -105,8 +106,9 @@ class SaveManager {
   }
 
   async restoreLastSaved(projectId: string): Promise<boolean> {
-    await vfs.init();
-    const project = await vfs.getProject(projectId);
+    const activeVFS = getActiveVFS();
+    await activeVFS.init();
+    const project = await activeVFS.getProject(projectId);
     const checkpointId = project.lastSavedCheckpointId;
     if (!checkpointId) {
       logger.warn('[SaveManager] No saved checkpoint to restore', { projectId });
@@ -137,8 +139,9 @@ class SaveManager {
   }
 
   async syncProjectSaveState(projectId: string): Promise<void> {
-    await vfs.init();
-    const project = await vfs.getProject(projectId);
+    const activeVFS = getActiveVFS();
+    await activeVFS.init();
+    const project = await activeVFS.getProject(projectId);
     if (project.lastSavedCheckpointId) {
       this.manualCheckpoints.set(projectId, project.lastSavedCheckpointId);
     } else {

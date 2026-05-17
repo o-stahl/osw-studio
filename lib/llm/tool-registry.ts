@@ -4,7 +4,7 @@
  */
 
 import { ToolDefinition, ToolCall } from './types';
-import { vfs } from '@/lib/vfs';
+import { getActiveVFS } from '@/lib/vfs';
 import { vfsShell } from '@/lib/vfs/cli-shell';
 import { logger } from '../utils';
 import {
@@ -498,8 +498,9 @@ async function executeShellSegment(
   }
 
   // Server-side execution (sqlite3)
+  const activeVFS = getActiveVFS();
   const serverCommands = ['sqlite3'];
-  const deploymentId = vfs.getRuntimeDeploymentId();
+  const deploymentId = activeVFS.getRuntimeDeploymentId();
 
   if (serverCommands.includes(command) && deploymentId) {
     try {
@@ -544,8 +545,8 @@ async function executeShellSegment(
 
   // Refresh server context if shell command modified .server/ files
   if (isWriteOperation(cmdArray) && cmdArray.some(a => a.includes('/.server/'))) {
-    if (vfs.hasServerContext()) {
-      await vfs.refreshServerContext();
+    if (activeVFS.hasServerContext()) {
+      await activeVFS.refreshServerContext();
     }
   }
 

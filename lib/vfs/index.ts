@@ -24,8 +24,8 @@ export class VirtualFileSystem {
   private generatedFiles: Map<string, VirtualFile> = new Map();
   private syncTimeouts: Map<string, NodeJS.Timeout> = new Map(); // Debounce sync calls
 
-  constructor() {
-    this.adapter = createClientAdapter();
+  constructor(adapter?: StorageAdapter) {
+    this.adapter = adapter ?? createClientAdapter();
   }
 
   async init(): Promise<void> {
@@ -2035,5 +2035,21 @@ export class VirtualFileSystem {
 }
 
 export const vfs = new VirtualFileSystem();
+
+/**
+ * Return the context-local VFS (set by server-side generation via AsyncLocalStorage)
+ * or fall back to the browser singleton.
+ */
+export function getActiveVFS(): VirtualFileSystem {
+  // Dynamic import to avoid pulling AsyncLocalStorage into the client bundle.
+  // getContextVFS is only set during server-side runWithVFS() calls.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getContextVFS } = require('@/lib/server-generate/vfs-context');
+    return getContextVFS() ?? vfs;
+  } catch {
+    return vfs;
+  }
+}
 
 export * from './types';
