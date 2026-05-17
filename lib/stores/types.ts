@@ -20,4 +20,5 @@ export interface GenerationTask {
   pausedMessage: string | null;
   orchestratorInstance: MultiAgentOrchestrator | null;
   persistedInstance: MultiAgentOrchestrator | null;
+  serverTaskId?: string;
 }

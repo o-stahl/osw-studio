@@ -11,6 +11,9 @@ import type { ProjectRuntime } from '@/lib/vfs/types';
 import { debugEventsState } from '@/lib/llm/debug-events-state';
 import { drainRuntimeErrors } from '@/lib/preview/runtime-errors';
 import { logger } from '@/lib/utils';
+import { SSEClient } from '@/lib/server-generate/sse-client';
+import { handleFilesChanged } from '@/lib/server-generate/file-sync-handler';
+import { handleBuildRequested } from '@/lib/server-generate/build-delegation-handler';
 
 const MAX_DEBUG_EVENTS = 2000;
 let debugIdCounter = 0;
@@ -21,6 +24,11 @@ const saveDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 // When the user views a different project while generation runs, events accumulate
 // here instead of in the store's debugEvents (which shows the viewed project's history).
 const backgroundEventsMap = new Map<string, DebugEvent[]>();
+
+function isServerMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  return process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
+}
 
 function debouncedSave(projectId: string, events: DebugEvent[]) {
   if (!persistProjectIds.has(projectId)) return;
@@ -65,6 +73,7 @@ export interface OrchestratorSlice {
   debugEvents: DebugEvent[];
   currentModel: string;
   projectCost: number;
+  sseClient: SSEClient | null;
 
   generating: boolean;
 
@@ -78,7 +87,10 @@ export interface OrchestratorSlice {
 
   // Generation lifecycle
   startGeneration: (message: string, images?: PendingImage[], options?: StartGenerationOptions) => Promise<void>;
-  stopGeneration: (projectId?: string) => void;
+  stopGeneration: (projectId?: string) => void | Promise<void>;
+  connectSSE: () => void;
+  disconnectSSE: () => void;
+  startServerGeneration: (projectId: string, prompt: string, chatMode: boolean) => Promise<void>;
   continueGeneration: () => void;
   resetOrchestrator: () => void;
 
@@ -108,6 +120,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
   debugEvents: [],
   currentModel: '',
   projectCost: 0,
+  sseClient: null,
   generating: false,
 
   isProjectGenerating: (projectId: string) => {
@@ -221,6 +234,10 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     if (options?.isTourLockingInput) return;
 
     const projectId = options?.projectId || '';
+
+    if (isServerMode()) {
+      return get().startServerGeneration(projectId, message.trim(), !!options?.chatMode);
+    }
 
     // Guard on per-project generation, not global
     if (get().isProjectGenerating(projectId)) return;
@@ -450,9 +467,24 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     }
   },
 
-  stopGeneration: (projectId?: string) => {
+  stopGeneration: async (projectId?: string) => {
     const targetId = projectId ?? get().projectId;
     const task = get().generationTasks.get(targetId);
+
+    if (task?.serverTaskId) {
+      await fetch('/api/server-generate/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: task.serverTaskId }),
+      });
+      const tasks = new Map(get().generationTasks);
+      const updatedTask = { ...task, result: 'failed' as const, orchestratorInstance: null };
+      tasks.set(targetId, updatedTask);
+      const hasActive = [...tasks.values()].some((t) => !t.result);
+      set({ generationTasks: tasks, generating: hasActive });
+      return;
+    }
+
     if (task?.orchestratorInstance) {
       task.orchestratorInstance.stop();
       track('task_fail', {
@@ -565,6 +597,118 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     const timer = saveDebounceTimers.get(viewedId);
     if (timer) { clearTimeout(timer); saveDebounceTimers.delete(viewedId); }
     persistProjectIds.delete(viewedId);
+  },
+
+  connectSSE: () => {
+    if (get().sseClient) return;
+
+    const client = new SSEClient({
+      onEvent: (event, data) => {
+        const projectId = data.sourceProjectId as string;
+
+        if (event === 'files_changed') {
+          handleFilesChanged(data as any);
+          return;
+        }
+        if (event === 'build_requested') {
+          handleBuildRequested(data as any);
+          return;
+        }
+        if (event === 'task_complete') {
+          const tasks = new Map(get().generationTasks);
+          const task = [...tasks.values()].find((t) => t.serverTaskId && t.projectId === projectId);
+          if (task) {
+            task.result = data.result === 'success' ? 'completed' : 'failed';
+            task.orchestratorInstance = null;
+            tasks.set(task.projectId, { ...task });
+            set({ generationTasks: tasks });
+            const hasActive = [...tasks.values()].some((t) => !t.result);
+            set({ generating: hasActive });
+          }
+          return;
+        }
+        if (event === 'usage_update') {
+          set({ projectCost: (get().projectCost ?? 0) + ((data.cost as number) ?? 0) });
+          return;
+        }
+
+        get().addDebugEvent(event, data, projectId);
+      },
+      onSyncGap: (_projectId) => {
+        // Full project sync needed — placeholder for future implementation
+      },
+    });
+
+    client.connect();
+    set({ sseClient: client });
+  },
+
+  disconnectSSE: () => {
+    get().sseClient?.disconnect();
+    set({ sseClient: null });
+  },
+
+  startServerGeneration: async (projectId: string, prompt: string, chatMode: boolean) => {
+    const provider = configManager.getSelectedProvider();
+    const apiKey = configManager.getProviderApiKey(provider);
+    const model = configManager.getProviderModel(provider) || '';
+    const projectName = get().projectName || 'Untitled';
+
+    if (!apiKey) {
+      toast.error('API key required');
+      return;
+    }
+
+    const conversationHistory = get().debugEvents
+      .filter((e) => e.event === 'conversation_message')
+      .map((e) => e.data.message);
+
+    const response = await fetch('/api/server-generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectId,
+        prompt,
+        model,
+        apiKey,
+        providerConfig: { provider },
+        conversationHistory,
+        generationParams: {
+          reasoningEnabled: configManager.getReasoningEnabled(model),
+          compactionEnabled: configManager.isCompactionEnabled(provider),
+          compactionLimit: configManager.getCompactionLimit(provider),
+          debugStreamEnabled: configManager.getDebugStreamEnabled(),
+          modelPricing: {},
+          cachedModels: configManager.getCachedModels(provider)?.models ?? [],
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      toast.error(error.error || 'Failed to start server generation');
+      return;
+    }
+
+    const { taskId } = await response.json();
+
+    const tasks = new Map(get().generationTasks);
+    tasks.set(projectId, {
+      projectId,
+      projectName,
+      prompt,
+      model,
+      startedAt: Date.now(),
+      result: null,
+      paused: false,
+      pausedMessage: null,
+      orchestratorInstance: null,
+      persistedInstance: null,
+      serverTaskId: taskId,
+    });
+    set({ generationTasks: tasks, generating: true });
+
+    get().connectSSE();
   },
 
   dismissGenerationResult: (projectId?: string) => {
