@@ -105,6 +105,7 @@ export interface OrchestratorSlice {
   initPersistence: (projectId: string) => void;
   cleanupPersistence: () => void;
   dismissGenerationResult: (projectId?: string) => void;
+  reattachServerTasks: () => Promise<void>;
 }
 
 type CombinedState = OrchestratorSlice & {
@@ -718,5 +719,46 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     const newTasks = new Map(get().generationTasks);
     newTasks.delete(targetId);
     set({ generationTasks: newTasks, ...deriveScalarFields(newTasks, get().projectId) });
+  },
+
+  reattachServerTasks: async () => {
+    if (!isServerMode()) return;
+
+    try {
+      const response = await fetch('/api/server-generate/status');
+      if (!response.ok) return;
+
+      const { tasks } = await response.json();
+      if (!tasks?.length) return;
+
+      const generationTasks = new Map(get().generationTasks);
+      let hasRunning = false;
+
+      for (const serverTask of tasks) {
+        if (serverTask.status === 'running' || serverTask.status === 'paused') {
+          hasRunning = true;
+          generationTasks.set(serverTask.projectId, {
+            projectId: serverTask.projectId,
+            projectName: '',
+            prompt: '',
+            model: '',
+            startedAt: serverTask.startedAt,
+            result: null,
+            paused: serverTask.status === 'paused',
+            pausedMessage: null,
+            orchestratorInstance: null,
+            persistedInstance: null,
+            serverTaskId: serverTask.taskId,
+          });
+        }
+      }
+
+      if (hasRunning) {
+        set({ generationTasks, generating: true });
+        get().connectSSE();
+      }
+    } catch {
+      // Server not available — ignore
+    }
   },
 });

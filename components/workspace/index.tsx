@@ -109,6 +109,11 @@ export function Workspace({ project, onBack, workspaceId }: WorkspaceProps) {
     onBack();
   }, [generating, isDirty, onBack]);
 
+  // Reattach to any server-side tasks that were running before page reload
+  useEffect(() => {
+    useWorkspaceStore.getState().reattachServerTasks();
+  }, []);
+
   // Browser beforeunload — warn when dirty or generating
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
