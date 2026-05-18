@@ -8,7 +8,7 @@
 [![GitHub Stars](https://img.shields.io/github/stars/o-stahl/osw-studio?style=social)](https://github.com/o-stahl/osw-studio/stargazers)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Live Demo](https://img.shields.io/badge/Demo-Try%20Now-success)](https://huggingface.co/spaces/otst/osw-studio)
-[![Version](https://img.shields.io/badge/Version-1.66.0-blue)](https://github.com/o-stahl/osw-studio/releases)
+[![Version](https://img.shields.io/badge/Version-1.67.0-blue)](https://github.com/o-stahl/osw-studio/releases)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/o-stahl/osw-studio/pulls)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/mAJ8Ss4u)
 
@@ -198,6 +198,7 @@ OSW Studio runs client-side by default (Browser Mode). For advanced use cases, e
 - ✅ Custom scripts - Inject head/body scripts, CDN resources
 - ✅ Project sync (IndexedDB ↔ SQLite)
 - ✅ Custom domains via reverse proxy
+- ✅ **Server-Side Generation** - AI tasks continue on server if browser disconnects, with automatic reattach on reconnect
 - ✅ Site Templates - Create from templates with automatic backend provisioning
 
 **Quick Start (Server Mode):**

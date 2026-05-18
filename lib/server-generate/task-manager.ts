@@ -71,6 +71,11 @@ export class TaskManager {
         this.apiKeys.delete(taskId);
       }
     }
+    for (const [taskId, task] of this.tasks) {
+      if (task.status !== 'running' && task.status !== 'paused' && now - task.startedAt > this.options.keyTTLMs) {
+        this.tasks.delete(taskId);
+      }
+    }
   }
 
   dispose(): void {

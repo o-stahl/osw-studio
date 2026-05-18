@@ -2838,10 +2838,10 @@ export const vfsShell = {
     stdin?: string,
     ctx?: ShellContext
   ): Promise<{ success: boolean; stdout?: string; stderr?: string; exitReason?: string }> => {
-    // Import singleton vfs to ensure transient files (skills) are available
-    const { vfs } = await import('./index');
-    await vfs.init();
-    const result = await vfsShellExecute(vfs, projectId, cmd, stdin, ctx);
+    const { getActiveVFS } = await import('./index');
+    const activeVFS = getActiveVFS();
+    await activeVFS.init();
+    const result = await vfsShellExecute(activeVFS, projectId, cmd, stdin, ctx);
     return {
       success: result.exitCode === 0,
       stdout: result.stdout,

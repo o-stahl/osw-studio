@@ -60,6 +60,42 @@ describe('Server-side generation integration', () => {
     expect(t4).toBeDefined();
   });
 
+  it('fresh tab reconnect (lastEventId=0) replays full buffer via getBuffer', () => {
+    const taskId = tm.createTask('proj-1', 'sess-1', 'sk-key');
+    bus.emit(taskId, 'proj-1', 'conversation_message', {
+      message: { role: 'user', content: 'hello', ui_metadata: { projectContext: 'files...' } },
+    }, 'sess-1');
+    bus.emit(taskId, 'proj-1', 'assistant_delta', { text: 'Hi' }, 'sess-1');
+    bus.emit(taskId, 'proj-1', 'tool_status', { status: 'running', name: 'shell' }, 'sess-1');
+    bus.emit(taskId, 'proj-1', 'conversation_message', {
+      message: { role: 'assistant', content: 'Done' },
+    }, 'sess-1');
+
+    // Fresh tab: getBuffer returns all buffered (non-delta) events
+    const buffer = bus.getBuffer(taskId);
+    expect(buffer).toHaveLength(3); // user msg, tool_status, assistant msg (delta excluded)
+
+    // replayFrom with 0 also returns full buffer
+    const replayed = bus.replayFrom(taskId, 0);
+    expect(replayed).toHaveLength(3);
+    expect(replayed![0].event).toBe('conversation_message');
+    expect((replayed![0].data as any).message.ui_metadata.projectContext).toBe('files...');
+  });
+
+  it('task metadata is available in getTasksForSession for shelf display', () => {
+    const taskId = tm.createTask('proj-1', 'sess-1', 'sk-key');
+    const task = tm.getTask(taskId)!;
+    task.prompt = 'add a navbar';
+    task.model = 'claude-3.5-sonnet';
+    task.projectName = 'Portfolio';
+
+    const tasks = tm.getTasksForSession('sess-1');
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].prompt).toBe('add a navbar');
+    expect(tasks[0].model).toBe('claude-3.5-sonnet');
+    expect(tasks[0].projectName).toBe('Portfolio');
+  });
+
   it('ServerConfigManager tracks cost across multiple updates', () => {
     const config = new ServerConfigManager({
       provider: 'openai',

@@ -449,6 +449,10 @@ async function executeShellSegment(
 
   // Script execution commands (python, python3, lua)
   if (command === 'python' || command === 'python3' || command === 'lua') {
+    if (typeof window === 'undefined') {
+      return `Error: ${command} execution requires the browser runtime (Pyodide/Fengari). This command is not available during server-side generation. Write the script file and it will run when the user opens the preview.`;
+    }
+
     const sr: ScriptRuntime = command === 'lua' ? 'lua' : 'python';
     const filePath = cmdArray[1];
     if (!filePath) return `Error: Usage: ${command} <file>`;

@@ -1168,6 +1168,7 @@ export function Workspace({ project, onBack, workspaceId }: WorkspaceProps) {
       focusContext,
       placedBlocks,
       isTourLockingInput,
+      displayPrompt: (promptText ?? '').trim(),
     });
 
     // Post-generation UI cleanup

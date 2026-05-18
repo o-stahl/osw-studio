@@ -1459,11 +1459,11 @@ export class VirtualFileSystem {
       throw new Error(`Project not found: ${projectId}`);
     }
 
-    if (!project.costTracking) {
+    if (!project.costTracking || !project.costTracking.providerBreakdown) {
       project.costTracking = {
-        totalCost: 0,
-        providerBreakdown: {},
-        sessionHistory: []
+        totalCost: project.costTracking?.totalCost ?? 0,
+        providerBreakdown: project.costTracking?.providerBreakdown ?? {},
+        sessionHistory: project.costTracking?.sessionHistory ?? []
       };
     }
 
@@ -2036,20 +2036,14 @@ export class VirtualFileSystem {
 
 export const vfs = new VirtualFileSystem();
 
-/**
- * Return the context-local VFS (set by server-side generation via AsyncLocalStorage)
- * or fall back to the browser singleton.
- */
+let _contextVFSProvider: (() => VirtualFileSystem | undefined) | null = null;
+
+export function registerContextVFSProvider(provider: () => VirtualFileSystem | undefined): void {
+  _contextVFSProvider = provider;
+}
+
 export function getActiveVFS(): VirtualFileSystem {
-  // Dynamic import to avoid pulling AsyncLocalStorage into the client bundle.
-  // getContextVFS is only set during server-side runWithVFS() calls.
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { getContextVFS } = require('@/lib/server-generate/vfs-context');
-    return getContextVFS() ?? vfs;
-  } catch {
-    return vfs;
-  }
+  return _contextVFSProvider?.() ?? vfs;
 }
 
 export * from './types';

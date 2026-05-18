@@ -10,6 +10,7 @@ import { logger } from '@/lib/utils';
 import { NextRequest, NextResponse } from 'next/server';
 import { getWorkspaceContext } from '@/lib/api/workspace-context';
 import { cleanStaticDeployment } from '@/lib/compiler/static-builder';
+import { removeDeploymentRoute } from '@/lib/auth/system-database';
 
 export async function GET(
   _request: NextRequest,
@@ -108,8 +109,9 @@ export async function DELETE(
       await adapter.deleteDeployment(id);
     }
 
-    // Clean up static files
+    // Clean up static files and deployment routing (frees quota)
     await cleanStaticDeployment(id);
+    removeDeploymentRoute(id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -12,14 +12,19 @@ import { debugEventsState } from '@/lib/llm/debug-events-state';
 import { drainRuntimeErrors } from '@/lib/preview/runtime-errors';
 import { logger } from '@/lib/utils';
 import { SSEClient } from '@/lib/server-generate/sse-client';
-import { handleFilesChanged } from '@/lib/server-generate/file-sync-handler';
+import { handleFilesChanged, cancelPendingFileSync } from '@/lib/server-generate/file-sync-handler';
 import { handleBuildRequested } from '@/lib/server-generate/build-delegation-handler';
+import { playTaskCompleteSound, playTaskCompleteSoundSubtle } from '@/lib/utils/task-complete-sound';
 
 const MAX_DEBUG_EVENTS = 2000;
 let debugIdCounter = 0;
 
 const persistProjectIds = new Map<string, string>();
 const saveDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+// Batched delta flushing — accumulates coalesced deltas and flushes once per animation frame
+let pendingDeltaFlush: number | null = null;
+const pendingDeltas = new Map<string, { eventId: string; fragments: any[] }>();
 
 // When the user views a different project while generation runs, events accumulate
 // here instead of in the store's debugEvents (which shows the viewed project's history).
@@ -66,6 +71,7 @@ interface StartGenerationOptions {
   focusContext?: any;
   placedBlocks?: any[];
   isTourLockingInput?: boolean;
+  displayPrompt?: string;
 }
 
 export interface OrchestratorSlice {
@@ -90,7 +96,7 @@ export interface OrchestratorSlice {
   stopGeneration: (projectId?: string) => void | Promise<void>;
   connectSSE: () => void;
   disconnectSSE: () => void;
-  startServerGeneration: (projectId: string, prompt: string, chatMode: boolean) => Promise<void>;
+  startServerGeneration: (projectId: string, prompt: string, chatMode: boolean, images?: PendingImage[], options?: StartGenerationOptions) => Promise<void>;
   continueGeneration: () => void;
   resetOrchestrator: () => void;
 
@@ -140,6 +146,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     const { projectId } = get();
     const source = sourceProjectId ?? projectId;
     const isBackground = source !== projectId;
+    const shouldCoalesce = event === 'assistant_delta' || event === 'tool_param_delta' || event === 'reasoning_delta';
 
     const debugEvent: DebugEvent = {
       id: `${Date.now()}-${debugIdCounter++}`,
@@ -151,20 +158,20 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     };
 
     if (isBackground) {
-      // User is viewing a different project — accumulate in shadow buffer, persist to IDB only
       let buffer = backgroundEventsMap.get(source) ?? [];
-      const shouldCoalesce = event === 'assistant_delta' || event === 'tool_param_delta' || event === 'reasoning_delta';
       if (shouldCoalesce && buffer.length > 0) {
         const searchLimit = Math.max(0, buffer.length - 4);
         for (let i = buffer.length - 1; i >= searchLimit; i--) {
           if (buffer[i].event === event) {
             const target = buffer[i];
+            const all = target.data.all ?? [target.data];
+            all.push(data);
             buffer[i] = {
               ...target,
               timestamp: Date.now(),
               version: target.version + 1,
               count: target.count + 1,
-              data: { all: target.data.all ? [...target.data.all, data] : [target.data, data] },
+              data: { all },
             };
             backgroundEventsMap.set(source, buffer);
             debouncedSave(source, buffer);
@@ -181,37 +188,113 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       return;
     }
 
-    set(state => {
-      const prev = state.debugEvents;
-      const shouldCoalesce = event === 'assistant_delta' || event === 'tool_param_delta' || event === 'reasoning_delta';
-
-      if (shouldCoalesce && prev.length > 0) {
-        const searchLimit = Math.max(0, prev.length - 4);
-        for (let i = prev.length - 1; i >= searchLimit; i--) {
-          if (prev[i].event === event) {
-            const target = prev[i];
-            const updatedEvent: DebugEvent = {
-              ...target,
-              timestamp: Date.now(),
-              version: target.version + 1,
-              count: target.count + 1,
-              data: {
-                all: target.data.all
-                  ? [...target.data.all, data]
-                  : [target.data, data],
-              },
-            };
-            const newEvents = [...prev.slice(0, i), updatedEvent, ...prev.slice(i + 1)];
-            return { debugEvents: newEvents };
-          }
+    // For delta events in the foreground, batch updates to avoid per-chunk React re-renders
+    if (shouldCoalesce) {
+      // Find the target event id to coalesce into
+      const prev = get().debugEvents;
+      let targetId: string | null = null;
+      const searchLimit = Math.max(0, prev.length - 4);
+      for (let i = prev.length - 1; i >= searchLimit; i--) {
+        if (prev[i].event === event) {
+          targetId = prev[i].id;
+          break;
         }
       }
 
-      let newEvents = [...prev, debugEvent];
+      if (targetId) {
+        // Accumulate in the pending buffer — no Zustand set() yet
+        let pending = pendingDeltas.get(targetId);
+        if (!pending) {
+          pending = { eventId: targetId, fragments: [] };
+          pendingDeltas.set(targetId, pending);
+        }
+        pending.fragments.push(data);
+      } else {
+        // First delta of its kind — add the event, then future deltas coalesce into it
+        set(state => {
+          let newEvents = [...state.debugEvents, debugEvent];
+          if (newEvents.length > MAX_DEBUG_EVENTS) newEvents = newEvents.slice(-MAX_DEBUG_EVENTS);
+          return { debugEvents: newEvents };
+        });
+      }
+
+      // Flush pending deltas into Zustand state
+      const flushPendingDeltas = () => {
+        if (pendingDeltas.size === 0) return;
+        set(state => {
+          const events = [...state.debugEvents];
+          for (const [eventId, pending] of pendingDeltas) {
+            let idx = -1;
+            for (let i = events.length - 1; i >= Math.max(0, events.length - 10); i--) {
+              if (events[i].id === eventId) { idx = i; break; }
+            }
+            if (idx === -1) continue;
+            const target = events[idx];
+            const existingAll = target.data.all ?? [target.data];
+            const all = [...existingAll, ...pending.fragments];
+            events[idx] = {
+              ...target,
+              timestamp: Date.now(),
+              version: target.version + pending.fragments.length,
+              count: target.count + pending.fragments.length,
+              data: { all },
+            };
+          }
+          pendingDeltas.clear();
+          return { debugEvents: events };
+        });
+        debouncedSave(source, get().debugEvents);
+      };
+
+      if (typeof requestAnimationFrame !== 'undefined') {
+        if (pendingDeltaFlush === null) {
+          pendingDeltaFlush = requestAnimationFrame(() => {
+            pendingDeltaFlush = null;
+            flushPendingDeltas();
+          });
+        }
+      } else {
+        flushPendingDeltas();
+      }
+      return;
+    }
+
+    // Non-delta events: flush any pending deltas first, then add the new event
+    if (pendingDeltas.size > 0) {
+      if (pendingDeltaFlush !== null && typeof cancelAnimationFrame !== 'undefined') {
+        cancelAnimationFrame(pendingDeltaFlush);
+        pendingDeltaFlush = null;
+      }
+      // Inline flush
+      set(state => {
+        const events = [...state.debugEvents];
+        for (const [eventId, pending] of pendingDeltas) {
+          let idx = -1;
+          for (let i = events.length - 1; i >= Math.max(0, events.length - 10); i--) {
+            if (events[i].id === eventId) { idx = i; break; }
+          }
+          if (idx === -1) continue;
+          const target = events[idx];
+          const existingAll = target.data.all ?? [target.data];
+          const all = [...existingAll, ...pending.fragments];
+          events[idx] = {
+            ...target,
+            timestamp: Date.now(),
+            version: target.version + pending.fragments.length,
+            count: target.count + pending.fragments.length,
+            data: { all },
+          };
+        }
+        pendingDeltas.clear();
+        return { debugEvents: events };
+      });
+    }
+
+    set(state => {
+      let newEvents = [...state.debugEvents, debugEvent];
       if (newEvents.length > MAX_DEBUG_EVENTS) {
         newEvents = newEvents.slice(-MAX_DEBUG_EVENTS);
       }
-
       return { debugEvents: newEvents };
     });
     debouncedSave(source, get().debugEvents);
@@ -237,7 +320,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     const projectId = options?.projectId || '';
 
     if (isServerMode()) {
-      return get().startServerGeneration(projectId, message.trim(), !!options?.chatMode);
+      return get().startServerGeneration(projectId, message.trim(), !!options?.chatMode, images, options);
     }
 
     // Guard on per-project generation, not global
@@ -412,6 +495,11 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
           successTasks.set(projectId, { ...successTask, result: 'completed' });
           set({ generationTasks: successTasks, ...deriveScalarFields(successTasks, get().projectId) });
         }
+        if (document.hidden || get().projectId !== projectId) {
+          playTaskCompleteSound();
+        } else {
+          playTaskCompleteSoundSubtle();
+        }
         toast.success('Task completed');
       } else {
         track('task_fail', {
@@ -473,16 +561,12 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     const task = get().generationTasks.get(targetId);
 
     if (task?.serverTaskId) {
+      // Soft stop: abort the current inference but let the server emit task_complete
       await fetch('/api/server-generate/cancel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ taskId: task.serverTaskId }),
       });
-      const tasks = new Map(get().generationTasks);
-      const updatedTask = { ...task, result: 'failed' as const, orchestratorInstance: null };
-      tasks.set(targetId, updatedTask);
-      const hasActive = [...tasks.values()].some((t) => !t.result);
-      set({ generationTasks: tasks, generating: hasActive });
       return;
     }
 
@@ -608,7 +692,12 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
         const projectId = data.sourceProjectId as string;
 
         if (event === 'files_changed') {
-          handleFilesChanged(data as any);
+          handleFilesChanged(data as any).then(() => {
+            if (get().projectId === projectId) {
+              get().markDirty();
+              get().bumpRefreshTrigger();
+            }
+          });
           return;
         }
         if (event === 'build_requested') {
@@ -616,24 +705,127 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
           return;
         }
         if (event === 'task_complete') {
+          // Cancel any queued file sync — the full pull below supersedes them
+          cancelPendingFileSync();
+
           const tasks = new Map(get().generationTasks);
           const task = [...tasks.values()].find((t) => t.serverTaskId && t.projectId === projectId);
           if (task) {
-            task.result = data.result === 'success' ? 'completed' : 'failed';
-            task.orchestratorInstance = null;
-            tasks.set(task.projectId, { ...task });
-            set({ generationTasks: tasks });
-            const hasActive = [...tasks.values()].some((t) => !t.result);
-            set({ generating: hasActive });
+            const result = data.result === 'success' || data.result === 'stopped'
+              ? 'completed' as const
+              : 'failed' as const;
+            tasks.set(task.projectId, { ...task, result, orchestratorInstance: null });
+            set({ generationTasks: tasks, ...deriveScalarFields(tasks, get().projectId) });
+            if (result === 'completed') {
+              if (data.result !== 'stopped') {
+                if (document.hidden || get().projectId !== projectId) {
+                  playTaskCompleteSound();
+                } else {
+                  playTaskCompleteSoundSubtle();
+                }
+              }
+              toast.success(data.result === 'stopped' ? 'Task stopped' : 'Task completed');
+              // Pull all files from server to sync IndexedDB with server-side changes
+              (async () => {
+                try {
+                  const { getSyncManager } = await import('@/lib/vfs/sync-manager');
+                  const syncMgr = getSyncManager();
+                  const pullResult = await syncMgr.pullProjectWithFiles(projectId);
+                  if (pullResult.success && pullResult.project && pullResult.files) {
+                    await vfs.updateProject(pullResult.project);
+                    const existingFiles = await vfs.getAllFilesAndDirectories(projectId);
+                    const existingFilePaths = new Set(
+                      existingFiles
+                        .filter((f): f is import('@/lib/vfs/types').VirtualFile => !('type' in f && f.type === 'directory'))
+                        .map(f => f.path)
+                    );
+                    for (const file of pullResult.files) {
+                      if (existingFilePaths.has(file.path)) {
+                        await vfs.updateFile(projectId, file.path, file.content, { silent: true });
+                      } else {
+                        await vfs.createFile(projectId, file.path, file.content, { silent: true });
+                      }
+                    }
+                    const serverPaths = new Set(pullResult.files.map(f => f.path));
+                    for (const p of existingFilePaths) {
+                      if (!serverPaths.has(p)) {
+                        try { await vfs.deleteFile(projectId, p, { silent: true }); } catch {}
+                      }
+                    }
+                    if (get().projectId === projectId) {
+                      window.dispatchEvent(new Event('filesChanged'));
+                      get().markDirty();
+                      get().bumpRefreshTrigger();
+                    }
+                  }
+                } catch (err) {
+                  logger.warn('[ServerGen] Post-completion pull failed:', err);
+                }
+              })();
+            } else if (data.error) {
+              toast.error(String(data.error), { duration: 5000 });
+            }
           }
+          get().addDebugEvent(event, data, projectId);
           return;
         }
         if (event === 'usage_update') {
-          set({ projectCost: (get().projectCost ?? 0) + ((data.cost as number) ?? 0) });
+          if (data.cost != null) {
+            set({ projectCost: (get().projectCost ?? 0) + (data.cost as number) });
+          }
           return;
+        }
+        if (event === 'usage') {
+          if (data.totalCost != null) {
+            set({ projectCost: data.totalCost as number });
+          }
+          // Don't return — let it fall through to addDebugEvent so chat panel gets usage info
+        }
+
+        // Handle duplicate user message from server
+        if (event === 'conversation_message' && (data as any).message?.role === 'user') {
+          const localIdx = get().debugEvents.findLastIndex(
+            (e) => e.event === 'conversation_message' && e.data?.message?.role === 'user'
+          );
+          if (localIdx >= 0) {
+            // Server's version has projectContext — merge it into the local event
+            const serverMeta = (data as any).message?.ui_metadata;
+            if (serverMeta?.projectContext) {
+              set((state) => {
+                const events = [...state.debugEvents];
+                const existing = { ...events[localIdx] };
+                existing.data = {
+                  ...existing.data,
+                  message: { ...existing.data.message, ui_metadata: { ...existing.data.message?.ui_metadata, ...serverMeta } },
+                };
+                existing.version = (existing.version ?? 1) + 1;
+                events[localIdx] = existing;
+                return { debugEvents: events };
+              });
+            }
+            return;
+          }
         }
 
         get().addDebugEvent(event, data, projectId);
+
+        const isViewingThis = get().projectId === projectId;
+        if (event === 'error_paused') {
+          const tasks = new Map(get().generationTasks);
+          const t = [...tasks.values()].find((tt) => tt.serverTaskId && tt.projectId === projectId);
+          if (t) {
+            tasks.set(projectId, { ...t, paused: true, pausedMessage: (data?.message as string) || 'API error' });
+            set({ generationTasks: tasks });
+          }
+        }
+        if ((event === 'iteration' || event === 'tool_status') && isViewingThis) {
+          const t = get().generationTasks.get(projectId);
+          if (t?.paused) {
+            const tasks = new Map(get().generationTasks);
+            tasks.set(projectId, { ...t, paused: false, pausedMessage: null });
+            set({ generationTasks: tasks });
+          }
+        }
       },
       onSyncGap: (_projectId) => {
         // Full project sync needed — placeholder for future implementation
@@ -649,7 +841,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     set({ sseClient: null });
   },
 
-  startServerGeneration: async (projectId: string, prompt: string, chatMode: boolean) => {
+  startServerGeneration: async (projectId: string, prompt: string, chatMode: boolean, images?: PendingImage[], options?: StartGenerationOptions) => {
     const provider = configManager.getSelectedProvider();
     const apiKey = configManager.getProviderApiKey(provider);
     const model = configManager.getProviderModel(provider) || '';
@@ -660,38 +852,94 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       return;
     }
 
+    // Push project files to server before generation so the server VFS has current state
+    try {
+      const { getSyncManager } = await import('@/lib/vfs/sync-manager');
+      const syncMgr = getSyncManager();
+      const project = await vfs.getProject(projectId);
+      const allItems = await vfs.getAllFilesAndDirectories(projectId);
+      const files = allItems.filter((f): f is import('@/lib/vfs/types').VirtualFile => !('type' in f && f.type === 'directory'));
+      if (project) {
+        const result = await syncMgr.pushSingleProject(projectId, project, files);
+        if (!result.success) {
+          logger.warn('[ServerGen] Pre-generation sync failed:', result.error);
+        }
+      }
+    } catch (err) {
+      logger.warn('[ServerGen] Pre-generation sync error:', err);
+    }
+
+    // Connect SSE before starting generation to avoid missing early events
+    get().connectSSE();
+
+    // Build ui_metadata for the local user message (mirrors what the orchestrator produces)
+    const displayPrompt = options?.displayPrompt ?? prompt;
+    const uiMeta: Record<string, any> = { displayContent: displayPrompt };
+    if (options?.focusContext) uiMeta.focusContext = { domPath: options.focusContext.domPath, snippet: options.focusContext.outerHTML };
+    if (options?.placedBlocks?.length) uiMeta.semanticBlocks = options.placedBlocks.map((b: any) => ({ name: b.name, domPath: b.domPath, position: b.position, description: b.description }));
+
+    get().addDebugEvent('conversation_message', {
+      message: {
+        role: 'user',
+        content: prompt,
+        ui_metadata: uiMeta,
+      },
+    }, projectId);
+    get().addDebugEvent('waiting', {}, projectId);
+
     const conversationHistory = get().debugEvents
       .filter((e) => e.event === 'conversation_message')
       .map((e) => e.data.message);
 
-    const response = await fetch('/api/server-generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        projectId,
-        prompt,
-        model,
-        apiKey,
-        providerConfig: { provider },
-        conversationHistory,
-        generationParams: {
-          reasoningEnabled: configManager.getReasoningEnabled(model),
-          compactionEnabled: configManager.isCompactionEnabled(provider),
-          compactionLimit: configManager.getCompactionLimit(provider),
-          debugStreamEnabled: configManager.getDebugStreamEnabled(),
-          modelPricing: {},
-          cachedModels: configManager.getCachedModels(provider)?.models ?? [],
-        },
-      }),
-    });
+    // Extract workspace ID from URL path (/w/{workspaceId}/...)
+    const wsMatch = typeof window !== 'undefined' ? window.location.pathname.match(/^\/w\/([^/]+)/) : null;
+    const workspaceId = wsMatch?.[1];
 
-    if (!response.ok) {
-      const error = await response.json();
-      toast.error(error.error || 'Failed to start server generation');
+    // Build execute options for the server orchestrator
+    const imageData = images?.map(img => ({ data: img.data, mediaType: img.mediaType }));
+    const executeOptions: Record<string, any> = {};
+    if (imageData?.length) executeOptions.images = imageData;
+    if (options?.focusContext) executeOptions.focusContext = { domPath: options.focusContext.domPath, snippet: options.focusContext.outerHTML };
+    if (options?.placedBlocks?.length) executeOptions.semanticBlocks = options.placedBlocks.map((b: any) => ({ name: b.name, domPath: b.domPath, position: b.position, description: b.description }));
+    if (options?.displayPrompt) executeOptions.displayPrompt = options.displayPrompt;
+
+    let taskId: string;
+    try {
+      const response = await fetch('/api/server-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          projectName,
+          prompt,
+          model,
+          apiKey,
+          workspaceId,
+          providerConfig: { provider },
+          conversationHistory,
+          ...(Object.keys(executeOptions).length > 0 ? { executeOptions } : {}),
+          generationParams: {
+            reasoningEnabled: configManager.getReasoningEnabled(model),
+            compactionEnabled: configManager.isCompactionEnabled(provider),
+            compactionLimit: configManager.getCompactionLimit(provider),
+            debugStreamEnabled: configManager.getDebugStreamEnabled(),
+            modelPricing: {},
+            cachedModels: configManager.getCachedModels(provider)?.models ?? [],
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        toast.error((error as any).error || 'Failed to start server generation');
+        return;
+      }
+
+      ({ taskId } = await response.json());
+    } catch {
+      toast.error('Failed to connect to server for generation');
       return;
     }
-
-    const { taskId } = await response.json();
 
     const tasks = new Map(get().generationTasks);
     tasks.set(projectId, {
@@ -707,9 +955,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       persistedInstance: null,
       serverTaskId: taskId,
     });
-    set({ generationTasks: tasks, generating: true });
-
-    get().connectSSE();
+    set({ generationTasks: tasks, ...deriveScalarFields(tasks, get().projectId) });
   },
 
   dismissGenerationResult: (projectId?: string) => {
@@ -739,9 +985,9 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
           hasRunning = true;
           generationTasks.set(serverTask.projectId, {
             projectId: serverTask.projectId,
-            projectName: '',
-            prompt: '',
-            model: '',
+            projectName: serverTask.projectName || '',
+            prompt: serverTask.prompt || '',
+            model: serverTask.model || '',
             startedAt: serverTask.startedAt,
             result: null,
             paused: serverTask.status === 'paused',
@@ -754,11 +1000,11 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       }
 
       if (hasRunning) {
-        set({ generationTasks, generating: true });
+        set({ generationTasks, ...deriveScalarFields(generationTasks, get().projectId) });
         get().connectSSE();
       }
     } catch {
-      // Server not available — ignore
+      // Reattach failed — non-critical, tasks will be picked up on next page load
     }
   },
 });

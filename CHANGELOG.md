@@ -1,5 +1,44 @@
 # Changelog
 
+## v1.67.0 - 2026-05-18
+
+### Server-Side Generation (Server Mode)
+
+- **Detach-to-server**: When a user closes their browser tab during an active generation in Server Mode, the task continues running on the server backend. On tab reopen, the client reconnects via SSE and receives buffered events — conversation, tool calls, and file changes resume seamlessly.
+- **Incremental file sync**: File changes from server-side generation sync back to the client (IndexedDB) after each tool call via `files_changed` SSE events, rather than waiting for the entire task to complete.
+- **Soft stop**: Clicking stop during server-side generation cancels only the current LLM inference. The task transitions through a `stopping` state and emits a `stopped` result, preserving all work completed up to that point.
+- **Client reconnection**: On page load, the client checks for any running server tasks and reattaches to their SSE streams. Buffered events are replayed so no progress is lost.
+- **Build delegation**: Bundled runtimes (React, Svelte, Vue, etc.) defer their build step to the client — the server emits a `build_requested` event and the client runs the compilation locally on reattach.
+- **Middleware auth gate**: All `/api/server-generate/*` routes are now auth-protected via middleware, blocking unauthenticated access and Browser Mode requests.
+
+### AI Orchestration
+
+- **Server-safe tool execution**: Python and Lua shell commands return a descriptive error on the server instead of hanging indefinitely waiting for a browser-only runtime (Pyodide/Fengari).
+- **Tool abort on stop**: All tool executions now race against the abort signal, so stopping a task interrupts stuck tools immediately instead of waiting for them to complete.
+
+### UI
+
+- **Task completion sound**: A two-note chime plays when a generation completes in the background (hidden tab or generation shelf). A subtle single-note ping plays for in-focus completions.
+
+### Performance
+
+- **Delta event batching**: Assistant text, tool parameter, and reasoning delta events are coalesced in a `requestAnimationFrame` buffer and flushed once per frame, eliminating O(n²) Zustand state updates during large streaming responses.
+- **Smarter auto-sync**: The project gallery no longer pulls every project from the server on each navigation. A lightweight timestamp comparison runs once per browser tab; only projects where the server is actually newer get fetched.
+
+### Fixes
+
+- **Generation shelf on reattach**: The shelf now appears on any workspace page (including the projects page) when a server task is running, not only when viewing the project. Task metadata (name, prompt, model) is preserved across tab reloads.
+- **Chat history on reconnect**: Reopening a tab during server-side generation now replays the full event buffer, restoring the complete conversation including project context.
+- **Binary file content in file sync**: The `/api/server-generate/files` endpoint now correctly extracts file content from VirtualFile objects instead of returning the raw wrapper.
+- **HMR singleton safety**: TaskManager and SSEEventBus use `globalThis` singletons to prevent webpack hot-reload from creating duplicate instances during development.
+- **Login form loading state**: The admin login page now clears its loading spinner on authentication failure.
+- **Cost tracking init**: Projects with partial cost tracking data (missing `providerBreakdown`) no longer throw on update — existing fields are preserved during re-initialization.
+- **Skills service on server**: SkillsService guards against missing `localStorage` so it can initialize during server-side generation without throwing.
+- **VFS context isolation**: Shell commands and skills use `getActiveVFS()` which returns the per-task server VFS (via `AsyncLocalStorage`) or the browser singleton, preventing cross-task file system access.
+- **Project deletion in Server Mode**: Deleting a project now removes it from the server — previously, deleted projects reappeared on page refresh because the server copy was never cleaned up.
+- **Deployment quota on delete**: Deleting a deployment now frees the deployment quota slot. Previously, the routing entry was retained and deleted deployments still counted against the workspace limit.
+- **Project creation quota**: Project creation now checks the workspace project limit before proceeding. Previously, the limit was only enforced during sync push, so projects could be created locally with no feedback that the quota was exceeded.
+
 ## v1.66.0 - 2026-05-16
 
 ### Multi-Generation

@@ -42,6 +42,11 @@ export async function POST(request: NextRequest) {
     throw error;
   }
 
+  const task = taskManager.getTask(taskId)!;
+  task.prompt = body.prompt;
+  task.model = body.model;
+  task.projectName = body.projectName;
+
   const port = process.env.PORT || '3000';
   const apiBaseUrl = `http://localhost:${port}`;
 
@@ -51,8 +56,9 @@ export async function POST(request: NextRequest) {
     eventBus,
     createVFS: async (_projectId) => {
       const { VirtualFileSystem } = await import('@/lib/vfs');
-      const { SQLiteAdapter } = await import('@/lib/vfs/adapters/sqlite-adapter');
-      const serverVFS = new VirtualFileSystem(new SQLiteAdapter());
+      const { getWorkspaceAdapter, getSQLiteAdapter } = await import('@/lib/vfs/adapters/server');
+      const adapter = workspaceId ? getWorkspaceAdapter(workspaceId) : getSQLiteAdapter();
+      const serverVFS = new VirtualFileSystem(adapter);
       await serverVFS.init();
       return serverVFS;
     },

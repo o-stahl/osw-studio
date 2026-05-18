@@ -9,7 +9,10 @@ export async function POST(request: NextRequest) {
   const session = await verifySession(sessionToken);
   if (!session) return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
 
-  const { taskId } = await request.json();
+  let taskId: string;
+  try { ({ taskId } = await request.json()); } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
   const task = taskManager.getTask(taskId);
   if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
 

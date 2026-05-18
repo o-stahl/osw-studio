@@ -316,3 +316,65 @@ describe('orchestrator slice — loadDebugEvents', () => {
     expect(store.getState().generating).toBe(true);
   });
 });
+
+describe('orchestrator slice — projectContext merge via version bump', () => {
+  let store: ReturnType<typeof createTestStore>;
+
+  beforeEach(() => {
+    store = createTestStore();
+    store.getState().initProject({ id: 'proj-1', name: 'P1' });
+  });
+
+  it('merging projectContext bumps version on the user message event', () => {
+    store.getState().addDebugEvent('conversation_message', {
+      message: { role: 'user', content: 'hello', ui_metadata: { displayContent: 'hello' } },
+    }, 'proj-1');
+
+    const before = store.getState().debugEvents;
+    expect(before).toHaveLength(1);
+    expect(before[0].version).toBe(1);
+
+    // Simulate the SSE handler merge
+    const idx = before.findLastIndex(
+      (e) => e.event === 'conversation_message' && e.data?.message?.role === 'user'
+    );
+    store.setState((state) => {
+      const events = [...state.debugEvents];
+      const existing = { ...events[idx] };
+      existing.data = {
+        ...existing.data,
+        message: {
+          ...existing.data.message,
+          ui_metadata: { ...existing.data.message?.ui_metadata, projectContext: 'file tree here' },
+        },
+      };
+      existing.version = (existing.version ?? 1) + 1;
+      events[idx] = existing;
+      return { debugEvents: events };
+    });
+
+    const after = store.getState().debugEvents;
+    expect(after[0].version).toBe(2);
+    expect(after[0].data.message.ui_metadata.projectContext).toBe('file tree here');
+    expect(after[0].data.message.ui_metadata.displayContent).toBe('hello');
+  });
+
+  it('findLastIndex targets the most recent user message in multi-turn chat', () => {
+    store.getState().addDebugEvent('conversation_message', {
+      message: { role: 'user', content: 'first msg' },
+    }, 'proj-1');
+    store.getState().addDebugEvent('conversation_message', {
+      message: { role: 'assistant', content: 'reply' },
+    }, 'proj-1');
+    store.getState().addDebugEvent('conversation_message', {
+      message: { role: 'user', content: 'second msg' },
+    }, 'proj-1');
+
+    const events = store.getState().debugEvents;
+    const lastUserIdx = events.findLastIndex(
+      (e) => e.event === 'conversation_message' && e.data?.message?.role === 'user'
+    );
+    expect(lastUserIdx).toBe(2);
+    expect(events[lastUserIdx].data.message.content).toBe('second msg');
+  });
+});

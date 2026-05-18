@@ -9,6 +9,8 @@ export interface ServerOrchestratorContext {
   vfs: VirtualFileSystem;
   config: ServerGenerationParams;
   onEvent: (event: string, data: Record<string, unknown>) => void;
+  /** Paths mutated since last flush — populated by VFS mutation proxy */
+  dirtyPaths: Set<string>;
 }
 
 /** All config the server needs from the client to run generation */
@@ -33,12 +35,16 @@ export interface ServerTask {
   projectId: string;
   sessionId: string;
   workspaceId?: string;
-  status: 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+  status: 'running' | 'paused' | 'stopping' | 'completed' | 'failed' | 'cancelled';
   startedAt: number;
   orchestrator: MultiAgentOrchestrator | null;
   buildDeferred: boolean;
   /** Resolve function for pending build delegation */
   pendingBuildResolve: ((result: BuildResult) => void) | null;
+  /** Metadata for client display (shelf) */
+  prompt?: string;
+  model?: string;
+  projectName?: string;
 }
 
 export interface BuildResult {
@@ -61,8 +67,15 @@ export interface StartGenerationRequest {
   model: string;
   apiKey: string;
   workspaceId?: string;
+  projectName?: string;
   providerConfig?: { baseUrl?: string; provider?: ProviderId };
   conversationHistory: unknown[];
+  executeOptions?: {
+    images?: Array<{ data: string; mediaType: string }>;
+    focusContext?: { domPath: string; snippet: string };
+    semanticBlocks?: Array<{ name: string; domPath: string; position: string; description: string }>;
+    displayPrompt?: string;
+  };
   generationParams: Omit<ServerGenerationParams, 'provider' | 'model' | 'apiKey' | 'providerBaseUrl'>;
 }
 

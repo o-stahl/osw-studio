@@ -40,9 +40,15 @@ export class SSEClient {
     };
 
     const eventTypes = [
-      'assistant_delta', 'tool_status', 'tool_param_delta', 'reasoning_delta',
-      'conversation_message', 'files_changed', 'build_requested', 'usage_update',
-      'task_complete', 'sync_gap', 'error', 'notification',
+      // Chat panel rendering events
+      'assistant_delta', 'reasoning_delta', 'reasoning_start', 'reasoning_complete',
+      'toolCalls', 'tool_status', 'tool_param_delta', 'tool_result', 'tool_healed',
+      'conversation_message', 'waiting', 'iteration', 'progress',
+      'error', 'error_paused', 'stopped', 'compaction', 'delegate_progress',
+      'usage', 'skill_evaluation', 'checkpoint_created', 'exit_reason',
+      // Server generation lifecycle
+      'files_changed', 'build_requested', 'usage_update',
+      'task_complete', 'sync_gap', 'notification', 'runtimeChanged',
     ];
 
     for (const eventType of eventTypes) {

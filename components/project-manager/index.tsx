@@ -150,6 +150,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
   const tourRunning = tourState.status === 'running';
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null);
   const [tourActionProjectId, setTourActionProjectId] = useState<string | null>(null);
   const loadingRef = useRef(false);
   const demoCreationRef = useRef(false);
@@ -188,7 +189,9 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
           if (workspaceId) {
             setAutoSyncWorkspaceId(workspaceId);
           }
-          const result = await autoPullAllProjects();
+          const result = await autoPullAllProjects((current, total) => {
+            setSyncProgress({ current, total });
+          });
           if (result.conflicts.length > 0) {
             toast.warning(`${result.conflicts.length} project(s) have conflicting changes. Open them to resolve.`, {
               duration: 6000,
@@ -198,6 +201,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
           logger.warn('[ProjectManager] Auto-pull failed, showing local state:', syncErr);
         } finally {
           setSyncing(false);
+          setSyncProgress(null);
         }
       }
 
@@ -335,6 +339,22 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
       return;
     }
 
+    if (process.env.NEXT_PUBLIC_SERVER_MODE === 'true') {
+      try {
+        const { getAutoSyncApiUrl } = await import('@/lib/vfs/auto-sync');
+        const { apiFetch } = await import('@/lib/api/backend-status');
+        const res = await apiFetch(getAutoSyncApiUrl('/sync/status'));
+        if (res.ok) {
+          const data = await res.json();
+          const quota = data.quota?.projects;
+          if (quota && quota.used >= quota.max) {
+            toast.error(`Project limit reached (${quota.max}). Delete a project to create a new one.`);
+            return;
+          }
+        }
+      } catch {}
+    }
+
     try {
       const project = await vfs.createProject(
         newProjectName.trim().slice(0, 50),
@@ -455,6 +475,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
     try {
       await vfs.deleteProject(project.id);
       localStorage.removeItem(`osw-db-schema-${project.id}`);
+      import('@/lib/vfs/auto-sync').then(m => m.autoDeleteProject(project.id)).catch(() => {});
       toast.success('Project deleted');
       await reloadProjects();
     } catch (error) {
@@ -586,7 +607,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <Spinner size={48} className="mx-auto text-primary" />
-          <p className="mt-4">{syncing ? 'Syncing workspace...' : 'Loading projects...'}</p>
+          <p className="mt-4">{syncing ? (syncProgress ? `Syncing workspace... (${syncProgress.current}/${syncProgress.total} projects)` : 'Syncing workspace...') : 'Loading projects...'}</p>
         </div>
       </div>
     );

@@ -21,18 +21,21 @@ export async function GET(request: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     start(controller) {
-      if (lastEventId > 0) {
-        const tasks = taskManager.getTasksForSession(sessionId);
-        for (const task of tasks) {
-          const replayed = eventBus.replayFrom(task.taskId, lastEventId);
-          if (replayed === null) {
-            const gapEvent = `id: ${Date.now()}\nevent: sync_gap\ndata: ${JSON.stringify({ sourceProjectId: task.projectId })}\n\n`;
-            controller.enqueue(encoder.encode(gapEvent));
-          } else {
-            for (const event of replayed) {
-              const line = `id: ${event.id}\nevent: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`;
-              controller.enqueue(encoder.encode(line));
-            }
+      // Replay buffered events: if lastEventId > 0, replay from that point;
+      // if 0 (fresh connection), replay the entire buffer so reattaching clients get full history.
+      const tasks = taskManager.getTasksForSession(sessionId);
+      for (const task of tasks) {
+        if (task.status !== 'running' && task.status !== 'paused') continue;
+        const replayed = lastEventId > 0
+          ? eventBus.replayFrom(task.taskId, lastEventId)
+          : eventBus.getBuffer(task.taskId);
+        if (replayed === null) {
+          const gapEvent = `id: ${Date.now()}\nevent: sync_gap\ndata: ${JSON.stringify({ sourceProjectId: task.projectId })}\n\n`;
+          controller.enqueue(encoder.encode(gapEvent));
+        } else {
+          for (const event of replayed) {
+            const line = `id: ${event.id}\nevent: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`;
+            controller.enqueue(encoder.encode(line));
           }
         }
       }

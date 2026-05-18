@@ -35,6 +35,9 @@ export async function GET(request: NextRequest) {
     status: t.status,
     startedAt: t.startedAt,
     buildDeferred: t.buildDeferred,
+    prompt: t.prompt,
+    model: t.model,
+    projectName: t.projectName,
   }));
 
   return NextResponse.json({ tasks });

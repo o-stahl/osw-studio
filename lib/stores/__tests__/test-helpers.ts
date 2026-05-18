@@ -40,4 +40,22 @@ export function setupOrchestratorMocks() {
     resetRuntimeErrors: vi.fn(),
   }));
   vi.mock('@/lib/utils', () => ({ logger: { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() } }));
+  vi.mock('@/lib/server-generate/sse-client', () => ({
+    SSEClient: vi.fn().mockImplementation(() => ({
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      isConnected: () => false,
+    })),
+  }));
+  vi.mock('@/lib/server-generate/file-sync-handler', () => ({
+    handleFilesChanged: vi.fn().mockResolvedValue(undefined),
+    cancelPendingFileSync: vi.fn(),
+  }));
+  vi.mock('@/lib/server-generate/build-delegation-handler', () => ({
+    handleBuildRequested: vi.fn().mockResolvedValue(undefined),
+  }));
+  vi.mock('@/lib/utils/task-complete-sound', () => ({
+    playTaskCompleteSound: vi.fn(),
+    playTaskCompleteSoundSubtle: vi.fn(),
+  }));
 }

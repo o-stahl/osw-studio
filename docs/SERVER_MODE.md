@@ -16,6 +16,7 @@ Server Mode adds:
 - Admin authentication with JWT sessions
 - Deployment publishing system with static site serving
 - Project sync between browser and server
+- Server-side generation (AI tasks continue if browser disconnects, reattach on reconnect)
 - Built-in analytics and compliance features
 
 ---
@@ -48,6 +49,7 @@ Server Mode adds:
 - Static site publishing at `/deployments/{id}/`
 - Built-in analytics
 - Project sync (browser <-> server)
+- Server-side generation (close browser, AI keeps working)
 - Requires persistent file system
 - Requires server hosting
 

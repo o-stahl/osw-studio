@@ -8,6 +8,7 @@
  * Workspace routing:
  * - /w/[workspaceId]/* pages require auth
  * - /api/w/[workspaceId]/* routes require auth
+ * - /api/server-generate/* routes require auth
  * - Legacy /admin/{view} paths redirect to /w/{defaultWorkspaceId}/{view}
  */
 
@@ -87,6 +88,26 @@ export async function middleware(request: NextRequest) {
       response.cookies.delete('osw_session');
       response.cookies.delete('osw_workspace');
       return response;
+    }
+
+    return nextWithRefreshedSession(session);
+  }
+
+  // ============================================
+  // Server-generate API routes: /api/server-generate/*
+  // ============================================
+  if (pathname.startsWith('/api/server-generate')) {
+    if (!isServerMode) {
+      return NextResponse.json({ error: 'Not available in Browser mode' }, { status: 404 });
+    }
+
+    const token = request.cookies.get('osw_session')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const session = await verifySession(token);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     return nextWithRefreshedSession(session);

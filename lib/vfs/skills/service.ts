@@ -47,45 +47,47 @@ class SkillsService {
     if (this.initialized) return;
 
     try {
-      // Load custom skills
-      const stored = localStorage.getItem(CUSTOM_SKILLS_KEY);
-      if (stored) {
-        const skills: Skill[] = JSON.parse(stored);
-        skills.forEach(skill => {
-          // Restore Date objects
-          skill.createdAt = new Date(skill.createdAt);
-          skill.updatedAt = new Date(skill.updatedAt);
-          this.customSkills.set(skill.id, skill);
-        });
-      }
-
-      // Load enabled state
-      const enabledStateStored = localStorage.getItem(ENABLED_STATE_KEY);
-      if (enabledStateStored) {
-        const state = JSON.parse(enabledStateStored);
-        this.enabledState = {
-          globalEnabled: state.globalEnabled ?? true,
-          skillEvaluationEnabled: state.skillEvaluationEnabled ?? false,
-          disabledSkills: new Set(state.disabledSkills || []),
-        };
-      }
-
-      // Load groups state
-      const groupsStored = localStorage.getItem(GROUPS_STATE_KEY);
-      if (groupsStored) {
-        const parsed = JSON.parse(groupsStored);
-        const customGroups = new Map<string, SkillGroup>();
-        for (const g of parsed.customGroups || []) {
-          customGroups.set(g.id, {
-            ...g,
-            createdAt: new Date(g.createdAt),
-            updatedAt: new Date(g.updatedAt),
+      if (typeof localStorage !== 'undefined') {
+        // Load custom skills
+        const stored = localStorage.getItem(CUSTOM_SKILLS_KEY);
+        if (stored) {
+          const skills: Skill[] = JSON.parse(stored);
+          skills.forEach(skill => {
+            // Restore Date objects
+            skill.createdAt = new Date(skill.createdAt);
+            skill.updatedAt = new Date(skill.updatedAt);
+            this.customSkills.set(skill.id, skill);
           });
         }
-        this.groupsState = {
-          disabledGroups: new Set(parsed.disabledGroups || []),
-          customGroups,
-        };
+
+        // Load enabled state
+        const enabledStateStored = localStorage.getItem(ENABLED_STATE_KEY);
+        if (enabledStateStored) {
+          const state = JSON.parse(enabledStateStored);
+          this.enabledState = {
+            globalEnabled: state.globalEnabled ?? true,
+            skillEvaluationEnabled: state.skillEvaluationEnabled ?? false,
+            disabledSkills: new Set(state.disabledSkills || []),
+          };
+        }
+
+        // Load groups state
+        const groupsStored = localStorage.getItem(GROUPS_STATE_KEY);
+        if (groupsStored) {
+          const parsed = JSON.parse(groupsStored);
+          const customGroups = new Map<string, SkillGroup>();
+          for (const g of parsed.customGroups || []) {
+            customGroups.set(g.id, {
+              ...g,
+              createdAt: new Date(g.createdAt),
+              updatedAt: new Date(g.updatedAt),
+            });
+          }
+          this.groupsState = {
+            disabledGroups: new Set(parsed.disabledGroups || []),
+            customGroups,
+          };
+        }
       }
 
       this.initialized = true;

@@ -3,6 +3,7 @@
  *
  * POST - Push single project + files to server
  * GET - Pull single project + files from server
+ * DELETE - Delete project from server
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -128,6 +129,39 @@ export async function GET(
     logger.error('[API /api/w/[workspaceId]/sync/projects/[id] GET] Error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to pull project' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ workspaceId: string; id: string }> }
+) {
+  try {
+    const { adapter } = await getWorkspaceContext(params);
+    const { id } = await params;
+
+    const existing = await adapter.getProject(id);
+    if (!existing) {
+      return NextResponse.json({ success: true });
+    }
+
+    await adapter.deleteProject(id);
+
+    logger.debug(`[API /api/w/[workspaceId]/sync/projects/${id}] Project deleted from server`);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (error instanceof Error && (error.message === 'Workspace access denied' || error.message === 'Insufficient workspace permissions')) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    logger.error('[API /api/w/[workspaceId]/sync/projects/[id] DELETE] Error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to delete project from server' },
       { status: 500 }
     );
   }

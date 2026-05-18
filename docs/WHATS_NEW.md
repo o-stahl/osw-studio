@@ -6,6 +6,27 @@ Welcome to OSW Studio! This page highlights the latest features and updates.
 
 ---
 
+## v1.67.0 - Server-Side Generation (2026-05-18)
+
+In Server Mode, AI generation tasks now continue on the server if you close your browser tab. Reopen the tab and the completed work is already there. File changes sync back incrementally after each tool call.
+
+### Server-Side Generation
+- **Detach-to-server** — Tasks continue running on the server when you close your browser tab. On reconnect, buffered events replay automatically
+- **Incremental file sync** — File changes sync back to your browser after each tool call, not just at the end
+- **Build delegation** — Bundled runtimes (React, Svelte, Vue) defer their build step to the client on reattach
+
+### Performance
+- **Delta event batching** — Streaming responses no longer cause slowdowns during large generations
+- **Smarter auto-sync** — Project gallery only fetches projects that are actually newer on the server
+
+### UI
+- **Task completion sound** — A chime plays when a background generation finishes
+
+### Fixes (Server Mode)
+- **Project deletion syncs to server** — Deleted projects no longer reappear after refreshing the page
+
+---
+
 ## v1.66.0 - Multi-Generation (2026-05-16)
 
 You can now run multiple generations at the same time. Start a task on one project, switch to another, and kick off a second task — both run independently. The generation shelf tracks all background tasks with live activity, elapsed time, and controls to stop or jump back in.

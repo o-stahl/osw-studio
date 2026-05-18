@@ -49,6 +49,7 @@ export default function LoginPage() {
 
       if (!response.ok) {
         setError(data.error || 'Login failed');
+        setIsLoading(false);
         return;
       }
 

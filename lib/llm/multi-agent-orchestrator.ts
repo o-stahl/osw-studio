@@ -288,27 +288,7 @@ export class MultiAgentOrchestrator {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private getConfig(): any {
     if (this.serverContext) {
-      const cfg = this.serverContext.config;
-      // Return a shim that mirrors configManager's method API using plain config fields
-      return {
-        getSelectedProvider: () => cfg.provider,
-        getProviderApiKey: () => cfg.apiKey,
-        getProviderModel: () => cfg.model,
-        getReasoningEnabled: () => cfg.reasoningEnabled ?? false,
-        getDebugStreamEnabled: () => cfg.debugStreamEnabled ?? false,
-        isCompactionEnabled: () => cfg.compactionEnabled ?? false,
-        getCompactionLimit: () => cfg.compactionLimit,
-        getModelContextLengthFromCache: () => undefined,
-        getCachedModels: (provider: string) => {
-          if (provider === 'openrouter' && cfg.cachedModels) {
-            return { models: cfg.cachedModels };
-          }
-          return cfg.cachedModels ? { models: cfg.cachedModels } : null;
-        },
-        getModelPricing: (provider: string, model: string) => cfg.modelPricing?.[`${provider}:${model}`] ?? cfg.modelPricing?.[model],
-        updateSessionCost: () => {}, // No-op server-side
-        getCurrentSession: () => null,
-      };
+      return this.serverContext.config;
     }
     return configManager;
   }
@@ -1547,8 +1527,14 @@ Please revise your approach.`;
       };
 
       try {
-        // Execute tool
-        const result = await toolRegistry.execute(toolCall, this.projectId, context);
+        // Execute tool — race against abort signal so stop() can interrupt stuck tools
+        const result = await Promise.race([
+          toolRegistry.execute(toolCall, this.projectId, context),
+          new Promise<string>((_, reject) => {
+            if (this.abortController.signal.aborted) reject(new DOMException('Aborted', 'AbortError'));
+            this.abortController.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+          }),
+        ]);
 
         // Detect `status --task ... --done ... --remaining ...` in shell commands
         if (toolId === 'shell' && !this.lastStatusResult) {
@@ -1928,12 +1914,12 @@ DO NOT use ss with << 'EOF' blocks. Try again with sed or simpler commands.`
   /**
    * Record auto checkpoint
    */
-  private async recordAutoCheckpoint(description: string): Promise<Checkpoint> {
+  private async recordAutoCheckpoint(description: string): Promise<Checkpoint | null> {
+    if (this.serverContext) return null;
     const checkpoint = await checkpointManager.createCheckpoint(this.projectId, description, {
       kind: 'auto',
       baseRevisionId: saveManager.getSavedCheckpointId(this.projectId)
     });
-    // Emit checkpoint created event
     this.onProgress?.('checkpoint_created', {
       checkpointId: checkpoint.id,
       description,
@@ -2220,12 +2206,12 @@ DO NOT use ss with << 'EOF' blocks. Try again with sed or simpler commands.`
    */
   private getProviderConfig() {
     if (this.serverContext) {
-      // Server context: config is a plain object with provider/model/apiKey
-      const cfg = this.serverContext.config;
+      const cfg = this.getConfig();
+      const provider = cfg.getSelectedProvider();
       return {
-        provider: cfg.provider,
-        apiKey: cfg.apiKey || '',
-        model: cfg.model || 'default-model'
+        provider,
+        apiKey: cfg.getProviderApiKey(provider) || '',
+        model: cfg.getProviderModel(provider) || this.model || 'default-model'
       };
     }
 
