@@ -25,6 +25,9 @@ export interface GeneratedImage {
 
 /** Throws on failure so the caller can surface the message to the agent. */
 export async function generateImage(opts: GenerateImageOptions): Promise<GeneratedImage> {
+  const apiKey = opts.provider === 'openai-codex' && typeof window !== 'undefined'
+    ? await (await import('@/lib/auth/codex-auth')).ensureValidCodexToken()
+    : opts.apiKey;
   const image_config: Record<string, string> = {};
   if (opts.aspectRatio) image_config.aspect_ratio = opts.aspectRatio;
   if (opts.imageSize) image_config.image_size = opts.imageSize;
@@ -34,7 +37,7 @@ export async function generateImage(opts: GenerateImageOptions): Promise<Generat
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       provider: opts.provider,
-      apiKey: opts.apiKey,
+      apiKey,
       model: opts.model,
       prompt: opts.prompt,
       image_config,

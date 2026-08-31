@@ -132,6 +132,7 @@ export async function POST(request: NextRequest) {
               inputModalities: model.input_modalities ?? CODEX_DEFAULT_MODALITIES,
               outputModalities: ['text'],
             }));
+          models.push(...(providerConfig.models || []).filter(model => model.outputModalities?.includes('image')));
           break;
         }
 

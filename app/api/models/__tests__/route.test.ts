@@ -126,7 +126,14 @@ describe('/api/models openai-codex discovery', () => {
     expect(headers.get('chatgpt-account-id')).toBe('acct-123');
 
     // 5.2 is excluded by the 5.5/5.6-series gate; 5.4 is hidden by visibility.
-    expect(data.models.map((m: { id: string }) => m.id)).toEqual(['gpt-5.6-sol', 'gpt-5.5']);
+    // The local image tiers are appended because Codex does not advertise tools as models.
+    expect(data.models.map((m: { id: string }) => m.id)).toEqual([
+      'gpt-5.6-sol',
+      'gpt-5.5',
+      'gpt-image-2-low',
+      'gpt-image-2-medium',
+      'gpt-image-2-high',
+    ]);
     expect(data.models[0]).toMatchObject({
       name: 'GPT-5.6-Sol',
       description: 'First model',

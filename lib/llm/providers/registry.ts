@@ -41,6 +41,15 @@ const codexModels: ProviderModel[] = [
     supportsVision: true,
     inputModalities: ['text', 'image'],
   },
+  ...(['low', 'medium', 'high'] as const).map(quality => ({
+    id: `gpt-image-2-${quality}`,
+    name: `GPT Image 2 (${quality[0].toUpperCase()}${quality.slice(1)})`,
+    description: 'Image generation through your ChatGPT subscription.',
+    contextLength: 0,
+    supportsFunctions: false,
+    inputModalities: ['text'] as InputModality[],
+    outputModalities: ['image' as const],
+  })),
 ];
 
 const geminiModels: ProviderModel[] = [

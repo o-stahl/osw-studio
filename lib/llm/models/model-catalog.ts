@@ -52,6 +52,10 @@ export async function loadProviderModels(provider: ProviderId): Promise<Provider
     if (provider === 'openrouter') {
       registerPricingFromProviderModels('openrouter', cached);
     }
+    if (provider === 'openai-codex') {
+      const ids = new Set(cached.map(model => model.id));
+      return [...cached, ...(providerConfig.models || []).filter(model => model.outputModalities?.includes('image') && !ids.has(model.id))];
+    }
     return cached;
   }
 
