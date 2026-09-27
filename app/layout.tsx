@@ -3,6 +3,7 @@ import { Inter, PT_Sans } from "next/font/google";
 
 import TanstackProvider from "@/components/providers/tanstack-query-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { LocaleProvider } from "@/components/providers/locale-provider";
 import "@/assets/globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { McpActivityBanner } from '@/components/mcp-activity-banner';
@@ -69,19 +70,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="ko" suppressHydrationWarning>
       <body
         className={`${inter.variable} ${ptSans.variable} antialiased bg-background h-[100dvh] overflow-hidden`}
         suppressHydrationWarning
       >
-        <ThemeProvider>
-          <Toaster richColors position="bottom-center" />
-          <BackendStatusBanner />
-          <McpActivityBanner />
-          <TanstackProvider>
-            {children}
-          </TanstackProvider>
-        </ThemeProvider>
+        <LocaleProvider>
+          <ThemeProvider>
+            <Toaster richColors position="bottom-center" />
+            <BackendStatusBanner />
+            <McpActivityBanner />
+            <TanstackProvider>
+              {children}
+            </TanstackProvider>
+          </ThemeProvider>
+        </LocaleProvider>
       </body>
     </html>
   );

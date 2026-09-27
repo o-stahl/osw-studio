@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/components/providers/locale-provider';
 
 interface DeploymentSelectorProps {
   projectId: string;
@@ -27,6 +28,7 @@ export function DeploymentSelector({
   className,
   workspaceId,
 }: DeploymentSelectorProps) {
+  const { t } = useTranslation();
   const apiBase = workspaceId ? `/api/w/${workspaceId}` : '/api';
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,11 +116,11 @@ export function DeploymentSelector({
         }}
       >
         <SelectTrigger size="sm" className="w-[180px] h-8">
-          <SelectValue placeholder="No deployment" />
+          <SelectValue placeholder={t.common.noDeployment} />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="none">
-            <span className="text-muted-foreground">No deployment</span>
+            <span className="text-muted-foreground">{t.common.noDeployment}</span>
           </SelectItem>
           {databaseEnabledDeployments.map((deployment) => (
             <SelectItem key={deployment.id} value={deployment.id}>

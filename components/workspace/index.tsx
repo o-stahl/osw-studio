@@ -37,6 +37,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { checkpointManager, isEmptyPreview, type BackendRestorePreview } from '@/lib/vfs/checkpoint';
+import { useTranslation } from '@/components/providers/locale-provider';
 import { RestoreSecretsDialog } from '@/components/restore-secrets-dialog';
 import { saveManager } from '@/lib/vfs/save-manager';
 import { flushEditorToVfs } from '@/lib/vfs/flush-editor';
@@ -217,6 +218,7 @@ export function focusMessageContext<T extends { domPath: string }>(
 const QUICK_PANEL_ORDER = ['chat', 'preview', 'elements'];
 
 export function Workspace({ project, onBack, backLabel, workspaceId, initialPreviewPath }: WorkspaceProps) {
+  const { t } = useTranslation();
   // The page the preview is on, for suggestions that are scoped to particular pages. Null until the
   // preview reports one, which selectPromptSuggestions reads as "offer everything".
   const [previewPath, setPreviewPath] = useState<string | null>(initialPreviewPath ?? null);
@@ -2210,10 +2212,10 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
         size="sm"
         className="h-8 px-3 flex items-center gap-2"
         onClick={() => setPublishOpen(true)}
-        title="Deploy this project"
+        title={t.workspace.deployTooltip}
       >
         <Upload className="h-4 w-4" />
-        <span className="text-sm hidden lg:inline">Deploy</span>
+        <span className="text-sm hidden lg:inline">{t.workspace.deploy}</span>
       </Button>
 
       {/* Settings — cost + all settings (app + project) in one modal */}
@@ -2222,7 +2224,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
         size="sm"
         className="h-8 px-3 flex items-center gap-2"
         onClick={() => useWorkspaceStore.getState().setShowProjectSettingsModal(true)}
-        title="Settings"
+        title={t.workspace.settings}
       >
         {shouldShowCosts && (
           <span className="text-sm font-medium">${projectCost.toFixed(3)}</span>
@@ -2404,7 +2406,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                   fill: 'var(--button-assistant-active)'
                 }}
               >
-                <p>Chat</p>
+                <p>{t.workspace.tabs.chat}</p>
               </TooltipContent>
             </Tooltip>
 
@@ -2439,7 +2441,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                   fill: 'var(--button-files-active)'
                 }}
               >
-                <p>File Explorer</p>
+                <p>{t.workspace.tabs.fileExplorer}</p>
               </TooltipContent>
             </Tooltip>
             
@@ -2474,7 +2476,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                   fill: 'var(--button-editor-active)'
                 }}
               >
-                <p>Code Editor</p>
+                <p>{t.workspace.tabs.codeEditor}</p>
               </TooltipContent>
             </Tooltip>
             
@@ -2509,7 +2511,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                   fill: 'var(--button-preview-active)'
                 }}
               >
-                <p>Preview</p>
+                <p>{t.workspace.tabs.preview}</p>
               </TooltipContent>
             </Tooltip>
 
@@ -2545,7 +2547,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                   fill: 'var(--button-elements-active)'
                 }}
               >
-                <p>Inspector</p>
+                <p>{t.workspace.tabs.inspector}</p>
               </TooltipContent>
             </Tooltip>
 
@@ -2580,7 +2582,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                   fill: 'var(--button-skills-active, #a855f7)'
                 }}
               >
-                <p>Skills</p>
+                <p>{t.workspace.tabs.skills}</p>
               </TooltipContent>
             </Tooltip>
 
@@ -2618,7 +2620,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                   fill: 'var(--button-terminal-active, #22c55e)'
                 }}
               >
-                <p>Console</p>
+                <p>{t.workspace.tabs.console}</p>
               </TooltipContent>
             </Tooltip>
 
@@ -2653,7 +2655,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                   fill: 'var(--button-checkpoint-active)'
                 }}
               >
-                <p>Checkpoints</p>
+                <p>{t.workspace.tabs.checkpoints}</p>
               </TooltipContent>
             </Tooltip>
 
@@ -2683,7 +2685,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                   fill: 'var(--foreground)'
                 }}
               >
-                <p>Debug Events</p>
+                <p>{t.workspace.tabs.debugEvents}</p>
               </TooltipContent>
             </Tooltip>
 
@@ -3263,7 +3265,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                         onClick={() => { useWorkspaceStore.getState().setActiveMobilePanel('checkpoints'); }}
                       >
                         <History className="h-4 w-4" />
-                        <span>Checkpoints</span>
+                        <span>{t.workspace.checkpointsShort}</span>
                       </button>
                       <button
                         className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${
@@ -3275,7 +3277,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                         onClick={() => { useWorkspaceStore.getState().setActiveMobilePanel('console'); }}
                       >
                         <TerminalIcon className="h-4 w-4" />
-                        <span>Console</span>
+                        <span>{t.workspace.consoleShort}</span>
                         {hasUnreadConsole && activeMobilePanel !== 'console' && (
                           <span className="ml-auto h-2 w-2 rounded-full bg-[var(--button-terminal-active,#22c55e)]" />
                         )}
@@ -3290,7 +3292,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                         onClick={() => { useWorkspaceStore.getState().setActiveMobilePanel('skills'); }}
                       >
                         <Sparkles className="h-4 w-4" />
-                        <span>Skills</span>
+                        <span>{t.workspace.skillsShort}</span>
                       </button>
                       <button
                         className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${
@@ -3302,7 +3304,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                         onClick={() => { useWorkspaceStore.getState().setActiveMobilePanel('debug'); }}
                       >
                         <Bug className="h-4 w-4" />
-                        <span>Debug</span>
+                        <span>{t.workspace.debugShort}</span>
                       </button>
                     </div>
                   </>

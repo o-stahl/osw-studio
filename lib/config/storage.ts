@@ -57,6 +57,7 @@ export interface AppSettings {
   providerKeys?: Partial<Record<ProviderId, string>>;
   providerModels?: Partial<Record<ProviderId, string>>;
   theme?: 'light' | 'dark' | 'system';
+  locale?: 'ko' | 'en';
   costSettings?: CostSettings;
   currentSession?: SessionCost;
   lifetimeCosts?: {
@@ -323,6 +324,14 @@ class ConfigManager {
 
   setTheme(theme: 'light' | 'dark' | 'system'): void {
     this.setSetting('theme', theme);
+  }
+
+  getLocale(): 'ko' | 'en' {
+    return this.getSettings().locale || 'ko';
+  }
+
+  setLocale(locale: 'ko' | 'en'): void {
+    this.setSetting('locale', locale);
   }
 
   clearSettings(): void {

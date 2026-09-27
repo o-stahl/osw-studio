@@ -14,12 +14,14 @@ import {
   DialogContent,
 } from '@/components/ui/dialog';
 import { SkillEditor } from '@/components/skills/SkillEditor';
+import { useTranslation } from '@/components/providers/locale-provider';
 
 interface SkillsPanelProps {
   onClose?: () => void;
 }
 
 export function SkillsPanel({ onClose }: SkillsPanelProps) {
+  const { t } = useTranslation();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [groups, setGroups] = useState<SkillGroup[]>([]);
   const [globalEnabled, setGlobalEnabled] = useState(true);
@@ -104,7 +106,7 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
     <PanelContainer>
       <PanelHeader
         icon={Sparkles}
-        title="Skills"
+        title={t.skills.title}
         color="var(--button-skills-active, #a855f7)"
         onClose={onClose}
         panelKey="skills"
@@ -114,10 +116,10 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
             variant="ghost"
             className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 md:h-5 md:w-5 md:px-0 md:border-0 md:bg-transparent md:rounded-md"
             onClick={() => setCreateDialogOpen(true)}
-            title="Create new skill"
+            title={t.skills.createNew}
           >
             <Plus className="h-2.5 w-2.5 md:h-3 md:w-3" />
-            <span className="text-xs md:hidden">Add skill</span>
+            <span className="text-xs md:hidden">{t.skills.addSkill}</span>
           </Button>
         }
       />
@@ -126,9 +128,9 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
         {/* Global toggle */}
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-medium">Enable skills</div>
+            <div className="text-sm font-medium">{t.skills.enableSkills}</div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Domain-specific AI instructions
+              {t.skills.domainSpecificInstructions}
             </p>
           </div>
           <Switch

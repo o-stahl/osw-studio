@@ -6,6 +6,7 @@ import { Project } from '@/lib/vfs/types';
 import { vfs } from '@/lib/vfs';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/ui/logo';
+import { useTranslation } from '@/components/providers/locale-provider';
 import {
   FolderOpen,
   Globe,
@@ -156,6 +157,7 @@ function SidebarFlyout({
   onMouseEnter: () => void;
   onMouseLeave: () => void;
 }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
   const [top, setTop] = useState(triggerRect.top);
@@ -186,7 +188,7 @@ function SidebarFlyout({
 
       {item.hasRecentProjects ? (
         loadingRecentProjects ? (
-          <div className="px-3 py-1.5 text-xs text-muted-foreground">Loading...</div>
+          <div className="px-3 py-1.5 text-xs text-muted-foreground">{t.common.loading}</div>
         ) : recentProjects.length > 0 ? (
           recentProjects.map(project => (
             <button
@@ -200,7 +202,7 @@ function SidebarFlyout({
             </button>
           ))
         ) : (
-          <div className="px-3 py-1.5 text-xs text-muted-foreground">No recent projects</div>
+          <div className="px-3 py-1.5 text-xs text-muted-foreground">{t.common.noRecentProjects}</div>
         )
       ) : item.subItems ? (
         item.subItems
