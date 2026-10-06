@@ -91,24 +91,18 @@ export function countReplacements(
   return { files, backend, settings };
 }
 
-function plural(count: number, singular: string): string {
-  return `${count} ${singular}${count === 1 ? '' : 's'}`;
-}
+/** What the confirm button does, which it states as the damage rather than the action. */
+export type ConfirmAction =
+  | { kind: 'create' }
+  | { kind: 'import'; files: number; backend: number; settings: number };
 
-/** The confirm button's label, which states the damage rather than the action. */
-export function confirmLabel(
+export function confirmAction(
   plan: ImportPlan,
   resolutions: ImportResolutions,
   target: ImportTarget
-): string {
-  if (target.kind === 'new-project') return 'Create project';
-  const counts = countReplacements(plan, resolutions, target);
-  const parts: string[] = [];
-  if (counts.files > 0) parts.push(plural(counts.files, 'file'));
-  if (counts.backend > 0) parts.push(plural(counts.backend, 'function'));
-  if (counts.settings > 0) parts.push(plural(counts.settings, 'setting'));
-  if (parts.length === 0) return 'Import';
-  return `Import · replace ${parts.join(', ')}`;
+): ConfirmAction {
+  if (target.kind === 'new-project') return { kind: 'create' };
+  return { kind: 'import', ...countReplacements(plan, resolutions, target) };
 }
 
 /**
@@ -176,20 +170,12 @@ function hasUnchanged(plan: ImportPlan): boolean {
   return plan.files.unchanged.length > 0 || plan.backend.unchanged.length > 0;
 }
 
-/** What the neutral 'nothing to do' screen says, which depends on why there is nothing to do. */
-export function nothingToDoSummary(plan: ImportPlan): string {
-  const files = plan.files.unchanged.length;
-  const backend = plan.backend.unchanged.length;
-  const parts: string[] = [];
-  if (files > 0) parts.push(plural(files, 'file'));
-  if (backend > 0) parts.push(plural(backend, 'server function'));
-  if (parts.length === 0) {
-    return 'This archive has no files to import.';
-  }
-  // The verb agrees with the whole subject, and leading with the count rather than 'All' keeps
-  // the one-file case from reading as 'All 1 file'.
-  const verb = files + backend === 1 ? 'matches' : 'match';
-  return `${parts.join(' and ')} in this archive already ${verb} the project.`;
+/**
+ * Why the neutral 'nothing to do' screen has nothing to do: everything matches, or there was
+ * nothing in the archive to begin with (both counts zero).
+ */
+export function nothingToDoCounts(plan: ImportPlan): { files: number; backend: number } {
+  return { files: plan.files.unchanged.length, backend: plan.backend.unchanged.length };
 }
 
 /** Apply-to-all for files. Rows whose only options are two never receive 'keep-both'. */
@@ -241,10 +227,21 @@ function shared<T>(values: T[]): T | undefined {
 
 export type TallyTone = 'added' | 'conflicting' | 'unchanged' | 'blocked';
 
+/** What a tally counts; the dialog words each one, with the count deciding the plural. */
+export type TallyLabel =
+  | 'files'
+  | 'serverFunctions'
+  | 'new'
+  | 'alreadyExist'
+  | 'identical'
+  | 'newServerFunctions'
+  | 'serverFunctionsExist'
+  | 'blocked';
+
 export interface Tally {
   tone: TallyTone;
   count: number;
-  label: string;
+  label: TallyLabel;
 }
 
 /**
@@ -257,36 +254,24 @@ export interface Tally {
  */
 export function planTallies(plan: ImportPlan, target: ImportTarget): Tally[] {
   const tallies: Tally[] = [];
-  const push = (tone: TallyTone, count: number, label: string) => {
+  const push = (tone: TallyTone, count: number, label: TallyLabel) => {
     if (count > 0) tallies.push({ tone, count, label });
   };
 
   if (target.kind === 'new-project') {
-    push('added', plan.files.added.length, plan.files.added.length === 1 ? 'file' : 'files');
-    const backend = plan.backend.added.length;
-    push('added', backend, backend === 1 ? 'server function' : 'server functions');
+    push('added', plan.files.added.length, 'files');
+    push('added', plan.backend.added.length, 'serverFunctions');
   } else {
     push('added', plan.files.added.length, 'new');
-    push('conflicting', plan.files.conflicts.length, 'already exist');
+    push('conflicting', plan.files.conflicts.length, 'alreadyExist');
     push('unchanged', plan.files.unchanged.length, 'identical');
     // Backend counts belong here too, and say 'server function' where the file counts say nothing:
     // an archive that adds one edge function and replaces another is a real import, and without
-    // these it reached this screen with a blank tally row. The labels also keep the tally keys
-    // ('added-new' against 'added-new server function') distinct from the file ones.
-    const backendAdded = plan.backend.added.length;
-    push(
-      'added',
-      backendAdded,
-      backendAdded === 1 ? 'new server function' : 'new server functions'
-    );
-    const backendConflicts = plan.backend.conflicts.length;
-    push(
-      'conflicting',
-      backendConflicts,
-      backendConflicts === 1 ? 'server function already exists' : 'server functions already exist'
-    );
+    // these it reached this screen with a blank tally row.
+    push('added', plan.backend.added.length, 'newServerFunctions');
+    push('conflicting', plan.backend.conflicts.length, 'serverFunctionsExist');
   }
-  push('blocked', plan.errors.length, "can't be imported");
+  push('blocked', plan.errors.length, 'blocked');
   return tallies;
 }
 
@@ -295,16 +280,6 @@ export function splitPath(path: string): { dir: string; name: string } {
   const cut = path.lastIndexOf('/');
   if (cut < 0) return { dir: '', name: path };
   return { dir: path.slice(0, cut + 1), name: path.slice(cut + 1) };
-}
-
-const BACKEND_KIND_LABELS: Record<BackendKind, string> = {
-  edge: 'edge',
-  server: 'server',
-  scheduled: 'scheduled',
-};
-
-export function backendKindLabel(kind: BackendKind): string {
-  return BACKEND_KIND_LABELS[kind];
 }
 
 const RUNTIME_LABELS = new Map(RUNTIME_CONFIGS.map((config) => [config.id as string, config.label]));
@@ -316,50 +291,8 @@ const RUNTIME_LABELS = new Map(RUNTIME_CONFIGS.map((config) => [config.id as str
  * project settings screen calls it and a preview that names it differently is a preview the user
  * has to translate.
  */
-export function formatSettingValue(key: SettingChange['key'], value: string | undefined): string {
-  if (value === undefined || value === '') return 'not set';
+export function formatSettingValue(key: SettingChange['key'], value: string | undefined): string | undefined {
+  if (value === undefined || value === '') return undefined;
   if (key === 'runtime') return RUNTIME_LABELS.get(value) ?? value;
   return value;
-}
-
-const MINUTE = 60_000;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
-
-/**
- * A timestamp as the row states it. Recent times are relative because 'edited 6 minutes ago' is
- * the fact that decides a conflict; anything older is a date, since 'edited 41 days ago' is not.
- */
-export function formatWhen(date: Date | undefined, now: number = Date.now()): string {
-  if (!date) return 'unknown';
-  const elapsed = now - date.getTime();
-  if (elapsed < 0) return formatDate(date);
-  if (elapsed < MINUTE) return 'just now';
-  if (elapsed < HOUR) {
-    const minutes = Math.floor(elapsed / MINUTE);
-    return `${plural(minutes, 'minute')} ago`;
-  }
-  if (elapsed < DAY) {
-    const hours = Math.floor(elapsed / HOUR);
-    return `${plural(hours, 'hour')} ago`;
-  }
-  if (elapsed < 7 * DAY) {
-    const days = Math.floor(elapsed / DAY);
-    return `${plural(days, 'day')} ago`;
-  }
-  return formatDate(date);
-}
-
-function formatDate(date: Date): string {
-  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-/** A one-line report of what an apply did, for the closing screen. */
-export function appliedSummary(applied: { files: number; backend: number; settings: number }): string {
-  const parts: string[] = [];
-  if (applied.files > 0) parts.push(plural(applied.files, 'file'));
-  if (applied.backend > 0) parts.push(plural(applied.backend, 'function'));
-  if (applied.settings > 0) parts.push(plural(applied.settings, 'setting'));
-  if (parts.length === 0) return 'Nothing was written.';
-  return `Imported ${parts.join(', ')}.`;
 }

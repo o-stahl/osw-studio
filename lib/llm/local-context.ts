@@ -28,10 +28,3 @@ export function boundCompactionLimit(limit: number, localContextLength: number |
 }
 
 export const LOCAL_CONTEXT_APPLIED: Partial<Record<ProviderId, boolean>> = { ollama: true };
-
-export const LOCAL_CONTEXT_HELP: Partial<Record<ProviderId, string>> = {
-  ollama: 'Applied when Ollama loads the model. Larger windows use more memory.',
-  lmstudio: 'Set to the context length the model was loaded with in LM Studio (Load settings, or lms load --context-length).',
-  llamacpp: 'Set to the value llama-server was started with (-c / --ctx-size).',
-  meshllm: 'Set to the context length the mesh-llm server runs with.',
-};

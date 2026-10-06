@@ -107,8 +107,13 @@ export async function applyProjectDatabaseSchema(
   await setProjectSchema(projectId, ddl);
   if (process.env.NEXT_PUBLIC_SERVER_MODE !== 'true') return;
   try {
-    const apiBase = workspaceId ? `/api/w/${workspaceId}` : '/api';
-    const res = await fetch(`${apiBase}/projects/${projectId}/database/query`, {
+    // The server's project database routes are workspace-scoped; without an explicit workspace,
+    // use the one the page is working in.
+    const path = `/projects/${projectId}/database/query`;
+    const url = workspaceId
+      ? `/api/w/${workspaceId}${path}`
+      : (await import('./auto-sync')).getAutoSyncApiUrl(path);
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql: ddl }),

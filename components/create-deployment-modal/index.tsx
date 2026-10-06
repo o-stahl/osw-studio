@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Project } from '@/lib/vfs/types';
 import {
   Dialog,
@@ -37,6 +38,9 @@ export function CreateDeploymentModal({
   onClose,
   onCreate,
 }: CreateDeploymentModalProps) {
+  const t = useTranslations('deployments');
+  const tc = useTranslations('common');
+  const tp = useTranslations('publishSettings');
   const [projectId, setProjectId] = useState(initialProjectId ?? '');
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
@@ -45,7 +49,7 @@ export function CreateDeploymentModal({
 
   const handleCreate = async () => {
     if (!projectId || !name) {
-      setError('Project and deployment name are required');
+      setError(t('create.required'));
       return;
     }
 
@@ -64,7 +68,7 @@ export function CreateDeploymentModal({
       setName('');
       setSlug('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create deployment');
+      setError(err instanceof Error ? err.message : t('createFailed'));
     } finally {
       setIsCreating(false);
     }
@@ -95,20 +99,19 @@ export function CreateDeploymentModal({
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Create New Deployment</DialogTitle>
+          <DialogTitle>{t('create.title')}</DialogTitle>
           <DialogDescription>
-            Create a new deployment to publish a project. Deployments let you manage publish settings
-            independently from your project workspace.
+            {t('create.description')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
           {/* Project Selection */}
           <div className="grid gap-2">
-            <Label htmlFor="project">Project</Label>
+            <Label htmlFor="project">{tc('labels.project')}</Label>
             <Select value={projectId} onValueChange={handleProjectChange}>
               <SelectTrigger id="project">
-                <SelectValue placeholder="Select a project" />
+                <SelectValue placeholder={tp('selectProject')} />
               </SelectTrigger>
               <SelectContent>
                 {projects.map((project) => (
@@ -119,35 +122,35 @@ export function CreateDeploymentModal({
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Choose which project to publish
+              {t('create.projectHint')}
             </p>
           </div>
 
           {/* Deployment Name */}
           <div className="grid gap-2">
-            <Label htmlFor="name">Deployment Name</Label>
+            <Label htmlFor="name">{t('create.name')}</Label>
             <Input
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="My Awesome Deployment"
+              placeholder={t('create.namePlaceholder')}
             />
             <p className="text-xs text-muted-foreground">
-              Display name for this published deployment
+              {t('create.nameHint')}
             </p>
           </div>
 
           {/* Slug (Optional) */}
           <div className="grid gap-2">
-            <Label htmlFor="slug">Slug (Optional)</Label>
+            <Label htmlFor="slug">{t('create.slug')}</Label>
             <Input
               id="slug"
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
-              placeholder="my-awesome-deployment"
+              placeholder="my-awesome-deployment" // i18n-ignore: a slug is an ASCII identifier
             />
             <p className="text-xs text-muted-foreground">
-              URL-friendly identifier for this deployment
+              {t('create.slugHint')}
             </p>
           </div>
 
@@ -161,10 +164,10 @@ export function CreateDeploymentModal({
 
         <DialogFooter>
           <Button variant="outline" onClick={handleClose} disabled={isCreating}>
-            Cancel
+            {tc('actions.cancel')}
           </Button>
           <Button onClick={handleCreate} disabled={isCreating || !projectId || !name}>
-            {isCreating ? 'Creating...' : 'Create Deployment'}
+            {isCreating ? tc('actions.creating') : t('create.submit')}
           </Button>
         </DialogFooter>
       </DialogContent>

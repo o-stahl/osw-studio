@@ -198,20 +198,11 @@ export class CostCalculator {
       provider === 'deepseek' ||
       provider === 'zhipu' ||
       provider === 'minimax' ||
-      provider === 'opencode-go';
+      provider === 'opencode-go' ||
+      provider === 'pollinations' ||
+      provider === 'vercel';
     if (builtIn) return true;
     return !!getCustomProviders()[provider];
-  }
-  
-  /**
-   * Format cost in USD with appropriate precision
-   */
-  static formatCost(cost: number): string {
-    if (cost === 0) return '$0.00';
-    if (cost < 0.0001) return '<$0.0001';
-    if (cost < 0.01) return `$${cost.toFixed(4)}`;
-    if (cost < 1) return `$${cost.toFixed(3)}`;
-    return `$${cost.toFixed(2)}`;
   }
   
   /**

@@ -25,6 +25,7 @@
  */
 
 import * as React from 'react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -44,7 +45,6 @@ import {
   analyzeImport,
   applyImport,
   folderToArchiveEntries,
-  formatBytes,
   readZipArchive,
 } from '@/lib/vfs/archive';
 import type {
@@ -56,15 +56,16 @@ import type {
   ImportTarget,
 } from '@/lib/vfs/archive';
 import {
-  appliedSummary,
   canConfirm,
-  confirmLabel,
+  confirmAction,
   emptyResolutions,
-  nothingToDoSummary,
+  nothingToDoCounts,
   planTallies,
   selectPhase,
   type PlanPhase,
 } from './logic';
+import { useImportCopy } from './copy';
+import { useArchiveMessage } from '@/lib/i18n/use-archive-message';
 import {
   AddedFilesFold,
   BackendSection,
@@ -118,12 +119,16 @@ export interface ImportDialogProps {
  */
 type Phase = PlanPhase | 'analyzing' | 'unreadable' | 'applying' | 'done';
 
-const FORMAT_LABELS: Record<string, string> = {
-  archive: 'Project archive',
-  'loose-files': 'Loose files',
-  'osws-backup': 'Workspace backup',
-  'oswt-template': 'Template',
-};
+/** The format names, keyed as the plan reports them. */
+function useFormatLabels(): Record<string, string> {
+  const t = useTranslations('importDialog.formats');
+  return React.useMemo(() => ({
+    archive: t('archive'),
+    'loose-files': t('looseFiles'),
+    'osws-backup': t('oswsBackup'),
+    'oswt-template': t('oswtTemplate'),
+  }), [t]);
+}
 
 function sourceLabel(source: ImportDialogSource): string {
   return source.kind === 'zip' ? source.file.name : source.name;
@@ -148,24 +153,37 @@ function sourceSignature(source: ImportDialogSource | null): string {
   return `folder:${source.name}:${source.files.length}`;
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+/** The keys {@link titleFor} reads, named so a missing one is a type error and not English copy. */
+type TitleKey =
+  | 'isWorkspaceBackup'
+  | 'isTemplate'
+  | 'finished'
+  | 'asNewProject'
+  | 'intoProject'
+  | 'intoThisProject';
 
-function titleFor(
+/**
+ * The heading for a phase. Takes its translator as an argument rather than reading one itself, so
+ * it stays a plain function that can be called from the one place that renders it.
+ *
+ * The key type is the union above rather than `string`, so passing `useTranslations`' own `t` makes
+ * `tsc` check that every key named here exists in the messages.
+ */
+export function titleFor(
+  t: (key: TitleKey, values?: Record<string, string>) => string,
   phase: Phase,
   plan: ImportPlan | null,
   isNewProject: boolean,
   projectName?: string
 ): string {
   if (phase === 'wrong-format' && plan) {
-    return plan.format === 'osws-backup' ? 'This is a workspace backup' : 'This is a template';
+    return plan.format === 'osws-backup' ? t('isWorkspaceBackup') : t('isTemplate');
   }
   // 'nothing-to-do' and 'blocked' keep the ordinary title: the banner carries the finding, and
   // repeating it in the heading would say the same thing twice in two sizes.
-  if (phase === 'done') return 'Import finished';
-  if (isNewProject) return 'Import as a new project';
-  return projectName ? `Import into ${projectName}` : 'Import into this project';
+  if (phase === 'done') return t('finished');
+  if (isNewProject) return t('asNewProject');
+  return projectName ? t('intoProject', { name: projectName }) : t('intoThisProject');
 }
 
 export function ImportDialog({
@@ -177,11 +195,17 @@ export function ImportDialog({
   onComplete,
   onKeepAsFile,
 }: ImportDialogProps) {
+  const t = useTranslations('importDialog');
+  const formatLabels = useFormatLabels();
+  const tc = useTranslations('common');
+  const copy = useImportCopy();
+  const archiveMessage = useArchiveMessage();
   const [phase, setPhase] = React.useState<Phase>('analyzing');
   const [plan, setPlan] = React.useState<ImportPlan | null>(null);
   const [entries, setEntries] = React.useState<ArchiveEntry[]>([]);
   const [resolutions, setResolutions] = React.useState<ImportResolutions>(emptyResolutions);
-  const [readError, setReadError] = React.useState<string>('');
+  // The error itself, not its text, so it is worded in the language the dialog is showing.
+  const [readError, setReadError] = React.useState<unknown>(null);
   const [result, setResult] = React.useState<ApplyResult | null>(null);
   const [keepingAsFile, setKeepingAsFile] = React.useState(false);
 
@@ -204,7 +228,7 @@ export function ImportDialog({
     setPlan(null);
     setEntries([]);
     setResult(null);
-    setReadError('');
+    setReadError(null);
     setKeepingAsFile(false);
     setResolutions(emptyResolutions());
 
@@ -229,7 +253,7 @@ export function ImportDialog({
       } catch (error) {
         if (cancelled) return;
         logger.error('Failed to read archive for import:', error);
-        setReadError(errorMessage(error));
+        setReadError(error);
         setPhase('unreadable');
       }
     })();
@@ -254,7 +278,7 @@ export function ImportDialog({
     const stillCurrent = () => sourceSignature(sourceRef.current) === startedFrom;
     setPhase('applying');
     // The pinned-toast counter, as the folder drop does it: one toast, updated in place.
-    const toastId = toast.loading('Importing…');
+    const toastId = toast.loading(t('importing'));
     try {
       const applied = await applyImport(
         vfs,
@@ -263,7 +287,7 @@ export function ImportDialog({
         entries,
         resolvedTarget,
         (done, total) => {
-          toast.loading(`Importing ${done}/${total}`, { id: toastId });
+          toast.loading(t('importingProgress', { done, total }), { id: toastId });
         }
       );
       if (stillCurrent()) {
@@ -271,18 +295,18 @@ export function ImportDialog({
         setPhase('done');
       }
       if (applied.failed.length > 0) {
-        toast.error(`${appliedSummary(applied.applied)} ${applied.failed.length} failed.`, {
+        toast.error(t('importedWithFailures', { summary: copy.applied(applied.applied), count: applied.failed.length }), {
           id: toastId,
         });
       } else {
-        toast.success(appliedSummary(applied.applied), { id: toastId });
+        toast.success(copy.applied(applied.applied), { id: toastId });
       }
     } catch (error) {
       logger.error('Import failed:', error);
-      toast.error(errorMessage(error), { id: toastId });
+      toast.error(archiveMessage(error), { id: toastId });
       if (stillCurrent()) setPhase('ready');
     }
-  }, [plan, resolutions, entries, resolvedTarget, signature]);
+  }, [plan, resolutions, entries, resolvedTarget, signature, t, copy, archiveMessage]);
 
   const handleKeepAsFile = React.useCallback(async () => {
     const current = sourceRef.current;
@@ -293,10 +317,10 @@ export function ImportDialog({
       onOpenChange(false);
     } catch (error) {
       logger.error('Failed to store the archive as a file:', error);
-      toast.error(errorMessage(error));
+      toast.error(archiveMessage(error));
       setKeepingAsFile(false);
     }
-  }, [onKeepAsFile, onOpenChange]);
+  }, [onKeepAsFile, onOpenChange, archiveMessage]);
 
   const isNewProject = resolvedTarget.kind === 'new-project';
 
@@ -328,17 +352,17 @@ export function ImportDialog({
         }}
       >
         <DialogHeader className="flex-none">
-          <DialogTitle>{titleFor(phase, plan, isNewProject, projectName)}</DialogTitle>
+          <DialogTitle>{titleFor(t, phase, plan, isNewProject, projectName)}</DialogTitle>
           <DialogDescription asChild>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               {source && <span className="font-mono text-xs">{sourceLabel(source)}</span>}
               {plan && phase !== 'analyzing' && (
                 <>
                   <span className="rounded-md border px-2 py-px text-xs">
-                    {FORMAT_LABELS[plan.format] ?? plan.format}
+                    {formatLabels[plan.format] ?? plan.format}
                   </span>
                   <span className="text-xs">
-                    {plan.totals.entries} entries · {formatBytes(plan.totals.bytes)}
+                    {t('entriesCount', { count: plan.totals.entries })} · {copy.size(plan.totals.bytes)}
                   </span>
                 </>
               )}
@@ -361,27 +385,27 @@ export function ImportDialog({
             <div className="flex items-center justify-center gap-3 py-10 text-muted-foreground">
               <Spinner size={20} />
               <span className="text-sm">
-                {phase === 'analyzing' ? 'Reading the archive…' : 'Importing…'}
+                {phase === 'analyzing' ? t('readingArchive') : t('importing')}
               </span>
             </div>
           )}
 
           {phase === 'unreadable' && (
-            <Banner tone="red" title="This archive could not be read">
-              {readError || 'The file is damaged, encrypted, or not a zip.'}
+            <Banner tone="red" title={t('archiveUnreadable')}>
+              {readError ? archiveMessage(readError) : t('unreadableFallback')}
             </Banner>
           )}
 
           {phase === 'wrong-format' && plan && (
-            <Banner tone="red" title="This is not a project archive">
-              {plan.errors[0]?.message ?? 'This file needs a different importer.'}
+            <Banner tone="red" title={t('notProjectArchive')}>
+              {plan.errors[0] ? archiveMessage(plan.errors[0]) : t('wrongImporter')}
             </Banner>
           )}
 
           {phase === 'blocked' && plan && (
             <div className="flex flex-col gap-4">
-              <Banner tone="red" title="Nothing in this archive can be imported">
-                Nothing was written. Each entry and the reason it was refused is listed below.
+              <Banner tone="red" title={t('nothingImportable')}>
+                {t('blockedNote')}
               </Banner>
               <BlockedList issues={plan.errors} />
             </div>
@@ -391,8 +415,8 @@ export function ImportDialog({
               'blocked', and neutral. Errors, if any, are listed under it rather than framing it. */}
           {phase === 'nothing-to-do' && plan && (
             <div className="flex flex-col gap-4">
-              <Banner tone="neutral" title="Nothing to import">
-                {nothingToDoSummary(plan)}
+              <Banner tone="neutral" title={t('nothingToImport')}>
+                {copy.nothingToDo(nothingToDoCounts(plan))}
               </Banner>
               {plan.errors.length > 0 && <BlockedSection issues={plan.errors} />}
             </div>
@@ -432,7 +456,7 @@ export function ImportDialog({
               {plan.files.added.length > 0 && (
                 <AddedFilesFold
                   paths={plan.files.added}
-                  label={isNewProject ? 'Files' : 'New files'}
+                  label={isNewProject ? t('files') : t('newFiles')}
                 />
               )}
 
@@ -452,9 +476,7 @@ export function ImportDialog({
                   setResolutions((prev) => ({ ...prev, skipBlocked: checked === true }))
                 }
               />
-              {plan.errors.length === 1
-                ? 'Skip the blocked entry'
-                : `Skip the ${plan.errors.length} blocked entries`}
+              {t('skipBlocked', { count: plan.errors.length })}
             </label>
           )}
 
@@ -463,7 +485,7 @@ export function ImportDialog({
             phase === 'nothing-to-do' ||
             phase === 'wrong-format') && (
             <span className="flex-1 text-sm text-muted-foreground">
-              {isNewProject ? 'No project was created' : 'No changes were made to this project'}
+              {isNewProject ? t('noProjectCreated') : t('noChangesMade')}
             </span>
           )}
 
@@ -475,13 +497,13 @@ export function ImportDialog({
               onClick={close}
               disabled={phase === 'applying' || keepingAsFile}
             >
-              {phase === 'ready' ? 'Cancel' : 'Close'}
+              {phase === 'ready' ? tc('actions.cancel') : tc('actions.close')}
             </Button>
           )}
 
           {canKeepAsFile && (
             <Button variant="outline" onClick={handleKeepAsFile} disabled={keepingAsFile}>
-              {keepingAsFile ? 'Adding…' : 'Add as a file instead'}
+              {keepingAsFile ? t('addingFile') : t('addAsFileInstead')}
             </Button>
           )}
 
@@ -495,11 +517,11 @@ export function ImportDialog({
               disabled={!canConfirm(plan, resolutions) || keepingAsFile}
               onClick={handleConfirm}
             >
-              {confirmLabel(plan, resolutions, resolvedTarget)}
+              {copy.confirm(confirmAction(plan, resolutions, resolvedTarget))}
             </Button>
           )}
 
-          {phase === 'done' && <Button onClick={close}>Done</Button>}
+          {phase === 'done' && <Button onClick={close}>{tc('actions.done')}</Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>

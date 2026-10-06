@@ -2,6 +2,7 @@ import { vfs } from '../index';
 import { formatBytes } from './format';
 import { validateArchivePath } from './paths';
 import { MAX_ENTRIES, MAX_TOTAL_BYTES } from './read-zip';
+import { ArchiveError, said } from './text';
 import type { ArchiveEntry, ArchiveIssue } from './types';
 
 /**
@@ -106,15 +107,13 @@ export function folderToArchiveEntries(
   // Counted before any path is judged, matching the zip reader: a budget exists to refuse the
   // input, and filtering it down first would be the work the budget is meant to avoid.
   if (collected.length > maxEntries) {
-    throw new Error(
-      `This folder holds ${collected.length} files, more than the ${maxEntries} an import accepts.`
-    );
+    throw new ArchiveError('folderTooManyFiles', { count: collected.length, max: maxEntries });
   }
 
   let totalBytes = 0;
   for (const { file } of collected) totalBytes += file.size;
   if (totalBytes > maxTotalBytes) {
-    throw new Error(`This folder is larger than the ${formatBytes(maxTotalBytes)} import limit.`);
+    throw new ArchiveError('folderTooLarge', { limit: formatBytes(maxTotalBytes) });
   }
 
   const entries: ArchiveEntry[] = [];
@@ -126,7 +125,7 @@ export function folderToArchiveEntries(
     // so there is no stored string a '..' could have survived in.
     const result = validateArchivePath(path);
     if (!result.ok) {
-      issues.push({ path, code: result.code, message: result.message });
+      issues.push({ path, code: result.code, message: result.message, text: result.text });
       continue;
     }
 
@@ -138,7 +137,7 @@ export function folderToArchiveEntries(
       issues.push({
         path: result.path,
         code: 'path-rejected',
-        message: 'The folder holds more than one file for this path.',
+        ...said('duplicateInFolder'),
       });
       continue;
     }

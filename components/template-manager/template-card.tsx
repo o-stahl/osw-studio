@@ -1,13 +1,14 @@
 'use client';
 
 import React from 'react';
+import { useTranslations } from 'next-intl';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { CustomTemplate, LICENSE_OPTIONS } from '@/lib/vfs/types';
 import type { BuiltInTemplateMetadata } from '@/lib/vfs/templates/registry';
 import { getRuntimeBadge } from '@/lib/runtimes/registry';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Trash2, Plus, FileBox, Download, Link2, ExternalLink, MoreVertical, Server, Eye } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +41,10 @@ export function TemplateCard({
   onExport,
   viewMode = 'grid'
 }: TemplateCardProps) {
+  const tpx = useTranslations('projects');
+  const tc = useTranslations('common');
+  const t = useTranslations('templatesUi');
+  const when = useLocalFormat();
   const isBuiltIn = 'isBuiltIn' in template && template.isBuiltIn;
   const customTemplate = !isBuiltIn ? template as CustomTemplate : null;
   const hasBackendFeatures = isBuiltIn
@@ -66,14 +71,7 @@ export function TemplateCard({
     if (onExport) onExport(template);
   };
 
-  const formatDate = (date: Date | undefined) => {
-    if (!date) return 'Never';
-    try {
-      return formatDistanceToNow(date, { addSuffix: true });
-    } catch {
-      return 'Recently';
-    }
-  };
+  const formatDate = (date: Date | undefined) => (date ? when.relativeTime(date) : t('never'));
 
   // List view (horizontal row)
   if (viewMode === 'list') {
@@ -105,7 +103,7 @@ export function TemplateCard({
                       <Link2 className="h-3 w-3 text-muted-foreground" />
                     </div>
                   </TooltipTrigger>
-                  <TooltipContent>Built-in template</TooltipContent>
+                  <TooltipContent>{t('builtIn')}</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             )}
@@ -136,7 +134,7 @@ export function TemplateCard({
               {hasBackendFeatures && (
                 <Badge className="text-xs px-1.5 py-0 h-auto bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-400 dark:border-orange-800">
                   <Server className="h-3 w-3 mr-0.5" />
-                  Backend
+                  {t('backend')}
                 </Badge>
               )}
               {(customTemplate?.metadata.author || template.metadata?.author) && (
@@ -191,12 +189,12 @@ export function TemplateCard({
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => onSelect(template)}>
                   <Plus className="mr-2 h-4 w-4" />
-                  Create Project
+                  {tpx('createProject')}
                 </DropdownMenuItem>
                 {onPreview && (
                   <DropdownMenuItem onClick={() => onPreview(template)}>
                     <Eye className="mr-2 h-4 w-4" />
-                    Preview
+                    {tc('actions.preview')}
                   </DropdownMenuItem>
                 )}
                 {onExport && (
@@ -204,7 +202,7 @@ export function TemplateCard({
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleExport}>
                       <Download className="mr-2 h-4 w-4" />
-                      Export Template
+                      {t('exportTemplate')}
                     </DropdownMenuItem>
                   </>
                 )}
@@ -221,12 +219,12 @@ export function TemplateCard({
                               disabled={isBuiltIn}
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
+                              {tc('actions.delete')}
                             </DropdownMenuItem>
                           </div>
                         </TooltipTrigger>
                         {isBuiltIn && (
-                          <TooltipContent>Built-in templates cannot be deleted</TooltipContent>
+                          <TooltipContent>{t('cannotDeleteBuiltIn')}</TooltipContent>
                         )}
                       </Tooltip>
                     </TooltipProvider>
@@ -247,12 +245,12 @@ export function TemplateCard({
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => onSelect(template)}>
                   <Plus className="mr-2 h-4 w-4" />
-                  Create Project
+                  {tpx('createProject')}
                 </DropdownMenuItem>
                 {onPreview && (
                   <DropdownMenuItem onClick={() => onPreview(template)}>
                     <Eye className="mr-2 h-4 w-4" />
-                    Preview
+                    {tc('actions.preview')}
                   </DropdownMenuItem>
                 )}
                 {onExport && (
@@ -260,7 +258,7 @@ export function TemplateCard({
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleExport}>
                       <Download className="mr-2 h-4 w-4" />
-                      Export Template
+                      {t('exportTemplate')}
                     </DropdownMenuItem>
                   </>
                 )}
@@ -273,7 +271,7 @@ export function TemplateCard({
                       disabled={isBuiltIn}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
-                      Delete
+                      {tc('actions.delete')}
                     </DropdownMenuItem>
                   </>
                 )}
@@ -313,7 +311,7 @@ export function TemplateCard({
                   <Link2 className="h-4 w-4 text-muted-foreground" />
                 </div>
               </TooltipTrigger>
-              <TooltipContent>Built-in template</TooltipContent>
+              <TooltipContent>{t('builtIn')}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
@@ -331,7 +329,7 @@ export function TemplateCard({
                   <ExternalLink className="h-4 w-4 text-muted-foreground" />
                 </a>
               </TooltipTrigger>
-              <TooltipContent>View on marketplace</TooltipContent>
+              <TooltipContent>{t('viewOnMarketplace')}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
@@ -386,7 +384,7 @@ export function TemplateCard({
               {hasBackendFeatures && (
                 <Badge className="text-xs px-1.5 py-0.5 bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-400 dark:border-orange-800">
                   <Server className="h-3 w-3 mr-0.5" />
-                  Backend
+                  {t('backend')}
                 </Badge>
               )}
               {(customTemplate?.metadata.tags || template.metadata?.tags || []).slice(0, 3).map((tag) => (
@@ -433,12 +431,12 @@ export function TemplateCard({
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => onSelect(template)}>
                 <Plus className="mr-2 h-4 w-4" />
-                Create Project
+                {tpx('createProject')}
               </DropdownMenuItem>
               {onPreview && (
                 <DropdownMenuItem onClick={() => onPreview(template)}>
                   <Eye className="mr-2 h-4 w-4" />
-                  Preview
+                  {tc('actions.preview')}
                 </DropdownMenuItem>
               )}
               {onExport && (
@@ -446,7 +444,7 @@ export function TemplateCard({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleExport}>
                     <Download className="mr-2 h-4 w-4" />
-                    Export Template
+                    {t('exportTemplate')}
                   </DropdownMenuItem>
                 </>
               )}
@@ -463,12 +461,12 @@ export function TemplateCard({
                             disabled={isBuiltIn}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
+                            {tc('actions.delete')}
                           </DropdownMenuItem>
                         </div>
                       </TooltipTrigger>
                       {isBuiltIn && (
-                        <TooltipContent>Built-in templates cannot be deleted</TooltipContent>
+                        <TooltipContent>{t('cannotDeleteBuiltIn')}</TooltipContent>
                       )}
                     </Tooltip>
                   </TooltipProvider>

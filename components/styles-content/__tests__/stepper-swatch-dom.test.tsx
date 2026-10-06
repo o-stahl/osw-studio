@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import React, { act, createRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { StylesContent, type StylesContentHandle } from '..';
@@ -47,7 +48,7 @@ function mount(options: {
   removeStyle = vi.fn(async () => okResult);
   readOverrides = vi.fn(async () => options.overridden ?? []);
   act(() => {
-    root.render(
+    root.render(withMessages(
       <StylesContent
         ref={ref}
         selection={options.selection ?? payload()}
@@ -60,7 +61,7 @@ function mount(options: {
         onAskAgent={vi.fn()}
         onRefreshPreview={vi.fn()}
       />,
-    );
+    ));
   });
 }
 
@@ -109,6 +110,21 @@ async function openColour(label: string): Promise<void> {
   // Awaited: Radix opens through a state update, and a synchronous `act` returns before the content
   // has been portalled — which reads exactly like a popover that refused to open.
   await act(async () => { trigger!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+}
+
+/**
+ * The Reset inside one row's open colour popover, found through the trigger's `aria-controls`.
+ *
+ * Keyed on the data attribute rather than the translated label, so an absence means no Reset, not
+ * a renamed one. Throws if that popover is not open, which an absence would otherwise also cover.
+ */
+function resetIn(label: string): Element | null {
+  const trigger = Array.from(container.querySelectorAll<HTMLButtonElement>('[data-osw-color-trigger]'))
+    .find(el => el.getAttribute('aria-label') === `${label} colour`);
+  const id = trigger?.getAttribute('aria-controls');
+  const popover = id ? document.getElementById(id) : null;
+  if (!popover) throw new Error(`the ${label} colour popover is not open`);
+  return popover.querySelector('[data-osw-color-reset]');
 }
 
 /** Set a controlled input's value the way a user's typing reaches React. */
@@ -353,7 +369,7 @@ describe('the colour picker', () => {
 
     await openColour('Text');
 
-    const picker = find<HTMLInputElement>('[aria-label="Custom text colour"]');
+    const picker = find<HTMLInputElement>('[aria-label="Custom colour: Text"]');
     expect(picker.getAttribute('type')).toBe('color');
     type(picker, '#ff8800');
     await settle();
@@ -371,7 +387,7 @@ describe('the colour picker', () => {
     computed({ color: 'rgb(18, 52, 86)' }, '16px');
     await openColour('Text');
 
-    expect(find<HTMLInputElement>('[aria-label="Custom text colour"]').value).toBe('#123456');
+    expect(find<HTMLInputElement>('[aria-label="Custom colour: Text"]').value).toBe('#123456');
   });
 });
 
@@ -382,22 +398,22 @@ describe('Reset', () => {
     await openColour('Text');
     expect(found('[data-osw-color-reset]')).toBeNull();
 
-    type(find<HTMLInputElement>('[aria-label="Custom text colour"]'), '#ff8800');
+    type(find<HTMLInputElement>('[aria-label="Custom colour: Text"]'), '#ff8800');
     await settle();
 
-    expect(found('[aria-label="Reset text colour"]')).toBeTruthy();
+    expect(found('[aria-label="Reset colour: Text"]')).toBeTruthy();
 
     // The other colour row was not touched, so it gets no Reset either. Opened, or its absence
     // would only mean that popover was shut.
     await openColour('Background');
-    expect(found('[aria-label="Reset background colour"]')).toBeNull();
+    expect(resetIn('Background')).toBeNull();
   });
 
   it('is never offered when the host passes no removal path', async () => {
     mount({ removable: false });
     computed({ color: 'rgb(0, 0, 0)' }, '16px');
     await openColour('Text');
-    type(find<HTMLInputElement>('[aria-label="Custom text colour"]'), '#ff8800');
+    type(find<HTMLInputElement>('[aria-label="Custom colour: Text"]'), '#ff8800');
     await settle();
 
     expect(found('[data-osw-color-reset]')).toBeNull();
@@ -407,7 +423,7 @@ describe('Reset', () => {
     mount();
     computed({ color: 'rgb(0, 0, 0)' }, '16px');
     await openColour('Text');
-    type(find<HTMLInputElement>('[aria-label="Custom text colour"]'), '#ff8800');
+    type(find<HTMLInputElement>('[aria-label="Custom colour: Text"]'), '#ff8800');
     await settle();
 
     await act(async () => {
@@ -514,11 +530,11 @@ describe('Reset after a reload', () => {
     // Nothing was written this session: the control is there because the *file* says so.
     expect(applyStyle).not.toHaveBeenCalled();
     await openColour('Text');
-    expect(find('[aria-label="Reset text colour"]')).toBeTruthy();
+    expect(find('[aria-label="Reset colour: Text"]')).toBeTruthy();
     // And only for the property the file names — the background is not overridden. Opened, or its
     // absence would only mean that popover was shut.
     await openColour('Background');
-    expect(found('[aria-label="Reset background colour"]')).toBeNull();
+    expect(resetIn('Background')).toBeNull();
   });
 
   it('removes against the marker the element arrived with', async () => {

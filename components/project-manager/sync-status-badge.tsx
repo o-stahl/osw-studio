@@ -1,5 +1,7 @@
 'use client';
 
+import { useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { ItemSyncStatus } from '@/lib/vfs/sync-types';
 import {
@@ -29,70 +31,72 @@ interface SyncStatusBadgeProps {
 const STATUS_CONFIG: Record<
   ItemSyncStatus,
   {
-    label: string;
-    description: string;
     icon: typeof CheckCircle;
     colorClass: string;
     bgClass: string;
   }
 > = {
   synced: {
-    label: 'Synced',
-    description: 'Local and server are in sync. No action needed.',
     icon: CheckCircle,
     colorClass: 'text-green-600 dark:text-green-400',
     bgClass: 'bg-green-500/10',
   },
   'local-newer': {
-    label: 'Local newer',
-    description: 'You have local changes not yet on the server. Push to sync.',
     icon: ArrowUp,
     colorClass: 'text-blue-600 dark:text-blue-400',
     bgClass: 'bg-blue-500/10',
   },
   'server-newer': {
-    label: 'Server newer',
-    description: 'Server has updates you don\'t have locally. Pull to get latest.',
     icon: ArrowDown,
     colorClass: 'text-orange-600 dark:text-orange-400',
     bgClass: 'bg-orange-500/10',
   },
   conflict: {
-    label: 'Conflict',
-    description: 'Both local and server have changes. Push to overwrite server, or pull to discard local changes.',
     icon: AlertTriangle,
     colorClass: 'text-red-600 dark:text-red-400',
     bgClass: 'bg-red-500/10',
   },
   'local-only': {
-    label: 'Local only',
-    description: 'Only exists in your browser. Push to save to server.',
     icon: HardDrive,
     colorClass: 'text-gray-600 dark:text-gray-400',
     bgClass: 'bg-gray-500/10',
   },
   'server-only': {
-    label: 'Server only',
-    description: 'Only exists on server. Pull to download locally.',
     icon: Cloud,
     colorClass: 'text-purple-600 dark:text-purple-400',
     bgClass: 'bg-purple-500/10',
   },
   syncing: {
-    label: 'Syncing...',
-    description: 'Currently syncing with server.',
     icon: RefreshCw,
     colorClass: 'text-blue-600 dark:text-blue-400',
     bgClass: 'bg-blue-500/10',
   },
   error: {
-    label: 'Error',
-    description: 'Sync failed. Try again.',
     icon: XCircle,
     colorClass: 'text-red-600 dark:text-red-400',
     bgClass: 'bg-red-500/10',
   },
 };
+
+/**
+ * Translated label and description per status.
+ *
+ * {@link STATUS_CONFIG} is module-level and holds only the icon and colours, which do not change
+ * with the locale. Every `t()` call is a literal, because typed messages reject a computed key.
+ */
+function useStatusCopy(): Record<ItemSyncStatus, { label: string; description: string }> {
+  const t = useTranslations('syncStatus');
+  return useMemo(() => ({
+    synced: { label: t('synced'), description: t('syncedDesc') },
+    'local-newer': { label: t('localNewer'), description: t('localNewerDesc') },
+    'server-newer': { label: t('serverNewer'), description: t('serverNewerDesc') },
+    conflict: { label: t('conflict'), description: t('conflictDesc') },
+    'local-only': { label: t('localOnly'), description: t('localOnlyDesc') },
+    'server-only': { label: t('serverOnly'), description: t('serverOnlyDesc') },
+    syncing: { label: t('syncing'), description: t('syncingDesc') },
+    error: { label: t('error'), description: t('failedDesc') },
+  }), [t]);
+}
 
 export function SyncStatusBadge({
   status,
@@ -101,6 +105,7 @@ export function SyncStatusBadge({
   className,
 }: SyncStatusBadgeProps) {
   const config = STATUS_CONFIG[status];
+  const copy = useStatusCopy()[status];
   const Icon = config.icon;
 
   const iconSize = size === 'sm' ? 'w-3.5 h-3.5' : 'w-4 h-4';
@@ -121,7 +126,7 @@ export function SyncStatusBadge({
       <Icon
         className={cn(iconSize, status === 'syncing' && 'animate-spin')}
       />
-      {showLabel && <span>{config.label}</span>}
+      {showLabel && <span>{copy.label}</span>}
     </span>
   );
 
@@ -130,7 +135,7 @@ export function SyncStatusBadge({
       <Tooltip>
         <TooltipTrigger asChild>{badge}</TooltipTrigger>
         <TooltipContent side="top" className="max-w-xs">
-          <p className="text-sm">{config.description}</p>
+          <p className="text-sm">{copy.description}</p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

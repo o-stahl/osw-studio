@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { ChevronDown, Minus, Plus, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -245,8 +246,8 @@ const ROW = 'flex items-center justify-between gap-2 py-1';
 const LABEL = 'text-xs text-muted-foreground truncate';
 
 /** What a control shows when the frame has no single value for it. */
-function placeholder(mixed: boolean): string {
-  return mixed ? 'Mixed' : '—';
+function placeholder(mixed: boolean, mixedLabel: string): string {
+  return mixed ? mixedLabel : '—';
 }
 
 const GROUP = 'flex items-center shrink-0 overflow-hidden rounded-[2rem] border bg-background';
@@ -303,6 +304,7 @@ export function Stepper({
   onToggleExpand,
   isPart,
 }: StepperProps) {
+  const t = useTranslations('styles');
   const [draft, setDraft] = useState<string | null>(null);
 
   const commit = () => {
@@ -335,7 +337,7 @@ export function Stepper({
           // button would bring a second one back — plus a `border-r-0` that `twMerge` then drops.
           variant="ghost"
           size="xs"
-          aria-label={`Decrease ${label}`}
+          aria-label={t('decrease', { label })}
           disabled={disabled || atMin}
           onClick={() => onStep(-1)}
           className={SEGMENT_BUTTON}
@@ -361,7 +363,7 @@ export function Stepper({
               SEGMENT,
             )}
           >
-            {value ?? placeholder(Boolean(mixed))}
+            {value ?? placeholder(Boolean(mixed), t('mixed'))}
           </button>
         ) : (
           <input
@@ -415,7 +417,7 @@ export function Stepper({
           type="button"
           variant="ghost"
           size="xs"
-          aria-label={`Increase ${label}`}
+          aria-label={t('increase', { label })}
           disabled={disabled || atMax}
           onClick={() => onStep(1)}
           className={SEGMENT_BUTTON}
@@ -511,6 +513,8 @@ export function SwatchRow({
   onSelect,
   onReset,
 }: SwatchRowProps) {
+  const t = useTranslations('styles');
+  const tc = useTranslations('common');
   const current = swatches.find(swatch => swatch.value === selected) ?? null;
 
   return (
@@ -521,8 +525,8 @@ export function SwatchRow({
           <button
             type="button"
             data-osw-color-trigger
-            aria-label={`${label} colour`}
-            title={current?.name ? `${current.name} — ${current.value}` : (pickerValue ?? 'No single colour')}
+            aria-label={t('colourOf', { label })}
+            title={current?.name ? `${current.name} — ${current.value}` : (pickerValue ?? t('noSingleColour'))}
             disabled={disabled}
             className="h-6 shrink-0 inline-flex items-center gap-1 rounded-full border px-1.5 bg-background hover:bg-accent disabled:opacity-40 disabled:pointer-events-none"
           >
@@ -536,7 +540,7 @@ export function SwatchRow({
 
         <PopoverContent align="end" className="w-64 p-3" data-osw-color-popover>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            Project colours
+            {t('projectColours')}
           </div>
           {/* Named, because pressing one writes `var(--name)` and the name is the thing that makes
               two identically-coloured squares tell themselves apart. */}
@@ -560,18 +564,18 @@ export function SwatchRow({
           </div>
           {current?.name ? (
             <p className="mt-1.5 text-[11px] text-muted-foreground">
-              Following <span className="font-mono">{current.name}</span>.
+              {t.rich('following', { name: current.name, token: (chunks) => <span className="font-mono">{chunks}</span> })}
             </p>
           ) : null}
 
           <div className="mt-3 text-[10px] uppercase tracking-wider text-muted-foreground">
-            Custom
+            {tc('labels.custom')}
           </div>
           <div className="mt-1.5 flex items-center gap-2">
             <input
               type="color"
               data-osw-color-picker
-              aria-label={`Custom ${label.toLowerCase()} colour`}
+              aria-label={t('customColour', { label })}
               disabled={disabled}
               value={pickerValue ?? '#000000'}
               onChange={event => onSelect(event.target.value)}
@@ -582,7 +586,7 @@ export function SwatchRow({
             </span>
           </div>
           <p className="mt-1.5 text-[11px] text-muted-foreground">
-            Pins this element to a fixed colour, so it stops following the project&apos;s.
+            {t('pinsColour')}
           </p>
 
           {onReset ? (
@@ -592,12 +596,12 @@ export function SwatchRow({
                 variant="ghost"
                 size="xs"
                 data-osw-color-reset
-                aria-label={`Reset ${label.toLowerCase()} colour`}
+                aria-label={t('resetColour', { label })}
                 disabled={disabled}
                 onClick={onReset}
               >
                 <RotateCcw className="size-3" />
-                Reset
+                {t('reset')}
               </Button>
             </div>
           ) : null}

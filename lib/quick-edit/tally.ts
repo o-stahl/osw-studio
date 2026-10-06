@@ -1,5 +1,5 @@
 import type { DebugEvent } from '@/lib/stores/types';
-import { parseToolArgs, type ActionKind, type ParsedAction } from '@/lib/agent-activity/parse-command';
+import { parseToolArgs, type ActionKind } from '@/lib/agent-activity/parse-command';
 
 /**
  * The redacted account of a run, for the quick-edit dock.
@@ -14,9 +14,7 @@ import { parseToolArgs, type ActionKind, type ParsedAction } from '@/lib/agent-a
 type RunStatus = 'idle' | 'working' | 'done' | 'failed' | 'waiting';
 
 export interface TallyStep {
-  /** One line, already phrased for a reader. */
-  label: string;
-  /** What kind of action it was, for collating steps into a sentence. */
+  /** What kind of action it was: worded by {@link phraseStep}, and collated into a sentence. */
   kind: ActionKind;
   /** The file it acted on, when it named one the tally accepts. */
   path: string | null;
@@ -43,52 +41,40 @@ export interface Tally {
    * emits that event, so a run in the browser would otherwise report having changed nothing.
    */
   filesChanged: string[];
-  /** Set once the run ends, phrased as the outcome. */
-  summary: string | null;
+  /** Set once the run ends: the outcome, worded by the thread under `quickEdit.summary`. */
+  summary: TallySummary | null;
 }
 
-/** The verb for each kind of action, and whether the file name is worth saying. */
-const PHRASING: Record<ActionKind, { verb: string; named: boolean }> = {
-  write: { verb: 'Wrote', named: true },
-  read: { verb: 'Read', named: true },
-  edit: { verb: 'Edited', named: true },
-  create: { verb: 'Created', named: true },
-  delete: { verb: 'Deleted', named: true },
-  move: { verb: 'Moved', named: true },
-  copy: { verb: 'Copied', named: true },
-  list: { verb: 'Looked through the files', named: false },
-  search: { verb: 'Searched the project', named: false },
-  evaluate: { verb: 'Checked its work', named: false },
-  delegate: { verb: 'Working through the request', named: false },
-  lookup: { verb: 'Looked something up', named: false },
-  image: { verb: 'Made an image', named: false },
-  database: { verb: 'Worked on the data', named: false },
-  build: { verb: 'Rebuilt the site', named: false },
-  plan: { verb: 'Planned the change', named: false },
-  preview: { verb: 'Checked the preview', named: false },
-  run: { verb: 'Ran a script', named: false },
-  other: { verb: 'Working', named: false },
-};
+export type TallySummary = { kind: 'failed' } | { kind: 'stopped' } | { kind: 'changed'; files: number };
+
+/** The kinds whose line names the file. The rest read the same whatever they touched. */
+const NAMED_KINDS = new Set<ActionKind>(['write', 'read', 'edit', 'create', 'delete', 'move', 'copy']);
+
+/** Words a step under `quickEdit.step`: the kind's sentence, with the file's name where it has one. */
+export type StepTranslator = (key: ActionKind, values: { has: 'yes' | 'no'; file: string }) => string;
+
+/**
+ * One action as one line.
+ *
+ * Only the file name reaches the line, never the command: an action whose kind has no useful file,
+ * or whose target was not a project path, is phrased without one rather than falling back to raw
+ * command text.
+ */
+export function phraseStep(step: Pick<TallyStep, 'kind' | 'path'>, t: StepTranslator): string {
+  const file = NAMED_KINDS.has(step.kind) && step.path ? fileName(step.path) : '';
+  return t(step.kind, { has: file ? 'yes' : 'no', file });
+}
+
+/** Two actions read as the same line: same kind, and the same file where the kind names one. */
+function sameLine(a: Pick<TallyStep, 'kind' | 'path'>, b: Pick<TallyStep, 'kind' | 'path'>): boolean {
+  return a.kind === b.kind && (!NAMED_KINDS.has(a.kind) || a.path === b.path);
+}
 
 /** The actions that leave a file different from how they found it. */
 const WRITING_KINDS = new Set<ActionKind>(['write', 'edit', 'create', 'delete', 'move', 'copy']);
 
 function fileName(path: string): string {
   return path.split('/').filter(Boolean).pop() ?? path;
-}
-
-/**
- * One action becomes one line.
- *
- * Only the file name reaches the label, never the command: an action whose kind has no useful file,
- * or whose target was not a project path, is phrased without one rather than falling back to raw
- * command text.
- */
-function labelFor(parsed: ParsedAction | null): string {
-  if (!parsed) return 'Working';
-  const { verb, named } = PHRASING[parsed.kind];
-  if (!named) return verb;
-  return parsed.path ? `${verb} ${fileName(parsed.path)}` : `${verb} a file`;
 }
 
 function pushFile(files: string[], path: unknown): void {
@@ -101,7 +87,7 @@ export function buildTally(events: DebugEvent[]): Tally {
   /** Which line each in-flight tool call landed on, so its result marks the right one. */
   const stepByCallId = new Map<string, number>();
   let status: RunStatus = 'idle';
-  let summary: string | null = null;
+  let summary: TallySummary | null = null;
 
   for (const event of events) {
     const data = (event.data ?? {}) as Record<string, unknown>;
@@ -120,7 +106,6 @@ export function buildTally(events: DebugEvent[]): Tally {
           const parsed = parseToolArgs(data.args);
           if (parsed && parsed.path && WRITING_KINDS.has(parsed.kind)) pushFile(filesChanged, parsed.path);
 
-          const label = labelFor(parsed);
           const kind: ActionKind = parsed?.kind ?? 'other';
           const path = parsed?.path ?? null;
           const last = steps[steps.length - 1];
@@ -129,12 +114,12 @@ export function buildTally(events: DebugEvent[]): Tally {
           // finished before starting the next, so merging has to reopen the line it merges into
           // rather than treat a finished line as closed.
           let index: number;
-          if (last && last.label === label) {
+          if (last && sameLine(last, { kind, path })) {
             last.steps += 1;
             last.done = false;
             index = steps.length - 1;
           } else {
-            index = steps.push({ label, kind, path, steps: 1, done: false, failed: false }) - 1;
+            index = steps.push({ kind, path, steps: 1, done: false, failed: false }) - 1;
           }
           if (callId) stepByCallId.set(callId, index);
           break;
@@ -164,12 +149,13 @@ export function buildTally(events: DebugEvent[]): Tally {
         break;
       case 'error':
       case 'error_paused':
+      case 'api_stopped':
         status = 'failed';
-        summary = 'Something went wrong. Undo puts it back the way it was.';
+        summary = { kind: 'failed' };
         break;
       case 'stopped':
         status = 'idle';
-        summary = 'Stopped.';
+        summary = { kind: 'stopped' };
         break;
       case 'task_complete':
         if (status !== 'failed') status = 'done';
@@ -181,10 +167,7 @@ export function buildTally(events: DebugEvent[]): Tally {
   // completion that follows it, and a summary written at that moment would deny the file it lists.
   if (status === 'done') {
     for (const step of steps) step.done = true;
-    const files = filesChanged.length;
-    summary = files === 0
-      ? 'Finished without changing any files.'
-      : `Changed ${files} ${files === 1 ? 'file' : 'files'}.`;
+    summary = { kind: 'changed', files: filesChanged.length };
   }
 
   const commandCount = steps.reduce((total, step) => total + step.steps, 0);

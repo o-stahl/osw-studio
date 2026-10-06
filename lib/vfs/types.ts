@@ -53,6 +53,8 @@ export interface Project {
         output: number;
       };
       correction?: boolean;
+      /** A server run's running token total, so a call that cost nothing still counts once. */
+      taskTokens?: number;
     }>;
   };
 }

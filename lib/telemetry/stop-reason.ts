@@ -13,17 +13,10 @@
  * Only shown while telemetry is active. Asking someone who opted out would look like the opt-out
  * did not take.
  */
-export const STOP_REASONS = [
-  { id: 'too_slow', label: 'Too slow' },
-  { id: 'wrong_direction', label: 'Going the wrong way' },
-  { id: 'cost', label: 'Costing too much' },
-  { id: 'done_already', label: 'Already done' },
-  { id: 'other', label: 'Other' },
-] as const;
+export const STOP_REASONS = ['too_slow', 'wrong_direction', 'cost', 'done_already', 'other'] as const;
 
-export type StopReasonId = (typeof STOP_REASONS)[number]['id'];
-
-export const STOP_REASON_PROMPT = 'You stopped the task. What made you?';
+/** Also the chip's label key under `chat.stopReasons`; the question itself is `chat.stopReasons.prompt`. */
+export type StopReasonId = (typeof STOP_REASONS)[number];
 
 /**
  * Whether the ask is on screen: only for the project being looked at, and only once its run has

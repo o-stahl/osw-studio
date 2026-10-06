@@ -1,6 +1,7 @@
 'use client';
 
 import { Dispatch, SetStateAction, useEffect, useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import { SyncableItem } from '@/lib/vfs/sync-types';
 import { SummaryBar } from './summary-bar';
 import { SyncItemRow } from '../sync-item-row';
@@ -33,6 +34,7 @@ export function InterviewTemplatesTab({
   onRegisterPushSelected,
   onRegisterPullSelected,
 }: InterviewTemplatesTabProps) {
+  const t = useTranslations('sync');
   const syncManager = getSyncManager();
 
   const selectedIdsRef = useRef(selectedIds);
@@ -54,7 +56,7 @@ export function InterviewTemplatesTab({
     try {
       const template = await interviewTemplatesService.getTemplate(item.id);
       if (!template || template.isBuiltIn) {
-        toast.error(`Template "${item.name}" not found`);
+        toast.error(t('templateNotFound', { name: item.name }));
         return;
       }
       const result = await syncManager.pushInterviewTemplate(template);
@@ -62,19 +64,19 @@ export function InterviewTemplatesTab({
         if (result.interviewTemplate?.updatedAt) {
           await interviewTemplatesService.updateSyncMetadata(item.id, new Date(), new Date(result.interviewTemplate.updatedAt));
         }
-        toast.success(`Pushed "${item.name}" to server`);
+        toast.success(t('pushedName', { name: item.name }));
         if (!opts?.silent) {
           track('sync_manual', { item_type: 'interviewTemplate', direction: 'push', bulk: false, count: 1 });
         }
         onRefresh();
         onSyncComplete();
       } else {
-        toast.error(result.error || 'Failed to push template');
+        toast.error(result.error || t('pushTemplateFailed'));
         track('sync_fail', { item_type: 'interviewTemplate', direction: 'push' });
       }
     } catch (error) {
       logger.error('Push interview template error:', error);
-      toast.error('Failed to push template');
+      toast.error(t('pushTemplateFailed'));
       track('sync_fail', { item_type: 'interviewTemplate', direction: 'push' });
     } finally {
       onSyncingIdsChange((prev: Set<string>) => {
@@ -90,12 +92,12 @@ export function InterviewTemplatesTab({
     try {
       const result = await syncManager.pullInterviewTemplate(item.id);
       if (!result.success || !result.interviewTemplate) {
-        toast.error(result.error || 'Failed to pull template');
+        toast.error(result.error || t('pullTemplateFailed'));
         track('sync_fail', { item_type: 'interviewTemplate', direction: 'pull' });
         return;
       }
       await interviewTemplatesService.importFromServer(result.interviewTemplate);
-      toast.success(`Pulled "${item.name}" from server`);
+      toast.success(t('pulledName', { name: item.name }));
       if (!opts?.silent) {
         track('sync_manual', { item_type: 'interviewTemplate', direction: 'pull', bulk: false, count: 1 });
       }
@@ -103,7 +105,7 @@ export function InterviewTemplatesTab({
       onSyncComplete();
     } catch (error) {
       logger.error('Pull interview template error:', error);
-      toast.error('Failed to pull template');
+      toast.error(t('pullTemplateFailed'));
       track('sync_fail', { item_type: 'interviewTemplate', direction: 'pull' });
     } finally {
       onSyncingIdsChange((prev: Set<string>) => {
@@ -148,7 +150,7 @@ export function InterviewTemplatesTab({
   if (items.length === 0) {
     return (
       <div className="text-center py-8 text-muted-foreground">
-        No interview templates to sync
+        {t('noInterviewTemplatesToSync')}
       </div>
     );
   }

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Plug, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Section, SectionHeader, SectionBody } from '@/components/ui/section';
 import { SettingRow } from '@/components/ui/setting-row';
 import { logger } from '@/lib/utils';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 
 /**
  * The MCP clients this account has authorised, and revoking one.
@@ -37,14 +39,26 @@ type Load =
   | { state: 'error'; message: string }
   | { state: 'ready'; grants: Grant[] };
 
-function when(value: string | number | null | undefined): string {
-  if (!value) return 'Never';
+/** The keys {@link when} reads, so a missing one is a type error rather than English copy. */
+type WhenKey = 'never' | 'unknownTime';
+
+export function when(
+  t: (key: WhenKey) => string,
+  dateTime: (value: Date) => string,
+  value: string | number | null | undefined,
+): string {
+  if (!value) return t('never');
   const date = new Date(typeof value === 'number' ? value : String(value));
-  if (Number.isNaN(date.getTime())) return 'Unknown';
-  return date.toLocaleString();
+  if (Number.isNaN(date.getTime())) return t('unknownTime');
+  return dateTime(date);
 }
 
 export function McpPane({ workspaceId }: { workspaceId?: string }) {
+  const tt = useTranslations('tooltips');
+  const t = useTranslations('settings');
+  const tc = useTranslations('common');
+  const { dateTime } = useLocalFormat();
+  const formatWhen = (value: Date) => dateTime(value, { dateStyle: 'medium', timeStyle: 'short' });
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [names, setNames] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -58,16 +72,16 @@ export function McpPane({ workspaceId }: { workspaceId?: string }) {
         return;
       }
       if (!response.ok) {
-        setLoad({ state: 'error', message: `Could not load MCP clients (${response.status})` });
+        setLoad({ state: 'error', message: t('mcpLoadFailed', { status: response.status }) });
         return;
       }
       const data = await response.json();
       setLoad({ state: 'ready', grants: Array.isArray(data.grants) ? data.grants : [] });
     } catch (error) {
       logger.error('[ConnectedAgents] Failed to load grants:', error);
-      setLoad({ state: 'error', message: 'Could not load MCP clients' });
+      setLoad({ state: 'error', message: t('mcpLoadError') });
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void refresh();
@@ -101,12 +115,12 @@ export function McpPane({ workspaceId }: { workspaceId?: string }) {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      toast.success(`Disconnected "${grant.clientName}"`);
+      toast.success(t('disconnectedClient', { name: grant.clientName }));
       setConfirming(null);
       await refresh();
     } catch (error) {
       logger.error('[ConnectedAgents] Failed to revoke grant:', error);
-      toast.error('Could not disconnect that client');
+      toast.error(t('mcpDisconnectFailed'));
     } finally {
       setRevoking(null);
     }
@@ -118,9 +132,9 @@ export function McpPane({ workspaceId }: { workspaceId?: string }) {
   const copyEndpoint = async () => {
     try {
       await navigator.clipboard.writeText(endpoint);
-      toast.success('Copied');
+      toast.success(t('copied'));
     } catch {
-      toast.error('Could not copy');
+      toast.error(t('copyFailed'));
     }
   };
 
@@ -130,18 +144,23 @@ export function McpPane({ workspaceId }: { workspaceId?: string }) {
       <SectionHeader icon={Plug} title="MCP" />
       <SectionBody>
         <p className="text-xs text-muted-foreground pt-3">
-          Let an outside client (Claude Code, Cursor, and others that speak MCP) work on a workspace.
-          Enabled with <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">MCP_ENABLED=true</code>.
-          {' '}<a href={docsHref} className="underline underline-offset-2">Setup guide</a>.
+          {t.rich('mcpIntro', {
+            code: chunks => (
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{chunks}</code>
+            ),
+            link: chunks => (
+              <a href={docsHref} className="underline underline-offset-2">{chunks}</a>
+            ),
+          })}
         </p>
         {load.state !== 'disabled' && (
           <SettingRow
-            title="Endpoint"
-            description="HTTP URL to add in the client. Not stdio, not SSE."
+            title={tt('endpoint')}
+            description={t('mcpEndpointDesc')}
           >
             <span className="flex items-center gap-1 min-w-0">
               <code className="truncate rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">{endpoint}</code>
-              <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => void copyEndpoint()} aria-label="Copy MCP endpoint">
+              <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => void copyEndpoint()} aria-label={t('copyEndpointAria')}>
                 <Copy className="h-3.5 w-3.5" />
               </Button>
             </span>
@@ -151,36 +170,35 @@ export function McpPane({ workspaceId }: { workspaceId?: string }) {
     </Section>
 
     <Section>
-      <SectionHeader icon={Plug} title="Clients" />
+      <SectionHeader icon={Plug} title={tt('clients')} />
       <SectionBody>
         <p className="text-xs text-muted-foreground pt-3">
-          Clients you have authorised. Each grant is one workspace and the scopes you approved,
-          until you disconnect it.
+          {t('mcpClientsHint')}
         </p>
 
         {load.state === 'loading' && (
-          <p className="text-sm text-muted-foreground py-3">Loading…</p>
+          <p className="text-sm text-muted-foreground py-3">{tc('loading')}</p>
         )}
 
         {load.state === 'disabled' && (
           <p className="text-sm text-muted-foreground py-3">
-            The MCP connector is not enabled on this instance.
+            {t('mcpDisabled')}
           </p>
         )}
 
         {load.state === 'error' && (
           <div className="flex items-center gap-3 py-3">
             <p className="text-sm text-muted-foreground flex-1">{load.message}</p>
-            <Button size="sm" variant="outline" onClick={() => void refresh()}>Retry</Button>
+            <Button size="sm" variant="outline" onClick={() => void refresh()}>{tc('actions.retry')}</Button>
           </div>
         )}
 
         {load.state === 'ready' && load.grants.length === 0 && (
           <div className="flex flex-col items-center gap-2 py-8 text-center">
             <Plug className="size-5 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">No MCP clients are authorised.</p>
+            <p className="text-sm text-muted-foreground">{t('noMcpClients')}</p>
             <p className="text-xs text-muted-foreground">
-              The client registers itself on first connect; you pick the workspace and scopes.
+              {t('mcpRegisterHint')}
             </p>
           </div>
         )}
@@ -188,17 +206,19 @@ export function McpPane({ workspaceId }: { workspaceId?: string }) {
         {load.state === 'ready' && load.grants.map((grant) => (
           <SettingRow
             key={grant.id}
-            title={grant.clientName || 'Unnamed client'}
+            title={grant.clientName || t('unnamedClient')}
             description={
               <span className="flex flex-col gap-1">
                 <span>
-                  {names[grant.workspaceId] ?? grant.workspaceId}
-                  {' · added '}{when(grant.createdAt)}
-                  {' · last used '}{when(grant.lastUsedAt)}
+                  {t('grantMeta', {
+                    workspace: names[grant.workspaceId] ?? grant.workspaceId,
+                    added: when(t, formatWhen, grant.createdAt),
+                    used: when(t, formatWhen, grant.lastUsedAt),
+                  })}
                 </span>
                 <span className="flex flex-wrap gap-1">
                   {grant.scopes.length === 0
-                    ? <span className="text-xs">No scopes</span>
+                    ? <span className="text-xs">{t('noScopes')}</span>
                     : grant.scopes.map((scope) => (
                         <Badge key={scope} variant="secondary" className="text-[11px] px-1.5 py-0">
                           {scope}
@@ -209,12 +229,12 @@ export function McpPane({ workspaceId }: { workspaceId?: string }) {
                     that publishes deployments look identical from a date alone. */}
                 {grant.recentActivity && grant.recentActivity.length > 0 && (
                   <span className="flex flex-col gap-0.5 pt-1 text-[11px] text-muted-foreground">
-                    <span className="uppercase tracking-wider">Recent calls</span>
+                    <span className="uppercase tracking-wider">{t('recentCalls')}</span>
                     {grant.recentActivity.slice(0, 5).map((call, i) => (
                       <span key={`${call.at}-${i}`} className="font-mono">
-                        {when(call.at)} · {call.tool}
+                        {when(t, formatWhen, call.at)} · {call.tool}
                         {call.target ? ` · ${call.target}` : ''}
-                        {call.refused ? ' · refused' : ''}
+                        {call.refused ? ` · ${t('refusedSuffix')}` : ''}
                       </span>
                     ))}
                   </span>
@@ -230,15 +250,15 @@ export function McpPane({ workspaceId }: { workspaceId?: string }) {
                   disabled={revoking === grant.id}
                   onClick={() => void revoke(grant)}
                 >
-                  {revoking === grant.id ? 'Disconnecting…' : 'Confirm'}
+                  {revoking === grant.id ? t('disconnecting') : t('confirm')}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setConfirming(null)}>
-                  Cancel
+                  {tc('actions.cancel')}
                 </Button>
               </span>
             ) : (
               <Button size="sm" variant="outline" onClick={() => setConfirming(grant.id)}>
-                Disconnect
+                {tc('actions.disconnect')}
               </Button>
             )}
           </SettingRow>

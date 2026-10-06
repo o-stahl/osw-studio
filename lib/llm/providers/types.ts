@@ -18,7 +18,9 @@ export type BuiltInProviderId =
   | 'minimax'
   | 'llamacpp'
   | 'meshllm'
-  | 'opencode-go';
+  | 'opencode-go'
+  | 'pollinations'
+  | 'vercel';
 
 /** Provider ID type. Includes built-in providers and arbitrary custom IDs. */
 export type ProviderId = BuiltInProviderId | (string & {});
@@ -43,6 +45,10 @@ export interface ProviderModel {
     output: number; // per 1M tokens
     reasoning?: number;
   };
+  /** The provider lists it as free to use. Absent when the provider does not say. */
+  free?: boolean;
+  /** Live availability as the provider reports it (Pollinations). Absent when it reports none. */
+  health?: 'healthy' | 'degraded' | 'down';
 }
 
 export interface ProviderConfig {
@@ -50,6 +56,10 @@ export interface ProviderConfig {
   name: string;
   description: string;
   apiKeyRequired: boolean;
+  /**
+   * The key's format, as a hint in the empty field (`sk-ant-...`, `hf_...`). Not prose: when a
+   * provider has no distinctive format, leave this out and the UI shows its own translated label.
+   */
   apiKeyPlaceholder?: string;
   apiKeyHelpUrl?: string;
   baseUrl?: string;
@@ -75,4 +85,3 @@ export interface HFAuthData {
   expires_at?: number;  // OAuth tokens expire, API keys don't
   scopes?: string; // space-separated granted OAuth scopes
 }
-

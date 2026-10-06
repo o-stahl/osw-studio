@@ -390,6 +390,20 @@ describe('publishing a project too large for one request', () => {
     expect((await serverFiles(id)).has('/note.txt')).toBe(false);
   });
 
+  it('refuses a file too large for any one request before sending anything', async () => {
+    const id = await createBigProject('Oversized');
+    // Past the VFS's own text limit, so handed to the push directly, as a file synced from
+    // elsewhere would be.
+    const files = await vfs.listFiles(id);
+    const huge = { ...files[0], path: '/huge.txt', name: 'huge.txt', content: 'x'.repeat(25 * 1024 * 1024) };
+    const before = postCount;
+
+    const result = await getSyncManager(WORKSPACE).pushProjectWithFiles(await vfs.getProject(id), [...files, huge]);
+
+    expect(result.success).toBe(false);
+    expect(postCount).toBe(before);
+  });
+
   it('forwards progress from the files it pushes', async () => {
     const id = await createBigProject('Progress');
     const seen: number[] = [];

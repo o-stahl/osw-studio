@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { ScheduledFunction, EdgeFunction } from '@/lib/vfs/types';
 import {
   Dialog,
@@ -37,6 +38,8 @@ export function ScheduledFunctionEditor({
   onClose,
   onSave,
 }: ScheduledFunctionEditorProps) {
+  const t = useTranslations('backend');
+  const tc = useTranslations('common');
   const [name, setName] = useState(fn?.name || '');
   const [functionId, setFunctionId] = useState(fn?.functionId || '');
   const [cronExpression, setCronExpression] = useState(fn?.cronExpression || '');
@@ -62,19 +65,19 @@ export function ScheduledFunctionEditor({
     setError(null);
 
     if (!name.trim()) {
-      setError('Name is required');
+      setError(t('validation.nameRequired'));
       return;
     }
     if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(name)) {
-      setError('Name must be lowercase letters, numbers, and hyphens only');
+      setError(t('validation.slugName'));
       return;
     }
     if (!functionId) {
-      setError('Edge function selection is required');
+      setError(t('validation.edgeFunctionRequired'));
       return;
     }
     if (!cronExpression.trim()) {
-      setError('Cron expression is required');
+      setError(t('validation.cronRequired'));
       return;
     }
 
@@ -83,12 +86,12 @@ export function ScheduledFunctionEditor({
       try {
         const parsed = JSON.parse(config);
         if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-          setError('Config must be a JSON object');
+          setError(t('validation.configObject'));
           return;
         }
         parsedConfig = parsed;
       } catch {
-        setError('Config must be valid JSON');
+        setError(t('validation.configJson'));
         return;
       }
     }
@@ -105,7 +108,7 @@ export function ScheduledFunctionEditor({
         enabled: fn?.enabled ?? true,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save scheduled function');
+      setError(err instanceof Error ? err.message : t('saveScheduleFailed'));
     } finally {
       setSaving(false);
     }
@@ -116,17 +119,17 @@ export function ScheduledFunctionEditor({
       <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>
-            {fn ? 'Edit Schedule' : 'Create Schedule'}
+            {fn ? t('schedEdit') : t('schedCreate')}
           </DialogTitle>
           <DialogDescription>
-            Run an edge function on a cron schedule.
+            {t('schedDesc')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-auto space-y-4">
           {/* Name */}
           <div className="space-y-2">
-            <Label htmlFor="sched-name">Name</Label>
+            <Label htmlFor="sched-name">{tc('labels.name')}</Label>
             <Input
               id="sched-name"
               value={name}
@@ -138,10 +141,10 @@ export function ScheduledFunctionEditor({
 
           {/* Edge Function */}
           <div className="space-y-2">
-            <Label htmlFor="sched-function">Edge Function</Label>
+            <Label htmlFor="sched-function">{t('edgeFunction')}</Label>
             <Select value={functionId} onValueChange={setFunctionId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select a function..." />
+                <SelectValue placeholder={t('selectFunction')} />
               </SelectTrigger>
               <SelectContent>
                 {edgeFunctions.map(ef => (
@@ -153,14 +156,14 @@ export function ScheduledFunctionEditor({
             </Select>
             {edgeFunctions.length === 0 && (
               <p className="text-xs text-muted-foreground">
-                No edge functions available. Create one in the Functions tab first.
+                {t('noEdgeFunctionsHint')}
               </p>
             )}
           </div>
 
           {/* Cron Expression */}
           <div className="space-y-2">
-            <Label htmlFor="sched-cron">Cron Expression</Label>
+            <Label htmlFor="sched-cron">{t('cronExpression')}</Label>
             <Input
               id="sched-cron"
               value={cronExpression}
@@ -172,7 +175,7 @@ export function ScheduledFunctionEditor({
 
           {/* Timezone */}
           <div className="space-y-2">
-            <Label htmlFor="sched-tz">Timezone</Label>
+            <Label htmlFor="sched-tz">{t('timezone')}</Label>
             <Input
               id="sched-tz"
               value={timezone}
@@ -180,24 +183,24 @@ export function ScheduledFunctionEditor({
               placeholder="UTC"
             />
             <p className="text-xs text-muted-foreground">
-              e.g. UTC, America/New_York, Europe/London
+              {t('timezoneHelp')}
             </p>
           </div>
 
           {/* Description */}
           <div className="space-y-2">
-            <Label htmlFor="sched-desc">Description (optional)</Label>
+            <Label htmlFor="sched-desc">{tc('labels.descriptionOptional')}</Label>
             <Input
               id="sched-desc"
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="What does this schedule do?"
+              placeholder={t('schedDescPlaceholder')}
             />
           </div>
 
           {/* Config */}
           <div className="space-y-2">
-            <Label htmlFor="sched-config">Config JSON (optional)</Label>
+            <Label htmlFor="sched-config">{t('configJson')}</Label>
             <Textarea
               id="sched-config"
               value={config}
@@ -206,7 +209,7 @@ export function ScheduledFunctionEditor({
               className="font-mono text-sm h-20"
             />
             <p className="text-xs text-muted-foreground">
-              Custom data passed as the request body to the edge function.
+              {t('configHelp')}
             </p>
           </div>
 
@@ -214,14 +217,14 @@ export function ScheduledFunctionEditor({
           <div className="bg-muted/30 border rounded-lg p-4 space-y-2">
             <div className="flex items-center gap-2 text-sm font-medium">
               <Info className="h-4 w-4" />
-              Cron Patterns <span className="font-normal text-muted-foreground">(minimum 5 min interval)</span>
+              {t('cronPatterns')} <span className="font-normal text-muted-foreground">{t('cronMinInterval')}</span>
             </div>
             <div className="grid gap-1 text-xs font-mono">
-              <div><span className="text-muted-foreground">*/5 * * * *</span>  Every 5 minutes</div>
-              <div><span className="text-muted-foreground">0 * * * *</span>    Every hour</div>
-              <div><span className="text-muted-foreground">0 8 * * *</span>    Daily at 8am</div>
-              <div><span className="text-muted-foreground">0 0 * * 1</span>    Every Monday at midnight</div>
-              <div><span className="text-muted-foreground">0 0 1 * *</span>    First of every month</div>
+              <div><span className="text-muted-foreground">*/5 * * * *</span>  {t('cronEvery5')}</div>
+              <div><span className="text-muted-foreground">0 * * * *</span>    {t('cronHourly')}</div>
+              <div><span className="text-muted-foreground">0 8 * * *</span>    {t('cronDaily8')}</div>
+              <div><span className="text-muted-foreground">0 0 * * 1</span>    {t('cronMondayMidnight')}</div>
+              <div><span className="text-muted-foreground">0 0 1 * *</span>    {t('cronFirstOfMonth')}</div>
             </div>
           </div>
 
@@ -237,16 +240,16 @@ export function ScheduledFunctionEditor({
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 pt-4 border-t">
           <Button variant="outline" onClick={onClose} disabled={saving}>
-            Cancel
+            {tc('actions.cancel')}
           </Button>
           <Button onClick={handleSave} disabled={saving}>
             {saving ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Saving...
+                {tc('actions.saving')}
               </>
             ) : (
-              fn ? 'Save Changes' : 'Create Schedule'
+              fn ? tc('actions.saveChanges') : t('schedCreate')
             )}
           </Button>
         </div>

@@ -22,7 +22,7 @@ export class SSEEventBus {
     const sseEvent: SSEEvent = {
       id,
       event,
-      data: { ...data, sourceProjectId: projectId },
+      data: { ...data, sourceProjectId: projectId, sourceTaskId: taskId },
       buffered: !isDelta,
     };
 

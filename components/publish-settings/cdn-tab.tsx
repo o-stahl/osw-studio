@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { PublishSettings, CdnConfig } from '@/lib/vfs/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +32,8 @@ interface CdnTabProps {
 }
 
 export function CdnTab({ settings, onChange }: CdnTabProps) {
+  const t = useTranslations('publishSettings');
+  const tc = useTranslations('common');
   const [editingCdn, setEditingCdn] = useState<CdnConfig | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
@@ -52,7 +55,7 @@ export function CdnTab({ settings, onChange }: CdnTabProps) {
   };
 
   const handleDeleteCdn = (cdnId: string) => {
-    if (!confirm('Are you sure you want to remove this CDN resource?')) return;
+    if (!confirm(t('confirmRemoveCdn'))) return;
 
     onChange({
       ...settings,
@@ -71,7 +74,7 @@ export function CdnTab({ settings, onChange }: CdnTabProps) {
 
   const handleSaveCdn = () => {
     if (!editingCdn || !editingCdn.name.trim() || !editingCdn.url.trim()) {
-      alert('Please provide both a name and URL for the CDN resource');
+      alert(t('cdnNameUrlRequired'));
       return;
     }
 
@@ -79,7 +82,7 @@ export function CdnTab({ settings, onChange }: CdnTabProps) {
     try {
       new URL(editingCdn.url);
     } catch {
-      alert('Please provide a valid URL');
+      alert(t('cdnInvalidUrl'));
       return;
     }
 
@@ -115,23 +118,23 @@ export function CdnTab({ settings, onChange }: CdnTabProps) {
   return (
     <div className="flex flex-col gap-4">
       <Section>
-        <SectionHeader icon={Link2} title="CDN resources">
+        <SectionHeader icon={Link2} title={t('cdnResources')}>
           <Button onClick={handleAddCdn} size="sm" variant="outline">
             <Plus className="h-4 w-4" />
-            Add resource
+            {t('addResource')}
           </Button>
         </SectionHeader>
         <SectionBody className="space-y-3">
       {settings.cdnLinks.length === 0 ? (
         <div className="text-center p-8 border-2 border-dashed rounded-lg">
           <Link2 className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-          <h3 className="text-lg font-semibold mb-2">No CDN Resources</h3>
+          <h3 className="text-lg font-semibold mb-2">{t('noCdnResources')}</h3>
           <p className="text-sm text-muted-foreground mb-4">
-            Add libraries like Bootstrap, Tailwind, or custom stylesheets
+            {t('noCdnHint')}
           </p>
           <Button onClick={handleAddCdn} variant="outline">
             <Plus className="h-4 w-4 mr-2" />
-            Add Your First Resource
+            {t('addFirstResource')}
           </Button>
         </div>
       ) : (
@@ -186,20 +189,20 @@ export function CdnTab({ settings, onChange }: CdnTabProps) {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              {editingCdn?.name ? 'Edit CDN Resource' : 'Add CDN Resource'}
+              {editingCdn?.name ? t('editCdn') : t('addCdn')}
             </DialogTitle>
             <DialogDescription>
-              Add a CSS or JavaScript library from a CDN
+              {t('cdnDialogDesc')}
             </DialogDescription>
           </DialogHeader>
 
           {editingCdn && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="cdn-name">Resource Name</Label>
+                <Label htmlFor="cdn-name">{t('resourceName')}</Label>
                 <Input
                   id="cdn-name"
-                  placeholder="e.g., Bootstrap CSS"
+                  placeholder={t('cdnNamePlaceholder')}
                   value={editingCdn.name}
                   onChange={(e) =>
                     setEditingCdn({ ...editingCdn, name: e.target.value })
@@ -208,7 +211,7 @@ export function CdnTab({ settings, onChange }: CdnTabProps) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="cdn-url">CDN URL</Label>
+                <Label htmlFor="cdn-url">{t('cdnUrl')}</Label>
                 <Input
                   id="cdn-url"
                   type="url"
@@ -226,7 +229,7 @@ export function CdnTab({ settings, onChange }: CdnTabProps) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="cdn-type">Type</Label>
+                <Label htmlFor="cdn-type">{tc('labels.type')}</Label>
                 <Select
                   value={editingCdn.type}
                   onValueChange={(value: 'css' | 'js') =>
@@ -237,15 +240,15 @@ export function CdnTab({ settings, onChange }: CdnTabProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="css">CSS Stylesheet</SelectItem>
-                    <SelectItem value="js">JavaScript Library</SelectItem>
+                    <SelectItem value="css">{t('cssStylesheet')}</SelectItem>
+                    <SelectItem value="js">{t('javascriptLibrary')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="cdn-integrity">
-                  SRI Integrity Hash (Optional)
+                  {t('sriLabel')}
                 </Label>
                 <Input
                   id="cdn-integrity"
@@ -259,12 +262,12 @@ export function CdnTab({ settings, onChange }: CdnTabProps) {
                   }
                 />
                 <p className="text-xs text-muted-foreground">
-                  Subresource Integrity hash for security verification
+                  {t('sriHelp')}
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="cdn-crossorigin">CORS Setting (Optional)</Label>
+                <Label htmlFor="cdn-crossorigin">{t('corsSetting')}</Label>
                 <Select
                   value={editingCdn.crossorigin || 'none'}
                   onValueChange={(value) =>
@@ -281,9 +284,9 @@ export function CdnTab({ settings, onChange }: CdnTabProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    <SelectItem value="anonymous">Anonymous</SelectItem>
-                    <SelectItem value="use-credentials">Use Credentials</SelectItem>
+                    <SelectItem value="none">{t('corsNone')}</SelectItem>
+                    <SelectItem value="anonymous">{t('corsAnonymous')}</SelectItem>
+                    <SelectItem value="use-credentials">{t('corsUseCredentials')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -292,9 +295,9 @@ export function CdnTab({ settings, onChange }: CdnTabProps) {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              Cancel
+              {tc('actions.cancel')}
             </Button>
-            <Button onClick={handleSaveCdn}>Save Resource</Button>
+            <Button onClick={handleSaveCdn}>{t('saveResource')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

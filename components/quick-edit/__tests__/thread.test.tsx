@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { SimpleThread } from '../thread';
@@ -43,7 +44,7 @@ function run(over: Partial<Run> = {}): Run {
 
 function mount(runs: Run[], props: Partial<React.ComponentProps<typeof SimpleThread>> = {}) {
   act(() => {
-    root.render(
+    root.render(withMessages(
       <SimpleThread
         runs={runs}
         generating={false}
@@ -56,7 +57,7 @@ function mount(runs: Run[], props: Partial<React.ComponentProps<typeof SimpleThr
         onDeny={vi.fn()}
         {...props}
       />,
-    );
+    ));
   });
 }
 
@@ -90,23 +91,29 @@ afterEach(() => {
 
 describe('a run that finished', () => {
   it('says nothing at the end when it simply worked', () => {
-    mount([run({ tally: tally({ status: 'done', summary: 'Changed 1 file.', filesChanged: ['/a.css'] }) })]);
+    mount([run({ tally: tally({ status: 'done', summary: { kind: 'changed', files: 1 }, filesChanged: ['/a.css'] }) })]);
 
     // The summary the tally carries is deliberately not rendered for a run that succeeded.
     expect(text()).not.toContain('Changed 1 file.');
   });
 
   it('reports a failure, which nothing else in the card would', () => {
-    mount([run({ tally: tally({ status: 'failed', summary: 'Something went wrong. Undo puts it back the way it was.' }) })]);
+    mount([run({ tally: tally({ status: 'failed', summary: { kind: 'failed' } }) })]);
 
     expect(text()).toContain('Something went wrong');
   });
 
   it('reports a run the person stopped', () => {
     // A stop leaves the status idle with a summary, which is why the rule cannot be "failed only".
-    mount([run({ tally: tally({ status: 'idle', summary: 'Stopped.' }) })]);
+    mount([run({ tally: tally({ status: 'idle', summary: { kind: 'stopped' } }) })]);
 
     expect(text()).toContain('Stopped.');
+  });
+
+  it('counts the files a stopped run had already changed', () => {
+    mount([run({ tally: tally({ status: 'idle', summary: { kind: 'changed', files: 3 }, filesChanged: ['/a', '/b', '/c'] }) })]);
+
+    expect(text()).toContain('Changed 3 files.');
   });
 
   it('offers the way back for an older run', () => {
@@ -141,6 +148,15 @@ describe('a run still working', () => {
 
     expect(text()).toContain('Allow');
     expect(text()).toContain("Don't");
+  });
+
+  it('names a gate it has no wording for by its own label', () => {
+    mount([run({
+      approval: { gateKey: 'custom.unknown-gate', capabilityLabel: 'launch the rockets' },
+      tally: tally({ status: 'waiting' }),
+    })]);
+
+    expect(text()).toContain('launch the rockets');
   });
 
   it('answers Allow with the gate it was asked about', () => {

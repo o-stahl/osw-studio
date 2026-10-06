@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 import { Deployment, Project } from '@/lib/vfs/types';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -44,31 +45,35 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 
 type NavSection = 'deployment' | 'backend';
 
+/** Every nav entry's id, so the translated label map below is checked for completeness. */
+type NavId =
+  | 'general' | 'scripts' | 'cdn' | 'seo' | 'analytics' | 'compliance' | 'review'
+  | 'functions' | 'helpers' | 'secrets' | 'schedules' | 'schema' | 'sql' | 'logs';
+
 interface NavItem {
-  id: string;
-  label: string;
+  id: NavId;
   icon: React.ElementType;
   section: NavSection;
 }
 
 const DEPLOYMENT_NAV: NavItem[] = [
-  { id: 'general', label: 'General', icon: Settings, section: 'deployment' },
-  { id: 'scripts', label: 'Scripts', icon: FileCode, section: 'deployment' },
-  { id: 'cdn', label: 'CDN', icon: Link2, section: 'deployment' },
-  { id: 'seo', label: 'SEO', icon: SearchIcon, section: 'deployment' },
-  { id: 'analytics', label: 'Analytics', icon: BarChart3, section: 'deployment' },
-  { id: 'compliance', label: 'Compliance', icon: Shield, section: 'deployment' },
-  { id: 'review', label: 'Review', icon: MessagesSquare, section: 'deployment' },
+  { id: 'general', icon: Settings, section: 'deployment' },
+  { id: 'scripts', icon: FileCode, section: 'deployment' },
+  { id: 'cdn', icon: Link2, section: 'deployment' },
+  { id: 'seo', icon: SearchIcon, section: 'deployment' },
+  { id: 'analytics', icon: BarChart3, section: 'deployment' },
+  { id: 'compliance', icon: Shield, section: 'deployment' },
+  { id: 'review', icon: MessagesSquare, section: 'deployment' },
 ];
 
 const BACKEND_NAV: NavItem[] = [
-  { id: 'functions', label: 'Functions', icon: Code2, section: 'backend' },
-  { id: 'helpers', label: 'Helpers', icon: Wrench, section: 'backend' },
-  { id: 'secrets', label: 'Secrets', icon: Key, section: 'backend' },
-  { id: 'schedules', label: 'Schedules', icon: Clock, section: 'backend' },
-  { id: 'schema', label: 'Schema', icon: Database, section: 'backend' },
-  { id: 'sql', label: 'SQL', icon: Terminal, section: 'backend' },
-  { id: 'logs', label: 'Logs', icon: ScrollText, section: 'backend' },
+  { id: 'functions', icon: Code2, section: 'backend' },
+  { id: 'helpers', icon: Wrench, section: 'backend' },
+  { id: 'secrets', icon: Key, section: 'backend' },
+  { id: 'schedules', icon: Clock, section: 'backend' },
+  { id: 'schema', icon: Database, section: 'backend' },
+  { id: 'sql', icon: Terminal, section: 'backend' },
+  { id: 'logs', icon: ScrollText, section: 'backend' },
 ];
 
 /**
@@ -117,16 +122,26 @@ export function DeploymentDetail({
   workspaceId,
   initialSection,
 }: DeploymentDetailProps) {
+  const t = useTranslations('deploymentDetail');
+  const tc = useTranslations('common');
+  const td = useTranslations('deployments');
+  const tn = useTranslations('deploymentDetail.nav');
+  const navLabels = useMemo<Record<NavId, string>>(() => ({
+    general: tn('general'), scripts: tn('scripts'), cdn: tn('cdn'), seo: tn('seo'),
+    analytics: tn('analytics'), compliance: tn('compliance'), review: tn('review'),
+    functions: tn('functions'), helpers: tn('helpers'), secrets: tn('secrets'),
+    schedules: tn('schedules'), schema: tn('schema'), sql: tn('sql'), logs: tn('logs'),
+  }), [tn]);
   const [activeNav, setActiveNav] = useState(initialSection ?? 'general');
 
   // The same grouping the rail renders, reused by the narrow-screen dropdown so the two cannot
   // list different items.
   const navSections = useMemo(
     () => [
-      { label: 'Deployment', items: DEPLOYMENT_NAV },
-      ...(deployment.databaseEnabled ? [{ label: 'Backend', items: BACKEND_NAV }] : []),
+      { label: t('sectionDeployment'), items: DEPLOYMENT_NAV },
+      ...(deployment.databaseEnabled ? [{ label: t('sectionBackend'), items: BACKEND_NAV }] : []),
     ],
-    [deployment.databaseEnabled]
+    [deployment.databaseEnabled, t]
   );
   const activeNavItem = navSections.flatMap((section) => section.items).find((i) => i.id === activeNav);
 
@@ -194,7 +209,7 @@ export function DeploymentDetail({
       setIsDirty(false);
     } catch (error) {
       console.error('[DeploymentDetail] Failed to save settings:', error);
-      alert('Failed to save settings. Please try again.');
+      alert(t('saveFailed'));
     } finally {
       setIsSaving(false);
     }
@@ -202,7 +217,7 @@ export function DeploymentDetail({
 
   const handleBack = () => {
     if (isDirty) {
-      if (confirm('You have unsaved changes. Are you sure you want to go back?')) {
+      if (confirm(t('confirmLeaveUnsaved'))) {
         onBack();
       }
     } else {
@@ -256,7 +271,7 @@ export function DeploymentDetail({
             className="gap-1.5 text-muted-foreground hover:text-foreground"
           >
             <ChevronLeft className="h-4 w-4" />
-            Deployments
+            {tc('terms.deployments')}
           </Button>
 
           <div className="h-4 w-px bg-border" />
@@ -264,22 +279,22 @@ export function DeploymentDetail({
           <h1 className="text-base font-semibold truncate">{deployment.name}</h1>
 
           {hasBeenPublished && deployment.underConstruction ? (
-            <Badge variant="outline" className="border-yellow-600 text-yellow-600">Under Construction</Badge>
+            <Badge variant="outline" className="border-yellow-600 text-yellow-600">{t('underConstruction')}</Badge>
           ) : hasBeenPublished && hasPendingChanges ? (
-            <Badge variant="outline" className="border-amber-500 text-amber-500">Pending Changes</Badge>
+            <Badge variant="outline" className="border-amber-500 text-amber-500">{t('pendingChanges')}</Badge>
           ) : hasBeenPublished ? (
-            <Badge variant="outline" className="border-green-500 text-green-500">Published</Badge>
+            <Badge variant="outline" className="border-green-500 text-green-500">{t('published')}</Badge>
           ) : (
-            <Badge variant="secondary">Draft</Badge>
+            <Badge variant="secondary">{t('draft')}</Badge>
           )}
 
           <div className="ml-auto flex items-center gap-2">
             {isDirty && (
-              <span className="text-xs text-muted-foreground">Unsaved changes</span>
+              <span className="text-xs text-muted-foreground">{t('unsavedChanges')}</span>
             )}
             {isDirty && (
               <Button size="sm" onClick={handleSave} disabled={isSaving}>
-                {isSaving ? 'Saving...' : 'Save Changes'}
+                {isSaving ? tc('actions.saving') : t('saveChanges')}
               </Button>
             )}
             {hasBeenPublished && (
@@ -290,7 +305,7 @@ export function DeploymentDetail({
                 className="gap-1.5"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
-                View Live
+                {td('viewLive')}
               </Button>
             )}
             <Button
@@ -299,7 +314,7 @@ export function DeploymentDetail({
               disabled={isPublishing}
               variant={isDirty ? 'outline' : 'default'}
             >
-              {isPublishing ? 'Publishing...' : hasPendingChanges ? 'Publish Changes' : hasBeenPublished ? 'Republish' : 'Publish'}
+              {isPublishing ? t('publishing') : hasPendingChanges ? t('publishChanges') : hasBeenPublished ? tc('actions.republish') : tc('actions.publish')}
             </Button>
           </div>
         </div>
@@ -311,7 +326,7 @@ export function DeploymentDetail({
         <nav className="hidden md:block w-48 shrink-0 border-r bg-muted/30 overflow-y-auto py-2">
           <div className="px-3 py-1.5">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Deployment
+              {t('sectionDeployment')}
             </span>
           </div>
           {DEPLOYMENT_NAV.map(item => (
@@ -326,7 +341,7 @@ export function DeploymentDetail({
               )}
             >
               <item.icon className="h-3.5 w-3.5 shrink-0" />
-              {item.label}
+              {navLabels[item.id]}
             </button>
           ))}
 
@@ -334,7 +349,7 @@ export function DeploymentDetail({
             <>
               <div className="px-3 py-1.5 mt-3">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Backend
+                  {t('sectionBackend')}
                 </span>
               </div>
               {BACKEND_NAV.map(item => (
@@ -349,7 +364,7 @@ export function DeploymentDetail({
                   )}
                 >
                   <item.icon className="h-3.5 w-3.5 shrink-0" />
-                  {item.label}
+                  {navLabels[item.id]}
                 </button>
               ))}
             </>
@@ -363,7 +378,7 @@ export function DeploymentDetail({
             <SelectTrigger className="w-full">
               <span className="flex items-center gap-1.5 text-xs">
                 {activeNavItem?.icon && <activeNavItem.icon className="h-3 w-3" />}
-                {activeNavItem?.label ?? 'Settings'}
+                {activeNavItem ? navLabels[activeNavItem.id] : t('settingsFallback')}
               </span>
             </SelectTrigger>
             <SelectContent>
@@ -374,7 +389,7 @@ export function DeploymentDetail({
                     <SelectItem key={item.id} value={item.id}>
                       <span className="flex items-center gap-2">
                         <item.icon className="h-3.5 w-3.5" />
-                        {item.label}
+                        {navLabels[item.id]}
                       </span>
                     </SelectItem>
                   ))}

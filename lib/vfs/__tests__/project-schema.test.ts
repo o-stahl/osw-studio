@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import 'fake-indexeddb/auto';
 import { installLocalStorageStub } from './local-storage-stub';
 
 const { vfs } = await import('../index');
-const { getProjectSchema, setProjectSchema, clearLegacyProjectSchema } =
+const { getProjectSchema, setProjectSchema, clearLegacyProjectSchema, applyProjectDatabaseSchema } =
   await import('../project-schema');
+const { setAutoSyncWorkspaceId } = await import('../auto-sync');
 
 const DDL = 'CREATE TABLE messages (id INTEGER PRIMARY KEY);';
 const legacyKey = (projectId: string) => `osw-db-schema-${projectId}`;
@@ -92,5 +93,60 @@ describe('project database schema', () => {
     localStorage.setItem(legacyKey('p1'), DDL);
     clearLegacyProjectSchema('p1');
     expect(localStorage.getItem(legacyKey('p1'))).toBeNull();
+  });
+});
+
+/**
+ * A template's schema (the Blog's users, sessions and comments) is created in the project's server
+ * database when the project is created, so a published site has its tables. The server only has
+ * workspace-scoped routes; posting to an unscoped one failed and left the tables uncreated.
+ */
+describe('applying a schema in Server Mode', () => {
+  let restore = () => {};
+  beforeAll(async () => { await vfs.init(); });
+  beforeEach(() => { restore(); restore = installLocalStorageStub(); });
+  afterAll(() => {
+    restore();
+    setAutoSyncWorkspaceId(undefined);
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("creates the tables through the current workspace's project database route", async () => {
+    vi.stubEnv('NEXT_PUBLIC_SERVER_MODE', 'true');
+    setAutoSyncWorkspaceId('ws1');
+    const posted: Array<{ url: string; body: unknown }> = [];
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+      posted.push({ url, body: JSON.parse(String(init.body)) });
+      return new Response('{}', { status: 200 });
+    });
+    const project = await vfs.createProject('Blog', 'test');
+
+    await applyProjectDatabaseSchema(project.id, DDL);
+
+    expect(posted).toEqual([{ url: `/api/w/ws1/projects/${project.id}/database/query`, body: { sql: DDL } }]);
+    expect((await vfs.getProject(project.id)).settings.databaseSchema).toBe(DDL);
+  });
+
+  it('only stores the schema outside Server Mode', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SERVER_MODE', 'false');
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    const project = await vfs.createProject('Blog', 'test');
+
+    await applyProjectDatabaseSchema(project.id, DDL);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect((await vfs.getProject(project.id)).settings.databaseSchema).toBe(DDL);
+  });
+
+  it('keeps the schema when the server cannot be reached', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SERVER_MODE', 'true');
+    setAutoSyncWorkspaceId('ws1');
+    vi.stubGlobal('fetch', async () => { throw new TypeError('Failed to fetch'); });
+    const project = await vfs.createProject('Blog', 'test');
+
+    await expect(applyProjectDatabaseSchema(project.id, DDL)).resolves.toBeUndefined();
+    expect((await vfs.getProject(project.id)).settings.databaseSchema).toBe(DDL);
   });
 });

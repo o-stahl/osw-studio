@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import MonacoEditor from '@monaco-editor/react';
 import { EdgeFunction } from '@/lib/vfs/types';
 import {
@@ -59,6 +60,8 @@ export function FunctionEditor({
   onClose,
   onSave,
 }: FunctionEditorProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('backend');
   const [name, setName] = useState(fn?.name || '');
   const [description, setDescription] = useState(fn?.description || '');
   const [method, setMethod] = useState<EdgeFunction['method']>(fn?.method || 'ANY');
@@ -89,15 +92,15 @@ export function FunctionEditor({
 
     // Basic validation
     if (!name.trim()) {
-      setError('Function name is required');
+      setError(t('validation.functionNameRequired'));
       return;
     }
     if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(name)) {
-      setError('Name must be lowercase letters, numbers, and hyphens only');
+      setError(t('validation.slugName'));
       return;
     }
     if (!code.trim()) {
-      setError('Function code is required');
+      setError(t('validation.functionCodeRequired'));
       return;
     }
 
@@ -112,7 +115,7 @@ export function FunctionEditor({
         enabled: fn?.enabled ?? true,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save function');
+      setError(err instanceof Error ? err.message : t('saveFunctionFailed'));
     } finally {
       setSaving(false);
     }
@@ -120,15 +123,17 @@ export function FunctionEditor({
 
   if (!mounted) return null;
 
+  const shownName = name || 'name'; // i18n-ignore: a code identifier standing in for the function's name
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-3xl h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>
-            {fn ? 'Edit Function' : 'Create Function'}
+            {fn ? t('editFunction') : t('createFunction')}
           </DialogTitle>
           <DialogDescription>
-            Define an HTTP endpoint that can access your deployment database.
+            {t('functionDialogDesc')}
           </DialogDescription>
         </DialogHeader>
 
@@ -136,7 +141,7 @@ export function FunctionEditor({
           {/* Name & Method */}
           <div className="grid grid-cols-3 gap-4">
             <div className="col-span-2 space-y-2">
-              <Label htmlFor="name">Function Name</Label>
+              <Label htmlFor="name">{t('functionName')}</Label>
               <Input
                 id="name"
                 value={name}
@@ -146,12 +151,12 @@ export function FunctionEditor({
               />
               {deploymentId && (
                 <p className="text-xs text-muted-foreground">
-                  URL: /api/deployments/{deploymentId}/functions/<span className="font-mono">{name || 'name'}</span>
+                  {`URL: /api/deployments/${deploymentId}/functions/`}<span className="font-mono">{shownName}</span>
                 </p>
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="method">HTTP Method</Label>
+              <Label htmlFor="method">{t('httpMethod')}</Label>
               <Select value={method} onValueChange={v => setMethod(v as EdgeFunction['method'])}>
                 <SelectTrigger>
                   <SelectValue />
@@ -169,18 +174,18 @@ export function FunctionEditor({
 
           {/* Description */}
           <div className="space-y-2">
-            <Label htmlFor="description">Description (optional)</Label>
+            <Label htmlFor="description">{tc('labels.descriptionOptional')}</Label>
             <Input
               id="description"
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="What does this function do?"
+              placeholder={t('functionDescPlaceholder')}
             />
           </div>
 
           {/* Timeout */}
           <div className="space-y-2">
-            <Label htmlFor="timeout">Timeout (seconds)</Label>
+            <Label htmlFor="timeout">{t('timeoutSeconds')}</Label>
             <div className="flex items-center gap-2">
               <Input
                 id="timeout"
@@ -191,13 +196,13 @@ export function FunctionEditor({
                 onChange={e => setTimeoutMs(Math.min(30, Math.max(1, parseInt(e.target.value) || 5)) * 1000)}
                 className="w-24"
               />
-              <span className="text-sm text-muted-foreground">1-30 seconds</span>
+              <span className="text-sm text-muted-foreground">{t('timeoutRange')}</span>
             </div>
           </div>
 
           {/* Code Editor */}
           <div className="space-y-2">
-            <Label>Function Code</Label>
+            <Label>{t('functionCode')}</Label>
             <div className="h-64 border rounded-lg overflow-hidden">
               <MonacoEditor
                 language="javascript"
@@ -219,13 +224,13 @@ export function FunctionEditor({
           <div className="bg-muted/30 border rounded-lg p-4 space-y-2">
             <div className="flex items-center gap-2 text-sm font-medium">
               <Info className="h-4 w-4" />
-              Available APIs
+              {t('availableApis')}
             </div>
             <div className="grid gap-2 text-xs font-mono">
               <div><span className="text-blue-500">request</span>.method, .body, .query, .headers, .params, .path</div>
               <div><span className="text-green-500">db</span>.query(sql, params), .run(sql, params), .all(sql, params)</div>
-              <div><span className="text-purple-500">Response</span>.json(data, status), .text(text, status), .error(msg, status)</div>
-              <div><span className="text-yellow-500">fetch</span>(url, options) - External HTTP requests</div>
+              <div><span className="text-purple-500">{"Response" /* i18n-ignore: an API name */}</span>.json(data, status), .text(text, status), .error(msg, status)</div>
+              <div><span className="text-yellow-500">fetch</span>(url, options) - {t('apiFetchDesc')}</div>
             </div>
           </div>
 
@@ -241,16 +246,16 @@ export function FunctionEditor({
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 pt-4 border-t">
           <Button variant="outline" onClick={onClose} disabled={saving}>
-            Cancel
+            {tc('actions.cancel')}
           </Button>
           <Button onClick={handleSave} disabled={saving}>
             {saving ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Saving...
+                {tc('actions.saving')}
               </>
             ) : (
-              fn ? 'Save Changes' : 'Create Function'
+              fn ? tc('actions.saveChanges') : t('createFunction')
             )}
           </Button>
         </div>

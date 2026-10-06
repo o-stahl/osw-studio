@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, Component, type ReactNode, type ErrorInfo } from 'react';
-import MonacoEditor, { useMonaco } from '@monaco-editor/react';
+import { useTranslations } from 'next-intl';
+import MonacoEditor, { loader, type Monaco } from '@monaco-editor/react';
 import { VirtualFile, ProjectRuntime, getSpecificMimeType } from '@/lib/vfs/types';
 import { vfs } from '@/lib/vfs';
 import { X, Code2, Save, FileCode, Image as ImageIcon, Film, AlertCircle } from 'lucide-react';
@@ -11,6 +12,24 @@ import { cn, logger } from '@/lib/utils';
 import { useTheme } from 'next-themes';
 import { useTypescriptIntelliSense } from '@/lib/hooks/use-typescript-intellisense';
 import { track } from '@/lib/telemetry';
+
+/**
+ * Monaco, once loaded. `useMonaco` from @monaco-editor/react leaves its load unhandled when the
+ * editor unmounts first (closing a project while it loads), which surfaces as an unhandled
+ * `{type: 'cancelation'}` rejection; this is the same hook with the cancellation caught.
+ */
+export function useLoadedMonaco(): Monaco | null {
+  const [monaco, setMonaco] = useState<Monaco | null>(() => loader.__getMonacoInstance());
+  useEffect(() => {
+    if (monaco) return;
+    const loading = loader.init();
+    loading.then(setMonaco).catch((error: { type?: string }) => {
+      if (error?.type !== 'cancelation') logger.error('[Editor] Monaco failed to load:', error);
+    });
+    return () => loading.cancel();
+  }, [monaco]);
+  return monaco;
+}
 
 // Module-level, session-scoped: ensures `code_edited` fires at most once per
 // project per session, regardless of how many files are edited or how many
@@ -49,6 +68,9 @@ interface OpenFile {
 }
 
 export function MultiTabEditor({ projectId, runtime, onClose }: MultiTabEditorProps) {
+  const t = useTranslations('editor');
+  const tc = useTranslations('common');
+  const tw = useTranslations('workspace');
   const [openFiles, setOpenFiles] = useState<Map<string, OpenFile>>(new Map());
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const { resolvedTheme } = useTheme();
@@ -56,7 +78,7 @@ export function MultiTabEditor({ projectId, runtime, onClose }: MultiTabEditorPr
   const savingPathsRef = React.useRef<Set<string>>(new Set());
 
   // TypeScript IntelliSense for React projects
-  const monacoInstance = useMonaco();
+  const monacoInstance = useLoadedMonaco();
   const monacoRef = useRef(monacoInstance);
   useEffect(() => { monacoRef.current = monacoInstance; }, [monacoInstance]);
   useTypescriptIntelliSense(projectId, runtime, monacoRef);
@@ -176,7 +198,7 @@ export function MultiTabEditor({ projectId, runtime, onClose }: MultiTabEditorPr
 
     const file = openFiles.get(path);
     if (file?.modified) {
-      if (!confirm(`Close ${file.file.name} without saving?`)) {
+      if (!confirm(t('confirmCloseUnsaved', { name: file.file.name }))) {
         return;
       }
     }
@@ -425,7 +447,7 @@ export function MultiTabEditor({ projectId, runtime, onClose }: MultiTabEditorPr
     <div className="h-full flex flex-col">
       <PanelHeader
         icon={Code2}
-        title="Code Editor"
+        title={tw('tabs.codeEditor')}
         color="var(--button-editor-active)"
         onClose={onClose}
         panelKey="editor"
@@ -437,7 +459,7 @@ export function MultiTabEditor({ projectId, runtime, onClose }: MultiTabEditorPr
             onClick={() => saveFile(activeFilePath!)}
           >
             <Save className="h-2.5 w-2.5 md:h-3 md:w-3" />
-            <span className="text-xs">Save</span>
+            <span className="text-xs">{tc('actions.save')}</span>
           </Button>
         )}
       />
@@ -447,8 +469,8 @@ export function MultiTabEditor({ projectId, runtime, onClose }: MultiTabEditorPr
           <div className="text-center space-y-3">
             <FileCode className="h-12 w-12 mx-auto opacity-50" />
             <div className="space-y-1">
-              <p className="text-base font-medium">No files open</p>
-              <p className="text-sm">Select a file from the explorer to edit</p>
+              <p className="text-base font-medium">{t('noFilesOpen')}</p>
+              <p className="text-sm">{t('selectFile')}</p>
             </div>
           </div>
         </div>
@@ -495,7 +517,7 @@ export function MultiTabEditor({ projectId, runtime, onClose }: MultiTabEditorPr
                       <div className="text-center space-y-4 max-w-2xl">
                         <ImageIcon className="h-12 w-12 mx-auto text-muted-foreground" />
                         <div className="space-y-2">
-                          <h3 className="text-lg font-medium">Image Preview</h3>
+                          <h3 className="text-lg font-medium">{t('imagePreview')}</h3>
                           <p className="text-sm text-muted-foreground">
                             {activeFile.file.name}
                           </p>
@@ -518,7 +540,7 @@ export function MultiTabEditor({ projectId, runtime, onClose }: MultiTabEditorPr
                           />
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          Image files cannot be edited in the text editor
+                          {t('imageNotEditable')}
                         </p>
                       </div>
                     </div>
@@ -531,7 +553,7 @@ export function MultiTabEditor({ projectId, runtime, onClose }: MultiTabEditorPr
                       <div className="text-center space-y-4 max-w-2xl w-full">
                         <Film className="h-12 w-12 mx-auto text-muted-foreground" />
                         <div className="space-y-2">
-                          <h3 className="text-lg font-medium">Video Preview</h3>
+                          <h3 className="text-lg font-medium">{t('videoPreview')}</h3>
                           <p className="text-sm text-muted-foreground">
                             {activeFile.file.name}
                           </p>
@@ -554,7 +576,7 @@ export function MultiTabEditor({ projectId, runtime, onClose }: MultiTabEditorPr
                           />
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          Video files cannot be edited in the text editor
+                          {t('videoNotEditable')}
                         </p>
                       </div>
                     </div>
@@ -567,13 +589,12 @@ export function MultiTabEditor({ projectId, runtime, onClose }: MultiTabEditorPr
                       <div className="text-center space-y-4">
                         <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground" />
                         <div className="space-y-2">
-                          <h3 className="text-lg font-medium">Unsupported File Type</h3>
+                          <h3 className="text-lg font-medium">{t('unsupportedType')}</h3>
                           <p className="text-sm text-muted-foreground">
                             {activeFile.file.name}
                           </p>
                           <p className="text-sm text-muted-foreground max-w-md">
-                            This file type is not supported for editing in the text editor.
-                            Binary files and certain document formats cannot be displayed here.
+                            {t('unsupportedTypeHint')}
                           </p>
                         </div>
                       </div>

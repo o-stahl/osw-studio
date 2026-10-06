@@ -8,6 +8,7 @@ import {
   validateServerFunctionData,
 } from '../server-context/generators';
 import { validateArchivePath } from './paths';
+import { said } from './text';
 import type { ArchiveIssue } from './types';
 
 /**
@@ -86,7 +87,7 @@ function byName<T extends { name: string }>(items: T[]): T[] {
 function usableAsFilename(
   name: string,
   path: string,
-  kindLabel: string,
+  kind: BackendNameKind,
   warnings?: ArchiveIssue[]
 ): boolean {
   const result = validateArchivePath(path);
@@ -94,7 +95,7 @@ function usableAsFilename(
   warnings?.push({
     path,
     code: result.ok ? 'path-rejected' : result.code,
-    message: `${kindLabel} "${name}" was left out of the archive: its name cannot be used as a filename.`,
+    ...said('unusableName', { kind, name }),
   });
   return false;
 }
@@ -109,14 +110,14 @@ function warnIfCodeEmpty(
   name: string,
   code: string | undefined,
   path: string,
-  kindLabel: string,
+  kind: BackendNameKind,
   warnings?: ArchiveIssue[]
 ): void {
   if (code) return;
   warnings?.push({
     path,
     code: 'missing-code',
-    message: `${kindLabel} "${name}" has no code, so it is exported empty and cannot be imported again until code is added.`,
+    ...said('emptyCode', { kind, name }),
   });
 }
 
@@ -141,8 +142,8 @@ export function backendToArchiveFiles(
 
   for (const fn of byName(source.edgeFunctions ?? [])) {
     const codePath = `${EDGE_DIR}${fn.name}.js`;
-    if (!usableAsFilename(fn.name, codePath, 'Edge function', warnings)) continue;
-    warnIfCodeEmpty(fn.name, fn.code, codePath, 'Edge function', warnings);
+    if (!usableAsFilename(fn.name, codePath, 'edge', warnings)) continue;
+    warnIfCodeEmpty(fn.name, fn.code, codePath, 'edge', warnings);
     files.push({ path: codePath, content: fn.code ?? '' });
     files.push({
       path: `${EDGE_DIR}${fn.name}.json`,
@@ -158,8 +159,8 @@ export function backendToArchiveFiles(
 
   for (const fn of byName(source.serverFunctions ?? [])) {
     const codePath = `${SERVER_DIR}${fn.name}.js`;
-    if (!usableAsFilename(fn.name, codePath, 'Server function', warnings)) continue;
-    warnIfCodeEmpty(fn.name, fn.code, codePath, 'Server function', warnings);
+    if (!usableAsFilename(fn.name, codePath, 'server', warnings)) continue;
+    warnIfCodeEmpty(fn.name, fn.code, codePath, 'server', warnings);
     files.push({ path: codePath, content: fn.code ?? '' });
     files.push({
       path: `${SERVER_DIR}${fn.name}.json`,
@@ -190,7 +191,7 @@ export function backendToArchiveFiles(
       if (!functionName) {
         warnings?.push({
           code: 'unresolved-reference',
-          message: `Scheduled function "${job.name}" points at an edge function that no longer exists, so it was left out of the archive.`,
+          ...said('orphanSchedule', { name: job.name }),
         });
         continue;
       }
@@ -261,8 +262,8 @@ export function archiveFilesToBackend(
   const takenSecret = new Set<string>();
   const takenScheduled = new Set<string>();
 
-  const edgeGroups = groupPairs(entries, EDGE_DIR, 'Edge function', issues, claimedPaths);
-  const serverGroups = groupPairs(entries, SERVER_DIR, 'Server function', issues, claimedPaths);
+  const edgeGroups = groupPairs(entries, EDGE_DIR, 'edge', issues, claimedPaths);
+  const serverGroups = groupPairs(entries, SERVER_DIR, 'server', issues, claimedPaths);
 
   const edgeFunctions: NonNullable<BackendFeatures['edgeFunctions']> = [];
   for (const group of edgeGroups) {
@@ -277,10 +278,10 @@ export function archiveFilesToBackend(
       timeoutMs: fallback(sidecar?.timeoutMs, DEFAULT_TIMEOUT_MS),
     };
     if (sidecar?.description !== undefined) candidate.description = sidecar.description;
-    if (!accept(validateEdgeFunctionData(candidate), 'Edge function', candidate, group.codePath, issues)) {
+    if (!accept(validateEdgeFunctionData(candidate), 'edge', candidate, group.codePath, issues)) {
       continue;
     }
-    if (!claimName(takenEdge, 'Edge function', candidate.name, group.codePath, issues)) continue;
+    if (!claimName(takenEdge, 'edge', candidate.name, group.codePath, issues)) continue;
     edgeFunctions.push(candidate as unknown as (typeof edgeFunctions)[number]);
   }
   if (edgeFunctions.length > 0) features.edgeFunctions = edgeFunctions;
@@ -296,10 +297,10 @@ export function archiveFilesToBackend(
       enabled: fallback(sidecar?.enabled, true),
     };
     if (sidecar?.description !== undefined) candidate.description = sidecar.description;
-    if (!accept(validateServerFunctionData(candidate), 'Server function', candidate, group.codePath, issues)) {
+    if (!accept(validateServerFunctionData(candidate), 'server', candidate, group.codePath, issues)) {
       continue;
     }
-    if (!claimName(takenServer, 'Server function', candidate.name, group.codePath, issues)) continue;
+    if (!claimName(takenServer, 'server', candidate.name, group.codePath, issues)) continue;
     serverFunctions.push(candidate as unknown as (typeof serverFunctions)[number]);
   }
   if (serverFunctions.length > 0) features.serverFunctions = serverFunctions;
@@ -313,13 +314,13 @@ export function archiveFilesToBackend(
       issues.push({
         path: SECRETS_PATH,
         code: 'unsupported-field',
-        message: `Secret "${label(item.name)}" carries a value. Archives never store secret values, so it was ignored — set the value in the app after importing.`,
+        ...said('secretValue', { name: label(item.name) }),
       });
     }
     const candidate: Record<string, unknown> = { name: item.name };
     if (item.description !== undefined) candidate.description = item.description;
-    if (!accept(validateSecretData(candidate), 'Secret', candidate, SECRETS_PATH, issues)) continue;
-    if (!claimName(takenSecret, 'Secret', candidate.name, SECRETS_PATH, issues)) continue;
+    if (!accept(validateSecretData(candidate), 'secret', candidate, SECRETS_PATH, issues)) continue;
+    if (!claimName(takenSecret, 'secret', candidate.name, SECRETS_PATH, issues)) continue;
     secrets.push(candidate as unknown as (typeof secrets)[number]);
   }
   if (secrets.length > 0) features.secrets = secrets;
@@ -338,10 +339,10 @@ export function archiveFilesToBackend(
       config: fallback(item.config, {}),
     };
     if (item.description !== undefined) candidate.description = item.description;
-    if (!accept(validateScheduledFunctionData(candidate), 'Scheduled function', candidate, SCHEDULED_PATH, issues)) {
+    if (!accept(validateScheduledFunctionData(candidate), 'scheduled', candidate, SCHEDULED_PATH, issues)) {
       continue;
     }
-    if (!claimName(takenScheduled, 'Scheduled function', candidate.name, SCHEDULED_PATH, issues)) {
+    if (!claimName(takenScheduled, 'scheduled', candidate.name, SCHEDULED_PATH, issues)) {
       continue;
     }
     scheduledFunctions.push(candidate as unknown as (typeof scheduledFunctions)[number]);
@@ -360,7 +361,7 @@ export function archiveFilesToBackend(
  */
 function claimName(
   taken: Set<string>,
-  kindLabel: string,
+  kind: BackendNameKind,
   name: unknown,
   path: string | undefined,
   issues: ArchiveIssue[]
@@ -373,7 +374,7 @@ function claimName(
   issues.push({
     path,
     code: 'path-rejected',
-    message: `The archive holds more than one ${kindLabel.toLowerCase()} named "${key}", so only the first was imported.`,
+    ...said('duplicateName', { kind, name: key }),
   });
   return false;
 }
@@ -393,7 +394,7 @@ function label(name: unknown): string {
 function groupPairs(
   entries: Map<string, string>,
   dir: string,
-  kindLabel: string,
+  kind: BackendNameKind,
   issues: ArchiveIssue[],
   claimedPaths: Set<string>
 ): PairGroup[] {
@@ -412,7 +413,7 @@ function groupPairs(
       issues.push({
         path,
         code: 'path-rejected',
-        message: `${kindLabel} files must sit directly in ${dir}, so ${path} was not imported.`,
+        ...said('nestedBackendFile', { kind, dir, path }),
       });
       continue;
     }
@@ -436,7 +437,7 @@ function requireCode(group: PairGroup, issues: ArchiveIssue[]): boolean {
   issues.push({
     path: group.sidecarPath,
     code: 'missing-code',
-    message: `"${group.name}" has settings but no ${group.name}.js file beside them, so there is no function to import.`,
+    ...said('missingCode', { name: group.name }),
   });
   return false;
 }
@@ -457,7 +458,7 @@ function readSidecar(
     issues.push({
       path: group.sidecarPath,
       code: 'invalid-json',
-      message: `${group.sidecarPath} is not valid JSON, so "${group.name}" was skipped.`,
+      ...said('sidecarNotJson', { path: group.sidecarPath ?? '', name: group.name }),
     });
     return INVALID;
   }
@@ -465,7 +466,7 @@ function readSidecar(
     issues.push({
       path: group.sidecarPath,
       code: 'invalid-json',
-      message: `${group.sidecarPath} does not contain a JSON object, so "${group.name}" was skipped.`,
+      ...said('sidecarNotObject', { path: group.sidecarPath ?? '', name: group.name }),
     });
     return INVALID;
   }
@@ -483,11 +484,11 @@ function readList(
   try {
     parsed = JSON.parse(text);
   } catch {
-    issues.push({ path, code: 'invalid-json', message: `${path} is not valid JSON, so it was skipped.` });
+    issues.push({ path, code: 'invalid-json', ...said('listNotJson', { path }) });
     return [];
   }
   if (!Array.isArray(parsed)) {
-    issues.push({ path, code: 'invalid-json', message: `${path} does not contain a JSON array, so it was skipped.` });
+    issues.push({ path, code: 'invalid-json', ...said('listNotArray', { path }) });
     return [];
   }
   const items: Array<Record<string, unknown>> = [];
@@ -496,7 +497,7 @@ function readList(
       issues.push({
         path,
         code: 'invalid-json',
-        message: `Entry ${index + 1} in ${path} is not an object, so it was skipped.`,
+        ...said('entryNotObject', { index: index + 1, path }),
       });
       return;
     }
@@ -507,7 +508,7 @@ function readList(
 
 function accept(
   result: { valid: boolean; errors: string[] },
-  kindLabel: string,
+  kind: BackendNameKind,
   candidate: Record<string, unknown>,
   path: string | undefined,
   issues: ArchiveIssue[]
@@ -516,7 +517,7 @@ function accept(
   issues.push({
     path,
     code: 'validation-failed',
-    message: `${kindLabel} "${label(candidate.name)}" was skipped: ${result.errors.join('; ')}`,
+    ...said('invalidRecord', { kind, name: label(candidate.name), detail: result.errors.join('; ') }),
   });
   return false;
 }

@@ -924,3 +924,94 @@ describe('task_complete clears waiting', () => {
     expect(turns[0].items.some(i => i.type === 'waiting')).toBe(false);
   });
 });
+
+describe('limit notices', () => {
+  const items = (events: DebugEvent[]) => new EventProcessor().process(events).flatMap((t) => t.items);
+
+  it('shows one "trying again" note through repeated retries, gone once the reply starts', () => {
+    const during = items([evt('waiting'), evt('retry', { provider: 'groq', attempt: 1, status: 429 }), evt('retry', { provider: 'groq', attempt: 2, status: 429 })]);
+    expect(during.filter((i) => i.type === 'notice')).toEqual([expect.objectContaining({ data: { kind: 'retrying', provider: 'groq', status: 429 } })]);
+
+    const after = items([evt('waiting'), evt('retry', { provider: 'groq' }), evt('assistant_delta', { text: 'Hi' })]);
+    expect(after.some((i) => i.type === 'notice')).toBe(false);
+  });
+
+  it('keeps a model switch in the thread', () => {
+    const list = items([
+      evt('waiting'),
+      // Not 'busy', the default, so the event's own reason has to come through.
+      evt('model_switched', { provider: 'openrouter', fromModel: 'a:free', toModel: 'b:free', reason: 'unavailable' }),
+      evt('assistant_delta', { text: 'Hi' }),
+    ]);
+    expect(list.find((i) => i.type === 'notice')?.data).toEqual({ kind: 'switched', provider: 'openrouter', fromModel: 'a:free', toModel: 'b:free', reason: 'unavailable' });
+  });
+});
+
+describe('EventProcessor — a run that stops with a tool in flight', () => {
+  const tools = (turns: ReturnType<EventProcessor['process']>) =>
+    turns.flatMap((t) => t.items).filter((i) => i.type === 'tool').map((i) => i.data.status);
+
+  it.each(['stopped', 'task_complete'])('marks the unfinished tool stopped on %s, leaving finished ones alone', (end) => {
+    const proc = new EventProcessor();
+    const turns = proc.process([
+      userMsg('build it'),
+      evt('toolCalls', { toolCalls: [
+        { id: 'tc-1', function: { name: 'bash', arguments: '{"command":"ls"}' } },
+        { id: 'tc-2', function: { name: 'bash', arguments: '{"command":"npm test"}' } },
+      ] }),
+      evt('tool_status', { toolCallId: 'tc-1', status: 'completed', result: 'ok' }),
+      evt('tool_status', { toolCallId: 'tc-2', status: 'executing' }),
+      evt(end, {}),
+    ]);
+    expect(tools(turns)).toEqual(['completed', 'stopped']);
+  });
+});
+
+
+describe('limit notices and stops — waiting indicator', () => {
+  const items = (events: DebugEvent[]) => new EventProcessor().process(events).flatMap((t) => t.items);
+
+  it('keeps the "trying again" note when a waiting indicator follows it', () => {
+    const list = items([evt('retry', { provider: 'groq', status: 429 }), evt('waiting')]);
+    expect(list.filter((i) => i.type === 'notice')).toHaveLength(1);
+  });
+
+  it('drops the waiting indicator when the model is switched', () => {
+    const list = items([evt('waiting'), evt('model_switched', { provider: 'openrouter', fromModel: 'a', toModel: 'b' })]);
+    expect(list.map((i) => i.type)).toEqual(['notice']);
+  });
+
+  it('shows a stop on a provider error as its own item, with the event\'s data, and drops waiting', () => {
+    const data = { message: 'Daily limit reached', errorCategory: 'daily_limit', provider: 'openrouter' };
+    const list = items([evt('waiting'), evt('api_stopped', data)]);
+    expect(list.map((i) => i.type)).toEqual(['api_stopped']);
+    expect(list[0].data).toEqual(data);
+  });
+});
+
+describe('EventProcessor — tools left in flight when a run ends', () => {
+  const statuses = (turns: ReturnType<EventProcessor['process']>) =>
+    turns.flatMap((t) => t.items).filter((i) => i.type === 'tool').map((i) => i.data.status);
+  const call = (id: string) => ({ id, function: { name: 'bash', arguments: '{"command":"ls"}' } });
+
+  it('marks a tool that never started as stopped', () => {
+    const turns = new EventProcessor().process([
+      userMsg('build it'),
+      evt('toolCalls', { toolCalls: [call('tc-1')] }),
+      evt('task_complete', {}),
+    ]);
+    expect(statuses(turns)).toEqual(['stopped']);
+  });
+
+  it('marks a tool still running in an earlier turn as stopped', () => {
+    const turns = new EventProcessor().process([
+      userMsg('build it'),
+      evt('toolCalls', { toolCalls: [call('tc-1')] }),
+      evt('tool_status', { toolCallId: 'tc-1', status: 'executing' }),
+      userMsg('and now this'),
+      evt('task_complete', {}),
+    ]);
+    expect(turns.length).toBeGreaterThan(1);
+    expect(statuses(turns)).toEqual(['stopped']);
+  });
+});

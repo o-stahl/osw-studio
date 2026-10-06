@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { Secret } from '@/lib/vfs/types';
 import {
   Plus, Loader2, AlertCircle, Key, MoreVertical, Pencil, Trash2, AlertTriangle
@@ -24,6 +26,9 @@ interface SecretsManagerProps {
 }
 
 export function SecretsManager({ deploymentId, dataProvider, workspaceId }: SecretsManagerProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('backend');
+  const { dateTime } = useLocalFormat();
   const apiBase = workspaceId ? `/api/w/${workspaceId}` : '/api';
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,21 +53,21 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
         const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/secrets`);
         if (!res.ok) {
           const data = await res.json();
-          throw new Error(data.error || 'Failed to load secrets');
+          throw new Error(data.error || t('loadSecretsFailed'));
         }
         const data = await res.json();
         setSecrets(data.secrets);
         setEncryptionConfigured(data.encryptionConfigured);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load secrets');
+      setError(err instanceof Error ? err.message : t('loadSecretsFailed'));
     } finally {
       setLoading(false);
     }
   };
 
   const deleteSecret = async (secret: Secret) => {
-    if (!confirm(`Delete secret "${secret.name}"? This cannot be undone.`)) return;
+    if (!confirm(t('confirmDeleteSecret', { name: secret.name }))) return;
 
     try {
       if (dataProvider) {
@@ -86,7 +91,7 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
       if (dataProvider) {
         await dataProvider.save(editingSecret?.id || null, data);
       } else if (!deploymentId) {
-        throw new Error('No deployment ID available');
+        throw new Error(t('noDeploymentId'));
       } else if (editingSecret) {
         const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/secrets/${editingSecret.id}`, {
           method: 'PUT',
@@ -95,7 +100,7 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
         });
         if (!res.ok) {
           const err = await res.json();
-          throw new Error(err.error || 'Failed to update secret');
+          throw new Error(err.error || t('updateSecretFailed'));
         }
       } else {
         const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/secrets`, {
@@ -105,7 +110,7 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
         });
         if (!res.ok) {
           const err = await res.json();
-          throw new Error(err.error || 'Failed to create secret');
+          throw new Error(err.error || t('createSecretFailed'));
         }
       }
 
@@ -118,7 +123,7 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
   };
 
   const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString(undefined, {
+    return dateTime(date, {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -139,7 +144,7 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
         <AlertCircle className="h-8 w-8 text-destructive" />
         <p className="text-sm text-muted-foreground">{error}</p>
         <Button variant="outline" onClick={loadSecrets}>
-          Retry
+          {tc('actions.retry')}
         </Button>
       </div>
     );
@@ -148,14 +153,14 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium">Secrets</h3>
+        <h3 className="text-sm font-medium">{t('secretsTitle')}</h3>
         <Button
           size="sm"
           onClick={() => setIsCreating(true)}
           disabled={!encryptionConfigured}
         >
           <Plus className="h-4 w-4 mr-1" />
-          New Secret
+          {t('newSecret')}
         </Button>
       </div>
 
@@ -164,9 +169,9 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
         <div className="flex items-center gap-2 text-sm bg-yellow-500/10 border border-yellow-500/30 text-yellow-600 dark:text-yellow-400 p-3 rounded-lg mb-4">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           <div>
-            <p className="font-medium">Encryption not configured</p>
+            <p className="font-medium">{t('encryptionNotConfigured')}</p>
             <p className="text-xs opacity-80">
-              Set the SECRETS_ENCRYPTION_KEY environment variable to enable secrets.
+              {t('encryptionHint')}
             </p>
           </div>
         </div>
@@ -176,9 +181,9 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
         {secrets.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center border rounded-lg">
             <Key className="h-8 w-8 text-muted-foreground mb-2" />
-            <p className="text-sm text-muted-foreground">No secrets yet</p>
+            <p className="text-sm text-muted-foreground">{t('noSecretsYet')}</p>
             <p className="text-xs text-muted-foreground mt-1 mb-4">
-              Store API keys and tokens securely for your edge functions
+              {t('noSecretsHint')}
             </p>
             <Button
               size="sm"
@@ -186,7 +191,7 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
               disabled={!encryptionConfigured}
             >
               <Plus className="h-4 w-4 mr-1" />
-              Create Secret
+              {t('createSecret')}
             </Button>
           </div>
         ) : (
@@ -203,7 +208,7 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
                       <span className="font-mono font-medium truncate">{secret.name}</span>
                       {!secret.hasValue && (
                         <Badge variant="outline" className="text-amber-600 border-amber-500/50 bg-amber-500/10 text-xs shrink-0">
-                          Value not set
+                          {t('valueNotSet')}
                         </Badge>
                       )}
                     </div>
@@ -213,7 +218,7 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
                       </p>
                     )}
                     <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                      <span className="shrink-0">Updated {formatDate(secret.updatedAt)}</span>
+                      <span className="shrink-0">{t('updatedOn', { date: formatDate(secret.updatedAt) })}</span>
                       <span className="font-mono truncate">secrets.get('{secret.name}')</span>
                     </div>
                   </div>
@@ -227,14 +232,14 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => setEditingSecret(secret)}>
                         <Pencil className="h-4 w-4 mr-2" />
-                        Edit
+                        {tc('actions.edit')}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => deleteSecret(secret)}
                         className="text-destructive"
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
-                        Delete
+                        {tc('actions.delete')}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

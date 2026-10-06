@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import {
   MessageSquare,
   MessagesSquare,
@@ -44,7 +46,12 @@ import {
   filterThreads,
   isReviewExpired,
   participantColor,
-  timeAgo,
+  reviewPasswordState,
+  passwordStateKey,
+  reviewBuildState,
+  reviewStatus,
+  reviewExpiryKey,
+  emptyThreadsKey,
 } from './review-logic';
 
 /**
@@ -104,6 +111,9 @@ export function ReviewTab({
   isPublishing,
   onPublish,
 }: ReviewTabProps) {
+  const when = useLocalFormat();
+  const tc = useTranslations('common');
+  const t = useTranslations('publishSettings');
   const update = (patch: Partial<ReviewDraft>) => onChange({ ...review, ...patch });
 
   // ── Address ──────────────────────────────────────────────────────────────
@@ -120,7 +130,7 @@ export function ReviewTab({
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
-      toast.error('Could not copy the address');
+      toast.error(t('copyAddressFailed'));
     }
   };
 
@@ -180,22 +190,12 @@ export function ReviewTab({
     update({ password: undefined });
   };
 
-  const passwordState: 'pending-set' | 'pending-clear' | 'set' | 'unset' =
-    typeof review.password === 'string'
-      ? 'pending-set'
-      : review.password === null
-        ? 'pending-clear'
-        : review.reviewPasswordSet
-          ? 'set'
-          : 'unset';
+  const passwordState = reviewPasswordState(review.password, review.reviewPasswordSet);
 
   // ── Expiry ───────────────────────────────────────────────────────────────
   const expired = isReviewExpired(review.expiresAt);
   const expiryLabel = review.expiresAt
-    ? new Date(review.expiresAt).toLocaleString(undefined, {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      })
+    ? when.dateTime(review.expiresAt, { dateStyle: 'medium', timeStyle: 'short' })
     : null;
 
   const handleExpiryChange = (value: string) => {
@@ -207,53 +207,41 @@ export function ReviewTab({
   // The review copy is written by a publish, so switching the toggle on does not make the address
   // answer. `settingsVersion` bumps on that toggle (reviewChangeNeedsRepublish), which is what puts
   // the deployment into pending-changes here.
-  // Two different situations were being reported with one sentence. A deployment that has never
-  // produced a copy is not the same as one whose copy exists but predates the latest changes, and
-  // the second is the ordinary state after any settings edit — settingsVersion bumps for SEO or
-  // scripts just as it does for the review toggle. Calling that "not built yet" claimed the address
-  // returns nothing while it was serving, and disabled Open on a link that works.
-  const nothingToOpen = review.enabled && (isDirty || !hasBeenPublished);
-  const outOfDate = review.enabled && !nothingToOpen && hasPendingChanges;
-  const notBuilt = nothingToOpen;
+  const build = reviewBuildState({ enabled: review.enabled, isDirty, hasBeenPublished, hasPendingChanges });
+  const { outOfDate } = build;
+  const notBuilt = build.nothingToOpen;
 
-  const buildNotice = !review.enabled
-    ? null
-    : isDirty
-      ? 'Review mode is not saved yet. Save changes, then publish to build the review copy.'
-      : !hasBeenPublished
-        ? 'This deployment has never been published, so there is no review copy yet. The address returns nothing until you publish.'
-        : outOfDate
-          ? 'Changes since your last publish are not in the review copy. Publish to update it.'
-          : null;
+  const buildNotice = build.notice ? t(build.notice) : null;
 
-  const statusBadge = !review.enabled ? (
-    <Badge variant="secondary">Off</Badge>
-  ) : notBuilt ? (
+  const status = reviewStatus({ enabled: review.enabled, notBuilt, outOfDate, expired });
+  const statusBadge = status === 'off' ? (
+    <Badge variant="secondary">{t('off')}</Badge>
+  ) : status === 'publishToApply' ? (
     <Badge variant="outline" className="border-amber-500 text-amber-500">
-      Publish to apply
+      {t('publishToApply')}
     </Badge>
-  ) : outOfDate ? (
+  ) : status === 'publishToUpdate' ? (
     <Badge variant="outline" className="border-amber-500 text-amber-500">
-      Publish to update
+      {t('publishToUpdate')}
     </Badge>
-  ) : expired ? (
-    <Badge variant="secondary">Closed</Badge>
+  ) : status === 'closed' ? (
+    <Badge variant="secondary">{t('closed')}</Badge>
   ) : (
     <Badge variant="outline" className="border-green-500 text-green-500">
-      Live
+      {t('live')}
     </Badge>
   );
 
   return (
     <div className="flex flex-col gap-4">
       <Section>
-        <SectionHeader icon={MessagesSquare} title="Review mode">
+        <SectionHeader icon={MessagesSquare} title={t('reviewMode')}>
           {statusBadge}
         </SectionHeader>
         <SectionBody className="px-4 py-1">
           <SettingRow
-            title="Build a review copy of this site"
-            description="Publishing writes a second, private copy carrying the comment widget. The public site is unchanged and never carries it."
+            title={t('buildReviewCopy')}
+            description={t('reviewModeNote')}
           >
             <Switch
               id="review-enabled"
@@ -266,11 +254,10 @@ export function ReviewTab({
             <>
               <SettingRow
                 className="flex-wrap"
-                title="Address"
+                title={t('address')}
                 description={
                   <>
-                    Anyone with this address can open the review copy and comment, unless you set a
-                    password.
+                    {t('reviewLinkHelp')}
                     <span className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-2.5 py-1.5">
                       <code className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-foreground">
                         {reviewUrl}
@@ -282,7 +269,7 @@ export function ReviewTab({
                 <div className="flex items-center gap-1.5">
                   <Button variant="outline" size="sm" onClick={copyAddress} className="gap-1.5">
                     {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                    {copied ? 'Copied' : 'Copy'}
+                    {copied ? tc('labels.copied') : t('copy')}
                   </Button>
                   <Button
                     variant="outline"
@@ -290,10 +277,10 @@ export function ReviewTab({
                     onClick={() => window.open(reviewUrl, '_blank')}
                     className="gap-1.5"
                     disabled={notBuilt}
-                    title={notBuilt ? 'Publish first — the review copy has not been built' : undefined}
+                    title={notBuilt ? t('publishFirst') : undefined}
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
-                    Open
+                    {t('open')}
                   </Button>
                 </div>
               </SettingRow>
@@ -302,20 +289,20 @@ export function ReviewTab({
                 className="flex-wrap"
                 title={
                   <>
-                    Password <span className="font-normal text-muted-foreground">— optional</span>
+                    {tc('labels.password')} <span className="font-normal text-muted-foreground">{tc('labels.optionalParen')}</span>
                   </>
                 }
                 description={
                   passwordEditing ? (
                     <>
-                      Asked for once, then remembered in the reviewer&apos;s browser.
+                      {t('reviewPasswordHelp')}
                       <span className="mt-2 flex flex-wrap items-center gap-2">
                         <Input
                           autoFocus
                           type="password"
                           value={passwordInput}
                           onChange={(e) => handlePasswordInput(e.target.value)}
-                          placeholder="New password"
+                          placeholder={t('newPassword')}
                           className="h-8 w-full max-w-[220px] text-[13px]"
                         />
                         <span
@@ -324,12 +311,12 @@ export function ReviewTab({
                             tooShort ? 'text-destructive' : 'text-muted-foreground'
                           )}
                         >
-                          At least {MIN_REVIEW_PASSWORD_LENGTH} characters
+                          {t('atLeastChars', { count: MIN_REVIEW_PASSWORD_LENGTH })}
                         </span>
                       </span>
                     </>
                   ) : (
-                    <>Asked for once, then remembered in the reviewer&apos;s browser.</>
+                    <>{t('reviewPasswordHelp')}</>
                   )
                 }
               >
@@ -342,22 +329,16 @@ export function ReviewTab({
                         disabled={typeof review.password !== 'string'}
                         onClick={() => setPasswordEditing(false)}
                       >
-                        Done
+                        {tc('actions.done')}
                       </Button>
                       <Button variant="ghost" size="sm" onClick={cancelPasswordEdit}>
-                        Cancel
+                        {tc('actions.cancel')}
                       </Button>
                     </>
                   ) : (
                     <>
                       <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {passwordState === 'pending-set'
-                          ? 'Set on save'
-                          : passwordState === 'pending-clear'
-                            ? 'Cleared on save'
-                            : passwordState === 'set'
-                              ? 'Set'
-                              : 'Not set'}
+                        {t(passwordStateKey(passwordState))}
                       </span>
                       <Button
                         variant="outline"
@@ -367,11 +348,11 @@ export function ReviewTab({
                           setPasswordEditing(true);
                         }}
                       >
-                        {review.reviewPasswordSet ? 'Change' : 'Set'}
+                        {review.reviewPasswordSet ? tc('actions.change') : t('set')}
                       </Button>
                       {passwordState === 'set' && (
                         <Button variant="ghost" size="sm" onClick={() => update({ password: null })}>
-                          Clear
+                          {tc('actions.clear')}
                         </Button>
                       )}
                       {(passwordState === 'pending-set' || passwordState === 'pending-clear') && (
@@ -380,7 +361,7 @@ export function ReviewTab({
                           size="sm"
                           onClick={() => update({ password: undefined })}
                         >
-                          Undo
+                          {tc('actions.undo')}
                         </Button>
                       )}
                     </>
@@ -390,15 +371,15 @@ export function ReviewTab({
 
               <SettingRow
                 className="flex-wrap"
-                title="Email notifications"
+                title={t('emailNotifications')}
                 description={
                   mailSending
-                    ? 'Sends a digest of new comments to everyone taking part, at most once an hour. Turning it off drops anything still queued.'
-                    : 'No mail server is set up, so nothing is delivered and no digest is queued. Comments are kept and read here.'
+                    ? t('digestOn')
+                    : t('digestNoMail')
                 }
               >
                 <div className="flex items-center gap-2">
-                  {!mailSending && <Badge variant="secondary">Not available</Badge>}
+                  {!mailSending && <Badge variant="secondary">{tc('labels.notAvailable')}</Badge>}
                   <Switch
                     id="review-notify"
                     checked={review.notifyByEmail === true && mailSending === true}
@@ -412,17 +393,11 @@ export function ReviewTab({
                 className="flex-wrap"
                 title={
                   <>
-                    Stop serving{' '}
-                    <span className="font-normal text-muted-foreground">— optional</span>
+                    {t('stopServing')}{' '}
+                    <span className="font-normal text-muted-foreground">{tc('labels.optionalParen')}</span>
                   </>
                 }
-                description={
-                  expiryLabel
-                    ? expired
-                      ? `Closed on ${expiryLabel}. The address returns nothing; the comments below are kept.`
-                      : `Closes on ${expiryLabel}. After that the address returns nothing. Comments are kept.`
-                    : 'The address keeps working until you turn review mode off.'
-                }
+                description={t(reviewExpiryKey(!!expiryLabel, expired), { date: expiryLabel ?? '' })}
               >
                 <Select value={review.expiresAt ? 'current' : 'never'} onValueChange={handleExpiryChange}>
                   <SelectTrigger id="review-expiry" className="w-[190px]">
@@ -430,11 +405,11 @@ export function ReviewTab({
                   </SelectTrigger>
                   <SelectContent>
                     {review.expiresAt && (
-                      <SelectItem value="current">{expired ? 'Closed' : 'Keep current date'}</SelectItem>
+                      <SelectItem value="current">{expired ? t('closed') : t('keepCurrentDate')}</SelectItem>
                     )}
                     {REVIEW_EXPIRY_CHOICES.map((choice) => (
-                      <SelectItem key={choice.value} value={choice.value}>
-                        {choice.label}
+                      <SelectItem key={choice} value={choice}>
+                        {t(`expiry.${choice}`)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -450,7 +425,7 @@ export function ReviewTab({
           <p className="min-w-0 flex-1 text-sm text-yellow-800 dark:text-yellow-200">{buildNotice}</p>
           {!isDirty && (
             <Button variant="outline" size="sm" onClick={onPublish} disabled={isPublishing}>
-              {isPublishing ? 'Publishing…' : 'Publish now'}
+              {isPublishing ? t('publishing') : t('publishNow')}
             </Button>
           )}
         </div>
@@ -497,6 +472,8 @@ function ReviewComments({
   deploymentId: string;
   storedEnabled: boolean;
 }) {
+  const tc = useTranslations('common');
+  const t = useTranslations('publishSettings');
   const [data, setData] = useState<CommentsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -517,18 +494,18 @@ function ReviewComments({
       // failure, and reporting it as one sent people looking for a broken server.
       if (response.status === 404) {
         setData(null);
-        setError('The review copy is not open yet. Publish with review mode on, then reload.');
+        setError(t('reviewCopyNotOpen'));
         return;
       }
-      if (!response.ok) throw new Error(`Could not load comments (${response.status})`);
+      if (!response.ok) throw new Error(`Could not load comments (${response.status})`); // i18n-ignore: only logged
       setData((await response.json()) as CommentsResponse);
     } catch (err) {
       logger.error('[ReviewTab] Failed to load comments:', err);
-      setError('Could not load comments.');
+      setError(t('loadCommentsError'));
     } finally {
       setLoading(false);
     }
-  }, [deploymentId]);
+  }, [t, deploymentId]);
 
   useEffect(() => {
     if (!storedEnabled) {
@@ -555,7 +532,7 @@ function ReviewComments({
       await load();
     } catch (err) {
       logger.error('[ReviewTab] Failed to change comment status:', err);
-      toast.error('Could not update the comment');
+      toast.error(t('updateCommentFailed'));
     } finally {
       setBusyId(null);
     }
@@ -587,7 +564,7 @@ function ReviewComments({
       await load();
     } catch (err) {
       logger.error('[ReviewTab] Failed to post reply:', err);
-      toast.error('Could not post the reply');
+      toast.error(t('postReplyFailed'));
     } finally {
       setBusyId(null);
     }
@@ -595,7 +572,7 @@ function ReviewComments({
 
   return (
     <Section>
-      <SectionHeader icon={MessageSquare} title="Comments" className="flex-wrap gap-y-2">
+      <SectionHeader icon={MessageSquare} title={t('comments')} className="flex-wrap gap-y-2">
         {storedEnabled && (
           <>
             <ToggleGroup
@@ -604,16 +581,16 @@ function ReviewComments({
               onValueChange={(value) => value && setFilter(value as ReviewFilter)}
             >
               <ToggleGroupItem value="open" size="sm" className="text-xs">
-                Open · {counts.open}
+                {t('filterOpen', { count: counts.open })}
               </ToggleGroupItem>
               <ToggleGroupItem value="resolved" size="sm" className="text-xs">
-                Resolved · {counts.resolved}
+                {t('filterResolved', { count: counts.resolved })}
               </ToggleGroupItem>
               <ToggleGroupItem value="all" size="sm" className="text-xs">
-                All
+                {t('all')}
               </ToggleGroupItem>
             </ToggleGroup>
-            <Button variant="ghost" size="sm" onClick={load} title="Reload comments">
+            <Button variant="ghost" size="sm" onClick={load} title={t('reloadComments')}>
               <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
             </Button>
           </>
@@ -623,7 +600,7 @@ function ReviewComments({
       <SectionBody className="px-4 py-1">
         {!storedEnabled ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            Comments are kept, but they can only be read while review mode is on.
+            {t('commentsReadOnlyNote')}
           </p>
         ) : loading && !data ? (
           <div className="flex justify-center py-8">
@@ -633,7 +610,7 @@ function ReviewComments({
           <div className="flex flex-col items-center gap-3 py-8">
             <p className="text-sm text-muted-foreground">{error}</p>
             <Button variant="outline" size="sm" onClick={load}>
-              Try again
+              {t('tryAgain')}
             </Button>
           </div>
         ) : (
@@ -642,16 +619,12 @@ function ReviewComments({
               // Said outright rather than left to the counts: the filter chips above read as the
               // whole round, and acting on a partial one is the failure a silent cap produces.
               <p className="border-b border-border py-2 text-xs text-muted-foreground">
-                Showing the {data.comments.length} most recent of {data.total} comments.
+                {t('showingRecent', { shown: data.comments.length, total: data.total })}
               </p>
             )}
             {visible.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
-                {counts.all === 0
-                  ? 'No comments yet. Send the address to whoever is reviewing.'
-                  : filter === 'open'
-                    ? 'Nothing open.'
-                    : 'Nothing resolved yet.'}
+                {t(emptyThreadsKey(counts.all, filter))}
               </p>
             ) : (
               visible.map((thread, index) => (
@@ -693,7 +666,7 @@ function ReviewComments({
                           rows={2}
                           value={replyBody}
                           onChange={(e) => setReplyBody(e.target.value)}
-                          placeholder="Reply…"
+                          placeholder={t('replyPlaceholder')}
                           className="text-[13px]"
                         />
                         <div className="flex items-center gap-1.5">
@@ -703,7 +676,7 @@ function ReviewComments({
                             disabled={!replyBody.trim() || busyId === thread.root.id}
                             onClick={() => postReply(thread.root)}
                           >
-                            {busyId === thread.root.id ? 'Posting…' : 'Post reply'}
+                            {busyId === thread.root.id ? t('posting') : t('postReply')}
                           </Button>
                           <Button
                             variant="ghost"
@@ -713,7 +686,7 @@ function ReviewComments({
                               setReplyBody('');
                             }}
                           >
-                            Cancel
+                            {tc('actions.cancel')}
                           </Button>
                         </div>
                       </div>
@@ -729,7 +702,7 @@ function ReviewComments({
                         setReplyBody('');
                       }}
                     >
-                      Reply
+                      {t('reply')}
                     </Button>
                     <Button
                       variant="outline"
@@ -738,7 +711,7 @@ function ReviewComments({
                         openReviewPage(deploymentId, thread.root.page_path, thread.root.id)
                       }
                     >
-                      Show
+                      {t('show')}
                     </Button>
                     <Button
                       variant={thread.root.status === 'resolved' ? 'ghost' : 'accent'}
@@ -748,7 +721,7 @@ function ReviewComments({
                         setStatus(thread.root.id, thread.root.status === 'resolved' ? 'open' : 'resolved')
                       }
                     >
-                      {thread.root.status === 'resolved' ? 'Reopen' : 'Resolve'}
+                      {thread.root.status === 'resolved' ? t('reopen') : t('resolve')}
                     </Button>
                   </div>
                 </div>
@@ -762,6 +735,8 @@ function ReviewComments({
 }
 
 function CommentMeta({ comment, anchored = true }: { comment: WireComment; anchored?: boolean }) {
+  const t = useTranslations('publishSettings');
+  const when = useLocalFormat();
   return (
     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
       {anchored && <span className="font-mono">{describeAnchor(comment)}</span>}
@@ -772,10 +747,10 @@ function CommentMeta({ comment, anchored = true }: { comment: WireComment; ancho
         />
         <b className="font-semibold text-foreground">{comment.author_name}</b>
         {comment.is_team && (
-          <span className="rounded-full border border-border px-1.5 py-px text-[10px]">team</span>
+          <span className="rounded-full border border-border px-1.5 py-px text-[10px]">{t('teamBadge')}</span>
         )}
       </span>
-      <span>{timeAgo(comment.created_at)}</span>
+      <span>{when.recent(comment.created_at)}</span>
     </div>
   );
 }

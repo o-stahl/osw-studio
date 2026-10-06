@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useTranslations } from 'next-intl';
 import { Check, Loader2, Redo2, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -8,7 +9,7 @@ import type { Run, RunContext, RunSegment } from '@/lib/quick-edit/runs';
 import { TallyList } from './tally-list';
 import { MessageContext } from '@/components/message-context';
 import { MarkdownRenderer } from '@/components/markdown-renderer';
-import { approvalPhrase } from '@/lib/quick-edit/approval-phrase';
+import { useApprovalSentence } from '@/lib/i18n/use-approval-sentence';
 
 /**
  * The conversation as a person who asked for changes reads it: their message, then a card of what
@@ -35,8 +36,6 @@ export interface SimpleThreadProps {
   onDeny: (capabilityLabel: string) => void;
 }
 
-const ACTIVITY_LABEL = { thinking: 'Thinking…', writing: 'Writing…', working: 'Working…' } as const;
-
 /**
  * The person's message, in the shape the transcript gives it.
  *
@@ -45,11 +44,12 @@ const ACTIVITY_LABEL = { thinking: 'Thinking…', writing: 'Writing…', working
  * it renders nothing when the request came with nothing.
  */
 function Request({ text, context }: { text: string; context: RunContext }) {
+  const t = useTranslations('quickEdit');
   const images = context.contentBlocks?.filter((b) => b.type === 'image_url');
   const audio = context.contentBlocks?.filter((b) => b.type === 'input_audio');
   return (
     <div className="text-sm text-foreground bg-primary/10 px-3 py-2 rounded border border-primary/20">
-      <div className="font-semibold text-primary mb-1 text-xs">You</div>
+      <div className="font-semibold text-primary mb-1 text-xs">{t('you')}</div>
       <p className="text-xs leading-relaxed whitespace-pre-wrap">{text}</p>
       <MessageContext
         focusContext={context.focusContext}
@@ -77,10 +77,14 @@ function Segment({ segment, live }: { segment: RunSegment; live: boolean }) {
 }
 
 export function SimpleThread({ runs, generating, isDirty, onRestore, onUndoLatest, onRedoLatest, onSave, onAllow, onDeny }: SimpleThreadProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('quickEdit');
+  const tsum = useTranslations('quickEdit.summary');
+  const wantsTo = useApprovalSentence();
   if (runs.length === 0) {
     return (
       <p className="text-xs text-muted-foreground p-2">
-        Say what you want changed, or pick something on the page first.
+        {t('emptyThread')}
       </p>
     );
   }
@@ -100,7 +104,7 @@ export function SimpleThread({ runs, generating, isDirty, onRestore, onUndoLates
         const lastSegment = run.segments[run.segments.length - 1];
         // The in-flight step already shows under its sentence; the activity line covers the rest.
         const activityLabel = live
-          ? run.activity === 'working' && lastSegment?.kind === 'steps' ? null : ACTIVITY_LABEL[run.activity ?? 'working']
+          ? run.activity === 'working' && lastSegment?.kind === 'steps' ? null : t(`activity.${run.activity ?? 'working'}`)
           : null;
 
         return (
@@ -125,12 +129,12 @@ export function SimpleThread({ runs, generating, isDirty, onRestore, onUndoLates
                 {waiting && run.approval && (
                   <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 space-y-1.5">
                     <p className="text-xs font-medium">
-                      It wants to {approvalPhrase(run.approval.gateKey, run.approval.capabilityLabel)}.
+                      {wantsTo(run.approval.gateKey, run.approval.capabilityLabel)}
                     </p>
-                    <p className="text-[11px] text-muted-foreground">You can undo this afterwards.</p>
+                    <p className="text-[11px] text-muted-foreground">{t('canUndo')}</p>
                     <div className="flex gap-1.5 pt-0.5">
-                      <Button variant="accent" size="xs" onClick={() => onAllow(run.approval!.gateKey, run.approval!.capabilityLabel)} disabled={generating}>Allow</Button>
-                      <Button variant="outline" size="xs" onClick={() => onDeny(run.approval!.capabilityLabel)} disabled={generating}>Don't</Button>
+                      <Button variant="accent" size="xs" onClick={() => onAllow(run.approval!.gateKey, run.approval!.capabilityLabel)} disabled={generating}>{t('allow')}</Button>
+                      <Button variant="outline" size="xs" onClick={() => onDeny(run.approval!.capabilityLabel)} disabled={generating}>{t('dont')}</Button>
                     </div>
                   </div>
                 )}
@@ -143,7 +147,9 @@ export function SimpleThread({ runs, generating, isDirty, onRestore, onUndoLates
                         ("Something went wrong") and a run the person stopped ("Stopped."). */}
                     {run.tally.status !== 'done' && run.tally.summary && (
                       <p className={cn('text-xs', failed ? 'text-destructive' : 'text-muted-foreground')}>
-                        {run.tally.summary}
+                        {run.tally.summary.kind === 'changed'
+                          ? tsum('changed', { files: run.tally.summary.files })
+                          : tsum(run.tally.summary.kind)}
                       </p>
                     )}
                     <div className="flex flex-wrap gap-1.5 pt-0.5">
@@ -154,25 +160,25 @@ export function SimpleThread({ runs, generating, isDirty, onRestore, onUndoLates
                           {onRedoLatest ? (
                             <Button variant="outline" size="xs" onClick={onRedoLatest} disabled={generating}>
                               <Redo2 className="h-3 w-3 mr-1" />
-                              Redo this
+                              {t('redoThis')}
                             </Button>
                           ) : onUndoLatest && (
                             <Button variant="outline" size="xs" onClick={onUndoLatest} disabled={generating}>
                               <Undo2 className="h-3 w-3 mr-1" />
-                              Undo this
+                              {t('undoThis')}
                             </Button>
                           )}
                           {isDirty && (
                             <Button variant="accent" size="xs" onClick={onSave} disabled={generating}>
                               <Check className="h-3 w-3 mr-1" />
-                              Save
+                              {tc('actions.save')}
                             </Button>
                           )}
                         </>
                       ) : run.checkpointId && (
                         <Button variant="outline" size="xs" onClick={() => onRestore(run.checkpointId!)} disabled={generating}>
                           <Undo2 className="h-3 w-3 mr-1" />
-                          Restore
+                          {tc('actions.restore')}
                         </Button>
                       )}
                     </div>

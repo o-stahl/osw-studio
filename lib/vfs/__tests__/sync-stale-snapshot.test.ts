@@ -34,6 +34,8 @@ vi.mock('sonner', () => ({
 vi.mock('@/lib/telemetry', () => ({ track: vi.fn() }));
 
 import { toast } from 'sonner';
+import { registerEnglishTranslator } from '@/lib/i18n/__tests__/test-helpers';
+
 import {
   GET as projectGET,
   POST as projectPOST,
@@ -50,6 +52,10 @@ import { GET as statusGET } from '@/app/api/w/[workspaceId]/sync/status/route';
 
 import { vfs } from '../index';
 import { autoSyncProject, invalidateSyncStatusCache, setAutoSyncWorkspaceId } from '../auto-sync';
+
+// The warnings below are matched by their English wording, which the runtime only produces once
+// a translator is registered.
+registerEnglishTranslator();
 
 const WORKSPACE = 'w1';
 

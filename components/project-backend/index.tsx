@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { vfs } from '@/lib/vfs';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UnifiedSettingsModal } from '@/components/unified-settings';
@@ -32,6 +33,7 @@ import { newPromptSuggestion, usablePromptSuggestions } from '@/lib/vfs/prompt-s
 import { INLINE_SUGGESTION_COUNT } from '@/lib/constants/suggestion-pills';
 import type { Project, ProjectRuntime, PromptSuggestion } from '@/lib/vfs/types';
 import { getProjectRuntimes } from '@/lib/runtimes/registry';
+import { useRuntimeDescriptions } from '@/lib/i18n/use-runtime-descriptions';
 import type {
   FunctionsDataProvider,
   ServerFunctionsDataProvider,
@@ -49,6 +51,7 @@ import {
   type PathRule,
 } from '@/lib/vfs/suggestion-path-rules';
 import { useWorkspaceStore } from '@/lib/stores/workspace';
+import { REPO_URL } from '@/lib/constants/links';
 
 interface ProjectSettingsPanelProps {
   project: Project;
@@ -244,6 +247,9 @@ function createScheduledFunctionsProvider(projectId: string): ScheduledFunctions
 }
 
 function GeneralTab({ project, onProjectUpdate }: { project: Project; onProjectUpdate: (project: Project) => void }) {
+  const t = useTranslations('backend');
+  const runtimeDescriptions = useRuntimeDescriptions();
+  const tc = useTranslations('common');
   const [editingEntryPoint, setEditingEntryPoint] = useState(
     project.settings?.previewEntryPoint || '/index.html'
   );
@@ -288,10 +294,10 @@ function GeneralTab({ project, onProjectUpdate }: { project: Project; onProjectU
       const newPrompt = getDomainPrompt(promptOverwriteConfirm.runtime);
       await vfs.updateFile(project.id, '/.PROMPT.md', newPrompt);
       window.dispatchEvent(new CustomEvent('filesChanged', { detail: { projectId: project.id } }));
-      toast.success('.PROMPT.md updated for new runtime');
+      toast.success(t('promptUpdated'));
     } catch (err) {
       logger.error('Failed to overwrite .PROMPT.md:', err);
-      toast.error('Failed to update .PROMPT.md');
+      toast.error(t('promptUpdateFailed'));
     } finally {
       setPromptOverwriteConfirm(null);
     }
@@ -308,12 +314,12 @@ function GeneralTab({ project, onProjectUpdate }: { project: Project; onProjectU
       vfs.scheduleAutoSync(proj.id);
       onProjectUpdate(proj);
       const label = getProjectRuntimes().find(r => r.value === value)?.label || value;
-      toast.success(`Runtime changed to ${label}`);
+      toast.success(t('runtimeChanged', { label }));
       track('runtime_switch', { from: previousRuntime, to: value });
       await updatePromptForRuntime(value);
     } catch (err) {
       logger.error('Failed to update runtime:', err);
-      toast.error('Failed to update runtime');
+      toast.error(t('runtimeUpdateFailed'));
     }
   };
 
@@ -327,17 +333,17 @@ function GeneralTab({ project, onProjectUpdate }: { project: Project; onProjectU
       await vfs.updateProject(proj);
       vfs.scheduleAutoSync(proj.id);
       onProjectUpdate(proj);
-      toast.success(`Entry point set to ${trimmed}`);
+      toast.success(t('entryPointSetTo', { path: trimmed }));
     } catch (err) {
       logger.error('Failed to update entry point:', err);
-      toast.error('Failed to update entry point');
+      toast.error(t('entryPointUpdateFailed'));
     }
   };
 
   return (
     <div className="p-4 space-y-6">
       <div className="space-y-2">
-        <Label htmlFor="runtime">Runtime</Label>
+        <Label htmlFor="runtime">{tc('labels.runtime')}</Label>
         <Select value={project.settings?.runtime || 'handlebars'} onValueChange={handleRuntimeChange}>
           <SelectTrigger id="runtime" className="w-full">
             <div className="truncate flex-1 text-left">
@@ -349,7 +355,7 @@ function GeneralTab({ project, onProjectUpdate }: { project: Project; onProjectU
               <SelectItem key={rt.value} value={rt.value}>
                 <div className="flex flex-col gap-0.5">
                   <div className="font-medium">{rt.label}</div>
-                  <div className="text-xs text-muted-foreground">{rt.description}</div>
+                  <div className="text-xs text-muted-foreground">{runtimeDescriptions[rt.value] ?? rt.description}</div>
                 </div>
               </SelectItem>
             ))}
@@ -358,7 +364,7 @@ function GeneralTab({ project, onProjectUpdate }: { project: Project; onProjectU
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="entry-point">Preview Entry Point</Label>
+        <Label htmlFor="entry-point">{t('previewEntryPoint')}</Label>
         <Input
           id="entry-point"
           value={editingEntryPoint}
@@ -368,7 +374,7 @@ function GeneralTab({ project, onProjectUpdate }: { project: Project; onProjectU
           placeholder="/index.html"
         />
         <p className="text-xs text-muted-foreground">
-          The file loaded in the preview panel when opening this project.
+          {t('entryPointHelp')}
         </p>
       </div>
 
@@ -381,18 +387,18 @@ function GeneralTab({ project, onProjectUpdate }: { project: Project; onProjectU
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-amber-500" />
-              Update .PROMPT.md?
+              {t('updatePromptTitle')}
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Your .PROMPT.md has custom content. Replace it with the default {promptOverwriteConfirm?.label} instructions?
+            {t('updatePromptBody', { label: promptOverwriteConfirm?.label ?? '' })}
           </p>
           <div className="flex justify-end gap-2 mt-2">
             <Button variant="outline" size="sm" onClick={() => setPromptOverwriteConfirm(null)}>
-              Keep current
+              {t('keepCurrent')}
             </Button>
             <Button size="sm" onClick={confirmPromptOverwrite}>
-              Replace
+              {t('replace')}
             </Button>
           </div>
         </DialogContent>
@@ -409,21 +415,23 @@ function GeneralTab({ project, onProjectUpdate }: { project: Project; onProjectU
  * the first three appear on the row and the rest go behind the overflow menu, which is why there
  * are move controls rather than an alphabetical list.
  */
-const SCOPE_HELP =
-  'Off, this suggestion shows on every page. On, it only shows when the preview is on a page one ' +
-  'of the rules covers. Page picks a single page, Directory covers everything inside one including ' +
-  'its subdirectories, and Pattern takes a glob: * matches inside one path segment, ** across them.';
-
 /** A rule as edited. The id is for React and for editing; only the compiled glob is stored. */
 interface PathRuleRow extends PathRule {
   id: string;
 }
 
-const RULE_KIND_LABELS: Record<PathRule['kind'], string> = {
-  page: 'Page',
-  directory: 'Directory',
-  pattern: 'Pattern',
-};
+/**
+ * The kind names for the closed selector. The options inside it read the same three keys, so
+ * without this the trigger showed English next to a translated menu.
+ */
+function useRuleKindLabels(): Record<PathRule['kind'], string> {
+  const t = useTranslations('backend');
+  return useMemo(() => ({
+    page: t('page'),
+    directory: t('directory'),
+    pattern: t('pattern'),
+  }), [t]);
+}
 
 /**
  * A picked value that is no longer in the project still has to be selectable, or opening the editor
@@ -435,13 +443,14 @@ function withCurrent(options: string[], current: string): string[] {
 
 /** Silent until there is a pattern to count, so an empty field does not read as "matches nothing". */
 function PatternMatchCount({ patterns, pagePaths }: { patterns: string[]; pagePaths: string[] }) {
+  const t = useTranslations('backend');
   const usable = patterns.map((p) => p.trim()).filter((p) => p !== '');
   if (usable.length === 0 || pagePaths.length === 0) return null;
 
   const matched = pagePaths.filter((page) => usable.some((p) => matchesPathPattern(p, page))).length;
   return (
     <p className="text-[11px] text-muted-foreground">
-      Matches {matched} of {pagePaths.length} {pagePaths.length === 1 ? 'page' : 'pages'} in this project
+      {t('patternMatches', { matched, total: pagePaths.length })}
     </p>
   );
 }
@@ -453,6 +462,9 @@ function PromptSuggestionsEditor({
   project: Project;
   onProjectUpdate: (project: Project) => void;
 }) {
+  const tc = useTranslations('common');
+  const t = useTranslations('backend');
+  const ruleKindLabels = useRuleKindLabels();
   const [draft, setDraft] = useState<PromptSuggestion[]>(
     () => project.settings?.promptSuggestions ?? []
   );
@@ -555,10 +567,10 @@ function PromptSuggestionsEditor({
       useWorkspaceStore.getState().updateProjectSettings({ promptSuggestions: cleaned });
       onProjectUpdate(proj);
       setDraft(cleaned);
-      toast.success(cleaned.length === 0 ? 'Suggestions cleared' : 'Suggestions saved');
+      toast.success(cleaned.length === 0 ? t('suggestionsCleared') : t('suggestionsSaved'));
     } catch (err) {
       logger.error('Failed to save prompt suggestions:', err);
-      toast.error('Failed to save suggestions');
+      toast.error(t('saveSuggestionsFailed'));
     } finally {
       setSaving(false);
     }
@@ -566,10 +578,9 @@ function PromptSuggestionsEditor({
 
   return (
     <div className="space-y-2">
-      <Label>Chat suggestions</Label>
+      <Label>{t('chatSuggestions')}</Label>
       <p className="text-xs text-muted-foreground">
-        Shown above the chat box before the first message. The first {INLINE_SUGGESTION_COUNT} appear
-        on the row; any others sit behind a menu. With none set, the generic starters are used.
+        {t('suggestionsHint', { count: INLINE_SUGGESTION_COUNT })}
       </p>
 
       <div className="space-y-3 pt-1">
@@ -579,26 +590,26 @@ function PromptSuggestionsEditor({
               <Input
                 value={suggestion.label}
                 onChange={(e) => update(suggestion.id, { label: e.target.value })}
-                placeholder="Button text"
-                aria-label={`Suggestion ${index + 1} button text`}
+                placeholder={t('buttonText')}
+                aria-label={t('ariaSuggestionText', { n: index + 1 })}
                 className="flex-1"
               />
               <Button
-                variant="ghost" size="sm" aria-label="Move up"
+                variant="ghost" size="sm" aria-label={t('moveUp')}
                 disabled={index === 0}
                 onClick={() => move(index, -1)}
               >
                 <ArrowUp className="h-3.5 w-3.5" />
               </Button>
               <Button
-                variant="ghost" size="sm" aria-label="Move down"
+                variant="ghost" size="sm" aria-label={t('moveDown')}
                 disabled={index === draft.length - 1}
                 onClick={() => move(index, 1)}
               >
                 <ArrowDown className="h-3.5 w-3.5" />
               </Button>
               <Button
-                variant="ghost" size="sm" aria-label="Remove suggestion"
+                variant="ghost" size="sm" aria-label={t('removeSuggestion')}
                 onClick={() => setDraft(rows => rows.filter(row => row.id !== suggestion.id))}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -607,8 +618,8 @@ function PromptSuggestionsEditor({
             <textarea
               value={suggestion.prompt}
               onChange={(e) => update(suggestion.id, { prompt: e.target.value })}
-              placeholder="What gets put in the chat box. Write it as an instruction."
-              aria-label={`Suggestion ${index + 1} prompt`}
+              placeholder={t('suggestionPlaceholder')}
+              aria-label={t('ariaSuggestionPrompt', { n: index + 1 })}
               rows={3}
               className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm resize-y"
             />
@@ -616,9 +627,9 @@ function PromptSuggestionsEditor({
             <div className="border-t border-border/60 pt-2 space-y-2">
               <div className="flex items-center gap-2">
                 <Label htmlFor={`scoped-${suggestion.id}`} className="text-xs font-normal">
-                  Only on certain pages
+                  {t('onlyCertainPages')}
                 </Label>
-                <InfoTip>{SCOPE_HELP}</InfoTip>
+                <InfoTip>{t('scopeHelp')}</InfoTip>
                 <Switch
                   id={`scoped-${suggestion.id}`}
                   className="ml-auto"
@@ -655,14 +666,14 @@ function PromptSuggestionsEditor({
                         <SelectTrigger
                           size="sm"
                           className="w-[112px] shrink-0"
-                          aria-label={`Suggestion ${index + 1} rule ${ruleIndex + 1} type`}
+                          aria-label={t('ariaRuleType', { n: index + 1, rule: ruleIndex + 1 })}
                         >
-                          <span className="text-xs">{RULE_KIND_LABELS[row.kind]}</span>
+                          <span className="text-xs">{ruleKindLabels[row.kind]}</span>
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="page" disabled={pagePaths.length === 0}>Page</SelectItem>
-                          <SelectItem value="directory" disabled={directories.length === 0}>Directory</SelectItem>
-                          <SelectItem value="pattern">Pattern</SelectItem>
+                          <SelectItem value="page" disabled={pagePaths.length === 0}>{t('page')}</SelectItem>
+                          <SelectItem value="directory" disabled={directories.length === 0}>{t('directory')}</SelectItem>
+                          <SelectItem value="pattern">{t('pattern')}</SelectItem>
                         </SelectContent>
                       </Select>
 
@@ -671,7 +682,7 @@ function PromptSuggestionsEditor({
                           value={row.value}
                           onChange={(e) => editRule(suggestion.id, row.id, { value: e.target.value })}
                           placeholder="/articles/*.html"
-                          aria-label={`Suggestion ${index + 1} rule ${ruleIndex + 1} pattern`}
+                          aria-label={t('ariaRulePattern', { n: index + 1, rule: ruleIndex + 1 })}
                           className="flex-1 min-w-0 h-8 text-xs font-mono"
                         />
                       ) : (
@@ -682,11 +693,11 @@ function PromptSuggestionsEditor({
                           <SelectTrigger
                             size="sm"
                             className="flex-1 min-w-0"
-                            aria-label={`Suggestion ${index + 1} rule ${ruleIndex + 1} ${row.kind === 'page' ? 'page' : 'directory'}`}
+                            aria-label={t(row.kind === 'page' ? 'ariaRulePage' : 'ariaRuleDirectory', { n: index + 1, rule: ruleIndex + 1 })}
                           >
                             {row.value === '' ? (
                               <span className="text-xs text-muted-foreground">
-                                {row.kind === 'page' ? 'Choose a page' : 'Choose a directory'}
+                                {row.kind === 'page' ? t('choosePage') : t('chooseDirectory')}
                               </span>
                             ) : (
                               <span className="text-xs font-mono truncate">{row.value}</span>
@@ -704,7 +715,7 @@ function PromptSuggestionsEditor({
 
                       <Button
                         variant="ghost" size="sm"
-                        aria-label={`Remove suggestion ${index + 1} rule ${ruleIndex + 1}`}
+                        aria-label={t('ariaRemoveRule', { n: index + 1, rule: ruleIndex + 1 })}
                         onClick={() =>
                           setRules(suggestion.id, (ruleRows[suggestion.id] ?? []).filter((r) => r.id !== row.id))
                         }
@@ -722,11 +733,11 @@ function PromptSuggestionsEditor({
                       }
                     >
                       <Plus className="h-3 w-3 mr-1" />
-                      Add page rule
+                      {t('addPageRule')}
                     </Button>
                     {pagePaths.length === 0 && (
                       <span className="text-[11px] text-muted-foreground">
-                        No pages in this project yet, so only Pattern is available
+                        {t('noPagesYet')}
                       </span>
                     )}
                   </div>
@@ -740,7 +751,7 @@ function PromptSuggestionsEditor({
 
         {draft.length === 0 && (
           <p className="text-xs text-muted-foreground italic">
-            No suggestions. The generic starters are shown instead.
+            {t('noSuggestions')}
           </p>
         )}
       </div>
@@ -751,10 +762,10 @@ function PromptSuggestionsEditor({
           onClick={() => setDraft(rows => [...rows, newPromptSuggestion()])}
         >
           <Plus className="h-3.5 w-3.5 mr-1" />
-          Add suggestion
+          {t('addSuggestion')}
         </Button>
         <Button size="sm" onClick={save} disabled={!dirty || saving}>
-          {saving ? 'Saving…' : 'Save'}
+          {saving ? tc('actions.saving') : tc('actions.save')}
         </Button>
       </div>
     </div>
@@ -851,6 +862,9 @@ function ResponsiveTabBar({
 }
 
 export function ProjectSettingsPanel({ project, onProjectUpdate, enabled, workspaceId }: ProjectSettingsPanelProps) {
+  const tdn = useTranslations('deploymentDetail.nav');
+  const tc = useTranslations('common');
+  const t = useTranslations('backend');
   const [activeTab, setActiveTab] = useState('general');
   const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
 
@@ -869,12 +883,12 @@ export function ProjectSettingsPanel({ project, onProjectUpdate, enabled, worksp
   }, [project.id]);
 
   const tabs: TabDef[] = [
-    { value: 'general', icon: <Settings2 className="h-3 w-3" />, label: 'Project' },
-    { value: 'functions', icon: <Code2 className="h-3 w-3" />, label: 'Functions' },
-    { value: 'helpers', icon: <Wrench className="h-3 w-3" />, label: 'Helpers' },
-    { value: 'secrets', icon: <Key className="h-3 w-3" />, label: 'Secrets' },
-    { value: 'schedules', icon: <Clock className="h-3 w-3" />, label: 'Schedules' },
-    { value: 'schema', icon: <Database className="h-3 w-3" />, label: 'Schema' },
+    { value: 'general', icon: <Settings2 className="h-3 w-3" />, label: tc('labels.project') },
+    { value: 'functions', icon: <Code2 className="h-3 w-3" />, label: tdn('functions') },
+    { value: 'helpers', icon: <Wrench className="h-3 w-3" />, label: tdn('helpers') },
+    { value: 'secrets', icon: <Key className="h-3 w-3" />, label: tdn('secrets') },
+    { value: 'schedules', icon: <Clock className="h-3 w-3" />, label: tdn('schedules') },
+    { value: 'schema', icon: <Database className="h-3 w-3" />, label: tdn('schema') },
   ];
 
   return (
@@ -896,17 +910,17 @@ export function ProjectSettingsPanel({ project, onProjectUpdate, enabled, worksp
                     <div className="h-full flex items-center justify-center p-8">
                       <div className="text-center max-w-sm">
                         <Lock className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                        <h4 className="font-medium mb-2">Server Mode Required</h4>
+                        <h4 className="font-medium mb-2">{t('serverModeRequired')}</h4>
                         <p className="text-sm text-muted-foreground mb-4">
-                          Backend features require Server Mode. Deploy to a self-hosted instance to use edge functions, secrets, and database features.
+                          {t('serverModeExplain')}
                         </p>
                         <a
-                          href="https://github.com/o-stahl/osw-studio"
+                          href={REPO_URL}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-sm text-primary hover:underline"
                         >
-                          View setup guide
+                          {t('viewSetupGuide')}
                         </a>
                       </div>
                     </div>
@@ -922,7 +936,7 @@ export function ProjectSettingsPanel({ project, onProjectUpdate, enabled, worksp
                       <div className="text-center max-w-xs">
                         <PowerOff className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
                         <p className="text-sm text-muted-foreground">
-                          Backend features are disabled for this project. Enable them using the toggle above to manage edge functions, secrets, and more.
+                          {t('disabledExplain')}
                         </p>
                       </div>
                     </div>
@@ -983,6 +997,8 @@ interface ProjectSettingsModalProps {
 }
 
 export function ProjectSettingsModal({ project, isOpen, onClose, onProjectUpdate, enabled, onToggleEnabled, workspaceId }: ProjectSettingsModalProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('backend');
   const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const requestedSection = useWorkspaceStore(s => s.projectSettingsSection);
@@ -1007,7 +1023,7 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onProjectUpdate
               <div>
                 <DialogTitle className="flex items-center gap-2">
                   <Settings className="h-4 w-4" />
-                  Settings
+                  {tc('terms.settings')}
                 </DialogTitle>
                 <p className="text-sm text-muted-foreground mt-1">
                   {project.name}
@@ -1016,7 +1032,7 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onProjectUpdate
               <div className="flex items-center gap-3">
                 {isServerMode && (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">Backend {enabled ? 'Enabled' : 'Disabled'}</span>
+                    <span className="text-xs text-muted-foreground">{enabled ? t('backendEnabled') : t('backendDisabled')}</span>
                     <Switch checked={enabled} onCheckedChange={onToggleEnabled} />
                   </div>
                 )}
@@ -1025,7 +1041,7 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onProjectUpdate
                   className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
                   onClick={() => setShowSettingsModal(true)}
                 >
-                  Manage settings
+                  {t('manageSettings')}
                   <span>&rsaquo;</span>
                 </button>
               </div>

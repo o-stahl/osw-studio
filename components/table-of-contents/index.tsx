@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import type { TocItem } from '@/lib/hooks/use-table-of-contents';
 
@@ -12,6 +13,7 @@ interface TableOfContentsProps {
 }
 
 export function TableOfContents({ items, activeId, visibleIds = [], onItemClick }: TableOfContentsProps) {
+  const t = useTranslations('docs');
   // Auto-scroll TOC to keep active item visible
   useEffect(() => {
     if (!activeId) return;
@@ -44,7 +46,7 @@ export function TableOfContents({ items, activeId, visibleIds = [], onItemClick 
 
   return (
     <nav className="space-y-1">
-      <p className="text-sm font-semibold mb-3 text-foreground">On This Page</p>
+      <p className="text-sm font-semibold mb-3 text-foreground">{t('onThisPage')}</p>
       <ul className="text-sm">
         {items.map((item) => (
           <li key={`${item.id}-${item.index}`}>

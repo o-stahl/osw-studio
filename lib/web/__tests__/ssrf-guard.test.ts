@@ -30,6 +30,29 @@ describe('isPrivateIp', () => {
       expect(isPrivateIp(ip)).toBe(true);
     }
   });
+  it('blocks special-purpose IPv4 ranges', () => {
+    for (const ip of ['192.0.0.8', '198.18.0.1', '198.19.255.255', '224.0.0.1', '239.255.255.250',
+                       '240.0.0.1', '255.255.255.255']) {
+      expect(isPrivateIp(ip), ip).toBe(true);
+    }
+    for (const ip of ['198.20.0.1', '192.0.1.1', '223.255.255.255']) {
+      expect(isPrivateIp(ip), ip).toBe(false);
+    }
+  });
+  it('checks the IPv4 address inside NAT64 and 6to4 addresses', () => {
+    expect(isPrivateIp('64:ff9b::7f00:1')).toBe(true);       // NAT64 of 127.0.0.1
+    expect(isPrivateIp('64:ff9b::a9fe:a9fe')).toBe(true);    // NAT64 of 169.254.169.254
+    expect(isPrivateIp('64:ff9b::808:808')).toBe(false);     // NAT64 of 8.8.8.8
+    expect(isPrivateIp('2002:7f00:1::1')).toBe(true);        // 6to4 of 127.0.0.1
+    expect(isPrivateIp('2002:808:808::1')).toBe(false);      // 6to4 of 8.8.8.8
+  });
+  it('blocks the local-use NAT64 prefix, which never leads to the public internet', () => {
+    for (const ip of ['64:ff9b:1::808:808', '64:ff9b:1:ffff::1']) expect(isPrivateIp(ip), ip).toBe(true);
+    expect(isPrivateIp('64:ff9b:2::1')).toBe(false);
+  });
+  it('blocks IPv6 multicast and site-local', () => {
+    for (const ip of ['ff02::1', 'ff05::2', 'fec0::1']) expect(isPrivateIp(ip), ip).toBe(true);
+  });
   it('still allows public IPv6', () => {
     expect(isPrivateIp('2606:4700:4700::1111')).toBe(false);
     expect(isPrivateIp('2001:4860:4860::8888')).toBe(false);

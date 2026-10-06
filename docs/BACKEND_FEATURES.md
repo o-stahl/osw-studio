@@ -138,6 +138,10 @@ request.path     // URL path after function name
 request.params   // Path parameters (if any)
 ```
 
+`request.headers` carries `accept`, `accept-language`, `content-type`, `content-length`, `origin`, `referer`, `user-agent`, any `x-` header the caller sent (except `x-instance-api-key`), and `cookie`. The cookie header has OSW Studio's own cookies (every name starting `osw_`) removed, so a function sees the cookies its site set and never the visitor's studio session.
+
+When a function sets response headers (the third argument to `Response.json`), only `content-type`, `content-disposition`, `content-language`, `cache-control`, `expires`, `vary`, `location`, `etag`, `last-modified`, `x-` headers (except proxy and framework control headers such as `x-accel-redirect`, `x-sendfile` and `x-middleware-*`) and `set-cookie` are passed on. A `set-cookie` for an `osw_` name is dropped, and a `Domain` attribute is removed so the cookie stays on the site's host.
+
 #### `db` Object (Database)
 ```javascript
 // Execute SELECT queries
@@ -184,8 +188,9 @@ const res = await fetch('https://api.example.com/users', {
 - 10 second timeout per request
 - 5MB max response body
 - Only `http://` and `https://` protocols allowed
-- Private IPs blocked in production (localhost, 10.x.x.x, 172.16-31.x.x, 192.168.x.x, 169.254.x.x)
-- Development mode allows local requests for testing
+- Private and internal addresses are refused: loopback, `localhost`, private ranges (10.x, 172.16-31.x, 192.168.x), link-local and cloud metadata (169.254.x), 100.64.x, IPv6 loopback and private ranges, and any name that resolves to one of them
+- Redirects are followed (up to 5) and each one is checked the same way; `Authorization` and `Cookie` headers are dropped when a redirect goes to another origin
+- To let functions reach local services (for example an API on the same machine), set `FUNCTIONS_ALLOW_PRIVATE_FETCH=true` on the server
 
 #### `atob` / `btoa` Functions
 ```javascript

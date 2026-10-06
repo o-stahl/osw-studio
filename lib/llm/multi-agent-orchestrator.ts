@@ -8,9 +8,9 @@
  * The core agent loop lives in core/agent-loop.ts. This file only handles:
  * - Constructor wiring (configManager → adapters → coordinator → loop)
  * - execute(): skill evaluation + message construction, then delegates to AgentLoop
- * - stop() / continue() / importConversation(): thin pass-through
+ * - stop() / importConversation(): thin pass-through
  * - completionGate: drains runtime errors from preview iframe
- * - onPausableError: pause/resume UI flow
+ * - onProviderError: stop on a provider error (or move "Free models" on), with ways to continue
  * - Checkpoint recording (onAfterExecute hook)
  * - Telemetry emission
  * - Cost accumulation (configManager.updateSessionCost, VFS project cost)
@@ -18,12 +18,13 @@
 
 import { Agent, AgentType, agentRegistry } from './agent';
 import { vfs } from '@/lib/vfs';
-import { checkpointManager, Checkpoint } from '@/lib/vfs/checkpoint';
+import { checkpointManager, Checkpoint, type CheckpointLabel } from '@/lib/vfs/checkpoint';
 import { saveManager } from '@/lib/vfs/save-manager';
 import { configManager } from '@/lib/config/storage';
 import { getProvider, getModelContextLength } from '@/lib/llm/providers/registry';
 import { boundCompactionLimit, resolveLocalContextLength } from '@/lib/llm/local-context';
 import type { ProviderId } from '@/lib/llm/providers/types';
+import { isFreeModels, FREE_MODELS_FALLBACK, FREE_MODELS_PROVIDERS, FREE_MODELS_ID } from './suggestions/free-models';
 import { CostCalculator } from './cost-calculator';
 import { ToolCall, UsageInfo, ContentBlock } from './types';
 import { logger } from '@/lib/utils';
@@ -44,11 +45,11 @@ import type { ServerOrchestratorContext } from '@/lib/server-generate/types';
 import type { ApprovalRequest, ApprovalOutcome, PermissionMode, GateDecision } from './permissions';
 import type { ResolvedAssignment, ModelRef } from '@/lib/llm/models/assignment';
 import { transcribeAudio } from '@/lib/llm/transcribe';
-import { generateImage } from '@/lib/llm/image-gen';
+import { generateImage, imageModelFor } from '@/lib/llm/image-gen';
 
 import { AgentLoop } from './core/agent-loop';
 import { ContextManagerImpl } from './core/context-manager';
-import { OswsProviderAdapter, PausableApiError } from './provider-adapter';
+import { OswsProviderAdapter, ProviderApiError } from './provider-adapter';
 import { OswsToolExecutor } from './tool-executor';
 import { MultiAgentCoordinator } from './coordinator';
 import type { Message, ProgressReporter, CostTracker, AgentLoopConfig, AgentLoopResult, CompactionConfig } from './core/types';
@@ -141,16 +142,23 @@ export interface MultiAgentResult {
 // ---------------------------------------------------------------------------
 
 /** Categories where an identical resend cannot succeed, whatever the user does meanwhile. */
-const TERMINAL_CATEGORIES = new Set(['model_not_found', 'tool_not_supported', 'invalid_request', 'context_too_long']);
+const TERMINAL_CATEGORIES = new Set(['tool_not_supported', 'invalid_request', 'context_too_long']);
 
-export function isTerminalApiError(error: PausableApiError): boolean {
+/** The model is the problem, so "Free models" can move on to another one. */
+const SWITCHABLE_CATEGORIES = new Set(['model_busy', 'model_not_found']);
+
+/**
+ * Whether resending the same request on the same model is pointless, so the stopped task offers
+ * no plain Continue. A spent allowance is not terminal: it renews or can be topped up, and the task
+ * can continue on another model meanwhile. A missing model is, except for OpenRouter's 503, which
+ * means no provider is serving the model right now rather than that it is gone.
+ */
+export function isTerminalApiError(error: ProviderApiError): boolean {
   if (TERMINAL_CATEGORIES.has(error.errorCategory)) return true;
+  if (error.errorCategory === 'model_not_found') return error.status !== 503;
   const config = getProvider(error.provider);
   // An expired OAuth sign-in has just been cleared by the adapter; a pasted key can be replaced.
   if (error.errorCategory === 'auth_expired' && config.usesOAuth) return true;
-  // HuggingFace's free allowance resets monthly. No Continue can hurry that; a paid provider's
-  // credits can be topped up, so those still pause.
-  if (error.errorCategory === 'credit_exhausted' && error.provider === 'huggingface') return true;
   return false;
 }
 
@@ -179,7 +187,13 @@ export class MultiAgentOrchestrator {
 
   private stopped = false;
   private abortController = new AbortController();
-  private pauseResolve: (() => void) | null = null;
+
+  /**
+   * "Free models" resolved to a real model for this run: the top suggestion when the run starts,
+   * the next one after a busy answer. Never written to the user's selection, which stays "Free
+   * models". Null until worked out, when requests go to OpenRouter's own free router.
+   */
+  private freeModelPick: string | null = null;
 
   private totalCost = 0;
   private totalUsage: UsageInfo = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 };
@@ -228,23 +242,9 @@ export class MultiAgentOrchestrator {
     if (assignment?.agent?.model) this.model = assignment.agent.model;
   }
 
-  continue(): void {
-    if (this.pauseResolve) {
-      // Note: do NOT replace abortController here. It was not aborted on pause,
-      // and the ToolExecutor holds its signal — swapping it would disconnect
-      // stop() from in-flight tool execution for the rest of the run.
-      this.pauseResolve();
-      this.pauseResolve = null;
-    }
-  }
-
   stop(): void {
     this.stopped = true;
     this.abortController.abort();
-    if (this.pauseResolve) {
-      this.pauseResolve();
-      this.pauseResolve = null;
-    }
     logger.info('[MultiAgentOrchestrator] Execution stopped by user');
   }
 
@@ -431,7 +431,7 @@ export class MultiAgentOrchestrator {
 
       // 5. Post-run: checkpoint
       if (this.rootAgent.type !== 'setup') {
-        await this.recordAutoCheckpoint(`After: ${userPrompt.substring(0, 60)}`);
+        await this.recordAutoCheckpoint(`After: ${userPrompt.substring(0, 60)}`, { key: 'afterPrompt', values: { prompt: userPrompt.substring(0, 60) } });
       }
 
       return {
@@ -447,15 +447,15 @@ export class MultiAgentOrchestrator {
         contextBreakdowns: this.contextBreakdowns.length > 0 ? this.contextBreakdowns : undefined,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('[MultiAgentOrchestrator] Execution error:', errorMessage);
-      this.onProgress?.('error', { message: errorMessage, type: 'execution_error', stack: error instanceof Error ? error.stack : undefined });
+      const errorMessage = error instanceof Error ? error.message : undefined;
+      logger.error('[MultiAgentOrchestrator] Execution error:', errorMessage ?? error);
+      this.onProgress?.('error', { ...(errorMessage ? { message: errorMessage } : {}), type: 'execution_error', stack: error instanceof Error ? error.stack : undefined });
       if (this.rootAgent.type !== 'setup') {
-        await this.recordAutoCheckpoint(`After failure: ${userPrompt.substring(0, 60)}`);
+        await this.recordAutoCheckpoint(`After failure: ${userPrompt.substring(0, 60)}`, { key: 'afterFailure', values: { prompt: userPrompt.substring(0, 60) } });
       }
       return {
         success: false,
-        summary: `Error: ${errorMessage}`,
+        summary: errorMessage ?? '',
         exitReason: 'execution_error',
         conversation: Array.from(this.conversations.values()),
         totalCost: this.totalCost,
@@ -474,6 +474,7 @@ export class MultiAgentOrchestrator {
 
   private async runLoop(): Promise<AgentLoopResult> {
     const conversation = this.conversations.get(this.currentConversationId)!;
+    await this.pickFreeModel();
     const compactionLimit = this.resolveCompactionLimit();
 
     // Build ContextManager from existing conversation
@@ -548,6 +549,7 @@ export class MultiAgentOrchestrator {
     const progress: ProgressReporter = {
       onEvent: (event: string, data?: Record<string, unknown>) => {
         if (event === 'nudge') track('task_nudged');
+        if (event === 'malformed_tool_call') this.recordAgentOutcome('tool_failure');
         this.onProgress?.(event, data);
       },
     };
@@ -597,18 +599,23 @@ export class MultiAgentOrchestrator {
     // Build ToolExecutor. Only wire the capability when an image-capable model is
     // assigned — this stays in lockstep with the prompt gating so we never
     // advertise `generate-image` without it working (or vice versa).
-    const imageGen = this.assignment?.imageGen;
-    const generateImageCapability = this.isImageGenAvailable()
+    const onImageRequested = this.serverContext?.onImageRequested;
+    const generateImageCapability = !this.isImageGenAvailable() ? undefined
+      : onImageRequested
+      // Server-side the image model and its key live in the browser, which generates it.
       ? async (prompt: string, opts: { aspectRatio?: string; imageSize?: string }) => {
-          const ref = imageGen === 'agent' ? this.assignment!.agent : imageGen as ModelRef;
-          const apiKey = this.getConfig().getProviderApiKey(ref.provider) || '';
+          const result = await onImageRequested(prompt, opts);
+          if ('error' in result) throw new Error(result.error);
+          return result;
+        }
+      : async (prompt: string, opts: { aspectRatio?: string; imageSize?: string }) => {
           // Request the model's declared output modalities so image-only models
           // (e.g. FLUX, Grok Imagine) aren't sent an unsupported 'text' modality
           // while multimodal models (e.g. Gemini) still get 'text' as they require.
-          const modalities = this.getModelOutputModalities(ref);
+          const { ref, modalities } = imageModelFor(this.assignment!, this.getConfig())!;
+          const apiKey = this.getConfig().getProviderApiKey(ref.provider) || '';
           return generateImage({ provider: ref.provider, apiKey, model: ref.model, prompt, modalities, signal: this.abortController.signal, ...opts });
-        }
-      : undefined;
+        };
     const buildToolExecutor = (executorProgress: ProgressReporter) => {
       const executor = new OswsToolExecutor({
         projectId: this.projectId,
@@ -677,43 +684,52 @@ export class MultiAgentOrchestrator {
       agentType: this.rootAgent.type,
       isReadOnly: this.chatMode || this.rootAgent.isReadOnly,
       completionGate: this.buildCompletionGate(),
-      onPausableError: async (error: Error) => {
+      onProviderError: async (error: Error) => {
         this.apiErrorCount++;
-        const isPausable = error instanceof PausableApiError;
-        this.onProgress?.('error_paused', {
-          message: error.message,
-          status: isPausable ? (error as PausableApiError).status : 0,
-          errorType: isPausable ? (error as PausableApiError).errorType : 'unknown',
-          provider: isPausable ? (error as PausableApiError).provider : '',
-          model: isPausable ? (error as PausableApiError).model : '',
-        });
-        if (isPausable) {
+        const apiError = error instanceof ProviderApiError ? error : null;
+
+        // "Free models" is the one selection the app moves on its own: a busy or missing free
+        // model is passed over for the next suggestion. A model the user picked stays picked.
+        if (apiError && SWITCHABLE_CATEGORIES.has(apiError.errorCategory) && isFreeModels(this.assignment?.agent.model)) {
+          if (await this.rotateFreeModel(apiError)) return 'retry';
+        }
+        // A Stop pressed while the rotation was looking is the user's stop, not a provider stop.
+        if (this.stopped) return 'stop';
+
+        if (apiError) {
           track('api_error', {
-            provider: (error as PausableApiError).provider,
-            model: (error as PausableApiError).model,
-            error_type: (error as PausableApiError).errorType,
-            error_category: (error as PausableApiError).errorCategory,
-            status_code: (error as PausableApiError).status,
+            provider: apiError.provider,
+            model: apiError.model,
+            error_type: apiError.errorType,
+            error_category: apiError.errorCategory,
+            status_code: apiError.status,
           });
         } else {
-          // Non-pausable generation error (not a PausableApiError) — still
-          // reaches this handler and can lead to nudge/retry or task failure.
-          // Report best-effort fields only; never the error message.
+          // Not a provider response (a network failure, say). Report best-effort fields only;
+          // never the error message.
           track('api_error', {
             error_type: error.name || 'unknown',
             error_category: 'unknown',
           });
         }
-        // Pausing offers Continue, which re-sends the same request. That only helps when the
-        // failure can pass on its own or after something the user can fix in place: a server
-        // blip, a rate limit, a pasted key replaced in Settings, credits topped up. For a request
-        // the provider will refuse identically every time, a pause is a dead button, and most API
-        // errors are of that kind. End the task instead; Retry from the checkpoint remains.
-        if (isPausable && isTerminalApiError(error as PausableApiError)) {
-          return 'stop';
-        }
-        await new Promise<void>(resolve => { this.pauseResolve = resolve; });
-        return this.stopped ? 'stop' : 'continue';
+
+        // The task stops rather than waiting: a waiting task holds a server-side run open for as
+        // long as nobody answers. The thread offers to continue from here, on the same model or
+        // another, as a new turn on the same conversation.
+        const details = apiError ? await this.describeStop(apiError) : {};
+        if (this.stopped) return 'stop';
+        this.onProgress?.('api_stopped', {
+          message: error.message,
+          status: apiError?.status ?? 0,
+          errorType: apiError?.errorType ?? 'unknown',
+          errorCategory: apiError?.errorCategory ?? 'unknown',
+          provider: apiError?.provider ?? '',
+          model: apiError?.model ?? '',
+          // Resending the same request cannot help when the provider will refuse it identically.
+          canRetrySame: !(apiError && isTerminalApiError(apiError)),
+          ...details,
+        });
+        return 'stop';
       },
     };
 
@@ -748,6 +764,7 @@ export class MultiAgentOrchestrator {
 
     this.toolCallCount += result.toolCount;
     this.turnCount += result.turnCount;
+    this.recordAgentOutcome(result.toolCount > 0 ? 'ok' : null);
 
     // Mark conversation finished — status reflects the actual loop outcome
     conversation.metadata.completed_at = Date.now();
@@ -789,13 +806,6 @@ export class MultiAgentOrchestrator {
     return true;
   }
 
-  /** A model's declared output modalities from the cached catalog, if known. */
-  private getModelOutputModalities(ref: ModelRef): string[] | undefined {
-    const entry = this.getConfig().getCachedModels(ref.provider)?.models
-      ?.find((m: { id: string; outputModalities?: string[] }) => m.id === ref.model);
-    return entry?.outputModalities?.length ? entry.outputModalities : undefined;
-  }
-
   /**
    * Whether image generation should be offered (prompt docs + wired capability).
    * True when an image-capable model is assigned: an explicit image model (the
@@ -805,10 +815,9 @@ export class MultiAgentOrchestrator {
    * `generate-image` command that fails at runtime.
    */
   private isImageGenAvailable(): boolean {
-    const imageGen = this.assignment?.imageGen;
-    if (!imageGen) return false;
-    if (imageGen !== 'agent') return true;
-    return !!this.getModelOutputModalities(this.assignment!.agent)?.includes('image');
+    // Server-side the assignment lives in the browser, which reports whether it has an image model.
+    if (this.serverContext) return !!this.serverContext.imageGenAvailable;
+    return !!this.assignment && imageModelFor(this.assignment, this.getConfig()) !== null;
   }
 
   private isWebSearchAvailable(): boolean {
@@ -938,17 +947,121 @@ export class MultiAgentOrchestrator {
     });
   }
 
+  /**
+   * Note in this browser's record how the agent model did, for the suggestion order. A run that
+   * used tools counts as working; a malformed tool call counts against. Browser runs only.
+   */
+  private recordAgentOutcome(outcome: 'ok' | 'tool_failure' | null): void {
+    if (!outcome || this.serverContext || typeof window === 'undefined') return;
+    let ran: { provider: string; model: string };
+    try {
+      // The model requests went to, which for "Free models" is the free model behind it.
+      ran = this.getProviderConfig();
+    } catch {
+      return;
+    }
+    // OpenRouter's free router answers with a different free model each time, so what it did says
+    // nothing about any one model.
+    if (!ran.model || ran.model === FREE_MODELS_FALLBACK) return;
+    import('./suggestions/observed')
+      .then(({ recordModelOutcome }) => recordModelOutcome(ran.provider, ran.model, outcome))
+      .catch(() => {});
+  }
+
+  /** Work out which free model "Free models" means right now. Browser runs only. */
+  private async pickFreeModel(): Promise<void> {
+    const agent = this.assignment?.agent;
+    if (!agent || !isFreeModels(agent.model) || this.serverContext || typeof window === 'undefined') return;
+    try {
+      const { rankProviderModels } = await import('./suggestions/suggest');
+      const ranked = await rankProviderModels(agent.provider, { freeOnly: true });
+      this.freeModelPick = ranked.find((r) => !r.coolingDown)?.model.id ?? null;
+    } catch (err) {
+      logger.warn('[MultiAgentOrchestrator] Could not pick a free model:', err);
+    }
+  }
+
+  /** Pass over a busy or missing free model for the next suggestion, and say so in the thread. */
+  private async rotateFreeModel(error: ProviderApiError): Promise<boolean> {
+    if (this.serverContext || typeof window === 'undefined' || !this.assignment) return false;
+    try {
+      const { recordModelOutcome } = await import('./suggestions/observed');
+      recordModelOutcome(error.provider, error.model, error.errorCategory === 'model_busy' ? 'busy' : 'unavailable');
+      // Free only, whatever the account could pay for: "Free models" never starts spending, and
+      // OpenRouter's free router (the fallback before a pick) has no price to compare against.
+      const { rankProviderModels } = await import('./suggestions/suggest');
+      const { nextSuggestion } = await import('./suggestions/rank');
+      const ranked = await rankProviderModels(error.provider as ProviderId, { freeOnly: true });
+      const next = nextSuggestion(ranked, { provider: error.provider, model: error.model });
+      if (!next || this.stopped) return false;
+      this.freeModelPick = next.model.id;
+      this.onProgress?.('model_switched', {
+        provider: next.provider,
+        fromModel: error.model,
+        toModel: next.model.id,
+        reason: error.errorCategory === 'model_busy' ? 'busy' : 'unavailable',
+      });
+      return true;
+    } catch (err) {
+      logger.warn('[MultiAgentOrchestrator] Could not move to another free model:', err);
+      return false;
+    }
+  }
+
+  /**
+   * What the stopped card offers beyond the error, for browser runs: the live allowance when the
+   * provider publishes one, the other connected providers to continue on, and a model to try on
+   * the same provider. All suggestions; nothing is switched here.
+   */
+  private async describeStop(error: ProviderApiError): Promise<Record<string, unknown>> {
+    const given = error.timing ?? {};
+    const timing = {
+      ...(given.retryAfterMs !== undefined ? { retryAfterMs: given.retryAfterMs } : {}),
+      ...(given.resetAt !== undefined ? { resetAt: given.resetAt } : {}),
+    };
+    if (this.serverContext || typeof window === 'undefined') return timing;
+    const provider = error.provider as ProviderId;
+    const spent = error.errorCategory === 'daily_limit' || error.errorCategory === 'credit_exhausted';
+    try {
+      const { fetchProviderStatus } = await import('./provider-status');
+      const { alternativesTo, nextModelAfter } = await import('./suggestions/suggest');
+      const onFreeModels = isFreeModels(this.assignment?.agent.model);
+      const [status, alternatives, sameProvider] = await Promise.all([
+        spent ? fetchProviderStatus(provider, configManager.getProviderApiKey(provider) ?? '') : Promise.resolve(undefined),
+        spent ? alternativesTo(provider) : Promise.resolve([]),
+        // The daily free count is shared by every free model, so no other free model would answer.
+        // On "Free models" the rotation already tried the next one, so there is nothing to suggest.
+        error.errorCategory === 'daily_limit' || onFreeModels ? Promise.resolve(undefined) : nextModelAfter({ provider, model: error.model }).catch(() => undefined),
+      ]);
+      // Out of credit on a provider with free models: the free entry is the natural thing to try.
+      const tryFree = error.errorCategory === 'credit_exhausted' && FREE_MODELS_PROVIDERS.has(provider) && !onFreeModels;
+      const suggestion = tryFree
+        ? { provider, model: FREE_MODELS_ID }
+        : sameProvider;
+      return {
+        ...timing,
+        ...(status ? { quota: status.quota } : {}),
+        alternatives,
+        ...(suggestion ? { suggestion } : {}),
+      };
+    } catch {
+      return timing;
+    }
+  }
+
   private getProviderConfig(): { provider: string; apiKey: string; model: string; baseUrl: string; customHeaders?: Record<string, string> } {
     if (this.serverContext) {
       const cfg = this.getConfig();
       const provider = cfg.getSelectedProvider();
-      return { provider, apiKey: cfg.getProviderApiKey(provider) || '', model: cfg.getProviderModel(provider) || this.model || 'default-model', baseUrl: '' };
+      const serverModel = cfg.getProviderModel(provider) || this.model || 'default-model';
+      return { provider, apiKey: cfg.getProviderApiKey(provider) || '', model: isFreeModels(serverModel) ? FREE_MODELS_FALLBACK : serverModel, baseUrl: '' };
     }
     const agent = this.assignment?.agent;
     const provider = (agent?.provider ?? configManager.getSelectedProvider()) as ProviderId;
     const providerConfig = getProvider(provider);
     const apiKey = configManager.getProviderApiKey(provider);
-    const model = agent?.model || configManager.getProviderModel(provider) || this.model || undefined;
+    const chosen = agent?.model || configManager.getProviderModel(provider) || this.model || undefined;
+    const model = isFreeModels(chosen) ? (this.freeModelPick ?? FREE_MODELS_FALLBACK) : chosen;
     if (providerConfig.apiKeyRequired && !apiKey && !providerConfig.usesOAuth) {
       throw new Error(`API key not configured for provider: ${provider}`);
     }
@@ -1013,10 +1126,11 @@ export class MultiAgentOrchestrator {
     return id;
   }
 
-  private async recordAutoCheckpoint(description: string): Promise<Checkpoint | null> {
+  private async recordAutoCheckpoint(description: string, label: CheckpointLabel): Promise<Checkpoint | null> {
     if (this.serverContext) return null;
     const checkpoint = await checkpointManager.createCheckpoint(this.projectId, description, {
       kind: 'auto',
+      label,
       baseRevisionId: saveManager.getSavedCheckpointId(this.projectId),
     });
     this.onProgress?.('checkpoint_created', { checkpointId: checkpoint.id, description, timestamp: checkpoint.timestamp });

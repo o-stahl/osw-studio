@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Play, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -18,6 +19,7 @@ interface SchemaEditorProps {
 type SubTab = 'tables' | 'sql' | 'ddl';
 
 export function SchemaEditor({ projectId, enabled, onSchemaChange, workspaceId }: SchemaEditorProps) {
+  const t = useTranslations('backend');
   const apiBase = workspaceId ? `/api/w/${workspaceId}` : '/api';
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('tables');
   const [ddl, setDdl] = useState('');
@@ -82,11 +84,11 @@ export function SchemaEditor({ projectId, enabled, onSchemaChange, workspaceId }
 
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error || 'Failed to apply DDL');
+        toast.error(data.error || t('applyDdlFailed'));
         return;
       }
 
-      toast.success('DDL applied successfully');
+      toast.success(t('ddlApplied'));
 
       // Append to the project's stored schema so the AI server context stays in sync
       const existing = await getProjectSchema(projectId);
@@ -98,11 +100,11 @@ export function SchemaEditor({ projectId, enabled, onSchemaChange, workspaceId }
       setSchemaKey(prev => prev + 1);
       setDdl('');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to apply DDL');
+      toast.error(err instanceof Error ? err.message : t('applyDdlFailed'));
     } finally {
       setApplying(false);
     }
-  }, [ddl, queryEndpoint, projectId, onSchemaChange]);
+  }, [ddl, queryEndpoint, projectId, onSchemaChange, t]);
 
   if (!enabled) {
     return null;
@@ -122,7 +124,7 @@ export function SchemaEditor({ projectId, enabled, onSchemaChange, workspaceId }
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted'
             }`}
           >
-            {tab === 'tables' ? 'Tables' : tab === 'sql' ? 'SQL' : 'DDL'}
+            {tab === 'tables' ? t('tablesTab') : tab === 'sql' ? 'SQL' : 'DDL'}
           </button>
         ))}
       </div>
@@ -145,9 +147,9 @@ export function SchemaEditor({ projectId, enabled, onSchemaChange, workspaceId }
           <div className="h-full flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="text-sm font-medium">Apply DDL</h4>
+                <h4 className="text-sm font-medium">{t('applyDdl')}</h4>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  CREATE TABLE, ALTER TABLE, and other DDL statements
+                  {t('ddlHint')}
                 </p>
               </div>
               <Button
@@ -161,7 +163,7 @@ export function SchemaEditor({ projectId, enabled, onSchemaChange, workspaceId }
                 ) : (
                   <Play className="h-3 w-3 mr-1" />
                 )}
-                Apply
+                {t('apply')}
               </Button>
             </div>
             <textarea

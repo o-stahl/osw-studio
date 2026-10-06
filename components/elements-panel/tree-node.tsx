@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useTranslations } from 'next-intl';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { TreeNode } from '@/lib/preview/types';
@@ -69,6 +70,7 @@ export function ElementsTreeRow({
   onSelect,
   onHover,
 }: ElementsTreeRowProps) {
+  const t = useTranslations('elementsPanel');
   const classFragment = formatClassName(node.className);
 
   return (
@@ -85,7 +87,7 @@ export function ElementsTreeRow({
         <button
           type="button"
           className="h-4 w-4 shrink-0 flex items-center justify-center text-muted-foreground hover:text-foreground"
-          aria-label={expanded ? `Collapse ${node.tag}` : `Expand ${node.tag}`}
+          aria-label={expanded ? t('collapse', { tag: node.tag }) : t('expand', { tag: node.tag })}
           aria-expanded={expanded}
           onClick={(e) => {
             e.stopPropagation();
@@ -108,7 +110,7 @@ export function ElementsTreeRow({
       {node.instances > 1 && (
         <span
           className="text-[10px] px-1 rounded shrink-0 bg-amber-500/15 text-amber-600 dark:text-amber-400"
-          title={`This source is shared by ${node.instances} rendered elements — editing it affects all of them.`}
+          title={t('sharedSource', { count: node.instances })}
         >
           ×{node.instances}
         </span>

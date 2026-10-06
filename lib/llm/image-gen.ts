@@ -7,6 +7,8 @@
 import type { ProviderId } from '@/lib/llm/providers/types';
 import { apiFetch } from '@/lib/api/backend-status';
 import { logger } from '@/lib/utils';
+import { configManager } from '@/lib/config/storage';
+import type { ModelRef, ResolvedAssignment } from '@/lib/llm/models/assignment';
 
 export interface GenerateImageOptions {
   provider: ProviderId;
@@ -23,6 +25,24 @@ export interface GenerateImageOptions {
 export interface GeneratedImage {
   base64: string;    // base64 payload (no data: prefix)
   mimeType: string;  // e.g. "image/png"
+}
+
+/**
+ * The model an assignment generates images with, and its declared output modalities, or null when
+ * it has none: image generation off, or "reuse the agent" with an agent model that outputs no
+ * images. Read in the browser, where the model catalogue and the keys are.
+ */
+export function imageModelFor(
+  assignment: ResolvedAssignment,
+  config: Pick<typeof configManager, 'getCachedModels'> = configManager,
+): { ref: ModelRef; modalities?: string[] } | null {
+  const imageGen = assignment.imageGen;
+  if (!imageGen) return null;
+  const ref = imageGen === 'agent' ? assignment.agent : imageGen;
+  const modalities = config.getCachedModels(ref.provider)?.models
+    ?.find((m: { id: string; outputModalities?: string[] }) => m.id === ref.model)?.outputModalities;
+  if (imageGen === 'agent' && !modalities?.includes('image')) return null;
+  return { ref, ...(modalities?.length ? { modalities } : {}) };
 }
 
 /** Throws on failure so the caller can surface the message to the agent. */

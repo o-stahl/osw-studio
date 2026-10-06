@@ -2,6 +2,8 @@
 
 import { toast } from 'sonner';
 
+import { translator } from '@/lib/i18n/runtime';
+
 import type { ImportDialogSource } from './index';
 
 /**
@@ -26,7 +28,7 @@ export function pickFolderSource(onPick: (source: ImportDialogSource) => void): 
     // the picker closes and the app does nothing at all. Cancelling the picker fires no change
     // event in any browser we support, so this only ever speaks about a folder actually chosen.
     if (picked.length === 0) {
-      toast.error('That folder is empty — there is nothing to import.');
+      toast.error(translator()('importDialog.emptyFolder'));
       return;
     }
     const rootName = picked[0].webkitRelativePath?.split('/')[0] ?? '';
@@ -38,7 +40,7 @@ export function pickFolderSource(onPick: (source: ImportDialogSource) => void): 
       return { file, path: '/' + (parts.length > 1 ? parts.slice(1) : parts).join('/') };
     });
     // A fresh object every time, which is what makes the dialog re-analyse.
-    onPick({ kind: 'folder', name: rootName || 'Selected folder', files });
+    onPick({ kind: 'folder', name: rootName || translator()('importDialog.selectedFolder'), files });
   };
 
   input.click();

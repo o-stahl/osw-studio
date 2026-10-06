@@ -79,8 +79,8 @@ export const GUIDED_TOUR_STEPS: GuidedTourStepContent[] = [
     title: 'Workspace Layout',
     body: (
       <div className="space-y-2 text-sm text-muted-foreground">
-        <p>The workspace has four main areas: the assistant conversation, the virtual file explorer, your editor tabs, and the live preview.</p>
-        <p>The VFS works like a project file tree—add HTML, CSS, JS, or assets and the agent can edit them just like local files.</p>
+        <p>The workspace is made of panels: the assistant conversation, the live preview and your editor tabs. The rail on the left opens more, such as the file explorer.</p>
+        <p>The files work like a project file tree—add HTML, CSS, JS, or assets and the agent can edit them just like local files.</p>
       </div>
     ),
     location: 'workspace',
@@ -155,29 +155,15 @@ export const GUIDED_TOUR_STEPS: GuidedTourStepContent[] = [
     title: 'Connect Your Provider',
     body: (
       <div className="space-y-2 text-sm text-muted-foreground">
-        <p>On a HuggingFace Space, the quickest start is the <strong>Sign in with HuggingFace</strong> button on the model selector below. One click and a capable default model is ready.</p>
-        <p>Otherwise, add any supported provider under Connections and pick a model. You can return here anytime from the header menu.</p>
+        <p>The quickest start is <strong>Sign in with OpenRouter</strong>, offered in an empty chat and under Settings › Connections. One click, no key to copy, and a capable model is picked for you.</p>
+        <p>You can also paste a key from any supported provider, then choose models in the selector below. It stays one click away in the chat footer.</p>
         <p className="text-xs text-orange-500/90">
-          Privacy note: Remote LLM providers (OpenAI, Anthropic, etc.) will receive your code when generating. For complete privacy, use local models with Ollama or LM Studio.
+          Privacy note: Remote LLM providers (OpenAI, Anthropic, etc.) will receive your code when generating. Where local models are offered, Ollama or LM Studio keep everything on your machine.
         </p>
       </div>
     ),
     location: 'workspace',
     target: '[data-tour-id="provider-settings-trigger"]',
-    showBack: true,
-    primaryLabel: 'Next',
-    secondaryLabel: 'Skip',
-  },
-  {
-    id: 'wrap-up',
-    title: "You're Ready!",
-    body: (
-      <div className="space-y-2 text-sm text-muted-foreground">
-        <p>That's the basics—prompt the agent, preview updates, and save when you're happy. You can replay this tour from the Help menu anytime.</p>
-        <p>Have fun building! Let me know what you ship.</p>
-      </div>
-    ),
-    location: 'workspace',
     showBack: true,
     primaryLabel: 'Finish',
     secondaryLabel: 'Skip',

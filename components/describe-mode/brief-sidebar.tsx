@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import type { BriefState, ProjectBrief } from '@/lib/describe/types';
 import { Button } from '@/components/ui/button';
 import { Loader2, ChevronDown } from 'lucide-react';
@@ -19,14 +20,6 @@ const KNOWN_KEYS = new Set([
   'runtime', 'template',
 ]);
 
-/** Known capability keys with explicit labels. */
-const CAP_LABELS: Record<string, string> = {
-  serverFunctions: 'Server functions',
-  database: 'Database',
-  auth: 'Authentication',
-  scheduledTasks: 'Scheduled tasks',
-};
-
 /** Convert camelCase/snake_case to readable label. */
 function humanizeKey(key: string): string {
   return key
@@ -36,50 +29,54 @@ function humanizeKey(key: string): string {
 }
 
 /** Format any value for display. */
-function formatValue(value: unknown): string {
+export function formatValue(value: unknown, yes: string, no: string): string {
   if (typeof value === 'string') return value;
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'boolean') return value ? yes : no;
   if (typeof value === 'number') return String(value);
-  if (Array.isArray(value)) return value.map(v => formatValue(v)).join(', ');
+  if (Array.isArray(value)) return value.map(v => formatValue(v, yes, no)).join(', ');
   if (value && typeof value === 'object') return JSON.stringify(value);
   return String(value);
 }
 
 /** Compute capabilities list from known booleans + any extras. */
-function getCapabilitiesList(caps: ProjectBrief['capabilities']): string[] {
+export function getCapabilitiesList(caps: ProjectBrief['capabilities'], labels: Record<string, string>, yes: string, no: string): string[] {
   if (!caps || typeof caps !== 'object') return [];
   const items: string[] = [];
   for (const [k, v] of Object.entries(caps)) {
     if (k === 'other' && Array.isArray(v)) {
       items.push(...v);
-    } else if (CAP_LABELS[k] && v) {
-      items.push(CAP_LABELS[k]);
-    } else if (!CAP_LABELS[k] && k !== 'other' && v != null) {
+    } else if (labels[k] && v) {
+      items.push(labels[k]);
+    } else if (!labels[k] && k !== 'other' && v != null) {
       // Stray capability
-      items.push(Array.isArray(v) ? `${humanizeKey(k)}: ${v.join(', ')}` : `${humanizeKey(k)}: ${formatValue(v)}`);
+      items.push(Array.isArray(v) ? `${humanizeKey(k)}: ${v.join(', ')}` : `${humanizeKey(k)}: ${formatValue(v, yes, no)}`);
     }
   }
   return items;
 }
 
 /** Collect brief fields not covered by explicit rendering. */
-function getExtraFields(brief: ProjectBrief): Array<{ label: string; value: string }> {
+export function getExtraFields(brief: ProjectBrief, yes: string, no: string): Array<{ label: string; value: string }> {
   const extras: Array<{ label: string; value: string }> = [];
   for (const [key, value] of Object.entries(brief)) {
     if (KNOWN_KEYS.has(key) || value == null) continue;
-    extras.push({ label: humanizeKey(key), value: formatValue(value) });
+    extras.push({ label: humanizeKey(key), value: formatValue(value, yes, no) });
   }
   return extras;
 }
 
 export function BriefSidebar({ state, ready, creating, onCreateNow }: BriefSidebarProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('brief');
   const { brief, pending, totalDecisions, resolvedCount, spec } = state;
   const percentage = totalDecisions > 0
     ? Math.round((resolvedCount / totalDecisions) * 100)
     : 0;
 
-  const capabilities = getCapabilitiesList(brief.capabilities);
-  const extraFields = getExtraFields(brief);
+  // Known capability keys with their labels; anything else falls back to `humanizeKey`.
+  const capLabels: Record<string, string> = { serverFunctions: t('serverFunctions'), database: t('database'), auth: t('authentication'), scheduledTasks: t('scheduledTasks') };
+  const capabilities = getCapabilitiesList(brief.capabilities, capLabels, t('yes'), t('no'));
+  const extraFields = getExtraFields(brief, t('yes'), t('no'));
   const hasSpec = spec.length > 0;
 
   return (
@@ -87,10 +84,10 @@ export function BriefSidebar({ state, ready, creating, onCreateNow }: BriefSideb
       {/* ── Sticky header ── */}
       <div className="shrink-0 p-4 border-b border-border space-y-2">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Project brief
+          {t('projectBrief')}
         </p>
         <p className="text-sm font-medium truncate">
-          {brief.name || <span className="italic text-muted-foreground">Untitled</span>}
+          {brief.name || <span className="italic text-muted-foreground">{t('untitled')}</span>}
         </p>
         <div className="space-y-1">
           <div className="h-1.5 rounded-full bg-muted overflow-hidden">
@@ -109,19 +106,19 @@ export function BriefSidebar({ state, ready, creating, onCreateNow }: BriefSideb
       <div className="flex-1 min-h-0 overflow-y-auto">
         {/* Read-only notice */}
         <div className="mx-4 mt-3 px-2.5 py-1.5 rounded-md bg-muted/60 text-[11px] text-muted-foreground leading-tight">
-          Brief is read-only. To change anything, ask the agent.
+          {t('readOnlyNote')}
         </div>
 
         {/* Fields */}
         <div className="p-4 space-y-4 text-sm">
-          <Field label="Type" value={brief.type} />
-          <Field label="Pages" value={brief.pages?.join(', ')} />
-          <Field label="Styling" value={brief.styling} />
+          <Field label={tc('labels.type')} value={brief.type} />
+          <Field label={t('pages')} value={brief.pages?.join(', ')} />
+          <Field label={t('styling')} value={brief.styling} />
           {capabilities.length > 0 && (
-            <Field label="Capabilities" value={capabilities.join(', ')} />
+            <Field label={t('capabilities')} value={capabilities.join(', ')} />
           )}
-          <Field label="Direction" value={brief.direction} />
-          <Field label="Notes" value={brief.notes} />
+          <Field label={t('direction')} value={brief.direction} />
+          <Field label={t('notes')} value={brief.notes} />
 
           {/* Dynamic extra fields from LLM */}
           {extraFields.map(({ label, value }) => (
@@ -132,7 +129,7 @@ export function BriefSidebar({ state, ready, creating, onCreateNow }: BriefSideb
           {pending.length > 0 && (
             <div className="pt-3 border-t border-dashed border-border space-y-1.5">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Still to decide
+                {t('stillToDecide')}
               </p>
               <ul className="list-disc list-inside text-xs text-muted-foreground space-y-0.5">
                 {pending.map((p, i) => (
@@ -151,11 +148,11 @@ export function BriefSidebar({ state, ready, creating, onCreateNow }: BriefSideb
       <div className="shrink-0 border-t border-border">
         <div className="p-4 space-y-1.5">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Under the hood
+            {t('underTheHood')}
           </p>
-          <HoodRow label="Runtime" value={brief.runtime ?? '—'} />
-          <HoodRow label="Template" value={brief.template ?? '—'} />
-          <HoodRow label="Output" value={hasSpec ? '.PROMPT.md + .DESIGN.md' : '.PROMPT.md'} />
+          <HoodRow label={tc('labels.runtime')} value={brief.runtime ?? '—'} />
+          <HoodRow label={t('templateLabel')} value={brief.template ?? '—'} />
+          <HoodRow label={t('output')} value={hasSpec ? '.PROMPT.md + .DESIGN.md' : '.PROMPT.md'} />
         </div>
 
         {onCreateNow && (
@@ -167,14 +164,14 @@ export function BriefSidebar({ state, ready, creating, onCreateNow }: BriefSideb
               size="sm"
             >
               {creating ? (
-                <><Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />Creating...</>
+                <><Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />{t('creating')}</>
               ) : (
-                'Create now'
+                t('createNow')
               )}
             </Button>
             {!ready && (
               <p className="text-[10px] text-muted-foreground text-center mt-1.5">
-                Needs name, runtime, and template
+                {t('needsBasics')}
               </p>
             )}
           </div>
@@ -207,6 +204,7 @@ function HoodRow({ label, value }: { label: string; value: string }) {
 
 /** Collapsible preview of accumulated .DESIGN.md sections. */
 function SpecPreview({ spec }: { spec: BriefState['spec'] }) {
+  const t = useTranslations('brief');
   const [open, setOpen] = useState(true);
 
   // Merge sections with the same heading for display
@@ -229,7 +227,7 @@ function SpecPreview({ spec }: { spec: BriefState['spec'] }) {
       >
         <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform ${!open ? '-rotate-90' : ''}`} />
         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Spec ({spec.length} {spec.length === 1 ? 'section' : 'sections'})
+          {t('specSections', { count: spec.length })}
         </p>
       </button>
       {open && (

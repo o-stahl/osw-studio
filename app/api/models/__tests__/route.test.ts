@@ -85,6 +85,14 @@ beforeEach(() => {
     if (u.includes('api.example.com')) return jsonResponse({ data: [{ id: 'gpt-x' }] });
     if (u.includes('/backend-api/codex/models')) return jsonResponse(CODEX_FIXTURE);
     if (u.includes('models.dev')) return jsonResponse(MODELS_DEV_FIXTURE);
+    if (u.includes('gen.pollinations.ai/v1/models')) return jsonResponse({ data: [
+      { id: 'openai/gpt-5.4-nano', category: 'text', community: false, tools: true, supported_endpoints: ['/v1/chat/completions'] },
+      { id: 'community/someone/proxy', category: 'text', community: true, tools: true },
+      { id: 'jaredpalmer/kev-4b', category: 'text', community: false, supported_endpoints: ['/alpha/decisions', '/v1/chat/completions'] },
+      { id: 'black-forest-labs/flux.1-schnell', category: 'image', community: false, output_modalities: ['image'], input_modalities: ['text'], supported_endpoints: ['/v1/images/generations'] },
+      { id: 'community/someone/image', category: 'image', community: true, output_modalities: ['image'], supported_endpoints: ['/v1/images/generations'] },
+      { id: 'some/video', category: 'video', community: false, output_modalities: ['video'] },
+    ] });
     if (u.includes('generativelanguage.googleapis.com')) return jsonResponse({ models: [
       { name: 'models/gemini-3.8-flash', supportedGenerationMethods: ['generateContent'], inputTokenLimit: 1048576 },
       { name: 'models/gemini-3.1-flash-image', supportedGenerationMethods: ['generateContent'] },
@@ -244,5 +252,55 @@ describe('/api/models Gemini discovery', () => {
     // them can run a task; Gemma is not Gemini.
     expect(data.models.map((m: { id: string }) => m.id)).toEqual(['gemini-3.8-flash']);
     expect(data.models[0].contextLength).toBe(1048576);
+  });
+});
+
+describe('/api/models Pollinations discovery', () => {
+  it('lists Pollinations\' own text and image models, without community or decision-only models', async () => {
+    const res = await POST(makeReq({ provider: 'pollinations', apiKey: 'sk_x' }));
+    const data = await res.json();
+    expect(data.models.map((m: { id: string }) => m.id)).toEqual(['openai/gpt-5.4-nano', 'black-forest-labs/flux.1-schnell']);
+    expect(data.models[1].outputModalities).toEqual(['image']);
+  });
+});
+
+
+describe('/api/models Pollinations model details', () => {
+  it('carries health and tool support, and lists only images made through /v1/images/generations', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse([
+      { id: 'healthy-tools', category: 'text', tools: true, health: { status: 'degraded' } },
+      { id: 'no-tools', category: 'text', tools: false, health: { status: 'whatever' } },
+      { id: 'img-ok', category: 'image', output_modalities: ['image'], supported_endpoints: ['/v1/images/generations'] },
+      { id: 'img-chat-only', category: 'image', output_modalities: ['image'], supported_endpoints: ['/v1/chat/completions'] },
+    ])));
+    const data = await (await POST(makeReq({ provider: 'pollinations', apiKey: 'sk_x' }))).json();
+    expect(data.models.map((m: { id: string }) => m.id)).toEqual(['healthy-tools', 'no-tools', 'img-ok']);
+    expect(data.models[0]).toMatchObject({ supportsFunctions: true, health: 'degraded' });
+    expect(data.models[1].supportsFunctions).toBe(false);
+    expect(data.models[1]).not.toHaveProperty('health');
+  });
+});
+
+describe('/api/models Vercel discovery', () => {
+  it('lists language models with per-million pricing, tags and free flag', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ data: [
+      { id: 'openai/gpt-x', name: 'GPT X', type: 'language', context_window: 128000, max_tokens: 16000,
+        tags: ['tool-use', 'reasoning'], modalities: { input: ['text', 'image'] }, pricing: { input: '0.000002', output: '0.000008' } },
+      { id: 'free/small', type: 'language', tags: ['free'] },
+      { id: 'openai/embed', type: 'embedding', pricing: { input: '0.0000001', output: '0' } },
+    ] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const data = await (await POST(makeReq({ provider: 'vercel', apiKey: 'vck_x' }))).json();
+    expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toBe('https://ai-gateway.vercel.sh/v1/models');
+    expect(data.models.map((m: { id: string }) => m.id)).toEqual(['openai/gpt-x', 'free/small']);
+    expect(data.models[0]).toMatchObject({
+      name: 'GPT X', contextLength: 128000, maxTokens: 16000, supportsFunctions: true, supportsReasoning: true,
+      inputModalities: ['text', 'image'],
+    });
+    expect(data.models[0].pricing.input).toBeCloseTo(2);
+    expect(data.models[0].pricing.output).toBeCloseTo(8);
+    expect(data.models[0]).not.toHaveProperty('free');
+    expect(data.models[1]).toMatchObject({ name: 'free/small', free: true, supportsFunctions: false });
+    expect(data.models[1]).not.toHaveProperty('pricing');
   });
 });

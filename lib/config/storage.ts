@@ -65,9 +65,14 @@ export interface AppSettings {
     lastReset?: Date;
   };
   hasSeenAboutModal?: boolean;
-  hasSeenGuidedTour?: boolean;
   /** When true, the large-file-write pacing notice is permanently dismissed. */
   pacingNoticeDismissed?: boolean;
+  /** The first-visit offer of the guided tour has been shown in this browser. */
+  tourOffered?: boolean;
+  /** The empty-chat tip on how suggestions and the prompt work is done with: dismissed, or a message was sent. */
+  firstPromptTipDone?: boolean;
+  /** Set when the tour was finished, before the offer existed; read only, so those people are not offered it. */
+  hasSeenGuidedTour?: boolean;
   /** Per-listing table/grid choice, keyed by page id (projects, templates, skills…). */
   listViewModes?: Record<string, 'table' | 'grid'>;
   modelCache?: Partial<Record<ProviderId, ModelCacheEntry>>;
@@ -164,20 +169,29 @@ class ConfigManager {
     this.setSetting('listViewModes', { ...this.getSettings().listViewModes, [page]: mode });
   }
 
-  hasSeenTour(): boolean {
-    return Boolean(this.getSettings().hasSeenGuidedTour);
-  }
-
-  setHasSeenTour(seen: boolean): void {
-    this.setSetting('hasSeenGuidedTour', seen);
-  }
-
   hasDismissedPacingNotice(): boolean {
     return this.getSettings().pacingNoticeDismissed === true;
   }
 
   setPacingNoticeDismissed(): void {
     this.setSetting('pacingNoticeDismissed', true);
+  }
+
+  hasOfferedTour(): boolean {
+    const settings = this.getSettings();
+    return settings.tourOffered === true || settings.hasSeenGuidedTour === true;
+  }
+
+  setTourOffered(): void {
+    this.setSetting('tourOffered', true);
+  }
+
+  isFirstPromptTipDone(): boolean {
+    return this.getSettings().firstPromptTipDone === true;
+  }
+
+  setFirstPromptTipDone(): void {
+    this.setSetting('firstPromptTipDone', true);
   }
 
   getApiKey(): string | null {

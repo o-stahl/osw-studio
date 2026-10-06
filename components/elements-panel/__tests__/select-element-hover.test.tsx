@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { ElementsPanel } from '..';
@@ -36,7 +37,7 @@ afterEach(() => {
 
 function render(over: { onSelectElementHover?: (hovering: boolean) => void; focusToolArmed?: boolean } = {}) {
   act(() => {
-    root.render(
+    root.render(withMessages(
       <ElementsPanel
         projectId="p1"
         runtime="handlebars"
@@ -54,7 +55,7 @@ function render(over: { onSelectElementHover?: (hovering: boolean) => void; focu
         activeTab="styles"
         onTabChange={vi.fn()}
       />,
-    );
+    ));
   });
   const button = container.querySelector('[data-osw-select-element]');
   if (!button) throw new Error('no Select element button');

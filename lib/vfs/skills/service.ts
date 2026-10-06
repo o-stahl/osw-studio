@@ -3,6 +3,7 @@
  * Skills are stored in localStorage (custom) and loaded from built-in registry
  */
 
+import { translator } from '@/lib/i18n/runtime';
 import { Skill, SkillMetadata, SkillGroup } from './types';
 import { parseSkillFile } from './parser';
 import { BUILT_IN_SKILLS, BUILT_IN_GROUPS } from './registry';
@@ -106,7 +107,7 @@ class SkillsService {
       localStorage.setItem(CUSTOM_SKILLS_KEY, JSON.stringify(skills));
     } catch (error) {
       logger.error('[SkillsService] Failed to save custom skills', error);
-      throw new Error('Failed to save skills');
+      throw new Error(translator()('skills.errors.saveFailed'));
     }
   }
 
@@ -233,7 +234,7 @@ class SkillsService {
 
       // Check if skill already exists
       if (this.customSkills.has(id) || BUILT_IN_SKILLS.some(s => s.id === id)) {
-        throw new Error(`Skill with name "${id}" already exists`);
+        throw new Error(translator()('skills.nameTaken', { name: id }));
       }
 
       const skill: Skill = {
@@ -259,7 +260,7 @@ class SkillsService {
       if (error instanceof Error) {
         throw error;
       }
-      throw new Error('Failed to create skill');
+      throw new Error(translator()('skills.errors.createFailed'));
     }
   }
 
@@ -271,11 +272,11 @@ class SkillsService {
 
     const existingSkill = this.customSkills.get(id);
     if (!existingSkill) {
-      throw new Error(`Skill "${id}" not found`);
+      throw new Error(`Skill "${id}" not found`); // i18n-ignore: an invariant; the UI only passes ids it listed
     }
 
     if (existingSkill.isBuiltIn) {
-      throw new Error('Cannot update built-in skills');
+      throw new Error(translator()('skills.errors.builtInReadOnly'));
     }
 
     try {
@@ -283,7 +284,7 @@ class SkillsService {
 
       // If name changed, this is a new skill
       if (frontmatter.name !== id) {
-        throw new Error('Skill name cannot be changed. Create a new skill instead.');
+        throw new Error(translator()('skills.errors.nameFixed'));
       }
 
       const updatedSkill: Skill = {
@@ -307,7 +308,7 @@ class SkillsService {
       if (error instanceof Error) {
         throw error;
       }
-      throw new Error('Failed to update skill');
+      throw new Error(translator()('skills.errors.updateFailed'));
     }
   }
 
@@ -319,11 +320,11 @@ class SkillsService {
 
     const skill = this.customSkills.get(id);
     if (!skill) {
-      throw new Error(`Skill "${id}" not found`);
+      throw new Error(`Skill "${id}" not found`); // i18n-ignore: an invariant; the UI only passes ids it listed
     }
 
     if (skill.isBuiltIn) {
-      throw new Error('Cannot delete built-in skills');
+      throw new Error(translator()('skills.errors.builtInUndeletable'));
     }
 
     this.customSkills.delete(id);
@@ -377,7 +378,7 @@ class SkillsService {
       return importedSkills;
     } catch (error) {
       logger.error('[SkillsService] Failed to import skills', error);
-      throw new Error('Failed to import skills');
+      throw new Error(translator()('skills.errors.importFailed'));
     }
   }
 
@@ -613,11 +614,11 @@ class SkillsService {
 
     const id = this.slugify(input.name);
     if (!id) {
-      throw new Error('Group name must contain at least one alphanumeric character');
+      throw new Error(translator()('skills.errors.groupNameEmpty'));
     }
 
     if (this.groupsState.customGroups.has(id) || BUILT_IN_GROUPS.some(g => g.id === id)) {
-      throw new Error(`Group with name "${input.name}" already exists`);
+      throw new Error(translator()('skills.groupNameTaken', { name: input.name }));
     }
 
     const group: SkillGroup = {
@@ -645,7 +646,7 @@ class SkillsService {
 
     const existing = this.groupsState.customGroups.get(id);
     if (!existing) {
-      throw new Error(`Group "${id}" not found`);
+      throw new Error(`Group "${id}" not found`); // i18n-ignore: an invariant; the UI only passes ids it listed
     }
 
     const updated: SkillGroup = {
@@ -671,7 +672,7 @@ class SkillsService {
 
     const group = this.groupsState.customGroups.get(id);
     if (!group) {
-      throw new Error(`Group "${id}" not found`);
+      throw new Error(`Group "${id}" not found`); // i18n-ignore: an invariant; the UI only passes ids it listed
     }
 
     this.groupsState.customGroups.delete(id);
@@ -686,7 +687,7 @@ class SkillsService {
    */
   async addSkillToGroup(groupId: string, skillId: string): Promise<void> {
     const group = this.groupsState.customGroups.get(groupId);
-    if (!group) throw new Error(`Group "${groupId}" not found or is built-in`);
+    if (!group) throw new Error(`Group "${groupId}" not found or is built-in`); // i18n-ignore: an invariant
     if (!group.memberIds.includes(skillId)) {
       group.memberIds.push(skillId);
       group.updatedAt = new Date();
@@ -699,7 +700,7 @@ class SkillsService {
    */
   async removeSkillFromGroup(groupId: string, skillId: string): Promise<void> {
     const group = this.groupsState.customGroups.get(groupId);
-    if (!group) throw new Error(`Group "${groupId}" not found or is built-in`);
+    if (!group) throw new Error(`Group "${groupId}" not found or is built-in`); // i18n-ignore: an invariant
     const idx = group.memberIds.indexOf(skillId);
     if (idx !== -1) {
       group.memberIds.splice(idx, 1);

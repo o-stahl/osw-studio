@@ -4,30 +4,26 @@ import { getProvider } from './providers/registry';
 import { configManager } from '../config/storage';
 import { apiFetch } from '../api/backend-status';
 
-export async function validateApiKey(apiKey: string, provider: ProviderId): Promise<boolean> {
+/**
+ * Whether `provider` accepts the key. Throws when the check could not be made (no network, or the
+ * provider could not be reached), which is not the same answer as a rejected key.
+ */
+export async function verifyApiKey(apiKey: string, provider: ProviderId): Promise<boolean> {
   if (!apiKey) return false;
+  const response = await apiFetch('/api/validate-key', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey, provider }),
+  });
+  if (response.status >= 500) throw new Error(`Key check failed (${response.status})`); // i18n-ignore: never shown; callers word the failure
+  if (!response.ok) return false;
+  const { valid } = await response.json();
+  return valid === true;
+}
 
-  try {
-    const response = await apiFetch('/api/validate-key', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        apiKey,
-        provider
-      })
-    });
-
-    if (!response.ok) {
-      return false;
-    }
-
-    const { valid } = await response.json();
-    return valid;
-  } catch {
-    return false;
-  }
+/** `verifyApiKey` for callers that only show valid or not: a check that could not run reads as not valid. */
+export async function validateApiKey(apiKey: string, provider: ProviderId): Promise<boolean> {
+  return verifyApiKey(apiKey, provider).catch(() => false);
 }
 
 export type ModelEntry = string | (Pick<ProviderModel, 'id'> & Partial<Omit<ProviderModel, 'id'>>);

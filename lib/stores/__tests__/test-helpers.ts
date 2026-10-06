@@ -1,4 +1,5 @@
 import { vi } from 'vitest';
+import { registerEnglishTranslator } from '@/lib/i18n/__tests__/test-helpers';
 import { createStore } from 'zustand/vanilla';
 import { createOrchestratorSlice, OrchestratorSlice } from '../slices/orchestrator';
 import { createProjectSlice, ProjectSlice } from '../slices/project';
@@ -13,6 +14,11 @@ export function createTestStore() {
 }
 
 export function setupOrchestratorMocks() {
+  // The app registers the provider's translator through TranslatorBridge; store tests have no
+  // provider, so they register the real English catalogue. Without it a toast receives its key
+  // path, and an assertion like `not.toHaveBeenCalledWith('Task completed')` passes vacuously.
+  registerEnglishTranslator();
+
   vi.mock('@/lib/llm/models/project-assignment', () => ({
     getProjectAssignment: vi.fn().mockResolvedValue({
       agent: { provider: 'openai', model: 'gpt-4' },
@@ -41,6 +47,14 @@ export function setupOrchestratorMocks() {
       getWebSearchProvider: () => null,
       getWebSearchKey: () => null,
       getSearxngUrl: () => null,
+      getActiveAssignment: vi.fn(() => ({
+        agent: { provider: 'openai', model: 'gpt-4' },
+        imageGen: null,
+        voiceInput: null,
+        autoCompact: false,
+        compactLimit: null,
+      })),
+      setActiveAssignment: vi.fn(),
     },
     migrateBackendKey: () => false,
   }));

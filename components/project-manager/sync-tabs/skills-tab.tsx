@@ -1,6 +1,7 @@
 'use client';
 
 import { Dispatch, SetStateAction, useEffect, useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import { SyncableItem } from '@/lib/vfs/sync-types';
 import { SummaryBar } from './summary-bar';
 import { SyncItemRow } from '../sync-item-row';
@@ -33,6 +34,7 @@ export function SkillsTab({
   onRegisterPushSelected,
   onRegisterPullSelected,
 }: SkillsTabProps) {
+  const t = useTranslations('sync');
   const syncManager = getSyncManager();
 
   // Use refs to hold the latest values for use in mount-only handlers
@@ -60,7 +62,7 @@ export function SkillsTab({
     try {
       const skill = await skillsService.getSkill(item.id);
       if (!skill) {
-        toast.error(`Skill "${item.name}" not found`);
+        toast.error(t('skillNotFound', { name: item.name }));
         return;
       }
 
@@ -75,19 +77,19 @@ export function SkillsTab({
             new Date(result.skill.updatedAt)
           );
         }
-        toast.success(`Pushed "${item.name}" to server`);
+        toast.success(t('pushedName', { name: item.name }));
         if (!opts?.silent) {
           track('sync_manual', { item_type: 'skill', direction: 'push', bulk: false, count: 1 });
         }
         onRefresh();
         onSyncComplete();
       } else {
-        toast.error(result.error || 'Failed to push skill');
+        toast.error(result.error || t('pushSkillFailed'));
         track('sync_fail', { item_type: 'skill', direction: 'push' });
       }
     } catch (error) {
       logger.error('Push skill error:', error);
-      toast.error('Failed to push skill');
+      toast.error(t('pushSkillFailed'));
       track('sync_fail', { item_type: 'skill', direction: 'push' });
     } finally {
       onSyncingIdsChange((prev: Set<string>) => {
@@ -104,7 +106,7 @@ export function SkillsTab({
       const result = await syncManager.pullSkill(item.id);
 
       if (!result.success || !result.skill) {
-        toast.error(result.error || 'Failed to pull skill');
+        toast.error(result.error || t('pullSkillFailed'));
         track('sync_fail', { item_type: 'skill', direction: 'pull' });
         return;
       }
@@ -112,7 +114,7 @@ export function SkillsTab({
       // Import skill to local storage
       await skillsService.importFromServer(result.skill);
 
-      toast.success(`Pulled "${item.name}" from server`);
+      toast.success(t('pulledName', { name: item.name }));
       if (!opts?.silent) {
         track('sync_manual', { item_type: 'skill', direction: 'pull', bulk: false, count: 1 });
       }
@@ -120,7 +122,7 @@ export function SkillsTab({
       onSyncComplete();
     } catch (error) {
       logger.error('Pull skill error:', error);
-      toast.error('Failed to pull skill');
+      toast.error(t('pullSkillFailed'));
       track('sync_fail', { item_type: 'skill', direction: 'pull' });
     } finally {
       onSyncingIdsChange((prev: Set<string>) => {
@@ -188,7 +190,7 @@ export function SkillsTab({
   if (items.length === 0) {
     return (
       <div className="text-center py-8 text-muted-foreground">
-        No custom skills to sync
+        {t('noSkillsToSync')}
       </div>
     );
   }

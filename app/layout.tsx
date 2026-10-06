@@ -7,6 +7,10 @@ import "@/assets/globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { McpActivityBanner } from '@/components/mcp-activity-banner';
 import { BackendStatusBanner } from "@/components/backend-status-banner";
+import { LanguageOfferSlot } from "@/components/language-offer/slot";
+import { NextIntlClientProvider } from 'next-intl';
+import { getLocale } from 'next-intl/server';
+import { TranslatorBridge } from '@/lib/i18n/translator-bridge';
 
 const inter = Inter({
   variable: "--font-inter-sans",
@@ -63,25 +67,31 @@ export const viewport: Viewport = {
   themeColor: "#000000",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await getLocale();
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <body
         className={`${inter.variable} ${ptSans.variable} antialiased bg-background h-[100dvh] overflow-hidden`}
         suppressHydrationWarning
       >
-        <ThemeProvider>
-          <Toaster richColors position="bottom-center" />
-          <BackendStatusBanner />
-          <McpActivityBanner />
-          <TanstackProvider>
-            {children}
-          </TanstackProvider>
-        </ThemeProvider>
+        <NextIntlClientProvider>
+          <TranslatorBridge />
+          <ThemeProvider>
+            <Toaster richColors position="bottom-center" />
+            <BackendStatusBanner />
+            <McpActivityBanner />
+            <LanguageOfferSlot />
+            <TanstackProvider>
+              {children}
+            </TanstackProvider>
+          </ThemeProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

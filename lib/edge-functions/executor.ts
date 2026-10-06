@@ -29,6 +29,7 @@ import { createDatabaseAPI } from './database-api';
 import { RuntimeDatabase } from '@/lib/vfs/adapters/runtime-database';
 import { decryptSecret, isEncryptionConfigured } from './secrets-crypto';
 import { createHash, randomUUID } from 'crypto';
+import { publicFetch } from './public-fetch';
 
 // Cache the QuickJS module to avoid re-initializing WASM on every request
 let quickJSModulePromise: Promise<QuickJSWASMModule> | null = null;
@@ -68,50 +69,6 @@ const FETCH_TIMEOUT_MS = 30000;
 const MAX_RESPONSE_SIZE = 5 * 1024 * 1024; // 5MB
 /** How long teardown waits for a cancelled request to settle before disposing anyway. */
 const FETCH_SETTLE_MS = 2000;
-
-/**
- * Check if a URL targets a private/internal IP address
- * Only enforced in production to allow local development
- */
-function isPrivateUrl(urlString: string): boolean {
-  // Skip check in development
-  if (process.env.NODE_ENV !== 'production') {
-    return false;
-  }
-
-  try {
-    const url = new URL(urlString);
-    const hostname = url.hostname.toLowerCase();
-
-    // Block localhost variants
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
-      return true;
-    }
-
-    // Block private IP ranges (simple check for common patterns)
-    // 10.x.x.x
-    if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
-      return true;
-    }
-    // 172.16.x.x - 172.31.x.x
-    if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
-      return true;
-    }
-    // 192.168.x.x
-    if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
-      return true;
-    }
-    // 169.254.x.x (link-local, includes cloud metadata)
-    if (/^169\.254\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
-      return true;
-    }
-
-    return false;
-  } catch {
-    return true; // Invalid URL, block it
-  }
-}
-
 /**
  * Execute an edge function in a secure QuickJS WebAssembly sandbox
  *
@@ -662,11 +619,6 @@ function injectFetch(
         throw new Error('Only http and https protocols are allowed');
       }
 
-      // Private IP check (production only)
-      if (isPrivateUrl(url)) {
-        throw new Error('Requests to private/internal addresses are not allowed');
-      }
-
       fetchState.requestCount++;
       logs.push(`[INFO] fetch: ${options.method || 'GET'} ${url}`);
 
@@ -716,7 +668,12 @@ function injectFetch(
             signal: controller.signal,
           };
 
-          const response = await globalThis.fetch(url, fetchOptions);
+          const { response, url: finalUrl } = await publicFetch(url, fetchOptions, () => {
+            if (fetchState.requestCount >= MAX_FETCH_REQUESTS) {
+              throw new Error(`Maximum fetch requests (${MAX_FETCH_REQUESTS}) exceeded`);
+            }
+            fetchState.requestCount++;
+          });
           clearTimeout(timeoutId);
 
           // Check response size
@@ -742,7 +699,7 @@ function injectFetch(
             status: response.status,
             statusText: response.statusText,
             headers,
-            url: response.url,
+            url: finalUrl,
           };
 
           // Resolve the promise with the response object

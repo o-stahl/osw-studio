@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
+import { useTranslations } from 'next-intl';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Logo } from '@/components/ui/logo';
+import { LanguagePill } from '@/components/language-menu';
 
 /**
  * `useSearchParams` opts a client component out of static prerendering, which the production build
@@ -19,6 +21,8 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
+  const tc = useTranslations('common');
+  const t = useTranslations('auth');
   const router = useRouter();
   // Where to land after signing in. Only same-origin paths are honoured, so a crafted link
   // cannot turn the login page into an open redirect.
@@ -65,7 +69,7 @@ function LoginForm() {
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data.error || 'Login failed');
+        setError(data.error || t('loginFailed'));
         setIsLoading(false);
         return;
       }
@@ -86,13 +90,14 @@ function LoginForm() {
         router.push('/admin');
       }
     } catch {
-      setError('An error occurred. Please try again.');
+      setError(t('genericError'));
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-4 animate-fadeIn">
+    <div className="relative min-h-screen bg-background text-foreground flex items-center justify-center p-4 animate-fadeIn">
+      <LanguagePill className="absolute top-4 right-4" />
       <style jsx>{`
         @keyframes fadeIn {
           from { opacity: 0; }
@@ -118,17 +123,17 @@ function LoginForm() {
 
         {/* Title */}
         <h1 className="text-3xl font-semibold mb-2 tracking-tight">OSW Studio</h1>
-        <p className="text-muted-foreground mb-8">Sign in to your account</p>
+        <p className="text-muted-foreground mb-8">{t('signIn')}</p>
 
         {checkingSetup && (
-          <div className="py-8 text-muted-foreground text-sm">Checking setup...</div>
+          <div className="py-8 text-muted-foreground text-sm">{t('checkingSetup')}</div>
         )}
 
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="space-y-4" style={checkingSetup ? { display: 'none' } : undefined}>
           <div className="text-left">
             <label htmlFor="email" className="block text-sm font-medium text-muted-foreground mb-2">
-              Email
+              {tc('labels.email')}
             </label>
             <input
               id="email"
@@ -143,7 +148,7 @@ function LoginForm() {
 
           <div className="text-left">
             <label htmlFor="password" className="block text-sm font-medium text-muted-foreground mb-2">
-              Password
+              {tc('labels.password')}
             </label>
             <input
               id="password"
@@ -151,7 +156,7 @@ function LoginForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-3 bg-muted border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
-              placeholder="Enter your password"
+              placeholder={t('enterPassword')}
               required
             />
           </div>
@@ -167,24 +172,22 @@ function LoginForm() {
             disabled={isLoading}
             className="w-full bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 px-4 rounded-lg transition-colors disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
           >
-            {isLoading ? 'Logging in...' : 'Login'}
+            {isLoading ? t('loggingIn') : t('login')}
           </button>
         </form>
 
         {showRegisterLink && (
           <p className="mt-6 text-sm text-muted-foreground">
-            Don&apos;t have an account?{' '}
+            {t('noAccount')}{' '}
             <Link href="/admin/register" className="text-orange-500 hover:text-orange-400 transition-colors">
-              Create one
+              {t('createOne')}
             </Link>
           </p>
         )}
 
         {/* Footer */}
         <div className="mt-12 pt-6 border-t border-border flex items-center justify-center gap-2 text-sm text-muted-foreground">
-          <span>Powered by</span>
-          <Logo width={20} height={20} className="opacity-80" />
-          <span>OSW Studio</span>
+          {t.rich('poweredBy', { logo: () => <Logo width={20} height={20} className="opacity-80" /> })}
         </div>
       </div>
     </div>

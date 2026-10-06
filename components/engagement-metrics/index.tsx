@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
@@ -31,6 +33,9 @@ interface EngagementMetricsProps {
 }
 
 export function EngagementMetrics({ deploymentId }: EngagementMetricsProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('engagement');
+  const { number } = useLocalFormat();
   const [data, setData] = useState<EngagementMetrics | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -45,7 +50,7 @@ export function EngagementMetrics({ deploymentId }: EngagementMetricsProps) {
       setData(metrics);
     } catch (error) {
       console.error('Failed to fetch engagement metrics:', error);
-      toast.error('Failed to load engagement metrics');
+      toast.error(t('loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -57,18 +62,20 @@ export function EngagementMetrics({ deploymentId }: EngagementMetricsProps) {
   }, [deploymentId]);
 
   // Format duration
+  const unit = (value: number, name: 'minute' | 'second') =>
+    number(value, { style: 'unit', unit: name, unitDisplay: 'narrow' });
   const formatDuration = (ms: number) => {
     const seconds = Math.floor(ms / 1000);
-    if (seconds < 60) return `${seconds}s`;
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}m ${remainingSeconds}s`;
+    if (seconds < 60) return unit(seconds, 'second');
+    return `${unit(Math.floor(seconds / 60), 'minute')} ${unit(seconds % 60, 'second')}`;
   };
+  const percent = (fraction: number) =>
+    number(fraction, { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96 border rounded-lg">
-        <p className="text-muted-foreground">Loading engagement metrics...</p>
+        <p className="text-muted-foreground">{t('loading')}</p>
       </div>
     );
   }
@@ -76,7 +83,7 @@ export function EngagementMetrics({ deploymentId }: EngagementMetricsProps) {
   if (!data) {
     return (
       <div className="flex items-center justify-center h-96 border rounded-lg">
-        <p className="text-muted-foreground">No engagement data available</p>
+        <p className="text-muted-foreground">{t('noData')}</p>
       </div>
     );
   }
@@ -86,18 +93,18 @@ export function EngagementMetrics({ deploymentId }: EngagementMetricsProps) {
       {/* Time on Page Overview */}
       <div className="grid grid-cols-2 gap-4">
         <div className="border rounded-lg p-4">
-          <div className="text-sm text-muted-foreground mb-1">Average Time on Page</div>
+          <div className="text-sm text-muted-foreground mb-1">{t('avgTime')}</div>
           <div className="text-2xl font-bold">{formatDuration(data.timeOnPage.average)}</div>
         </div>
         <div className="border rounded-lg p-4">
-          <div className="text-sm text-muted-foreground mb-1">Median Time on Page</div>
+          <div className="text-sm text-muted-foreground mb-1">{t('medianTime')}</div>
           <div className="text-2xl font-bold">{formatDuration(data.timeOnPage.median)}</div>
         </div>
       </div>
 
       {/* Time on Page by Page */}
       <div className="border rounded-lg p-4">
-        <h3 className="font-medium mb-4">Time on Page by Path</h3>
+        <h3 className="font-medium mb-4">{t('timeByPath')}</h3>
         <div className="space-y-2">
           {Object.entries(data.timeOnPage.distribution)
             .sort(([, a], [, b]) => b - a)
@@ -113,10 +120,10 @@ export function EngagementMetrics({ deploymentId }: EngagementMetricsProps) {
 
       {/* Scroll Depth */}
       <div className="border rounded-lg p-4">
-        <h3 className="font-medium mb-4">Scroll Depth Funnel</h3>
+        <h3 className="font-medium mb-4">{t('scrollFunnel')}</h3>
         <div className="space-y-3">
           <div className="text-sm text-muted-foreground mb-2">
-            Average: <span className="font-medium text-foreground">{data.scrollDepth.average.toFixed(1)}%</span>
+            {t.rich('average', { value: number(data.scrollDepth.average, { minimumFractionDigits: 1, maximumFractionDigits: 1 }), b: (chunks) => <span className="font-medium text-foreground">{chunks}</span> })}
           </div>
           {(() => {
             const milestones = [25, 50, 75, 100];
@@ -137,9 +144,9 @@ export function EngagementMetrics({ deploymentId }: EngagementMetricsProps) {
               return (
                 <div key={milestone}>
                   <div className="flex justify-between text-sm mb-1">
-                    <span>Reached {milestone}%+</span>
+                    <span>{t('reached', { milestone })}</span>
                     <span className="text-muted-foreground">
-                      {count.toLocaleString()} ({percentage.toFixed(1)}%)
+                      {number(count)} ({percent(percentage / 100)})
                     </span>
                   </div>
                   <div className="h-6 bg-muted rounded overflow-hidden">
@@ -157,23 +164,23 @@ export function EngagementMetrics({ deploymentId }: EngagementMetricsProps) {
 
       {/* Top Landing Pages */}
       <div className="border rounded-lg p-4">
-        <h3 className="font-medium mb-4">Top Landing Pages</h3>
+        <h3 className="font-medium mb-4">{t('topLanding')}</h3>
         <div className="space-y-2">
           {data.topLandingPages.slice(0, 10).map((landing) => (
             <div key={landing.page} className="flex justify-between items-center border-b pb-2">
               <div className="flex-1">
                 <div className="text-sm font-medium">{landing.page}</div>
                 <div className="text-xs text-muted-foreground">
-                  {landing.visitCount.toLocaleString()} visits
+                  {t('visits', { count: landing.visitCount })}
                 </div>
               </div>
               <div className="text-right">
                 <div className="text-sm">
                   <span className={landing.bounceRate > 0.7 ? 'text-red-500' : landing.bounceRate > 0.4 ? 'text-orange-500' : 'text-green-500'}>
-                    {(landing.bounceRate * 100).toFixed(1)}%
+                    {percent(landing.bounceRate)}
                   </span>
                 </div>
-                <div className="text-xs text-muted-foreground">bounce rate</div>
+                <div className="text-xs text-muted-foreground">{t('bounceRate')}</div>
               </div>
             </div>
           ))}
@@ -182,15 +189,15 @@ export function EngagementMetrics({ deploymentId }: EngagementMetricsProps) {
 
       {/* Exit Pages */}
       <div className="border rounded-lg p-4">
-        <h3 className="font-medium mb-4">Top Exit Pages</h3>
+        <h3 className="font-medium mb-4">{t('topExit')}</h3>
         <div className="space-y-2">
           {data.exitPages.slice(0, 10).map((exit) => (
             <div key={exit.page} className="flex justify-between items-center">
               <span className="text-sm truncate flex-1">{exit.page}</span>
               <div className="text-right ml-4">
-                <div className="text-sm font-medium">{exit.exitCount.toLocaleString()}</div>
+                <div className="text-sm font-medium">{number(exit.exitCount)}</div>
                 <div className="text-xs text-muted-foreground">
-                  {(exit.exitRate * 100).toFixed(1)}% exit rate
+                  {t('exitRate', { rate: percent(exit.exitRate) })}
                 </div>
               </div>
             </div>
@@ -201,7 +208,7 @@ export function EngagementMetrics({ deploymentId }: EngagementMetricsProps) {
       {/* Refresh Button */}
       <div className="flex justify-end">
         <Button onClick={fetchEngagementMetrics} disabled={loading}>
-          {loading ? 'Loading...' : 'Refresh'}
+          {loading ? tc('loading') : tc('actions.refresh')}
         </Button>
       </div>
     </div>

@@ -26,8 +26,16 @@ Use a cloud AI service. You'll need an API key and will pay per usage (typically
 | **SambaNova** | [Get Key](https://cloud.sambanova.ai/) |
 | **MiniMax** | [Get Key](https://www.minimax.io/platform/user-center/basic-information/interface-key) |
 | **Zhipu** | [Get Key](https://bigmodel.cn/usercenter/apikeys) |
+| **Pollinations** | [Get Key](https://enter.pollinations.ai/keys) |
+| **Vercel AI Gateway** | [Get Key](https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai-gateway%2Fapi-keys) |
 
 **Note**: OSW Studio is developed using OpenRouter, so that provider has the most testing.
+
+### Sign in with OpenRouter (No Key to Copy)
+
+When nothing is connected yet, the chat shows ways to connect. **Sign in** next to OpenRouter takes you to OpenRouter, and you come back connected. A new OpenRouter account can use free models up to a daily limit; adding credit unlocks paid models. An account that has never bought credit starts on **Free models**, the first entry in OpenRouter's model list, which uses the best free model available and moves on when one is busy. Pick any other model and it stays picked.
+
+You can also paste a key from any provider into the field under the options. OSW Studio recognises most providers from the key itself, and asks when it cannot tell.
 
 ### Option A2: HuggingFace (Free Tier)
 

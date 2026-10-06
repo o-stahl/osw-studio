@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
+import { useModelTemplateCopy } from '@/lib/i18n/use-model-template-copy';
 import { AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { configManager } from '@/lib/config/storage';
@@ -19,11 +21,14 @@ function isAgentProviderConnected(template: ModelTemplate): boolean {
   return !!configManager.getProviderApiKey(provider) || !!configManager.getCachedModels(provider);
 }
 
+/** The keys {@link slotLabel} reads. */
+type SlotLabelKey = 'slotNone' | 'slotReuseAgent' | 'slotBrowser';
+
 /** Human-readable label for a ModelRef slot value. */
-function slotLabel(value: ModelRef | 'agent' | 'browser' | null): string {
-  if (value === null) return '— none';
-  if (value === 'agent') return 'reuse agent';
-  if (value === 'browser') return 'browser';
+export function slotLabel(t: (key: SlotLabelKey) => string, value: ModelRef | 'agent' | 'browser' | null): string {
+  if (value === null) return t('slotNone');
+  if (value === 'agent') return t('slotReuseAgent');
+  if (value === 'browser') return t('slotBrowser');
   // ModelRef
   const parts = value.model.split('/');
   const shortModel = parts[parts.length - 1] ?? value.model;
@@ -66,6 +71,9 @@ function TemplateCard({
   onDelete,
   canDelete,
 }: TemplateCardProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('connections');
+  const copy = useModelTemplateCopy();
   const { assignment } = template;
   const agentConnected = isAgentProviderConnected(template);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -113,20 +121,20 @@ function TemplateCard({
           />
         ) : (
           <span className="flex-1 font-semibold text-[13px] text-foreground truncate">
-            {template.name}
+            {copy(template).name}
           </span>
         )}
         {isActive && (
           <span className="shrink-0 text-[10px] font-semibold text-primary bg-primary/15 border border-primary/40 px-[7px] py-[1px] rounded-sm">
-            Active
+            {tc('labels.active')}
           </span>
         )}
       </div>
 
       {/* Description (built-in presets explain they update over time) */}
-      {template.description && (
+      {copy(template).description && (
         <p className="text-xs text-muted-foreground mb-2 leading-relaxed">
-          {template.description}
+          {copy(template).description}
         </p>
       )}
 
@@ -134,18 +142,18 @@ function TemplateCard({
       <div className="flex flex-col gap-0.5 mb-1">
         {/* Agent row */}
         <div className="flex justify-between gap-2 text-xs py-[2px]">
-          <span className="text-muted-foreground">Agent</span>
+          <span className="text-muted-foreground">{t('agent')}</span>
           <span
             className={cn(
               'font-medium text-right',
               !agentConnected ? 'text-amber-400' : 'text-muted-foreground',
             )}
           >
-            {slotLabel(assignment.agent)}
+            {slotLabel(t, assignment.agent)}
             {!agentConnected && (
               <span className="ml-1 inline-flex items-center gap-1">
                 <AlertTriangle className="inline h-[10px] w-[10px] text-amber-400" />
-                <span className="text-amber-400">needs {providerName(assignment.agent.provider)}</span>
+                <span className="text-amber-400">{t('needsProvider', { provider: providerName(assignment.agent.provider) })}</span>
               </span>
             )}
           </span>
@@ -153,17 +161,17 @@ function TemplateCard({
 
         {/* Image gen row */}
         <div className="flex justify-between gap-2 text-xs py-[2px]">
-          <span className="text-muted-foreground">Image gen</span>
+          <span className="text-muted-foreground">{tc('labels.imageGen')}</span>
           <span className="text-muted-foreground font-medium text-right">
-            {assignment.imageGen === null ? '— none' : slotLabel(assignment.imageGen)}
+            {slotLabel(t, assignment.imageGen)}
           </span>
         </div>
 
         {/* Voice in row */}
         <div className="flex justify-between gap-2 text-xs py-[2px]">
-          <span className="text-muted-foreground">Voice in</span>
+          <span className="text-muted-foreground">{tc('labels.voiceIn')}</span>
           <span className="text-muted-foreground font-medium text-right">
-            {assignment.voiceInput === null ? 'off' : slotLabel(assignment.voiceInput)}
+            {assignment.voiceInput === null ? t('slotOff') : slotLabel(t, assignment.voiceInput)}
           </span>
         </div>
       </div>
@@ -181,7 +189,7 @@ function TemplateCard({
               : 'bg-card border-border text-foreground hover:bg-muted hover:border-muted-foreground/30',
           )}
         >
-          {isActive ? 'Applied' : 'Apply'}
+          {isActive ? t('applied') : t('apply')}
         </button>
 
         {!template.builtin && (
@@ -193,7 +201,7 @@ function TemplateCard({
               'bg-transparent border-transparent text-muted-foreground hover:bg-muted hover:text-foreground',
             )}
           >
-            Rename
+            {tc('actions.rename')}
           </button>
         )}
 
@@ -205,7 +213,7 @@ function TemplateCard({
             'bg-transparent border-transparent text-muted-foreground hover:bg-muted hover:text-foreground',
           )}
         >
-          Duplicate
+          {tc('actions.duplicate')}
         </button>
 
         {/* Delete: hidden for builtin, and disabled when it would leave zero templates or delete the last/active one */}
@@ -221,7 +229,7 @@ function TemplateCard({
                 : 'bg-transparent border-transparent text-muted-foreground/50 cursor-not-allowed',
             )}
           >
-            Delete
+            {tc('actions.delete')}
           </button>
         )}
       </div>
@@ -234,6 +242,7 @@ function TemplateCard({
 // ---------------------------------------------------------------------------
 
 export function TemplatesPane() {
+  const t = useTranslations('connections');
   // version counter to force re-render after any mutation
   const [version, setVersion] = useState(0);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -301,7 +310,7 @@ export function TemplatesPane() {
   if (sortedTemplates.length === 0) {
     return (
       <div className="text-sm text-muted-foreground py-6">
-        No templates found. Go to the Models tab and save one.
+        {t('noSavedTemplates')}
       </div>
     );
   }
@@ -312,11 +321,11 @@ export function TemplatesPane() {
       <div className="mb-[14px]">
         <div className="flex items-baseline gap-[10px] mb-1">
           <span className="text-xs font-semibold tracking-[0.09em] uppercase text-muted-foreground">
-            Saved templates
+            {t('savedTemplates')}
           </span>
         </div>
         <p className="text-xs text-muted-foreground">
-          A named snapshot of your assignments, portable across connections.
+          {t('savedTemplatesHint')}
         </p>
       </div>
 

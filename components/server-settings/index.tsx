@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useTranslations } from 'next-intl';
 import { Deployment } from '@/lib/vfs/types';
 import {
   Dialog,
@@ -19,13 +20,14 @@ interface ServerSettingsModalProps {
 }
 
 export function ServerSettingsModal({ deployment, isOpen, onClose, workspaceId }: ServerSettingsModalProps) {
+  const t = useTranslations('backend');
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-4xl h-[90vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Server Settings</DialogTitle>
+          <DialogTitle>{t('serverSettingsTitle')}</DialogTitle>
           <DialogDescription>
-            Manage database, edge functions, and secrets for {deployment.name}
+            {t('serverSettingsDesc', { name: deployment.name })}
           </DialogDescription>
         </DialogHeader>
 

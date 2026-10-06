@@ -1,6 +1,7 @@
 'use client';
 
 import { SyncableItem } from '@/lib/vfs/sync-types';
+import { useTranslations } from 'next-intl';
 import { SyncStatusBadge } from './sync-status-badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -28,6 +29,7 @@ export function SyncItemRow({
   disabled = false,
   syncing = false,
 }: SyncItemRowProps) {
+  const t = useTranslations('sync');
   const canPush = ['local-newer', 'local-only', 'conflict'].includes(item.status);
   const canPull = ['server-newer', 'server-only', 'conflict'].includes(item.status);
   const isConflict = item.status === 'conflict';
@@ -44,7 +46,7 @@ export function SyncItemRow({
         checked={selected}
         onCheckedChange={(checked) => onSelectChange(checked === true)}
         disabled={disabled || syncing || item.status === 'synced' || item.status === 'server-only'}
-        aria-label={`Select ${item.name}`}
+        aria-label={t('selectItem', { name: item.name })}
       />
 
       {/* Name */}
@@ -69,7 +71,7 @@ export function SyncItemRow({
             disabled={disabled || syncing}
             className="h-7 text-xs"
           >
-            Keep both
+            {t('keepBoth')}
           </Button>
         ) : (
           <>
@@ -80,7 +82,7 @@ export function SyncItemRow({
                 onClick={onPush}
                 disabled={disabled || syncing}
                 className="h-7 w-7"
-                title="Push to server"
+                title={t('pushToServer')}
               >
                 {syncing ? (
                   <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -96,7 +98,7 @@ export function SyncItemRow({
                 onClick={onPull}
                 disabled={disabled || syncing}
                 className="h-7 w-7"
-                title="Pull from server"
+                title={t('pullFromServer')}
               >
                 {syncing ? (
                   <RefreshCw className="h-3.5 w-3.5 animate-spin" />

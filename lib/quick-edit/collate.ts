@@ -25,22 +25,27 @@ const FAMILY: Record<ActionKind, Family> = {
 };
 
 /** Families whose clause names the file, or counts them. */
-const FILE_VERBS: Partial<Record<Family, string>> = {
-  read: 'Read', change: 'Edited', create: 'Created', delete: 'Deleted', move: 'Moved', copy: 'Copied',
-};
+const FILE_FAMILIES = new Set<Family>(['read', 'change', 'create', 'delete', 'move', 'copy']);
 
 /** Families whose clause is one fixed phrase however often they ran. */
-const FIXED: Partial<Record<Family, string>> = {
-  search: 'Searched the project',
-  list: 'Looked through the files',
-  lookup: 'Searched the web',
-  build: 'Rebuilt the site',
-  evaluate: 'Checked its work',
-  preview: 'Checked the preview',
-  delegate: 'Worked through the request',
-  database: 'Worked on the data',
-  plan: 'Planned the change',
-};
+const FIXED_FAMILIES = new Set<Family>([
+  'search', 'list', 'lookup', 'build', 'evaluate', 'preview', 'delegate', 'database', 'plan',
+]);
+
+/**
+ * One clause of the sentence, before it is worded: its family, the one file it names when it named
+ * exactly one, and how many files or commands it counts otherwise.
+ */
+export interface Clause {
+  family: Family;
+  file: string | null;
+  count: number;
+}
+
+/** A stretch as clauses in reading order, or, past four kinds, a count of commands and files. */
+export type CollatedLine =
+  | { kind: 'clauses'; clauses: Clause[] }
+  | { kind: 'total'; commands: number; changed: number };
 
 interface Group {
   family: Family;
@@ -95,49 +100,62 @@ function groupByFamily(steps: TallyStep[]): Group[] {
   return groups;
 }
 
-function plural(n: number, one: string, many: string): string {
-  return `${n} ${n === 1 ? one : many}`;
-}
-
-function clause(group: Group): string {
-  const fixed = FIXED[group.family];
-  if (fixed) return fixed;
-  const verb = FILE_VERBS[group.family];
-  if (verb) {
-    const count = group.files.length + group.unnamed;
-    if (group.files.length === 1 && group.unnamed === 0) return `${verb} ${fileName(group.files[0])}`;
-    if (count === 1) return `${verb} a file`;
-    return `${verb} ${plural(count, 'file', 'files')}`;
+function toClause(group: Group): Clause {
+  if (FILE_FAMILIES.has(group.family)) {
+    const named = group.files.length === 1 && group.unnamed === 0;
+    return { family: group.family, file: named ? fileName(group.files[0]) : null, count: group.files.length + group.unnamed };
   }
-  switch (group.family) {
-    case 'image': return group.commands === 1 ? 'Made an image' : `Made ${plural(group.commands, 'image', 'images')}`;
-    case 'run': return group.commands === 1 ? 'Ran a script' : `Ran ${plural(group.commands, 'script', 'scripts')}`;
-    default: return `Ran ${plural(group.commands, 'command', 'commands')}`;
+  return { family: group.family, file: null, count: group.commands };
+}
+
+/**
+ * The keys a collated line is worded with, under `quickEdit.collate`. Every clause takes a
+ * `position`: the first clause opens the sentence and the rest follow "then", and whether that
+ * changes the clause (English lowercases it, Korean does not) is the translation's call.
+ */
+type FileClauseKey = `${'read' | 'change' | 'create' | 'delete' | 'move' | 'copy'}${'File' | 'Count'}`;
+export type CollateKey =
+  | FileClauseKey
+  | 'search' | 'list' | 'lookup' | 'build' | 'evaluate' | 'preview' | 'delegate' | 'database' | 'plan'
+  | 'image' | 'run' | 'other' | 'then' | 'and' | 'total' | 'totalChanged';
+export type CollateTranslator = (key: CollateKey, values?: Record<string, string | number>) => string;
+
+function phraseClause(clause: Clause, position: 'first' | 'later', t: CollateTranslator): string {
+  const { family } = clause;
+  if (FILE_FAMILIES.has(family)) {
+    const base = family as 'read' | 'change' | 'create' | 'delete' | 'move' | 'copy';
+    return clause.file
+      ? t(`${base}File`, { position, file: clause.file }) // i18n-ignore: a message key, checked by tsc
+      : t(`${base}Count`, { position, count: clause.count }); // i18n-ignore: a message key, checked by tsc
   }
+  if (FIXED_FAMILIES.has(family)) return t(family as CollateKey, { position });
+  const counted = family === 'image' || family === 'run' ? family : 'other';
+  return t(counted, { position, count: clause.count });
 }
 
-function sentence(groups: Group[]): string {
-  return groups
-    .map((group, i) => {
-      const text = clause(group);
-      if (i === 0) return text;
-      const lowered = text.charAt(0).toLowerCase() + text.slice(1);
-      return i === 1 ? `then ${lowered}` : lowered;
-    })
-    .join(', ');
+/** The line in words: "Read 3 files, then edited index.html, rebuilt the site". */
+export function phraseCollated(line: CollatedLine, t: CollateTranslator): string {
+  if (line.kind === 'total') {
+    return line.changed > 0
+      ? t('totalChanged', { commands: line.commands, changed: line.changed })
+      : t('total', { commands: line.commands });
+  }
+  return line.clauses.reduce<string>((text, clause, i) => {
+    if (i === 0) return phraseClause(clause, 'first', t);
+    const after = phraseClause(clause, 'later', t);
+    return t(i === 1 ? 'then' : 'and', { before: text, after });
+  }, '');
 }
 
-/** One sentence for the steps of a tally, or null when there are none yet. */
-export function collate(tally: Tally): string | null {
+/** The steps of a tally collated into clauses, or null when there are none yet. */
+export function collate(tally: Tally): CollatedLine | null {
   if (tally.steps.length === 0) return null;
 
   const ordered = groupConsecutive(tally.steps);
-  if (ordered.length <= MAX_CLAUSES) return sentence(ordered);
+  if (ordered.length <= MAX_CLAUSES) return { kind: 'clauses', clauses: ordered.map(toClause) };
 
   const byFamily = groupByFamily(tally.steps);
-  if (byFamily.length <= MAX_CLAUSES) return sentence(byFamily);
+  if (byFamily.length <= MAX_CLAUSES) return { kind: 'clauses', clauses: byFamily.map(toClause) };
 
-  const changed = tally.filesChanged.length;
-  const commands = `Ran ${plural(tally.commandCount, 'command', 'commands')}`;
-  return changed > 0 ? `${commands}, changed ${plural(changed, 'file', 'files')}` : commands;
+  return { kind: 'total', commands: tally.commandCount, changed: tally.filesChanged.length };
 }

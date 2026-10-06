@@ -22,14 +22,18 @@ vi.mock('@/lib/config/storage', () => ({
 }));
 
 import { LocalContextLength } from '@/components/settings/local-context-length';
-import { DEFAULT_LOCAL_CONTEXT_LENGTH, LOCAL_CONTEXT_HELP } from '@/lib/llm/local-context';
+import { DEFAULT_LOCAL_CONTEXT_LENGTH } from '@/lib/llm/local-context';
+import en from '@/messages/en.json';
+import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import type { ProviderId } from '@/lib/llm/providers/types';
+
+const localContext = en.settings.localContext;
 
 let container: HTMLDivElement;
 let root: Root;
 
 function mount(providerId: ProviderId) {
-  act(() => { root.render(<LocalContextLength providerId={providerId} />); });
+  act(() => { root.render(withMessages(<LocalContextLength providerId={providerId} />)); });
 }
 
 function input(): HTMLInputElement {
@@ -91,14 +95,19 @@ describe('LocalContextLength', () => {
   it('says the value is applied for Ollama and must be matched for the others', () => {
     mount('ollama');
     const ollamaText = container.textContent ?? '';
-    expect(ollamaText).toContain(LOCAL_CONTEXT_HELP.ollama);
+    expect(ollamaText).toContain(localContext.ollama);
 
     act(() => { root.unmount(); });
     root = createRoot(container);
     mount('llamacpp');
     const llamaText = container.textContent ?? '';
-    expect(llamaText).toContain(LOCAL_CONTEXT_HELP.llamacpp);
+    expect(llamaText).toContain(localContext.llamacpp);
     // The providers that cannot take the value get one more sentence than Ollama does.
-    expect(llamaText.length - LOCAL_CONTEXT_HELP.llamacpp!.length).toBeGreaterThan(ollamaText.length - LOCAL_CONTEXT_HELP.ollama!.length);
+    expect(llamaText.length - localContext.llamacpp.length).toBeGreaterThan(ollamaText.length - localContext.ollama.length);
+  });
+
+  it.each(['lmstudio', 'llamacpp', 'meshllm'] as const)('gives %s its own instructions', (id) => {
+    mount(id);
+    expect(container.textContent).toContain(localContext[id]);
   });
 });

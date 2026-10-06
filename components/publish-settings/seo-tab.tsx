@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { PublishSettings, SeoConfig } from '@/lib/vfs/types';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -15,7 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Section, SectionHeader, SectionBody } from '@/components/ui/section';
-import { Search, X } from 'lucide-react';
+import { ImageIcon, Search, X } from 'lucide-react';
 
 interface SeoTabProps {
   settings: PublishSettings;
@@ -23,7 +24,12 @@ interface SeoTabProps {
 }
 
 export function SeoTab({ settings, onChange }: SeoTabProps) {
+  const t = useTranslations('publishSettings');
+  const te = useTranslations('editor');
+  const tc = useTranslations('common');
   const [keywords, setKeywords] = useState('');
+  // The URL that failed to load, so a different one is tried again.
+  const [failedOgImage, setFailedOgImage] = useState<string | null>(null);
 
   const handleSeoChange = (field: keyof SeoConfig, value: any) => {
     onChange({
@@ -62,38 +68,36 @@ export function SeoTab({ settings, onChange }: SeoTabProps) {
     <div className="flex flex-col gap-4">
       {/* Basic Meta Tags */}
       <Section>
-        <SectionHeader title="Basic meta tags" />
+        <SectionHeader title={t('basicMeta')} />
         <SectionBody className="space-y-4">
 
         <p className="text-xs text-muted-foreground">
-          These apply to the whole deployment, so they are used as defaults: where a page already sets
-          one of these tags itself, the page keeps it. Set a tag on the page when it should differ from
-          one page to the next.
+          {t('seoDefaultsHint')}
         </p>
 
         <div className="space-y-2">
-          <Label htmlFor="seo-title">Meta Title</Label>
+          <Label htmlFor="seo-title">{t('metaTitle')}</Label>
           <Input
             id="seo-title"
-            placeholder="Your Deployment Title"
+            placeholder={t('metaTitlePlaceholder')}
             value={settings.seo.title || ''}
             onChange={(e) => handleSeoChange('title', e.target.value || undefined)}
           />
           <p className="text-xs text-muted-foreground">
-            Recommended: 50-60 characters
+            {t('recommendedChars', { range: '50–60' })}
             {settings.seo.title && (
               <span className="ml-2">
-                ({settings.seo.title.length} characters)
+                {t('charCount', { count: settings.seo.title.length })}
               </span>
             )}
           </p>
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="seo-description">Meta Description</Label>
+          <Label htmlFor="seo-description">{t('metaDescription')}</Label>
           <Textarea
             id="seo-description"
-            placeholder="A brief description of your deployment"
+            placeholder={t('metaDescriptionPlaceholder')}
             rows={3}
             value={settings.seo.description || ''}
             onChange={(e) =>
@@ -101,21 +105,21 @@ export function SeoTab({ settings, onChange }: SeoTabProps) {
             }
           />
           <p className="text-xs text-muted-foreground">
-            Recommended: 150-160 characters
+            {t('recommendedChars', { range: '150–160' })}
             {settings.seo.description && (
               <span className="ml-2">
-                ({settings.seo.description.length} characters)
+                {t('charCount', { count: settings.seo.description.length })}
               </span>
             )}
           </p>
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="seo-keywords">Keywords</Label>
+          <Label htmlFor="seo-keywords">{t('keywords')}</Label>
           <div className="flex gap-2">
             <Input
               id="seo-keywords"
-              placeholder="Enter keywords (comma-separated)"
+              placeholder={t('keywordsPlaceholder')}
               value={keywords}
               onChange={(e) => setKeywords(e.target.value)}
               onKeyPress={(e) => {
@@ -126,7 +130,7 @@ export function SeoTab({ settings, onChange }: SeoTabProps) {
               }}
             />
             <Button type="button" onClick={handleAddKeyword} variant="outline">
-              Add
+              {tc('actions.add')}
             </Button>
           </div>
           {settings.seo.keywords && settings.seo.keywords.length > 0 && (
@@ -147,7 +151,7 @@ export function SeoTab({ settings, onChange }: SeoTabProps) {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="seo-canonical">Canonical URL</Label>
+          <Label htmlFor="seo-canonical">{t('canonicalUrl')}</Label>
           <Input
             id="seo-canonical"
             type="url"
@@ -158,7 +162,7 @@ export function SeoTab({ settings, onChange }: SeoTabProps) {
             }
           />
           <p className="text-xs text-muted-foreground">
-            Prevent duplicate content issues by specifying the primary URL
+            {t('canonicalHelp')}
           </p>
         </div>
         </SectionBody>
@@ -166,24 +170,24 @@ export function SeoTab({ settings, onChange }: SeoTabProps) {
 
       {/* Open Graph */}
       <Section>
-        <SectionHeader title="Open Graph (Facebook, LinkedIn)" />
+        <SectionHeader title={t('openGraph')} />
         <SectionBody className="space-y-4">
 
         <div className="space-y-2">
-          <Label htmlFor="og-title">OG Title</Label>
+          <Label htmlFor="og-title">{t('ogTitle')}</Label>
           <Input
             id="og-title"
-            placeholder="Title for social media sharing"
+            placeholder={t('ogTitlePlaceholder')}
             value={settings.seo.ogTitle || ''}
             onChange={(e) => handleSeoChange('ogTitle', e.target.value || undefined)}
           />
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="og-description">OG Description</Label>
+          <Label htmlFor="og-description">{t('ogDescription')}</Label>
           <Textarea
             id="og-description"
-            placeholder="Description for social media sharing"
+            placeholder={t('ogDescriptionPlaceholder')}
             rows={2}
             value={settings.seo.ogDescription || ''}
             onChange={(e) =>
@@ -193,7 +197,7 @@ export function SeoTab({ settings, onChange }: SeoTabProps) {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="og-image">OG Image URL</Label>
+          <Label htmlFor="og-image">{t('ogImageUrl')}</Label>
           <Input
             id="og-image"
             type="url"
@@ -202,24 +206,27 @@ export function SeoTab({ settings, onChange }: SeoTabProps) {
             onChange={(e) => handleSeoChange('ogImage', e.target.value || undefined)}
           />
           <p className="text-xs text-muted-foreground">
-            Recommended: 1200x630px for best results
+            {t('ogImageHelp')}
           </p>
         </div>
 
         {settings.seo.ogImage && (
           <div className="p-4 border rounded-lg">
-            <p className="text-sm font-medium mb-2">Image Preview</p>
+            <p className="text-sm font-medium mb-2">{te('imagePreview')}</p>
             <div className="relative aspect-video bg-muted rounded flex items-center justify-center overflow-hidden">
-              <img
-                src={settings.seo.ogImage}
-                alt="OG Image preview"
-                className="object-cover w-full h-full"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                  (e.target as HTMLImageElement).parentElement!.innerHTML =
-                    '<div class="flex items-center gap-2 text-muted-foreground"><svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg><span>Unable to load image</span></div>';
-                }}
-              />
+              {failedOgImage === settings.seo.ogImage ? (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <ImageIcon className="h-8 w-8" />
+                  <span>{t('imageLoadFailed')}</span>
+                </div>
+              ) : (
+                <img
+                  src={settings.seo.ogImage}
+                  alt={t('ogImageAlt')}
+                  className="object-cover w-full h-full"
+                  onError={() => setFailedOgImage(settings.seo.ogImage ?? null)}
+                />
+              )}
             </div>
           </div>
         )}
@@ -228,11 +235,11 @@ export function SeoTab({ settings, onChange }: SeoTabProps) {
 
       {/* Twitter Card */}
       <Section>
-        <SectionHeader title="Twitter card" />
+        <SectionHeader title={t('twitterCard')} />
         <SectionBody className="space-y-4">
 
         <div className="space-y-2">
-          <Label htmlFor="twitter-card">Card Type</Label>
+          <Label htmlFor="twitter-card">{t('cardType')}</Label>
           <Select
             value={settings.seo.twitterCard || 'summary_large_image'}
             onValueChange={(value: 'summary' | 'summary_large_image') =>
@@ -243,14 +250,14 @@ export function SeoTab({ settings, onChange }: SeoTabProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="summary">Summary</SelectItem>
+              <SelectItem value="summary">{t('summary')}</SelectItem>
               <SelectItem value="summary_large_image">
-                Summary Large Image
+                {t('summaryLargeImage')}
               </SelectItem>
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            How your deployment appears when shared on Twitter/X
+            {t('twitterCardHelp')}
           </p>
         </div>
         </SectionBody>
@@ -258,7 +265,7 @@ export function SeoTab({ settings, onChange }: SeoTabProps) {
 
       {/* Preview */}
       <Section>
-        <SectionHeader title="Search result preview" />
+        <SectionHeader title={t('searchPreview')} />
         <SectionBody className="space-y-4">
 
         <div className="p-4 border rounded-lg bg-muted/50">
@@ -269,12 +276,12 @@ export function SeoTab({ settings, onChange }: SeoTabProps) {
                 https://your-domain.com
               </div>
               <h3 className="text-lg text-blue-800 dark:text-blue-400 font-medium mb-1">
-                {settings.seo.title || settings.seo.ogTitle || 'Your Deployment Title'}
+                {settings.seo.title || settings.seo.ogTitle || t('deploymentTitlePlaceholder')}
               </h3>
               <p className="text-sm text-muted-foreground">
                 {settings.seo.description ||
                   settings.seo.ogDescription ||
-                  'Your deployment description will appear here in search results.'}
+                  t('previewDescFallback')}
               </p>
             </div>
           </div>
@@ -285,7 +292,7 @@ export function SeoTab({ settings, onChange }: SeoTabProps) {
       {/* Social Share Preview */}
       {(settings.seo.ogTitle || settings.seo.ogImage) && (
         <Section>
-          <SectionHeader title="Social share preview" />
+          <SectionHeader title={t('socialPreview')} />
           <SectionBody className="space-y-4">
 
           <div className="p-4 border rounded-lg bg-muted/50">
@@ -294,7 +301,7 @@ export function SeoTab({ settings, onChange }: SeoTabProps) {
                 <div className="aspect-video bg-muted rounded overflow-hidden">
                   <img
                     src={settings.seo.ogImage}
-                    alt="Social preview"
+                    alt={t('socialPreviewAlt')}
                     className="object-cover w-full h-full"
                     onError={(e) => {
                       (e.target as HTMLImageElement).style.display = 'none';
@@ -307,12 +314,12 @@ export function SeoTab({ settings, onChange }: SeoTabProps) {
                   your-domain.com
                 </div>
                 <h4 className="font-semibold">
-                  {settings.seo.ogTitle || settings.seo.title || 'Your Deployment Title'}
+                  {settings.seo.ogTitle || settings.seo.title || t('deploymentTitlePlaceholder')}
                 </h4>
                 <p className="text-sm text-muted-foreground">
                   {settings.seo.ogDescription ||
                     settings.seo.description ||
-                    'Your deployment description'}
+                    t('previewDescShort')}
                 </p>
               </div>
             </div>

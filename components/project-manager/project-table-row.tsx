@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { Project } from '@/lib/vfs/types';
 import { vfs } from '@/lib/vfs';
 import { getRuntimeBadge } from '@/lib/runtimes/registry';
@@ -16,7 +17,8 @@ import {
 import { MoreVertical, Trash2, Download, FileArchive, Copy, Settings, FileBox, Pencil, Eye, Wand2 } from 'lucide-react';
 import { ThumbnailArea } from '@/components/ui/thumbnail-area';
 import { captureProjectScreenshot } from '@/lib/utils/project-thumbnail';
-import { logger, formatCompactAge } from '@/lib/utils';
+import { logger } from '@/lib/utils';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 
 interface ProjectTableRowProps {
   project: Project;
@@ -55,6 +57,9 @@ export const ProjectTableRow = React.memo(function ProjectTableRow({
   onUpdate,
   compactRows,
 }: ProjectTableRowProps) {
+  const tc = useTranslations('common');
+  const tp = useTranslations('projects');
+  const when = useLocalFormat();
   const [stats, setStats] = useState<ProjectStats | null>(null);
 
   useEffect(() => {
@@ -66,7 +71,7 @@ export const ProjectTableRow = React.memo(function ProjectTableRow({
   const runtime = project.settings?.runtime || 'handlebars';
   const runtimeBadge = getRuntimeBadge(runtime);
   const cost = project.costTracking?.totalCost;
-  const formattedCost = cost && cost > 0 ? `$${cost.toFixed(2)}` : null;
+  const formattedCost = cost && cost > 0 ? when.number(cost, { style: 'currency', currency: 'USD' }) : null;
 
   return (
     <tr className="border-b border-border/50 hover:bg-muted/50 cursor-pointer h-[44px]" onClick={() => onSelect(project)}>
@@ -99,14 +104,14 @@ export const ProjectTableRow = React.memo(function ProjectTableRow({
         {formattedCost ?? '—'}
       </td>
       <td className="p-[4px_10px] text-[13px] text-muted-foreground align-middle whitespace-nowrap overflow-hidden text-ellipsis">
-        {formatCompactAge(project.updatedAt)}
+        {when.age(project.updatedAt)}
       </td>
       <td className="p-[4px_10px] align-middle whitespace-nowrap text-right" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-end gap-1">
           <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => onSelect(project)}>
-            <Pencil className="w-3 h-3" />Edit
+            <Pencil className="w-3 h-3" />{tc('actions.edit')}
           </Button>
-          <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => onPreview(project)}>Preview</Button>
+          <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => onPreview(project)}>{tc('actions.preview')}</Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="xs" className="px-1"><MoreVertical className="w-3.5 h-3.5" /></Button>
@@ -116,10 +121,10 @@ export const ProjectTableRow = React.memo(function ProjectTableRow({
               {compactRows && (
                 <>
                   <DropdownMenuItem onClick={() => onSelect(project)}>
-                    <Pencil className="w-4 h-4 mr-2" />Edit
+                    <Pencil className="w-4 h-4 mr-2" />{tc('actions.edit')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => onPreview(project)}>
-                    <Eye className="w-4 h-4 mr-2" />Preview
+                    <Eye className="w-4 h-4 mr-2" />{tp('menu.preview')}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </>
@@ -127,33 +132,33 @@ export const ProjectTableRow = React.memo(function ProjectTableRow({
               {onQuickEdit && (
                 <>
                   <DropdownMenuItem onClick={() => onQuickEdit(project)}>
-                    <Wand2 className="w-4 h-4 mr-2" />Quick edit
+                    <Wand2 className="w-4 h-4 mr-2" />{tp('menu.quickEdit')}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </>
               )}
               <DropdownMenuItem onClick={() => onExportZip(project)}>
-                <FileArchive className="w-4 h-4 mr-2" />Export ZIP
+                <FileArchive className="w-4 h-4 mr-2" />{tp('menu.exportZipShort')}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onExport(project)}>
-                <Download className="w-4 h-4 mr-2" />Export .osws
+                <Download className="w-4 h-4 mr-2" />{tp('menu.exportOsws')}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onDuplicate(project)}>
-                <Copy className="w-4 h-4 mr-2" />Duplicate
+                <Copy className="w-4 h-4 mr-2" />{tp('menu.duplicate')}
               </DropdownMenuItem>
               {onExportAsTemplate && (
                 <DropdownMenuItem onClick={() => onExportAsTemplate(project)}>
-                  <FileBox className="w-4 h-4 mr-2" />Export as Template
+                  <FileBox className="w-4 h-4 mr-2" />{tp('menu.exportAsTemplate')}
                 </DropdownMenuItem>
               )}
               {onBackend && (
                 <DropdownMenuItem onClick={() => onBackend(project)}>
-                  <Settings className="w-4 h-4 mr-2" />Backend Features
+                  <Settings className="w-4 h-4 mr-2" />{tp('menu.backendFeatures')}
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => onDelete(project)} className="text-destructive focus:text-destructive">
-                <Trash2 className="w-4 h-4 mr-2" />Delete
+                <Trash2 className="w-4 h-4 mr-2" />{tc('actions.delete')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

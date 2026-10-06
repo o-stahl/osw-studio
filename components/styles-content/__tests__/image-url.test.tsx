@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
@@ -47,7 +48,7 @@ afterEach(() => {
 });
 
 async function mount(props: { projectId: string | null; src?: string }) {
-  await act(async () => { root.render(<Probe {...props} />); });
+  await act(async () => { root.render(withMessages(<Probe {...props} />)); });
 }
 
 describe('the selected image URL', () => {

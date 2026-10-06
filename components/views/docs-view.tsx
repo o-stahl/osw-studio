@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
+import { useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
 import { MarkdownRenderer } from '@/components/markdown-renderer';
 import { TableOfContents } from '@/components/table-of-contents';
@@ -12,6 +13,8 @@ import { PageShell, PageHeader } from '@/components/ui/page-shell';
 import { DocsPageActions } from '@/components/docs-page-actions';
 
 function DocsViewContent() {
+  const tc = useTranslations('common');
+  const td = useTranslations('docs');
   const searchParams = useSearchParams();
   const docId = searchParams.get('doc') || 'overview';
 
@@ -41,7 +44,7 @@ function DocsViewContent() {
         const response = await fetch(`/api/docs/${selectedDoc.file}`);
         if (cancelled) return;
         if (!response.ok) {
-          throw new Error(`Failed to load document: ${response.statusText}`);
+          throw new Error(td('loadFailed', { status: response.statusText }));
         }
         const text = await response.text();
         if (cancelled) return;
@@ -66,7 +69,7 @@ function DocsViewContent() {
       } catch (err) {
         if (cancelled) return;
         console.error('Failed to load doc:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load document');
+        setError(err instanceof Error ? err.message : td('loadDocFailed'));
         setContent('');
       } finally {
         if (!cancelled) setLoading(false);
@@ -76,7 +79,7 @@ function DocsViewContent() {
     loadDoc();
 
     return () => { cancelled = true; };
-  }, [selectedDoc]);
+  }, [selectedDoc, td]);
 
   // Handle TOC item clicks
   const handleTocClick = useCallback((id: string) => {
@@ -214,7 +217,7 @@ function DocsViewContent() {
 
   return (
     <PageShell>
-      <PageHeader title="Docs" maxWidth="max-w-none" className="pb-2" />
+      <PageHeader title={tc('terms.docs')} maxWidth="max-w-none" className="pb-2" />
       {/* Two-column layout: Content + TOC */}
       <div className={`flex-1 min-h-0 overflow-hidden ${showToc ? 'lg:grid lg:grid-cols-[1fr_280px]' : ''}`}>
         {/* Main Content Area - scrollable */}
@@ -241,7 +244,7 @@ function DocsViewContent() {
             <div className="flex items-center justify-center h-screen">
               <div className="text-center">
                 <Spinner size={48} className="mx-auto text-primary" />
-                <p className="mt-4 text-muted-foreground">Loading documentation...</p>
+                <p className="mt-4 text-muted-foreground">{td('loading')}</p>
               </div>
             </div>
           )}
@@ -250,7 +253,7 @@ function DocsViewContent() {
             <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
               <AlertCircle className="h-5 w-5 flex-shrink-0" />
               <div>
-                <p className="font-semibold">Error loading document</p>
+                <p className="font-semibold">{td('errorLoading')}</p>
                 <p className="text-sm">{error}</p>
               </div>
             </div>
@@ -291,8 +294,9 @@ function DocsViewContent() {
 
 // Wrapper component with Suspense boundary for Next.js 15
 export function DocsView() {
+  const td = useTranslations('docs');
   return (
-    <Suspense fallback={<div className="flex items-center justify-center h-full">Loading documentation...</div>}>
+    <Suspense fallback={<div className="flex items-center justify-center h-full">{td('loading')}</div>}>
       <DocsViewContent />
     </Suspense>
   );

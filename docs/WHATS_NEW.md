@@ -6,6 +6,32 @@ Welcome to OSW Studio! This page highlights the latest features and updates.
 
 ---
 
+## v1.105.0 - Finnish, Korean and an Improved First Use Experience (2026-10-06)
+
+OSW Studio's interface is now available in Finnish and Korean as well as English; choose a language in Settings › Appearance or from the language menu at the bottom of the sidebar. Getting started is simpler too: an empty chat offers ways to connect a model, including signing in with OpenRouter instead of copying a key, and the guided tour is offered rather than started for you. The agent's instructions, your project's content and the guided tour stay in English.
+
+### Languages
+- **Finnish and Korean**: every screen, with dates, numbers and costs written for your language; switching keeps your open project
+
+### First use
+- **Sign in with OpenRouter**: from an empty chat or Settings › Connections, with no key to copy
+- **Free models for a new OpenRouter account**: an account that has never bought credit starts on "Free models", which uses the best-scoring free model and moves to another when one is busy
+- **The guided tour is offered, not started**: a card on your first visit offers the tour, or a project to start in
+- **A limit stops the task with ways to continue**: the card shows the provider's own count and reset time where it publishes them, and suggests another model or a connected provider; the model only changes if you pick one
+- **Pollinations and Vercel AI Gateway**: both are now built-in providers
+
+### Templates
+- **The Blog template works when published**: registering, signing in and commenting on a published Blog failed
+
+### Image generation
+- **Newer OpenRouter image models work**: models such as Qwen Image 3, which only OpenRouter's Image API serves, failed every time
+- **Image generation in server-side runs**: a run on the server could not generate images even with an image model set; your browser now generates them for it
+
+### Server Mode
+- **Security fixes for self-hosted instances**: published-site file serving, what an edge function can see of a visitor's cookies, and which addresses its `fetch` can reach. Update a self-hosted instance
+
+---
+
 ## v1.104.0 - Binary Files Over the Connector (2026-09-29)
 
 An agent connected over MCP can now put an image, a font or any other binary file into a project, and read one back out. The connector could only move text before, so an outside agent could write your HTML and CSS but could not add a logo or a self-hosted font; you had to add those yourself in the File Explorer. This needs Server Mode or the desktop app, like the rest of the connector.

@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useTranslations } from 'next-intl';
 import { PublishSettings, ComplianceConfig } from '@/lib/vfs/types';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -23,6 +24,9 @@ interface ComplianceTabProps {
 }
 
 export function ComplianceTab({ settings, onChange }: ComplianceTabProps) {
+  const t = useTranslations('publishSettings');
+  const tp = useTranslations('preview');
+  const tw = useTranslations('workspace');
   const handleComplianceChange = (
     field: keyof ComplianceConfig,
     value: any
@@ -39,11 +43,11 @@ export function ComplianceTab({ settings, onChange }: ComplianceTabProps) {
   return (
     <div className="flex flex-col gap-4">
       <Section>
-        <SectionHeader icon={Cookie} title="Consent banner" />
+        <SectionHeader icon={Cookie} title={t('consentBanner')} />
         <SectionBody className="px-4 py-1">
           <SettingRow
-            title="Enable consent banner"
-            description="Show a cookie consent banner to visitors"
+            title={t('enableConsentBanner')}
+            description={t('compliance.bannerHint')}
           >
             <Switch
               id="compliance-enabled"
@@ -60,12 +64,12 @@ export function ComplianceTab({ settings, onChange }: ComplianceTabProps) {
         <>
           {/* Banner Configuration */}
           <Section>
-            <SectionHeader title="Banner configuration" />
+            <SectionHeader title={t('bannerConfiguration')} />
             <SectionBody className="space-y-4">
 
             {/* Banner Position */}
             <div className="space-y-2">
-              <Label htmlFor="banner-position">Banner Position</Label>
+              <Label htmlFor="banner-position">{t('bannerPosition')}</Label>
               <Select
                 value={settings.compliance.bannerPosition}
                 onValueChange={(value) =>
@@ -76,15 +80,15 @@ export function ComplianceTab({ settings, onChange }: ComplianceTabProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="top">Top</SelectItem>
-                  <SelectItem value="bottom">Bottom</SelectItem>
+                  <SelectItem value="top">{t('top')}</SelectItem>
+                  <SelectItem value="bottom">{t('bottom')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             {/* Banner Style */}
             <div className="space-y-2">
-              <Label htmlFor="banner-style">Banner Style</Label>
+              <Label htmlFor="banner-style">{t('bannerStyle')}</Label>
               <Select
                 value={settings.compliance.bannerStyle}
                 onValueChange={(value) =>
@@ -95,19 +99,19 @@ export function ComplianceTab({ settings, onChange }: ComplianceTabProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="bar">Full-width Bar</SelectItem>
-                  <SelectItem value="modal">Centered Modal</SelectItem>
-                  <SelectItem value="corner">Bottom-right Corner</SelectItem>
+                  <SelectItem value="bar">{t('fullWidthBar')}</SelectItem>
+                  <SelectItem value="modal">{t('centeredModal')}</SelectItem>
+                  <SelectItem value="corner">{t('bottomRightCorner')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             {/* Banner Message */}
             <div className="space-y-2">
-              <Label htmlFor="banner-message">Banner Message</Label>
+              <Label htmlFor="banner-message">{t('bannerMessage')}</Label>
               <Textarea
                 id="banner-message"
-                placeholder="We use cookies to improve your experience..."
+                placeholder={t('bannerMessagePlaceholder')}
                 rows={3}
                 value={settings.compliance.message}
                 onChange={(e) =>
@@ -123,10 +127,10 @@ export function ComplianceTab({ settings, onChange }: ComplianceTabProps) {
             {/* Button Texts */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="accept-text">Accept Button Text</Label>
+                <Label htmlFor="accept-text">{t('acceptButtonText')}</Label>
                 <Input
                   id="accept-text"
-                  placeholder="Accept"
+                  placeholder={t('acceptPlaceholder')}
                   value={settings.compliance.acceptButtonText}
                   onChange={(e) =>
                     handleComplianceChange('acceptButtonText', e.target.value)
@@ -136,10 +140,10 @@ export function ComplianceTab({ settings, onChange }: ComplianceTabProps) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="decline-text">Decline Button Text</Label>
+                <Label htmlFor="decline-text">{t('declineButtonText')}</Label>
                 <Input
                   id="decline-text"
-                  placeholder="Decline"
+                  placeholder={t('declinePlaceholder')}
                   value={settings.compliance.declineButtonText}
                   onChange={(e) =>
                     handleComplianceChange('declineButtonText', e.target.value)
@@ -152,14 +156,14 @@ export function ComplianceTab({ settings, onChange }: ComplianceTabProps) {
             {/* Policy Links */}
             <div className="space-y-4">
               <div>
-                <h4 className="font-semibold mb-2">Policy Links (Optional)</h4>
+                <h4 className="font-semibold mb-2">{t('policyLinks')}</h4>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Add links to your privacy and cookie policies
+                  {t('compliance.policyLinksHint')}
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="privacy-policy-url">Privacy Policy URL</Label>
+                <Label htmlFor="privacy-policy-url">{t('privacyPolicyUrl')}</Label>
                 <Input
                   id="privacy-policy-url"
                   type="url"
@@ -172,7 +176,7 @@ export function ComplianceTab({ settings, onChange }: ComplianceTabProps) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="cookie-policy-url">Cookie Policy URL</Label>
+                <Label htmlFor="cookie-policy-url">{t('cookiePolicyUrl')}</Label>
                 <Input
                   id="cookie-policy-url"
                   type="url"
@@ -189,11 +193,11 @@ export function ComplianceTab({ settings, onChange }: ComplianceTabProps) {
 
           {/* Compliance Mode */}
           <Section>
-            <SectionHeader title="Compliance mode" />
+            <SectionHeader title={t('complianceMode')} />
             <SectionBody className="space-y-4">
 
             <div className="space-y-2">
-              <Label htmlFor="compliance-mode">Mode</Label>
+              <Label htmlFor="compliance-mode">{t('mode')}</Label>
               <Select
                 value={settings.compliance.mode}
                 onValueChange={(value) =>
@@ -204,14 +208,14 @@ export function ComplianceTab({ settings, onChange }: ComplianceTabProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="opt-in">Opt-in (GDPR)</SelectItem>
-                  <SelectItem value="opt-out">Opt-out</SelectItem>
+                  <SelectItem value="opt-in">{t('optIn')}</SelectItem>
+                  <SelectItem value="opt-out">{t('optOut')}</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
                 {settings.compliance.mode === 'opt-in'
-                  ? 'Blocks analytics until user accepts (required for GDPR)'
-                  : 'Allows analytics by default, user can decline'}
+                  ? t('compliance.optInHint')
+                  : t('compliance.optOutHint')}
               </p>
             </div>
 
@@ -220,12 +224,12 @@ export function ComplianceTab({ settings, onChange }: ComplianceTabProps) {
               <div className="space-y-1 flex-1">
                 <div className="flex items-center gap-2">
                   <Label htmlFor="block-analytics" className="text-base">
-                    Block Analytics Until Consent
+                    {t('compliance.blockAnalytics')}
                   </Label>
                   <Cookie className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Prevent analytics tracking until user accepts
+                  {t('compliance.blockAnalyticsHint')}
                 </p>
               </div>
               <Switch
@@ -243,11 +247,10 @@ export function ComplianceTab({ settings, onChange }: ComplianceTabProps) {
                   <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
                   <div className="space-y-1">
                     <h4 className="font-semibold text-blue-900 dark:text-blue-100">
-                      GDPR Compliance Mode
+                      {t('compliance.gdprTitle')}
                     </h4>
                     <p className="text-sm text-blue-800 dark:text-blue-200">
-                      In opt-in mode, cookies and tracking are blocked by default until
-                      the user explicitly accepts. This is required for GDPR compliance.
+                      {t('compliance.gdprBody')}
                     </p>
                   </div>
                 </div>
@@ -258,18 +261,16 @@ export function ComplianceTab({ settings, onChange }: ComplianceTabProps) {
 
           {/* Preview Info */}
           <Section>
-            <SectionHeader title="Preview" />
+            <SectionHeader title={tw('tabs.preview')} />
             <SectionBody className="space-y-4">
 
             <div className="p-4 bg-muted rounded-lg border">
               <div className="flex gap-3">
                 <Info className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
                 <div className="space-y-1">
-                  <p className="text-sm font-medium">Live Preview</p>
+                  <p className="text-sm font-medium">{tp('livePreview')}</p>
                   <p className="text-sm text-muted-foreground">
-                    The consent banner will appear on your published deployment based on the
-                    configuration above. Visitors' choices are stored in their browser's
-                    localStorage.
+                    {t('compliance.previewBody')}
                   </p>
                 </div>
               </div>

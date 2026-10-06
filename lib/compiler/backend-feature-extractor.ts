@@ -198,13 +198,16 @@ export async function extractBackendFeatures(
   }
 
   // Extract project database schema + data to deployment runtime
-  if (projectDatabaseExists(projectId)) {
+  // A workspace keeps its project databases under its own directory, where the project's own
+  // tables were created; the shared data directory only holds the legacy default workspace's.
+  const projectDbBaseDir = adapter.getProjectDatabaseBaseDir();
+  if (projectDatabaseExists(projectId, projectDbBaseDir)) {
     try {
       // Validate projectId is a safe identifier (UUID format)
       if (!/^[a-f0-9-]+$/i.test(projectId)) {
         summary.errors.push('Project database: invalid project ID format');
       } else {
-        const projectDb = new ProjectDatabase(projectId);
+        const projectDb = new ProjectDatabase(projectId, projectDbBaseDir);
         projectDb.init();
         const tables = projectDb.getTableSchema();
 
@@ -214,7 +217,7 @@ export async function extractBackendFeatures(
           runtimeDb.executeDDL(schemaSql);
 
           // Use ATTACH to efficiently copy data
-          const projectDbPath = getProjectDatabasePath(projectId);
+          const projectDbPath = getProjectDatabasePath(projectId, projectDbBaseDir);
           runtimeDb.executeDDL(`ATTACH DATABASE '${projectDbPath.replace(/'/g, "''")}' AS project_db`);
 
           for (const table of tables) {

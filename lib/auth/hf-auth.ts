@@ -18,16 +18,28 @@ export interface HFCapabilities {
   codexAvailable: boolean;
 }
 
+let capabilities: Promise<HFCapabilities> | null = null;
+
 /**
  * Check if OAuth is available (only on HF Spaces with OAUTH_CLIENT_ID set)
  * and whether Codex auth is supported (not on HF Spaces — cookies blocked).
  */
-export async function checkHFCapabilities(): Promise<HFCapabilities> {
-  const res = await fetch('/api/auth/hf/capabilities', {
-    credentials: 'same-origin',
+export function checkHFCapabilities(): Promise<HFCapabilities> {
+  // The answer cannot change while the page is open, and several panels ask for it.
+  capabilities ??= (async () => {
+    const res = await fetch('/api/auth/hf/capabilities', {
+      credentials: 'same-origin',
+    });
+    if (!res.ok) {
+      capabilities = null; // only an answer is kept; a failed request may be asked again
+      return { oauthAvailable: false, clientId: null, scopes: 'openid profile', codexAvailable: true };
+    }
+    return res.json() as Promise<HFCapabilities>;
+  })().catch((err) => {
+    capabilities = null;
+    throw err;
   });
-  if (!res.ok) return { oauthAvailable: false, clientId: null, scopes: 'openid profile', codexAvailable: true };
-  return res.json();
+  return capabilities;
 }
 
 /**

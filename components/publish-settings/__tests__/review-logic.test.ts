@@ -9,7 +9,6 @@ import {
   isReviewExpired,
   participantColor,
   shortSelector,
-  timeAgo,
 } from '../review-logic';
 
 /**
@@ -161,21 +160,5 @@ describe('shortSelector / describeAnchor', () => {
   it('reads as page then element', () => {
     expect(describeAnchor(comment('a', { selector: 'body > h2', page_path: '/about.html' })))
       .toBe('/about.html · body > h2');
-  });
-});
-
-describe('timeAgo', () => {
-  const now = new Date('2026-08-29T12:00:00Z');
-
-  it('coarsens as the gap grows', () => {
-    expect(timeAgo('2026-08-29T11:59:30Z', now)).toBe('just now');
-    expect(timeAgo('2026-08-29T11:30:00Z', now)).toBe('30m ago');
-    expect(timeAgo('2026-08-29T09:00:00Z', now)).toBe('3h ago');
-    expect(timeAgo('2026-08-28T12:00:00Z', now)).toBe('yesterday');
-    expect(timeAgo('2026-08-26T12:00:00Z', now)).toBe('3 days ago');
-  });
-
-  it('renders nothing for a timestamp it cannot read', () => {
-    expect(timeAgo('not a date', now)).toBe('');
   });
 });

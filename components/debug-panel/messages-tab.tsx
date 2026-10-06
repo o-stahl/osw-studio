@@ -8,6 +8,8 @@ import { requestSnapshotStore } from '@/lib/llm/request-snapshot';
 import { buildProviderView } from '@/lib/llm/provider-view';
 import type { Message } from '@/lib/llm/core/types';
 import { toast } from 'sonner';
+import { useTranslations } from 'next-intl';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 
 const subscribe = (listener: () => void) => requestSnapshotStore.subscribe(listener);
 const getSnapshot = () => requestSnapshotStore.getSnapshot();
@@ -16,19 +18,25 @@ const getEnabled = () => requestSnapshotStore.isEnabled();
 /** Versioned expand/collapse-all override — rows stay individually toggleable after. */
 export type ForceState = { open: boolean; v: number } | null;
 
-function messagePreview(msg: Message): string {
+function messagePreview(
+  msg: Message,
+  t: (
+    key: 'toolCallsPreview' | 'contentBlocksPreview' | 'reasoningOnlyPreview' | 'emptyPreview',
+    values?: Record<string, string | number>
+  ) => string
+): string {
   if (msg.tool_calls?.length) {
     const names = msg.tool_calls.map(tc => tc.function?.name || '?').join(', ');
-    return `${msg.tool_calls.length} tool call(s): ${names}`;
+    return t('toolCallsPreview', { count: msg.tool_calls.length, names });
   }
   if (typeof msg.content === 'string' && msg.content.trim()) {
     return msg.content.length > 100 ? msg.content.slice(0, 100) + '…' : msg.content;
   }
   if (Array.isArray(msg.content) && msg.content.length > 0) {
-    return `[${msg.content.length} content block(s)]`;
+    return t('contentBlocksPreview', { count: msg.content.length });
   }
-  if (msg.reasoning_details?.length) return '[reasoning only]';
-  return '[empty]';
+  if (msg.reasoning_details?.length) return t('reasoningOnlyPreview');
+  return t('emptyPreview');
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -39,6 +47,7 @@ const ROLE_COLORS: Record<string, string> = {
 };
 
 function MessageRow({ msg, index, force }: { msg: Message; index: number; force?: ForceState }) {
+  const td = useTranslations('debug');
   const [isOpen, setIsOpen] = useState(false);
   useEffect(() => {
     if (force) setIsOpen(force.open);
@@ -51,9 +60,9 @@ function MessageRow({ msg, index, force }: { msg: Message; index: number; force?
           <span className="text-muted-foreground font-mono shrink-0">{index}</span>
           <span className={`font-semibold shrink-0 ${ROLE_COLORS[msg.role] ?? 'text-foreground'}`}>{msg.role}</span>
           {msg.reasoning_details?.length ? (
-            <span className="text-violet-500 shrink-0" title="has reasoning_details">R</span>
+            <span className="text-violet-500 shrink-0" title={td('hasReasoningDetails')}>R</span>
           ) : null}
-          <span className="text-muted-foreground truncate">{messagePreview(msg)}</span>
+          <span className="text-muted-foreground truncate">{messagePreview(msg, td)}</span>
         </div>
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -66,6 +75,8 @@ function MessageRow({ msg, index, force }: { msg: Message; index: number; force?
 }
 
 export function MessagesTab() {
+  const t = useTranslations('debug');
+  const { dateTime } = useLocalFormat();
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const enabled = useSyncExternalStore(subscribe, getEnabled, getEnabled);
   const [providerView, setProviderView] = useState(false);
@@ -82,25 +93,25 @@ export function MessagesTab() {
     if (!messages) return;
     try {
       await navigator.clipboard.writeText(JSON.stringify(messages, null, 2));
-      toast.success('Message history copied');
+      toast.success(t('historyCopied'));
     } catch {
-      toast.error('Copy failed');
+      toast.error(t('copyFailed'));
     }
   };
 
   return (
     <>
       <div className="p-2 border-b border-border flex items-center gap-3 flex-wrap text-xs">
-        <label className="flex items-center gap-1 cursor-pointer" title="Capture the exact message history of each outgoing LLM request (session-only, never persisted)">
+        <label className="flex items-center gap-1 cursor-pointer" title={t('captureHint')}>
           <input
             type="checkbox"
             checked={enabled}
             onChange={(e) => requestSnapshotStore.setEnabled(e.target.checked)}
             className="rounded"
           />
-          Capture requests
+          {t('captureRequests')}
         </label>
-        <label className="flex items-center gap-1 cursor-pointer" title="Show the history as the API route sends it to the provider: reasoning replay policy applied, tool arguments sanitized">
+        <label className="flex items-center gap-1 cursor-pointer" title={t('providerViewHint')}>
           <input
             type="checkbox"
             checked={providerView}
@@ -108,22 +119,22 @@ export function MessagesTab() {
             className="rounded"
             disabled={!snapshot}
           />
-          Provider view
+          {t('providerView')}
         </label>
         {messages && (
           <div className="ml-auto flex items-center">
-            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title="Expand all"
+            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title={t('expandAll')}
               onClick={() => setForce(v => ({ open: true, v: (v?.v ?? 0) + 1 }))}>
               <ChevronsUpDown className="h-3 w-3" />
             </Button>
-            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title="Collapse all"
+            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title={t('collapseAll')}
               onClick={() => setForce(v => ({ open: false, v: (v?.v ?? 0) + 1 }))}>
               <ChevronsDownUp className="h-3 w-3" />
             </Button>
-            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title="Copy message history as JSON" onClick={handleCopy}>
+            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title={t('copyHistoryJson')} onClick={handleCopy}>
               <Copy className="h-3 w-3" />
             </Button>
-            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title="Clear the captured message history" onClick={() => requestSnapshotStore.clear()}>
+            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title={t('clearHistory')} onClick={() => requestSnapshotStore.clear()}>
               <Trash2 className="h-3 w-3" />
             </Button>
           </div>
@@ -132,16 +143,14 @@ export function MessagesTab() {
 
       {snapshot && (
         <div className="p-2 border-b border-border bg-muted/20 text-xs text-muted-foreground font-mono">
-          {snapshot.provider} · {snapshot.model} · {snapshot.messages.length} messages · {new Date(snapshot.timestamp).toLocaleTimeString()}
+          {snapshot.provider} · {snapshot.model} · {t('messageCount', { count: snapshot.messages.length })} · {dateTime(snapshot.timestamp, { timeStyle: 'medium' })}
         </div>
       )}
 
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {!messages ? (
           <div className="text-xs text-muted-foreground text-center p-4">
-            {enabled
-              ? 'Waiting for the next LLM request — run a generation to capture its message history.'
-              : 'Enable "Capture requests", then run a generation to inspect the exact message history sent to the provider. Local generations only (Server Mode requests are not forwarded).'}
+            {enabled ? t('waiting') : t('enableCapture')}
           </div>
         ) : (
           messages.map((msg, i) => <MessageRow key={`${snapshot!.timestamp}-${i}`} msg={msg} index={i} force={force} />)

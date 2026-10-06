@@ -5,6 +5,7 @@ import { backendToArchiveFiles, type BackendSource } from './backend-files';
 import { SERVER_README_MD } from './docs';
 import { buildManifest, serializeManifest } from './manifest';
 import { keepBothPath } from './paths';
+import { said } from './text';
 import type { ArchiveIssue } from './types';
 
 /** Where the manifest goes, unless the project already owns that path. */
@@ -117,10 +118,7 @@ function pickManifestPath(ownedPaths: Set<string>, warnings: ArchiveIssue[]): st
   warnings.push({
     path: `/${fallback}`,
     code: 'path-rejected',
-    message:
-      `This project has files at both /${MANIFEST_PATH} and /${ALTERNATE_MANIFEST_PATH}, so the ` +
-      `archive's settings were written to /${fallback} instead. Importing this archive will treat ` +
-      'that file as ordinary content and will not restore the project settings.',
+    ...said('manifestRelocated', { manifest: MANIFEST_PATH, alternate: ALTERNATE_MANIFEST_PATH, fallback }),
   });
   return fallback;
 }

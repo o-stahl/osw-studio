@@ -11,6 +11,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { MultipagePreview } from '@/components/preview/multipage-preview';
 import { vfs } from '@/lib/vfs';
@@ -34,7 +35,7 @@ interface TemplatePreviewDialogProps {
 type State =
   | { status: 'building' }
   | { status: 'ready'; projectId: string; runtime: ProjectRuntime }
-  | { status: 'unavailable'; reason: string };
+  | { status: 'unavailable'; reason: 'console' | 'loadFailed' | 'renderFailed' };
 
 export function TemplatePreviewDialog({
   value,
@@ -43,6 +44,7 @@ export function TemplatePreviewDialog({
   customTemplates,
   onClose,
 }: TemplatePreviewDialogProps) {
+  const t = useTranslations('templatesUi');
   const [state, setState] = useState<State>({ status: 'building' });
 
   /**
@@ -71,7 +73,7 @@ export function TemplatePreviewDialog({
 
         if (!created) {
           if (!cancelled) {
-            setState({ status: 'unavailable', reason: 'This template could not be loaded.' });
+            setState({ status: 'unavailable', reason: 'loadFailed' });
           }
           return;
         }
@@ -87,7 +89,7 @@ export function TemplatePreviewDialog({
       } catch (error) {
         logger.error('[TemplatePreview] Failed to build preview:', error);
         if (!cancelled) {
-          setState({ status: 'unavailable', reason: 'This template could not be rendered.' });
+          setState({ status: 'unavailable', reason: 'renderFailed' });
         }
       }
     })();
@@ -104,10 +106,9 @@ export function TemplatePreviewDialog({
     <Dialog open={!!value} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-[95vw] lg:max-w-[80vw] 2xl:max-w-[1400px] w-full h-[90vh] p-0 flex flex-col gap-0">
         <DialogHeader className="p-4 border-b shrink-0">
-          <DialogTitle className="text-base">Preview: {name}</DialogTitle>
+          <DialogTitle className="text-base">{t('previewTitle', { name })}</DialogTitle>
           <DialogDescription className="text-xs">
-            The template as it would render. Nothing here is saved, and no project is created until
-            you select it.
+            {t('previewDesc')}
           </DialogDescription>
         </DialogHeader>
 
@@ -115,13 +116,13 @@ export function TemplatePreviewDialog({
           {state.status === 'building' && (
             <div className="h-full flex items-center justify-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="w-4 h-4 animate-spin" />
-              Building preview
+              {t('buildingPreview')}
             </div>
           )}
 
           {state.status === 'unavailable' && (
             <div className="h-full flex items-center justify-center p-8">
-              <p className="text-sm text-muted-foreground text-center max-w-sm">{state.reason}</p>
+              <p className="text-sm text-muted-foreground text-center max-w-sm">{t(`previewUnavailable.${state.reason}`)}</p>
             </div>
           )}
 

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { logger, cn } from '@/lib/utils';
@@ -45,6 +46,7 @@ interface ModelSelectorProps {
 }
 
 export function ModelSelector({ provider, value: _value, onChange, className, hideModelDetails, mode = 'popover', skipGlobalSync, autoFocus }: ModelSelectorProps) {
+  const t = useTranslations('models');
   const currentProvider = provider || configManager.getSelectedProvider();
   const providerConfig = getProvider(currentProvider);
   const onChangeRef = useRef(onChange);
@@ -79,7 +81,7 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
 
       if (providerConfig.isLocal && loadedModels.length === 0) {
         toast.warning(
-          `No models found in ${providerConfig.name}. Please load some models in the application.`,
+          t('noLocalModels', { provider: providerConfig.name }),
           { duration: 5000 }
         );
       }
@@ -88,7 +90,7 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
 
       if (providerConfig.isLocal) {
         toast.error(
-          `${providerConfig.name} server not running. Please start the server and load some models.`,
+          t('localServerDown', { provider: providerConfig.name }),
           { duration: 5000 }
         );
       }
@@ -99,7 +101,7 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
     } finally {
       setLoading(false);
     }
-  }, [currentProvider, providerConfig]);
+  }, [currentProvider, providerConfig, t]);
 
   // Single effect to handle provider changes and model loading
   useEffect(() => {
@@ -242,10 +244,10 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
   if (loading) {
     return (
       <div className={className}>
-        <Label>AI Model</Label>
+        <Label>{t('aiModel')}</Label>
         <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-muted">
           <Loader2 className="h-4 w-4 animate-spin" />
-          <span className="text-sm text-muted-foreground">Loading models...</span>
+          <span className="text-sm text-muted-foreground">{t('loadingModels')}</span>
         </div>
       </div>
     );
@@ -254,14 +256,14 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
   if (needsApiKey) {
     return (
       <div className={className}>
-        <Label>AI Model</Label>
+        <Label>{t('aiModel')}</Label>
         <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-muted/50 border-orange-200 dark:border-orange-800">
           <span className="text-sm text-orange-600 dark:text-orange-400">
-            API key required for {providerConfig.name}
+            {t('apiKeyRequiredFor', { provider: providerConfig.name })}
           </span>
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          Set your API key in settings to load available models
+          {t('setApiKeyHint')}
         </p>
       </div>
     );
@@ -294,16 +296,16 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
             </Badge>
           )}
           {model.supportsFunctions === false && (
-            <Badge variant="outline" className="text-[9px] px-1 py-0 text-muted-foreground/50">No tools</Badge>
+            <Badge variant="outline" className="text-[9px] px-1 py-0 text-muted-foreground/50">{t('noTools')}</Badge>
           )}
         </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span>Context: {Math.round(model.contextLength / 1000)}K</span>
+          <span>{t('contextK', { k: Math.round(model.contextLength / 1000) })}</span>
           {model.pricing && (
             model.pricing.input === 0 && model.pricing.output === 0 ? (
               <>
                 <span>·</span>
-                <span>Free</span>
+                <span>{t('free')}</span>
               </>
             ) : (
               <>
@@ -317,7 +319,7 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
           {!model.pricing && currentProvider !== 'openrouter' && (
             <>
               <span>·</span>
-              <span>Pricing varies</span>
+              <span>{t('pricingVaries')}</span>
             </>
           )}
         </div>
@@ -330,24 +332,24 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
       <div className="font-medium mb-1">
         {selectedModelData.pricing ? (
           selectedModelData.pricing.input === 0 && selectedModelData.pricing.output === 0 ?
-            'Free' :
-            `Input: ${formatModelPrice(selectedModelData.pricing.input)}/K • Output: ${formatModelPrice(selectedModelData.pricing.output)}/K`
+            t('free') :
+            t('priceInOut', { input: formatModelPrice(selectedModelData.pricing.input), output: formatModelPrice(selectedModelData.pricing.output) })
         ) : (
-          'Pricing varies by provider'
+          t('pricingVariesByProvider')
         )}
       </div>
       <div className="flex flex-wrap gap-1 my-1">
         {selectedModelData.supportsFunctions && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">Tools</Badge>
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0">{t('tools')}</Badge>
         )}
         {selectedModelData.supportsVision && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">Vision</Badge>
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0">{t('vision')}</Badge>
         )}
         {selectedModelData.supportsReasoning && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">Reasoning</Badge>
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0">{t('reasoning')}</Badge>
         )}
         {!selectedModelData.supportsFunctions && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground/60">No native tools</Badge>
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground/60">{t('noNativeTools')}</Badge>
         )}
       </div>
       {selectedModelData.description && (
@@ -362,10 +364,10 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
         <Lightbulb className="h-4 w-4 text-amber-500" />
         <div>
           <Label htmlFor="reasoning-toggle" className="text-sm font-medium cursor-pointer">
-            Enable Reasoning
+            {t('enableReasoning')}
           </Label>
           <p className="text-xs text-muted-foreground">
-            Show step-by-step thinking process
+            {t('reasoningHint')}
           </p>
         </div>
       </div>
@@ -386,7 +388,7 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
           <div className="flex items-center border-b px-3">
             <Search className="h-3.5 w-3.5 shrink-0 opacity-50" />
             <Input
-              placeholder="Search models..."
+              placeholder={t('search')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-9 border-0 bg-transparent dark:bg-transparent shadow-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-sm"
@@ -407,7 +409,7 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
           <div className="max-h-[240px] overflow-y-auto p-1">
             {filteredModels.length === 0 ? (
               <div className="py-5 text-center text-sm text-muted-foreground">
-                No models found
+                {t('noModelsFound')}
               </div>
             ) : (
               filteredModels.map(renderModelItem)
@@ -423,7 +425,7 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
   // --- Popover mode (default) ---
   return (
     <div className={className}>
-      <Label htmlFor="model-select">AI Model</Label>
+      <Label htmlFor="model-select">{t('aiModel')}</Label>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -438,7 +440,7 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
                 <span className="truncate">{getModelName(selectedModelData)}</span>
               </div>
             ) : (
-              <span className="text-muted-foreground">Select a model...</span>
+              <span className="text-muted-foreground">{t('selectModel')}</span>
             )}
             <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
@@ -452,7 +454,7 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
           <div className="flex items-center border-b px-3">
             <Search className="h-4 w-4 shrink-0 opacity-50" />
             <Input
-              placeholder="Search models..."
+              placeholder={t('search')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-10 border-0 focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
@@ -471,7 +473,7 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
           <div className="max-h-[400px] min-h-[300px] overflow-y-auto">
             {filteredModels.length === 0 ? (
               <div className="py-6 text-center text-sm text-muted-foreground">
-                No models found
+                {t('noModelsFound')}
               </div>
             ) : (
               filteredModels.map((model) => (
@@ -494,12 +496,12 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
                       )}
                     </div>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <span>Context: {Math.round(model.contextLength / 1000)}K</span>
+                      <span>{t('contextK', { k: Math.round(model.contextLength / 1000) })}</span>
                       {model.pricing && (
                         model.pricing.input === 0 && model.pricing.output === 0 ? (
                           <>
                             <span>•</span>
-                            <span>Free</span>
+                            <span>{t('free')}</span>
                           </>
                         ) : (
                           <>
@@ -513,7 +515,7 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
                       {!model.pricing && currentProvider !== 'openrouter' && (
                         <>
                           <span>•</span>
-                          <span>Pricing varies</span>
+                          <span>{t('pricingVaries')}</span>
                         </>
                       )}
                     </div>

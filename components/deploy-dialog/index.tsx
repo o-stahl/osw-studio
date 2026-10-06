@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   Dialog,
   DialogContent,
@@ -30,6 +31,11 @@ type Target = 'hf' | 'osws' | 'zip';
 const DEPLOY_DOC = '/?doc=deploying-sites';
 
 export function DeployDialog({ open, projectId, onOpenChange }: DeployDialogProps) {
+  const tc = useTranslations('common');
+  const tChat = useTranslations('chat');
+  const tt = useTranslations('tooltips');
+  const t = useTranslations('deployDialog');
+  const tw = useTranslations('workspace');
   const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
   const isHFSpace = detectDeploymentType() === 'hf_space';
   const hfConnected = !!configManager.getHFAuth()?.access_token;
@@ -58,7 +64,7 @@ export function DeployDialog({ open, projectId, onOpenChange }: DeployDialogProp
       a.remove();
       URL.revokeObjectURL(url);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to export ZIP');
+      toast.error(e instanceof Error ? e.message : t('zipExportFailed'));
     } finally {
       setZipExporting(false);
     }
@@ -96,8 +102,8 @@ export function DeployDialog({ open, projectId, onOpenChange }: DeployDialogProp
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Deploy</DialogTitle>
-          <DialogDescription>Choose where to deploy this project.</DialogDescription>
+          <DialogTitle>{tw('deploy')}</DialogTitle>
+          <DialogDescription>{t('chooseWhere')}</DialogDescription>
         </DialogHeader>
 
         {/* Target picker */}
@@ -106,7 +112,7 @@ export function DeployDialog({ open, projectId, onOpenChange }: DeployDialogProp
           <TargetRow
             icon={<Globe className="h-4 w-4" />}
             title="Hugging Face Space"
-            subtitle="Publish as a static Space under your HuggingFace account."
+            subtitle={t('hfSpaceDesc')}
             enabled={hfConnected}
             selected={target === 'hf'}
             onSelect={() => setTarget('hf')}
@@ -114,10 +120,10 @@ export function DeployDialog({ open, projectId, onOpenChange }: DeployDialogProp
             disabledContent={
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs text-muted-foreground">
-                  Connect HuggingFace to deploy here.
+                  {t('connectHfToDeploy')}
                 </span>
                 <Button size="sm" variant="outline" onClick={connectHuggingFace}>
-                  {isHFSpace ? 'Sign in with HuggingFace' : 'Connect in Settings'}
+                  {isHFSpace ? tChat('signInWithHF') : t('connectInSettings')}
                 </Button>
               </div>
             }
@@ -127,21 +133,21 @@ export function DeployDialog({ open, projectId, onOpenChange }: DeployDialogProp
           <TargetRow
             icon={<Cloud className="h-4 w-4" />}
             title="Open Source Web Studio"
-            subtitle="Publish to this OSW Studio instance and manage it in Deployments."
+            subtitle={tt('publishHere')}
             enabled={isServerMode}
             selected={target === 'osws'}
             onSelect={() => setTarget('osws')}
             onLearnMore={learnMore}
             disabledContent={
-              <span className="text-xs text-muted-foreground">Available in Server Mode.</span>
+              <span className="text-xs text-muted-foreground">{t('availableInServerMode')}</span>
             }
           />
 
           {/* ZIP export — always available, every runtime */}
           <TargetRow
             icon={<FileArchive className="h-4 w-4" />}
-            title="Download as ZIP"
-            subtitle="Export the project to host anywhere (Netlify, GitHub Pages, Vercel, …)."
+            title={t('downloadZip')}
+            subtitle={tt('exportAnywhere')}
             enabled
             selected={target === 'zip'}
             onSelect={() => setTarget('zip')}
@@ -156,32 +162,29 @@ export function DeployDialog({ open, projectId, onOpenChange }: DeployDialogProp
         ) : target === 'osws' && isServerMode ? (
           <>
             <div className="py-4 text-sm text-muted-foreground">
-              Deployments publish this project to this instance, each with its own settings, custom
-              domain and analytics. This opens Deployments with a new one started for this project;
-              you enable and publish it there.
+              {t('oswsExplain')}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={close}>
-                Cancel
+                {tc('actions.cancel')}
               </Button>
-              <Button onClick={goToDeployments}>Create a deployment</Button>
+              <Button onClick={goToDeployments}>{t('createDeployment')}</Button>
             </DialogFooter>
           </>
         ) : target === 'zip' ? (
           <>
             <div className="py-4 text-sm text-muted-foreground">
-              Downloads the compiled project as a ZIP you can upload to any static host. Works for
-              every project type.
+              {t('zipExplain')}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={close}>
-                Cancel
+                {tc('actions.cancel')}
               </Button>
               <Button onClick={handleDownloadZip} disabled={zipExporting}>
                 {zipExporting ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Exporting…</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('exporting')}</>
                 ) : (
-                  'Download ZIP'
+                  t('downloadZipButton')
                 )}
               </Button>
             </DialogFooter>
@@ -189,7 +192,7 @@ export function DeployDialog({ open, projectId, onOpenChange }: DeployDialogProp
         ) : (
           <DialogFooter>
             <Button variant="outline" onClick={close}>
-              Close
+              {tc('actions.close')}
             </Button>
           </DialogFooter>
         )}
@@ -217,6 +220,7 @@ function TargetRow({
   onLearnMore: () => void;
   disabledContent: React.ReactNode;
 }) {
+  const t = useTranslations('deployDialog');
   return (
     <div
       className={`rounded-lg border p-3 transition-colors ${
@@ -242,7 +246,7 @@ function TargetRow({
           }}
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
-          Learn more <ExternalLink className="h-3 w-3" />
+          {t('learnMore')} <ExternalLink className="h-3 w-3" />
         </button>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>

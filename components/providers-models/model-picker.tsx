@@ -1,13 +1,15 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
+import { isFreeModels } from '@/lib/llm/suggestions/free-models';
 import { Search, Loader2, Link, MonitorSpeaker, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { configManager } from '@/lib/config/storage';
 import { getProvider, getProviderArchetype } from '@/lib/llm/providers/registry';
 import { getConnectedProviders } from '@/lib/llm/providers/connection-status';
 import { modelsForSlot, matchesSlot, loadProviderModels, SlotModelEntry, SlotKind } from '@/lib/llm/models/model-catalog';
-import { fmtCtx } from './format';
+import { fmtCtx, fmtPrice } from './format';
 import { formatModelPrice } from '@/lib/llm/models-api';
 import type { ModelRef } from '@/lib/llm/models/assignment';
 import type { ProviderId, ProviderModel } from '@/lib/llm/providers/types';
@@ -31,19 +33,6 @@ export interface ModelPickerProps {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Format price per 1M tokens as concise string. */
-function fmtPrice(model: ProviderModel): string | null {
-  const pricing = model.pricing;
-  // Image models are billed per image, not per token — OpenRouter reports 0 token
-  // rates for them, so don't show "free" (it's misleading).
-  const isImageOut = !!model.outputModalities?.includes('image');
-  if (!pricing) return isImageOut ? 'per-image' : null;
-  if (pricing.input === 0 && pricing.output === 0) return isImageOut ? 'per-image' : 'free';
-  const inp = formatModelPrice(pricing.input);
-  const out = formatModelPrice(pricing.output);
-  return `${inp} / ${out}`;
-}
-
 /** Get a short vendor label from the provider ID or model ID. */
 function vendorLabel(provider: ProviderId, modelId: string): string {
   // For aggregator routes, derive from model id prefix
@@ -65,6 +54,8 @@ function vendorLabel(provider: ProviderId, modelId: string): string {
     minimax: 'MiniMax',
     llamacpp: 'llama.cpp',
     meshllm: 'MeshLLM',
+    pollinations: 'Pollinations',
+    vercel: 'Vercel',
   };
   if (map[provider]) return map[provider] as string;
   // Custom providers: use the configured name.
@@ -132,6 +123,7 @@ function ListGroup({
   onToggle?: () => void;
   children: React.ReactNode;
 }) {
+  const t = useTranslations('models');
   const headerClass = 'sticky top-0 z-10 flex items-center justify-between px-2 py-1 bg-muted border-b border-border w-full text-left';
   const headerInner = (
     <>
@@ -144,7 +136,7 @@ function ListGroup({
         {label}
       </span>
       {count !== undefined && (
-        <span className="text-[10px] text-muted-foreground tabular-nums">{count} model{count === 1 ? '' : 's'}</span>
+        <span className="text-[10px] text-muted-foreground tabular-nums">{t('modelCount', { count })}</span>
       )}
     </>
   );
@@ -203,12 +195,15 @@ interface ModelRowProps {
   onClick: () => void;
 }
 function ModelRow({ entry: { provider, model }, selected, showDeveloper, onClick }: ModelRowProps) {
-  const ctx = fmtCtx(model.contextLength);
-  const price = fmtPrice(model);
+  const tm = useTranslations('models');
+  // "Free models" is a selection, not a model: no developer, size or price of its own.
+  const rotating = isFreeModels(model.id);
+  const ctx = rotating ? '' : fmtCtx(model.contextLength);
+  const price = rotating ? '' : fmtPrice(tm, model, formatModelPrice);
   const vendor = vendorLabel(provider, model.id);
-  const distinct = isDistinctVendor(provider, model);
-  const name = distinct ? stripVendorPrefix(model.name, vendor) : model.name;
-  const meta = [ctx, price].filter(Boolean).join(' · ');
+  const distinct = !rotating && isDistinctVendor(provider, model);
+  const name = rotating ? tm('freeModels') : distinct ? stripVendorPrefix(model.name, vendor) : model.name;
+  const meta = rotating ? tm('freeModelsDesc') : [ctx, price].filter(Boolean).join(' · ');
 
   const developerColor = distinct
     ? vendorTextColor(provider, model.id)
@@ -244,11 +239,12 @@ function ModelRow({ entry: { provider, model }, selected, showDeveloper, onClick
             {distinct ? vendor : ''}
           </span>
         )}
-        <span className="flex-1 min-w-0 truncate text-[13px] font-medium text-foreground">
+        <span className={cn('min-w-0 truncate text-[13px] font-medium text-foreground', rotating ? 'shrink-0' : 'flex-1')}>
           {name}
         </span>
+        {/* "Free models" carries a sentence, not figures: it gives way to the name. */}
         {meta && (
-          <span className="shrink-0 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+          <span className={cn('text-xs text-muted-foreground whitespace-nowrap', rotating ? 'flex-1 min-w-0 truncate text-right' : 'shrink-0 tabular-nums')}>
             {meta}
           </span>
         )}
@@ -271,6 +267,7 @@ function ModelRow({ entry: { provider, model }, selected, showDeveloper, onClick
  * - Model rows with name, vendor tag, context + price meta
  */
 export function ModelPicker({ slot, currentValue, onPick, inline = false, agentRef }: ModelPickerProps) {
+  const t = useTranslations('models');
   const [entries, setEntries] = useState<SlotModelEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
@@ -361,7 +358,7 @@ export function ModelPicker({ slot, currentValue, onPick, inline = false, agentR
         />
         <input
           type="text"
-          placeholder="Search models…"
+          placeholder={t('searchModels')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className={cn(
@@ -381,18 +378,18 @@ export function ModelPicker({ slot, currentValue, onPick, inline = false, agentR
         {loading ? (
           <div className="py-8 flex items-center justify-center gap-2 text-[13px] text-muted-foreground">
             <Loader2 size={16} className="animate-spin" />
-            Loading models…
+            {t('loadingModels')}
           </div>
         ) : (
           <>
             {hasQuickOptions && (
-              <ListGroup label="Quick options">
+              <ListGroup label={t('quickOptions')}>
                 {slot === 'imageGen' && (
                   <QuickRow
                     selected={currentValue === 'agent'}
                     icon={<Link size={13} strokeWidth={2} />}
-                    label="Reuse the agent model"
-                    meta="Uses the agent model"
+                    label={t('reuseAgentModel')}
+                    meta={t('usesAgentModel')}
                     onClick={() => onPick('agent')}
                     disabled={!agentCanReuse}
                   />
@@ -402,16 +399,16 @@ export function ModelPicker({ slot, currentValue, onPick, inline = false, agentR
                     <QuickRow
                       selected={currentValue === 'agent'}
                       icon={<Link size={13} strokeWidth={2} />}
-                      label="Reuse the agent model"
-                      meta="Sends the recording to the agent as audio"
+                      label={t('reuseAgentModel')}
+                      meta={t('sendsRecordingAsAudio')}
                       onClick={() => onPick('agent')}
                       disabled={!agentCanReuse}
                     />
                     <QuickRow
                       selected={currentValue === 'browser'}
                       icon={<MonitorSpeaker size={13} strokeWidth={2} />}
-                      label="Browser / on-device"
-                      meta="Free · runs in your browser · no setup"
+                      label={t('browserOnDevice')}
+                      meta={t('browserVoiceMeta')}
                       onClick={() => onPick('browser')}
                     />
                   </>
@@ -424,8 +421,8 @@ export function ModelPicker({ slot, currentValue, onPick, inline = false, agentR
                       <path d="M8 12h8" />
                     </svg>
                   }
-                  label="Off"
-                  meta={slot === 'imageGen' ? 'Disable image generation' : 'Turn off voice input'}
+                  label={t('off')}
+                  meta={slot === 'imageGen' ? t('disableImageGen') : t('turnOffVoice')}
                   onClick={() => onPick(null)}
                 />
               </ListGroup>
@@ -460,8 +457,8 @@ export function ModelPicker({ slot, currentValue, onPick, inline = false, agentR
             {groups.length === 0 && !hasQuickOptions && (
               <div className="py-8 text-center text-[13px] text-muted-foreground px-4">
                 {query
-                  ? 'No models match your search.'
-                  : 'No models fit this slot. Turn on "Show all models", or connect a provider that serves this modality.'}
+                  ? t('noModelsMatch')
+                  : t('noModelsFitSlot')}
               </div>
             )}
           </>
@@ -479,12 +476,11 @@ export function ModelPicker({ slot, currentValue, onPick, inline = false, agentR
         {loading ? (
           <span className="flex items-center gap-1.5">
             <Loader2 size={12} className="animate-spin" />
-            Loading…
+            {t('loadingEllipsis')}
           </span>
         ) : (
           <span>
-            {filtered.length} model{filtered.length !== 1 ? 's' : ''}
-            {showAll ? ' · filters off' : ' fit this slot'}
+            {t('modelsFitSlot', { count: filtered.length, showAll: showAll ? 'yes' : 'no' })}
           </span>
         )}
 
@@ -511,7 +507,7 @@ export function ModelPicker({ slot, currentValue, onPick, inline = false, agentR
               )}
             />
           </span>
-          Show all models
+          {t('showAllModels')}
         </button>
       </div>
     </div>

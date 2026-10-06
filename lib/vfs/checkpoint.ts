@@ -21,11 +21,21 @@ interface CheckpointFileContent {
   encoding?: 'base64';
 }
 
+/**
+ * A checkpoint the app names itself, as a key the checkpoint panel translates. `description` keeps
+ * the English beside it: older checkpoints have only that, and it is what logs and the agent see.
+ */
+export interface CheckpointLabel {
+  key: 'projectOpened' | 'preGeneration' | 'afterServerGeneration' | 'preSyncPull' | 'beforeImport' | 'manualSave' | 'afterPrompt' | 'afterFailure';
+  values?: Record<string, string>;
+}
+
 // Full checkpoint with file contents (only used during create/restore)
 export interface Checkpoint {
   id: string;
   timestamp: string;
   description: string;
+  label?: CheckpointLabel;
   files: Map<string, string | CheckpointFileContent>;
   directories: Set<string>;
   projectId: string;
@@ -45,6 +55,7 @@ export interface CheckpointMetadata {
   id: string;
   timestamp: string;
   description: string;
+  label?: CheckpointLabel;
   projectId: string;
   kind: CheckpointKind;
   pinned?: boolean;
@@ -56,6 +67,7 @@ interface StoredCheckpoint {
   id: string;
   timestamp: string;
   description: string;
+  label?: CheckpointLabel;
   files: [string, string | CheckpointFileContent][];
   directories: string[];
   projectId: string;
@@ -70,6 +82,7 @@ interface StoredCheckpointCompressed {
   id: string;
   timestamp: string;
   description: string;
+  label?: CheckpointLabel;
   projectId: string;
   kind?: CheckpointKind;
   pinned?: boolean;
@@ -82,6 +95,8 @@ type StoredCheckpointAny = StoredCheckpoint | StoredCheckpointCompressed;
 
 interface CreateCheckpointOptions {
   kind?: CheckpointKind;
+  /** Set when the app names the checkpoint itself, so the panel can word it in the viewer's language. */
+  label?: CheckpointLabel;
   baseRevisionId?: string | null;
   /** Set at create so prune cannot eat a user save before a later pin. */
   pinned?: boolean;
@@ -165,6 +180,7 @@ class CheckpointManager {
             id: stored.id,
             timestamp: stored.timestamp,
             description: stored.description,
+            label: stored.label,
             projectId: stored.projectId,
             kind: stored.kind || 'auto',
             pinned: stored.pinned ?? false,
@@ -228,6 +244,7 @@ class CheckpointManager {
           id: stored.id,
           timestamp: stored.timestamp,
           description: stored.description,
+          label: stored.label,
           projectId: stored.projectId,
           kind: stored.kind || 'auto',
           pinned: stored.pinned ?? false,
@@ -266,6 +283,7 @@ class CheckpointManager {
         id: checkpoint.id,
         timestamp: checkpoint.timestamp,
         description: checkpoint.description,
+        label: checkpoint.label,
         projectId: checkpoint.projectId,
         kind: checkpoint.kind,
         pinned: checkpoint.pinned ?? false,
@@ -382,6 +400,7 @@ class CheckpointManager {
       id: `cp_${Date.now()}_${cpCounter++}`,
       timestamp: new Date().toISOString(),
       description,
+      label: options.label,
       files: fileContents,
       directories,
       projectId,
@@ -395,6 +414,7 @@ class CheckpointManager {
       id: checkpoint.id,
       timestamp: checkpoint.timestamp,
       description: checkpoint.description,
+      label: checkpoint.label,
       projectId: checkpoint.projectId,
       kind: checkpoint.kind,
       pinned,

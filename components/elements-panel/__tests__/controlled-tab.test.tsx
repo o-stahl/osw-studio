@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { ElementsPanel, type ElementsTab } from '..';
@@ -27,7 +28,7 @@ const onTabChange = vi.fn();
 
 function mount(activeTab: ElementsTab) {
   act(() => {
-    root.render(
+    root.render(withMessages(
       <ElementsPanel
         projectId="p1"
         runtime="handlebars"
@@ -43,7 +44,7 @@ function mount(activeTab: ElementsTab) {
         activeTab={activeTab}
         onTabChange={onTabChange}
       />,
-    );
+    ));
   });
 }
 

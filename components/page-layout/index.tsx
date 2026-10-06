@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
+import { useViewNames } from '@/lib/i18n/use-view-names';
 import { Project } from '@/lib/vfs/types';
 import { Sidebar } from '@/components/sidebar';
 import { AppHeader } from '@/components/ui/app-header';
@@ -39,7 +41,9 @@ export function PageLayout({
   const [, setSidebarCollapsed] = useState(false);
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [quotaWarning, setQuotaWarning] = useState<string | null>(null);
+  const [quotaWarning, setQuotaWarning] = useState<{ percent: number; used: number; max: number } | null>(null);
+  const t = useTranslations();
+  const viewNames: Record<string, string> = useViewNames();
 
   const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
 
@@ -63,9 +67,10 @@ export function PageLayout({
       try {
         const data = await fetchSyncStatus();
         if (!data?.quota?.storage) return;
-        const pct = Math.round((data.quota.storage.usedMb / data.quota.storage.maxMb) * 100);
-        if (pct >= 80) {
-          setQuotaWarning(`You have used ${pct}% of your workspace storage (${data.quota.storage.usedMb} MB / ${data.quota.storage.maxMb} MB)`);
+        const { usedMb, maxMb } = data.quota.storage;
+        const percent = Math.round((usedMb / maxMb) * 100) / 100;
+        if (percent >= 0.8) {
+          setQuotaWarning({ percent, used: usedMb, max: maxMb });
         } else {
           setQuotaWarning(null);
         }
@@ -115,16 +120,17 @@ export function PageLayout({
           showMobileMenu={true}
           onMobileMenuClick={() => setMobileSidebarOpen(true)}
           hideActionsOnMobile={true}
-          pageName={currentView.charAt(0).toUpperCase() + currentView.slice(1)}
+          pageName={viewNames[currentView] ?? currentView}
           className="md:hidden"
         />
         {/* Content area */}
         <div className="flex-1 overflow-hidden">
           {quotaWarning && (
             <div className="bg-orange-500/10 border-b border-orange-500/20 px-4 py-2 text-sm text-orange-400 flex items-center justify-between">
-              <span>{quotaWarning}</span>
+              <span>{t('pageLayout.storageWarning', quotaWarning)}</span>
               <button
                 onClick={() => setQuotaWarning(null)}
+                aria-label={t('common.actions.dismiss')}
                 className="text-orange-400/60 hover:text-orange-400 ml-4 shrink-0"
               >
                 <X className="h-3.5 w-3.5" />

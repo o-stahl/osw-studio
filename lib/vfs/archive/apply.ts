@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import { translator } from '@/lib/i18n/runtime';
 import { RUNTIME_CONFIGS } from '../../runtimes/registry';
 import type { VirtualFileSystem } from '../index';
 import { checkpointManager } from '../checkpoint';
@@ -21,9 +22,11 @@ import {
   SERVER_DIR,
   SERVER_PREFIX,
   archiveFilesToBackend,
+  type BackendNameKind,
 } from './backend-files';
 import { normalizeKey } from './paths';
 import { ensureAncestorDirs } from './read-folder';
+import { ArchiveError, said } from './text';
 import type {
   ApplyResult,
   ArchiveEntry,
@@ -133,8 +136,8 @@ export async function applyImport(
     // import that never started.
     const checkpoint = await checkpointManager.createCheckpoint(
       projectId,
-      `Before import: ${plan.manifest?.name ?? project.name}`,
-      { kind: 'manual' }
+      `Before import: ${plan.manifest?.name ?? project.name}`, // i18n-ignore: stored English; the panel shows `label`
+      { kind: 'manual', label: { key: 'beforeImport', values: { name: plan.manifest?.name ?? project.name } } }
     );
     result.checkpointId = checkpoint.id;
   } else {
@@ -172,7 +175,7 @@ export async function applyImport(
         }
         result.applied.files += 1;
       } catch (error) {
-        result.failed.push({ path: write.targetPath, message: message(error) });
+        result.failed.push(failure(write.targetPath, error));
       }
       step();
     }
@@ -215,7 +218,7 @@ async function createProjectFromManifest(
   result: ApplyResult
 ): Promise<string> {
   // A folder of loose files carries no manifest and still has to become a project.
-  const project = await vfs.createProject(manifest?.name ?? 'Imported project', manifest?.description);
+  const project = await vfs.createProject(manifest?.name ?? translator()('importDialog.importedProject'), manifest?.description);
   if (!manifest) return project.id;
 
   let applied = 1; // the name
@@ -226,7 +229,7 @@ async function createProjectFromManifest(
       settings.runtime = manifest.runtime;
       applied += 1;
     } else {
-      result.failed.push({ path: MANIFEST_LABEL, message: unknownRuntime(manifest.runtime) });
+      result.failed.push({ path: MANIFEST_LABEL, ...said('unknownRuntime', { value: manifest.runtime }) });
     }
   }
   if (manifest.entryPoint !== undefined) {
@@ -317,7 +320,7 @@ function planFileWrites(
       // not offer the option for such a row. Report it rather than falling back to replace.
       result.failed.push({
         path: conflict.path,
-        message: 'Keeping both copies would make the path too long, so nothing was written.',
+        ...said('keepBothTooLong'),
       });
       continue;
     }
@@ -353,13 +356,13 @@ async function readBackendFeatures(
     try {
       files.set(entry.path, decoder.decode(await entry.read()));
     } catch (error) {
-      result.failed.push({ path: entry.path, message: message(error) });
+      result.failed.push(failure(entry.path, error));
     }
   }
   const { features, issues } = archiveFilesToBackend(files);
   for (const issue of issues) {
     if (issue.code === 'unsupported-field') continue;
-    result.failed.push({ path: issue.path ?? SERVER_PREFIX, message: issue.message });
+    result.failed.push({ path: issue.path ?? SERVER_PREFIX, message: issue.message, text: issue.text });
   }
   return features;
 }
@@ -445,7 +448,7 @@ async function applySettingChanges(
     await vfs.updateProject(project);
     result.applied.settings += applied;
   } catch (error) {
-    result.failed.push({ path: MANIFEST_LABEL, message: message(error) });
+    result.failed.push(failure(MANIFEST_LABEL, error));
   }
 }
 
@@ -474,16 +477,12 @@ function applySetting(project: Project, change: SettingChange, result: ApplyResu
       return true;
     case 'runtime':
       if (!isKnownRuntime(change.to)) {
-        result.failed.push({ path: MANIFEST_LABEL, message: unknownRuntime(change.to) });
+        result.failed.push({ path: MANIFEST_LABEL, ...said('unknownRuntime', { value: change.to }) });
         return false;
       }
       project.settings.runtime = change.to;
       return true;
   }
-}
-
-function unknownRuntime(value: string): string {
-  return `"${value}" is not a runtime this version of OSW Studio has, so the runtime was left unchanged.`;
 }
 
 function isKnownRuntime(value: string): value is ProjectRuntime {
@@ -540,20 +539,20 @@ async function applyBackend(
       // The mount would have validated; writing through the adapter means validating here. The
       // 'keep both' rename goes through it too — a renamed record still has to satisfy the name
       // grammar its kind is stored under.
-      requireValid(validateEdgeFunctionData(fields), 'Edge function', decision.name);
+      requireValid(validateEdgeFunctionData(fields), 'edge', decision.name);
 
       if (decision.action === 'create') {
-        const create = required(adapter.createEdgeFunction, 'edge functions');
+        const create = required(adapter.createEdgeFunction, 'edge');
         await create.call(adapter, { ...fields, id: uuidv4(), projectId, createdAt: now, updatedAt: now });
       } else {
-        const list = required(adapter.listEdgeFunctions, 'edge functions');
+        const list = required(adapter.listEdgeFunctions, 'edge');
         const existing = pick(await list.call(adapter, projectId), decision.name);
-        const update = required(adapter.updateEdgeFunction, 'edge functions');
+        const update = required(adapter.updateEdgeFunction, 'edge');
         await update.call(adapter, { ...existing, ...fields, updatedAt: now });
       }
       result.applied.backend += 1;
     } catch (error) {
-      result.failed.push({ path: `${EDGE_DIR}${fn.name}.js`, message: message(error) });
+      result.failed.push(failure(`${EDGE_DIR}${fn.name}.js`, error));
     }
     step();
   }
@@ -568,20 +567,20 @@ async function applyBackend(
         code: fn.code,
         enabled: fn.enabled ?? true,
       };
-      requireValid(validateServerFunctionData(fields), 'Server function', decision.name);
+      requireValid(validateServerFunctionData(fields), 'server', decision.name);
 
       if (decision.action === 'create') {
-        const create = required(adapter.createServerFunction, 'server functions');
+        const create = required(adapter.createServerFunction, 'server');
         await create.call(adapter, { ...fields, id: uuidv4(), projectId, createdAt: now, updatedAt: now });
       } else {
-        const list = required(adapter.listServerFunctions, 'server functions');
+        const list = required(adapter.listServerFunctions, 'server');
         const existing = pick(await list.call(adapter, projectId), decision.name);
-        const update = required(adapter.updateServerFunction, 'server functions');
+        const update = required(adapter.updateServerFunction, 'server');
         await update.call(adapter, { ...existing, ...fields, updatedAt: now });
       }
       result.applied.backend += 1;
     } catch (error) {
-      result.failed.push({ path: `${SERVER_DIR}${fn.name}.js`, message: message(error) });
+      result.failed.push(failure(`${SERVER_DIR}${fn.name}.js`, error));
     }
     step();
   }
@@ -592,12 +591,12 @@ async function applyBackend(
     try {
       requireValid(
         validateSecretData({ name: decision.name, description: secret.description }),
-        'Secret',
+        'secret',
         decision.name
       );
 
       if (decision.action === 'create') {
-        const create = required(adapter.createSecret, 'secrets');
+        const create = required(adapter.createSecret, 'secret');
         await create.call(adapter, {
           name: decision.name,
           description: secret.description,
@@ -609,9 +608,9 @@ async function applyBackend(
           updatedAt: now,
         });
       } else {
-        const list = required(adapter.listSecrets, 'secrets');
+        const list = required(adapter.listSecrets, 'secret');
         const existing = pick(await list.call(adapter, projectId), decision.name);
-        const update = required(adapter.updateSecret, 'secrets');
+        const update = required(adapter.updateSecret, 'secret');
         // The stored record is spread first and only the description is set: `value` and
         // `hasValue` are never touched, because the archive has nothing to say about them and
         // overwriting them would destroy a credential that exists nowhere else.
@@ -619,7 +618,7 @@ async function applyBackend(
       }
       result.applied.backend += 1;
     } catch (error) {
-      result.failed.push({ path: SECRETS_PATH, message: message(error) });
+      result.failed.push(failure(SECRETS_PATH, error));
     }
     step();
   }
@@ -647,20 +646,18 @@ async function applyBackend(
       // `functionName`, while the stored record holds the `functionId` resolved just below.
       requireValid(
         validateScheduledFunctionData({ ...fields, functionName: job.functionName }),
-        'Scheduled function',
+        'scheduled',
         decision.name
       );
 
       const linkedName = storedEdgeName.get(job.functionName) ?? job.functionName;
       const linked = edgeByName.get(linkedName);
       if (!linked) {
-        throw new Error(
-          `"${decision.name}" runs the edge function "${linkedName}", which this project does not have.`
-        );
+        throw new ArchiveError('missingEdgeFunction', { name: decision.name, edge: linkedName });
       }
 
       if (decision.action === 'create') {
-        const create = required(adapter.createScheduledFunction, 'scheduled functions');
+        const create = required(adapter.createScheduledFunction, 'scheduled');
         await create.call(adapter, {
           ...fields,
           id: uuidv4(),
@@ -670,14 +667,14 @@ async function applyBackend(
           updatedAt: now,
         });
       } else {
-        const list = required(adapter.listScheduledFunctions, 'scheduled functions');
+        const list = required(adapter.listScheduledFunctions, 'scheduled');
         const existing = pick(await list.call(adapter, projectId), decision.name);
-        const update = required(adapter.updateScheduledFunction, 'scheduled functions');
+        const update = required(adapter.updateScheduledFunction, 'scheduled');
         await update.call(adapter, { ...existing, ...fields, functionId: linked.id, updatedAt: now });
       }
       result.applied.backend += 1;
     } catch (error) {
-      result.failed.push({ path: SCHEDULED_PATH, message: message(error) });
+      result.failed.push(failure(SCHEDULED_PATH, error));
     }
     step();
   }
@@ -688,8 +685,8 @@ async function applyBackend(
  * skipped: an import that quietly dropped half an archive because the adapter could not store it
  * would look like a clean success.
  */
-function required<T>(method: T | undefined, label: string): NonNullable<T> {
-  if (!method) throw new Error(`This storage backend cannot store ${label}.`);
+function required<T>(method: T | undefined, what: BackendNameKind): NonNullable<T> {
+  if (!method) throw new ArchiveError('cannotStore', { what });
   return method as NonNullable<T>;
 }
 
@@ -697,20 +694,25 @@ function required<T>(method: T | undefined, label: string): NonNullable<T> {
 function pick<T extends { name: string }>(items: T[], name: string): T {
   const found = items.find((item) => item.name === name);
   if (!found) {
-    throw new Error(`"${name}" is no longer in this project, so there was nothing to replace.`);
+    throw new ArchiveError('nothingToReplace', { name });
   }
   return found;
 }
 
 function requireValid(
   validation: { valid: boolean; errors: string[] },
-  kindLabel: string,
+  kind: BackendNameKind,
   name: string
 ): void {
   if (validation.valid) return;
-  throw new Error(`${kindLabel} "${name}" was skipped: ${validation.errors.join('; ')}`);
+  throw new ArchiveError('invalidRecord', { kind, name, detail: validation.errors.join('; ') });
 }
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** A failed write, with the reason in the UI's language when the archive layer raised it. */
+function failure(path: string, error: unknown): ApplyResult['failed'][number] {
+  return error instanceof ArchiveError ? { path, message: error.message, text: error.text } : { path, message: message(error) };
 }

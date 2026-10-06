@@ -1,6 +1,9 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { useTemplateIntents } from '@/lib/i18n/use-template-intents';
+import { useTemplateCatalog, type TemplateCopy } from '@/lib/i18n/use-template-catalog';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronRight, Eye, Search, Server, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -68,11 +71,16 @@ function hasBackendFeatures(features: unknown): boolean {
   );
 }
 
-export function toBrowsableTemplates(customTemplates: CustomTemplate[]): BrowsableTemplate[] {
+export function toBrowsableTemplates(
+  customTemplates: CustomTemplate[],
+  // Built-in copy, translated. A plain function cannot call a hook, so the caller passes it; an
+  // absent entry keeps the registry's own English.
+  copy: Record<string, TemplateCopy> = {},
+): BrowsableTemplate[] {
   const builtIns: BrowsableTemplate[] = BUILT_IN_TEMPLATES.map((t) => ({
     value: t.id,
-    name: t.name,
-    description: t.description,
+    name: copy[t.id]?.name ?? t.name,
+    description: copy[t.id]?.description ?? t.description,
     runtime: t.runtime,
     intent: t.metadata?.intent,
     isBuiltIn: true,
@@ -161,14 +169,13 @@ function runtimeLabel(runtime: ProjectRuntime): string {
 
 /** Something this environment cannot do with a template, said before the project exists. */
 export interface TemplateSupportNote {
-  /** Which limit this is, so callers and tests can tell the notes apart without reading them. */
+  /**
+   * Which limit this is. The wording lives in `templatesUi.supportNotes.<kind>` rather than here, so
+   * the note can be translated and so callers and tests tell notes apart without reading them.
+   */
   kind: 'project-kit' | 'terminal-runtime' | 'server-mode';
-  /** The limit, in a few words. */
-  summary: string;
-  /** What still works, so the note reads as a caveat rather than a refusal. */
-  detail: string;
   /** A docs page that explains the limit, offered as a link after the detail. */
-  doc?: { id: string; label: string };
+  doc?: { id: string };
 }
 
 /**
@@ -186,34 +193,18 @@ export function templateSupportNote(
   serverMode: boolean
 ): TemplateSupportNote | null {
   if (template.intent === 'project-kit') {
-    return {
-      kind: 'project-kit',
-      summary: 'OSWS cannot build or run this',
-      detail:
-        'You edit the project here and build it with its own tools elsewhere. The preview is an overview of the project, not the running service.',
-    };
+    return { kind: 'project-kit' };
   }
 
   if (getRuntimeConfig(template.runtime).previewMode === 'terminal') {
-    return {
-      kind: 'terminal-runtime',
-      summary: 'Runs in the Console, and cannot be published',
-      detail:
-        'There is no live preview for this runtime, and publishing is not available for it. You can still edit, run and export the project.',
-    };
+    return { kind: 'terminal-runtime' };
   }
 
   if (template.hasBackendFeatures && !serverMode) {
-    return {
-      kind: 'server-mode',
-      summary: 'This template requires Server Mode',
-      // Provisioning is not gated on the mode, so the functions, secrets and schema really are
-      // written into the project here and really do come back out of a download. What Browser
-      // mode cannot do is run them, which is the part worth saying before anything is built on it.
-      detail:
-        'Its edge functions, secrets and database schema are created with the project and included when you download it, but nothing runs them here: not the preview, and not the project deployed anywhere outside Server Mode.',
-      doc: { id: 'server-mode', label: 'What Server Mode is' },
-    };
+    // Provisioning is not gated on the mode, so the functions, secrets and schema really are
+    // written into the project here and really do come back out of a download. What Browser mode
+    // cannot do is run them, which is the part the note's wording says before anything is built.
+    return { kind: 'server-mode', doc: { id: 'server-mode' } };
   }
 
   return null;
@@ -243,6 +234,21 @@ export function TemplateBrowserPanel({
   onPendingChange,
   workspaceId,
 }: TemplateBrowserPanelProps) {
+  const t = useTranslations('templatesUi');
+  const tc = useTranslations('common');
+  const tIntents = useTranslations('templatesUi.intents');
+  const intentCopy = useTemplateIntents();
+  const tNotes = useTranslations('templatesUi.supportNotes');
+  // Keyed by the note's kind, so a new kind with no wording fails `tsc` here.
+  const noteCopy = useMemo<Record<TemplateSupportNote['kind'], { summary: string; detail: string; docLabel?: string }>>(() => ({
+    'project-kit': { summary: tNotes('project-kit.summary'), detail: tNotes('project-kit.detail') },
+    'terminal-runtime': { summary: tNotes('terminal-runtime.summary'), detail: tNotes('terminal-runtime.detail') },
+    'server-mode': {
+      summary: tNotes('server-mode.summary'),
+      detail: tNotes('server-mode.detail'),
+      docLabel: tNotes('server-mode.docLabel'),
+    },
+  }), [tNotes]);
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -323,7 +329,8 @@ export function TemplateBrowserPanel({
     router.push(`/?doc=${docId}`);
   };
 
-  const all = useMemo(() => toBrowsableTemplates(customTemplates), [customTemplates]);
+  const templateCopy = useTemplateCatalog();
+  const all = useMemo(() => toBrowsableTemplates(customTemplates, templateCopy), [customTemplates, templateCopy]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -353,9 +360,9 @@ export function TemplateBrowserPanel({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search templates"
+            placeholder={t('search')}
             className="pl-9"
-            aria-label="Search templates"
+            aria-label={t('search')}
           />
         </div>
       </div>
@@ -363,7 +370,7 @@ export function TemplateBrowserPanel({
       <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
         {groups.length === 0 ? (
           <p className="text-sm text-muted-foreground py-8 px-4 text-center">
-            No templates match “{query}”.
+            {t('noMatchQuoted', { query })}
           </p>
         ) : (
           groups.map((group) => {
@@ -394,7 +401,7 @@ export function TemplateBrowserPanel({
                       ) : (
                         <ChevronDown className="w-3 h-3 shrink-0 self-center" />
                       )}
-                      {group.label}
+                      {intentCopy(group.key, group).label}
                       <span className="tabular-nums font-normal text-muted-foreground/70">
                         {group.templates.length}
                       </span>
@@ -403,14 +410,14 @@ export function TemplateBrowserPanel({
                           the footer names a template with nothing on screen to match it to. */}
                       {collapsed && group.templates.some((t) => t.value === pending) && (
                         <span className="font-normal normal-case tracking-normal text-foreground/80">
-                          &middot; 1 selected
+                          {tIntents('oneSelected')}
                         </span>
                       )}
                     </span>
                     {/* The description is what the section is for, so it gives way to the count
                         once the section is closed and the rows can no longer speak for it. */}
                     <span className="text-[10px] text-muted-foreground/80 truncate hidden sm:block">
-                      {group.description}
+                      {intentCopy(group.key, group).description}
                     </span>
                   </button>
                 </h3>
@@ -447,8 +454,8 @@ export function TemplateBrowserPanel({
           >
             <TriangleAlert className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-500" aria-hidden />
             <p>
-              <span className="font-medium text-foreground">{supportNote.summary}.</span>{' '}
-              {supportNote.detail}
+              <span className="font-medium text-foreground">{noteCopy[supportNote.kind].summary}.</span>{' '}
+              {noteCopy[supportNote.kind].detail}
               {supportNote.doc && (
                 <>
                   {' '}
@@ -457,7 +464,7 @@ export function TemplateBrowserPanel({
                     onClick={() => goToDoc(supportNote.doc!.id)}
                     className="underline underline-offset-2 hover:text-foreground cursor-pointer"
                   >
-                    {supportNote.doc.label}
+                    {noteCopy[supportNote.kind].docLabel}
                   </button>
                 </>
               )}
@@ -466,11 +473,11 @@ export function TemplateBrowserPanel({
         )}
         <div className="px-4 py-3 flex items-center justify-between gap-2">
           <Button variant="ghost" size="sm" onClick={goToTemplates}>
-            Manage templates
+            {t('manageTemplates')}
           </Button>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={onCancel}>
-              Cancel
+              {tc('actions.cancel')}
             </Button>
             {/* "Select", not "Use": this only chooses the template. The project is created by the
                 dialog this returns to, and calling both steps "use" made the first look final. */}
@@ -478,7 +485,7 @@ export function TemplateBrowserPanel({
               disabled={!pendingTemplate}
               onClick={() => pendingTemplate && onConfirm(pendingTemplate.value)}
             >
-              {pendingTemplate ? `Select ${pendingTemplate.name}` : 'Select a template'}
+              {pendingTemplate ? t('selectNamed', { name: pendingTemplate.name }) : t('selectNone')}
             </Button>
           </div>
         </div>
@@ -511,10 +518,13 @@ function TemplateRow({
   onPreview: () => void;
   onToggleExpand: () => void;
 }) {
+  const t = useTranslations('templatesUi');
+  const tc = useTranslations('common');
   const runtimeBadge = getRuntimeBadge(template.runtime);
   // Terminal runtimes have no page to show. The button stays in place and explains itself rather
   // than disappearing, so the row does not change shape from one template to the next.
-  const noPreview = templatePreviewUnavailableReason(template.runtime);
+  const noPreviewReason = templatePreviewUnavailableReason(template.runtime);
+  const noPreview = noPreviewReason ? t(`previewUnavailable.${noPreviewReason}`) : null;
 
   return (
     <li className={cn('px-4', selected && 'bg-primary/10')}>
@@ -533,13 +543,13 @@ function TemplateRow({
               </span>
               {!template.isBuiltIn && (
                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-auto shrink-0">
-                  Custom
+                  {tc('labels.custom')}
                 </Badge>
               )}
               {template.hasBackendFeatures && (
                 <Server
                   className="w-3.5 h-3.5 text-muted-foreground shrink-0"
-                  aria-label="Includes backend features"
+                  aria-label={t('includesBackend')}
                 />
               )}
             </span>
@@ -566,8 +576,8 @@ function TemplateRow({
           type="button"
           onClick={onPreview}
           disabled={!!noPreview}
-          title={noPreview ?? `Preview ${template.name}`}
-          aria-label={noPreview ?? `Preview ${template.name}`}
+          title={noPreview ?? t('previewNamed', { name: template.name })}
+          aria-label={noPreview ?? t('previewNamed', { name: template.name })}
           className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground shrink-0 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
         >
           <Eye className="w-4 h-4" />
@@ -576,7 +586,7 @@ function TemplateRow({
           type="button"
           onClick={onToggleExpand}
           aria-expanded={expanded}
-          aria-label={expanded ? `Hide details for ${template.name}` : `Show details for ${template.name}`}
+          aria-label={expanded ? t('hideDetailsFor', { name: template.name }) : t('showDetailsFor', { name: template.name })}
           className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground shrink-0"
         >
           {/* Down rather than right: the row itself is the select control, and a chevron pointing
@@ -596,24 +606,24 @@ function TemplateRow({
             />
           )}
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-            <dt className="text-muted-foreground">Runtime</dt>
+            <dt className="text-muted-foreground">{tc('labels.runtime')}</dt>
             <dd>{runtimeLabel(template.runtime)}</dd>
             {template.author && (
               <>
-                <dt className="text-muted-foreground">Author</dt>
+                <dt className="text-muted-foreground">{tc('labels.author')}</dt>
                 <dd>{template.author}</dd>
               </>
             )}
             {template.license && (
               <>
-                <dt className="text-muted-foreground">License</dt>
+                <dt className="text-muted-foreground">{t('license')}</dt>
                 <dd>{template.license}</dd>
               </>
             )}
             {template.hasBackendFeatures && (
               <>
-                <dt className="text-muted-foreground">Includes</dt>
-                <dd>Backend features</dd>
+                <dt className="text-muted-foreground">{t('includes')}</dt>
+                <dd>{t('backendFeatures')}</dd>
               </>
             )}
           </dl>

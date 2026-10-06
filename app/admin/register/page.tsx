@@ -1,11 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Logo } from '@/components/ui/logo';
+import { LanguagePill } from '@/components/language-menu';
 
 export default function RegisterPage() {
+  const tc = useTranslations('common');
+  const t = useTranslations('auth');
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -41,7 +45,8 @@ export default function RegisterPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data.error || 'Registration failed');
+        setError(data.error || t('registrationFailed'));
+        setIsLoading(false);
         return;
       }
 
@@ -54,14 +59,15 @@ export default function RegisterPage() {
         router.push('/admin');
       }
     } catch (err) {
-      setError('An error occurred. Please try again.');
+      setError(t('genericError'));
       // Error details intentionally not logged to client console
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-4 animate-fadeIn">
+    <div className="relative min-h-screen bg-background text-foreground flex items-center justify-center p-4 animate-fadeIn">
+      <LanguagePill className="absolute top-4 right-4" />
       <style jsx>{`
         @keyframes fadeIn {
           from { opacity: 0; }
@@ -87,17 +93,17 @@ export default function RegisterPage() {
 
         {/* Title */}
         <h1 className="text-3xl font-semibold mb-2 tracking-tight">
-          {isSetup ? 'Set Up OSW Studio' : 'Create an account'}
+          {isSetup ? t('setupTitle') : t('createAccountTitle')}
         </h1>
         <p className="text-muted-foreground mb-8">
-          {isSetup ? 'Create the admin account to get started' : 'Join OSW Studio'}
+          {isSetup ? t('setupSubtitle') : t('joinSubtitle')}
         </p>
 
         {/* Register Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="text-left">
             <label htmlFor="email" className="block text-sm font-medium text-muted-foreground mb-2">
-              Email
+              {tc('labels.email')}
             </label>
             <input
               id="email"
@@ -113,7 +119,7 @@ export default function RegisterPage() {
 
           <div className="text-left">
             <label htmlFor="displayName" className="block text-sm font-medium text-muted-foreground mb-2">
-              Display name <span className="text-muted-foreground/70">(optional)</span>
+              {tc('labels.displayName')} <span className="text-muted-foreground/70">{tc('labels.optionalParen')}</span>
             </label>
             <input
               id="displayName"
@@ -121,14 +127,14 @@ export default function RegisterPage() {
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               className="w-full px-4 py-3 bg-muted border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
-              placeholder="Your name"
+              placeholder={t('yourName')}
             />
           </div>
 
           <div className="text-left">
             <div className="flex items-center justify-between mb-2">
               <label htmlFor="password" className="text-sm font-medium text-muted-foreground">
-                Password
+                {tc('labels.password')}
               </label>
               <button
                 type="button"
@@ -142,7 +148,7 @@ export default function RegisterPage() {
                   setShowPassword(true);
                 }}
               >
-                Generate
+                {tc('actions.generate')}
               </button>
             </div>
             <div className="relative">
@@ -152,7 +158,7 @@ export default function RegisterPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-4 py-3 pr-11 bg-muted border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
-                placeholder="At least 8 characters"
+                placeholder={t('atLeastEight')}
                 required
                 minLength={8}
               />
@@ -181,24 +187,22 @@ export default function RegisterPage() {
             disabled={isLoading}
             className="w-full bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 px-4 rounded-lg transition-colors disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
           >
-            {isLoading ? 'Creating account...' : 'Create account'}
+            {isLoading ? t('creatingAccount') : t('createAccount')}
           </button>
         </form>
 
         {!isSetup && (
           <p className="mt-6 text-sm text-muted-foreground">
-            Already have an account?{' '}
+            {t('haveAccount')}{' '}
             <Link href="/admin/login" className="text-orange-500 hover:text-orange-400 transition-colors">
-              Sign in
+              {t('signInLink')}
             </Link>
           </p>
         )}
 
         {/* Footer */}
         <div className="mt-12 pt-6 border-t border-border flex items-center justify-center gap-2 text-sm text-muted-foreground">
-          <span>Powered by</span>
-          <Logo width={20} height={20} className="opacity-80" />
-          <span>OSW Studio</span>
+          {t.rich('poweredBy', { logo: () => <Logo width={20} height={20} className="opacity-80" /> })}
         </div>
       </div>
     </div>

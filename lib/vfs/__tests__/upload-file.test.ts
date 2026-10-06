@@ -35,6 +35,7 @@ vi.mock('../archive/read-folder', () => ({
 }));
 
 import { uploadFileToProject, uploadTargetPath } from '../upload-file';
+import { FILE_SIZE_LIMITS } from '../types';
 
 /**
  * A `File` that can be read.
@@ -103,6 +104,12 @@ describe('uploadFileToProject', () => {
     expect(await uploadFileToProject('p1', hugeFile('a.png', 500 * 1024 * 1024), '/')).toBe('too-large');
     expect(createFile).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalled();
+  });
+
+  it('takes the limit exactly: one byte over is refused, the limit itself is not', async () => {
+    expect(await uploadFileToProject('p1', hugeFile('a.png', FILE_SIZE_LIMITS.image + 1), '/')).toBe('too-large');
+    expect(createFile).not.toHaveBeenCalled();
+    expect(await uploadFileToProject('p1', hugeFile('b.png', FILE_SIZE_LIMITS.image), '/')).toBe('ok');
   });
 
   it('skips the reload when the caller batches its own', async () => {

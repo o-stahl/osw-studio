@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { Project } from '@/lib/vfs/types';
 import { getRuntimeBadge } from '@/lib/runtimes/registry';
 import { vfs } from '@/lib/vfs';
@@ -32,7 +34,6 @@ import {
 } from 'lucide-react';
 import { ThumbnailArea } from '@/components/ui/thumbnail-area';
 import { captureProjectScreenshot } from '@/lib/utils/project-thumbnail';
-import { formatDistanceToNow } from 'date-fns';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -80,6 +81,9 @@ export const ProjectCard = React.memo(function ProjectCard({
   forceMenuOpen = false,
   highlightExport = false,
 }: ProjectCardProps) {
+  const t = useTranslations('projects');
+  const tc = useTranslations('common');
+  const when = useLocalFormat();
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState(project.name);
   const [editedDescription, setEditedDescription] = useState(project.description || '');
@@ -105,19 +109,19 @@ export const ProjectCard = React.memo(function ProjectCard({
 
   const saveEdits = async () => {
     if (!editedName.trim()) {
-      toast.error('Project name cannot be empty');
+      toast.error(t('nameEmpty'));
       setEditedName(project.name);
       setIsEditing(false);
       return;
     }
 
     if (editedName.length > 50) {
-      toast.error('Project name must be 50 characters or less');
+      toast.error(t('nameTooLong'));
       return;
     }
 
     if (editedDescription.length > 200) {
-      toast.error('Description must be 200 characters or less');
+      toast.error(t('descTooLong'));
       return;
     }
 
@@ -130,10 +134,10 @@ export const ProjectCard = React.memo(function ProjectCard({
       vfs.scheduleAutoSync(project.id);
       onUpdate(project);
       setIsEditing(false);
-      toast.success('Project updated');
+      toast.success(t('updated'));
     } catch (error) {
       logger.error('Failed to update project:', error);
-      toast.error('Failed to update project');
+      toast.error(t('updateFailed'));
       setEditedName(project.name);
       setEditedDescription(project.description || '');
     }
@@ -193,7 +197,7 @@ export const ProjectCard = React.memo(function ProjectCard({
   // Format cost display
   const formatCost = (cost?: number) => {
     if (!cost || cost === 0) return null;
-    return `$${cost.toFixed(2)}`;
+    return when.number(cost, { style: 'currency', currency: 'USD' });
   };
 
   if (viewMode === 'list') {
@@ -234,7 +238,7 @@ export const ProjectCard = React.memo(function ProjectCard({
                         className="h-7 text-sm font-semibold"
                         autoFocus
                         maxLength={50}
-                        placeholder="Project name"
+                        placeholder={t('nameLabel')}
                       />
                       <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={saveEdits}>
                         <Check className="h-3 w-3" />
@@ -253,7 +257,7 @@ export const ProjectCard = React.memo(function ProjectCard({
                       onKeyDown={(e) => {
                         if (e.key === 'Escape') cancelEdit();
                       }}
-                      placeholder="Add a description..."
+                      placeholder={t('addDescription')}
                       className="min-h-[60px] text-sm resize-none"
                       maxLength={200}
                     />
@@ -291,7 +295,7 @@ export const ProjectCard = React.memo(function ProjectCard({
 
                   {/* Updated timestamp */}
                   <p className="text-xs text-muted-foreground">
-                    Updated {formatDistanceToNow(project.updatedAt, { addSuffix: true })}
+                    {t('updatedAgo', { when: when.relativeTime(project.updatedAt) })}
                   </p>
                 </>
               )}
@@ -304,7 +308,7 @@ export const ProjectCard = React.memo(function ProjectCard({
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <FolderOpen className="h-4 w-4" />
-                    {stats.fileCount} {stats.fileCount === 1 ? 'file' : 'files'}
+                    {t('fileCount', { count: stats.fileCount })}
                   </span>
                   <span className="flex items-center gap-1">
                     <HardDrive className="h-4 w-4" />
@@ -350,7 +354,7 @@ export const ProjectCard = React.memo(function ProjectCard({
                   onPreview(project);
                 }}>
                   <Eye className="mr-2 h-4 w-4" />
-                  Preview
+                  {t('menu.preview')}
                 </DropdownMenuItem>
                 {onBackend && (
                   <DropdownMenuItem onClick={(e) => {
@@ -358,7 +362,7 @@ export const ProjectCard = React.memo(function ProjectCard({
                     onBackend(project);
                   }}>
                     <Server className="mr-2 h-4 w-4" />
-                    Backend
+                    {t('menu.backend')}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem onClick={(e) => {
@@ -366,7 +370,7 @@ export const ProjectCard = React.memo(function ProjectCard({
                   onDuplicate(project);
                 }}>
                   <Copy className="mr-2 h-4 w-4" />
-                  Duplicate
+                  {t('menu.duplicate')}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={(e) => {
@@ -374,7 +378,7 @@ export const ProjectCard = React.memo(function ProjectCard({
                   onExportZip(project);
                 }}>
                   <Package className="mr-2 h-4 w-4" />
-                  Export as ZIP
+                  {t('menu.exportZip')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={(e) => {
@@ -384,7 +388,7 @@ export const ProjectCard = React.memo(function ProjectCard({
                   data-tour-id={highlightExport ? 'project-export-json' : undefined}
                 >
                   <Download className="mr-2 h-4 w-4" />
-                  Export as JSON
+                  {t('menu.exportJson')}
                 </DropdownMenuItem>
                 {onExportAsTemplate && (
                   <DropdownMenuItem onClick={(e) => {
@@ -392,7 +396,7 @@ export const ProjectCard = React.memo(function ProjectCard({
                     onExportAsTemplate(project);
                   }}>
                     <FileBox className="mr-2 h-4 w-4" />
-                    Create a Template
+                    {t('menu.createTemplate')}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
@@ -404,7 +408,7 @@ export const ProjectCard = React.memo(function ProjectCard({
                   }}
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
+                  {tc('actions.delete')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -500,7 +504,7 @@ export const ProjectCard = React.memo(function ProjectCard({
                 onPreview(project);
               }}>
                 <Eye className="mr-2 h-4 w-4" />
-                Preview
+                {t('menu.preview')}
               </DropdownMenuItem>
               {onBackend && (
                 <DropdownMenuItem onClick={(e) => {
@@ -508,7 +512,7 @@ export const ProjectCard = React.memo(function ProjectCard({
                   onBackend(project);
                 }}>
                   <Server className="mr-2 h-4 w-4" />
-                  Backend
+                  {t('menu.backend')}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={(e) => {
@@ -516,7 +520,7 @@ export const ProjectCard = React.memo(function ProjectCard({
                 onDuplicate(project);
               }}>
                 <Copy className="mr-2 h-4 w-4" />
-                Duplicate
+                {t('menu.duplicate')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={(e) => {
@@ -524,7 +528,7 @@ export const ProjectCard = React.memo(function ProjectCard({
                 onExportZip(project);
               }}>
                 <Package className="mr-2 h-4 w-4" />
-                Export as ZIP
+                {t('menu.exportZip')}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={(e) => {
@@ -534,7 +538,7 @@ export const ProjectCard = React.memo(function ProjectCard({
                 data-tour-id={highlightExport ? 'project-export-json' : undefined}
               >
                 <Download className="mr-2 h-4 w-4" />
-                Export as JSON
+                {t('menu.exportJson')}
               </DropdownMenuItem>
               {onExportAsTemplate && (
                 <DropdownMenuItem onClick={(e) => {
@@ -542,7 +546,7 @@ export const ProjectCard = React.memo(function ProjectCard({
                   onExportAsTemplate(project);
                 }}>
                   <FileBox className="mr-2 h-4 w-4" />
-                  Create a Template
+                  {t('menu.createTemplate')}
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
@@ -554,7 +558,7 @@ export const ProjectCard = React.memo(function ProjectCard({
                 }}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
-                Delete
+                {tc('actions.delete')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -569,7 +573,7 @@ export const ProjectCard = React.memo(function ProjectCard({
               onKeyDown={(e) => {
                 if (e.key === 'Escape') cancelEdit();
               }}
-              placeholder="Add a description..."
+              placeholder={t('addDescription')}
               className="min-h-[60px] text-sm resize-none"
               maxLength={200}
             />
@@ -585,7 +589,7 @@ export const ProjectCard = React.memo(function ProjectCard({
               </p>
             ) : (
               <p className="text-sm text-muted-foreground/50 italic">
-                No description
+                {t('noDescription')}
               </p>
             )}
           </div>
@@ -599,7 +603,7 @@ export const ProjectCard = React.memo(function ProjectCard({
             <div className="flex items-center gap-3 text-sm text-muted-foreground pt-2 border-t">
               <span className="flex items-center gap-1">
                 <FolderOpen className="h-4 w-4" />
-                {stats.fileCount} {stats.fileCount === 1 ? 'file' : 'files'}
+                {t('fileCount', { count: stats.fileCount })}
               </span>
               <span className="flex items-center gap-1">
                 <HardDrive className="h-4 w-4" />
@@ -629,7 +633,7 @@ export const ProjectCard = React.memo(function ProjectCard({
 
         {/* Timestamps */}
         <div className="text-xs text-muted-foreground pt-2 border-t">
-          <p>Updated {formatDistanceToNow(project.updatedAt, { addSuffix: true })}</p>
+          <p>{t('updatedAgo', { when: when.relativeTime(project.updatedAt) })}</p>
         </div>
       </div>
     </div>

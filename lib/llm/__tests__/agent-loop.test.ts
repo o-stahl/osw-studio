@@ -476,15 +476,14 @@ describe('AgentLoop', () => {
     expect(result.success).toBe(true);
   });
 
-  it('handles provider error via onPausableError with continue', async () => {
+  it('resends without feedback when onProviderError answers retry', async () => {
+    // A provider failure says nothing about the model's approach, so the model is not told to try
+    // something different; the same request just goes out again.
     let callCount = 0;
     const provider: ProviderAdapter = {
       call: vi.fn(async () => {
         callCount++;
-        if (callCount === 1) {
-          throw new Error('Rate limited');
-        }
-        // Second call succeeds with a tool call that signals complete
+        if (callCount === 1) throw new Error('Model busy');
         return {
           content: '',
           toolCalls: [{
@@ -498,34 +497,27 @@ describe('AgentLoop', () => {
       getProvider: () => 'test-provider',
       supportsTools: () => true,
     };
-
-    const onPausableError = vi.fn(async () => 'continue' as const);
-
     const toolResult: ToolResult = {
       tool_call_id: 'tc1',
       content: 'Status recorded.',
       success: true,
       signals: { statusComplete: true, statusResult: { task: 'x', done: 'x', remaining: 'none', complete: true, hasExplicitFlag: true } },
     };
-    const results = new Map([['tc1', toolResult]]);
-    const executor = createMockExecutor(results);
     const context = createMockContext();
-    const progress = createMockProgress();
-    const cost = createMockCost();
-    const config = defaultConfig({ onPausableError });
-
     const loop = new AgentLoop({
-      config,
+      config: defaultConfig({ onProviderError: vi.fn(async () => 'retry' as const) }),
       provider,
-      executor,
+      executor: createMockExecutor(new Map([['tc1', toolResult]])),
       context,
-      progress,
-      cost,
+      progress: createMockProgress(),
+      cost: createMockCost(),
     });
 
     const result = await loop.run('Do it');
-    expect(onPausableError).toHaveBeenCalledTimes(1);
     expect(result.success).toBe(true);
+    expect(callCount).toBe(2);
+    const added = (context.addUserMessage as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
+    expect(added.some((m) => m.includes('Model busy'))).toBe(false);
   });
 
   it('explore agent exits immediately without needing status', async () => {
@@ -555,7 +547,7 @@ describe('AgentLoop', () => {
     expect(events).not.toContain('nudge');
   });
 
-  it('handles onPausableError returning stop', async () => {
+  it('handles onProviderError returning stop', async () => {
     const provider: ProviderAdapter = {
       call: vi.fn(async () => {
         throw new Error('Fatal error');
@@ -565,11 +557,11 @@ describe('AgentLoop', () => {
       supportsTools: () => true,
     };
 
-    const onPausableError = vi.fn(async () => 'stop' as const);
+    const onProviderError = vi.fn(async () => 'stop' as const);
     const context = createMockContext();
     const progress = createMockProgress();
     const cost = createMockCost();
-    const config = defaultConfig({ onPausableError });
+    const config = defaultConfig({ onProviderError });
 
     const loop = new AgentLoop({
       config,
@@ -581,7 +573,7 @@ describe('AgentLoop', () => {
     });
 
     const result = await loop.run('Do it');
-    expect(onPausableError).toHaveBeenCalledTimes(1);
+    expect(onProviderError).toHaveBeenCalledTimes(1);
     expect(result.success).toBe(false);
     expect(result.summary).toContain('error');
   });

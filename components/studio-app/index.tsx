@@ -1,6 +1,9 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { useViewNames } from '@/lib/i18n/use-view-names';
+import { translator } from '@/lib/i18n/runtime';
 import { useSearchParams } from 'next/navigation';
 import { Project } from '@/lib/vfs/types';
 import { vfs } from '@/lib/vfs';
@@ -14,6 +17,7 @@ import { PageLayout } from '@/components/page-layout';
 import { ContentArea } from '@/components/views/content-area';
 import { AboutModal } from '@/components/about-modal';
 import { oauthHandleRedirectIfPresent } from '@/lib/auth/hf-auth';
+import { pendingSignIn, signInReturnProject } from '@/lib/auth/provider-sign-in';
 import { configManager } from '@/lib/config/storage';
 import { activateProviderAsGlobalDefault } from '@/lib/llm/models/global-auto-assign';
 import { shouldAutoAssignAgent } from '@/lib/llm/models/project-assignment';
@@ -21,11 +25,12 @@ import { toast } from 'sonner';
 import { track } from '@/lib/telemetry';
 import { TelemetryBootstrap } from '@/components/telemetry-bootstrap';
 import { GenerationShelf } from '@/components/generation-shelf';
-import { shouldAutoCreateFirstProject } from '@/lib/first-run';
+import { shouldAutoCreateFirstProject, opensFirstProject, createFirstProject } from '@/lib/first-run';
+import { detectDeploymentType } from '@/lib/telemetry/config';
 import { useProviderAutoAssign } from '@/lib/hooks/use-provider-auto-assign';
+import { useProviderSignInReturn } from '@/lib/hooks/use-provider-sign-in-return';
+import { useTourOffer } from '@/lib/hooks/use-tour-offer';
 import { useModelConfigSignal } from '@/lib/hooks/use-model-config-signal';
-import { createProjectFromTemplate } from '@/lib/vfs/templates/utils';
-import { BAREBONES_PROJECT_TEMPLATE } from '@/lib/vfs/templates/barebones';
 import { Spinner } from '@/components/ui/spinner';
 
 // Module-level guard: prevents double token exchange when React strict mode
@@ -37,15 +42,21 @@ let oauthExchangeInFlight = false;
 let firstRunCheckDone = false;
 
 function StudioInner() {
+  const tw = useTranslations('workspace');
+  const tp = useTranslations('projects');
   const searchParams = useSearchParams();
   const docParam = searchParams.get('doc');
-  const projectParam = searchParams.get('project');
+  // A sign-in's return opens the project it started from; closing it lets that go.
+  const [signInProject, setSignInProject] = useState(signInReturnProject);
+  const projectParam = searchParams.get('project') ?? signInProject;
 
   const studioView = useStudioView();
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   /** True while a `?project=` link resolves, so the view it landed on does not render first. */
   const [restoringProject, setRestoringProject] = useState(() => !!projectParam);
   const [currentView, setCurrentView] = useState<'dashboard' | 'projects' | 'deployments' | 'templates' | 'skills' | 'interviews' | 'docs' | 'settings'>('dashboard');
+  // `currentView` is an id, not a word, so the back label reads the same name the sidebar shows.
+  const viewName = useViewNames()[currentView];
   const [autoCreateProject, setAutoCreateProject] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
   const { state, setActiveProjectId, start: startTour } = useGuidedTour();
@@ -55,6 +66,7 @@ function StudioInner() {
   // Global model auto-assign on provider connect. Mounted here (always-present root) so the
   // Connections UI works both inside and outside a workspace (dashboard -> Settings -> Connections).
   useProviderAutoAssign();
+  useProviderSignInReturn();
 
   // Reactive model-config signal + one-time model migration. Mounted here (always-present root)
   // so ANY ChatPanel (workspace, describe-mode, project-manager) reacts to model picks.
@@ -66,6 +78,7 @@ function StudioInner() {
     window.history.pushState({}, '', url.toString());
   }
   function clearProjectParam() {
+    setSignInProject(null);
     const url = new URL(window.location.href);
     url.searchParams.delete('project');
     window.history.replaceState({}, '', url.toString());
@@ -99,7 +112,8 @@ function StudioInner() {
   // Handle HF OAuth redirect at the app level (settings panel may not be mounted)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (!params.has('code') || oauthExchangeInFlight) return;
+    // A provider sign-in returns with ?code= too; its own hook handles that one.
+    if (!params.has('code') || oauthExchangeInFlight || pendingSignIn()) return;
     oauthExchangeInFlight = true;
 
     (async () => {
@@ -119,7 +133,7 @@ function StudioInner() {
             // The token dies after this; getProviderApiKey drops it once it has.
             expires_at: oauthResult.accessTokenExpiresAt?.getTime(),
           });
-          toast.success(`Connected to HuggingFace${username ? ` as ${username}` : ''}`);
+          toast.success(translator()('workspace.hfConnectedAs', { has: username ? 'yes' : 'no', username: username ?? '' }));
           track('connection_added', { provider: 'huggingface', method: 'oauth' });
           window.dispatchEvent(new CustomEvent('apiKeyUpdated', {
             detail: { provider: 'huggingface', hasKey: true }
@@ -164,27 +178,24 @@ function StudioInner() {
     })();
   }, []);
 
-  // First-run: drop a brand-new visitor (zero projects) straight into a workspace with an
-  // auto-created starter project, instead of the empty dashboard. Skipped when a URL param
-  // points at an existing destination (?project=, ?code= OAuth return, ?doc=, ?settings=),
-  // so this never fights the restore or OAuth effects. Runs at most once per page load.
-  // Note: StudioApp only renders in SPA/browser/HF mode (see app/page.tsx), so no server-mode
-  // guard is needed here by construction.
+  // First run (zero projects, and no URL param pointing somewhere): the HF Space opens a new starter
+  // project, so a visitor can build straight away; a local install shows the projects page. Runs at
+  // most once per page load. StudioApp renders only in browser mode, so the server surfaces are not
+  // handled here (see PageWrapper).
   useEffect(() => {
     if (firstRunCheckDone) return;
     firstRunCheckDone = true; // deliberately NOT reset on failure: a transient error should
                               // not cause a retry loop within a page load; a full reload recovers.
     (async () => {
-      let createdId: string | null = null;
       try {
         await vfs.init();
         const projects = await vfs.listProjects();
         if (!shouldAutoCreateFirstProject({ search: window.location.search, projectCount: projects.length })) return;
-        const project = await vfs.createProject('My First Site', '');
-        createdId = project.id;
-        project.settings = { ...(project.settings ?? {}), runtime: 'static' };
-        await vfs.updateProject(project);
-        await createProjectFromTemplate(vfs, project.id, BAREBONES_PROJECT_TEMPLATE);
+        if (!opensFirstProject(detectDeploymentType())) {
+          setCurrentView('projects');
+          return;
+        }
+        const project = await createFirstProject(tp('firstSiteName'));
         // template reported as 'blank' deliberately: quick-create's 'blank' path also applies
         // BAREBONES_PROJECT_TEMPLATE and reports 'blank', so telemetry stays continuous.
         track('project_create', { method: 'first_run_auto', runtime: 'static', template: 'blank' });
@@ -195,9 +206,6 @@ function StudioInner() {
         writeProjectParam(project.id);
       } catch (err) {
         console.warn('[FirstRun] auto-create failed, falling back to dashboard:', err);
-        // Roll back a half-created project so a reload retries instead of being permanently
-        // suppressed by listProjects().length === 1. Best-effort; ignore delete failures.
-        if (createdId) { try { await vfs.deleteProject(createdId); } catch {} }
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -232,6 +240,7 @@ function StudioInner() {
   }, [projectParam]);
 
   const stepId = state.currentStep?.id;
+  const stepLocation = state.currentStep?.location;
   const isTourRunning = state.status === 'running';
 
   useEffect(() => {
@@ -301,26 +310,14 @@ function StudioInner() {
       return;
     }
 
-    if (
-      stepId === 'welcome' ||
-      stepId === 'projects-overview' ||
-      stepId === 'create-project' ||
-      stepId === 'project-controls' ||
-      stepId === 'edit-project'
-    ) {
+    if (stepLocation === 'project-manager') {
       if (selectedProject) {
         setSelectedProject(null);
       }
       return;
     }
 
-    if (
-      stepId === 'workspace-overview' ||
-      stepId === 'workspace-edit' ||
-      stepId === 'workspace-checkpoint' ||
-      stepId === 'provider-settings' ||
-      stepId === 'wrap-up'
-    ) {
+    if (stepLocation === 'workspace') {
       if (!selectedProject) {
         // Use the tour demo project if available, otherwise fall back to first project
         const tourProject = state.tourDemoProjectId
@@ -332,7 +329,7 @@ function StudioInner() {
         }
       }
     }
-  }, [isTourRunning, stepId, selectedProject, state.projectList, state.tourDemoProjectId]);
+  }, [isTourRunning, stepId, stepLocation, selectedProject, state.projectList, state.tourDemoProjectId]);
 
   const handleNavigate = useCallback((view: string) => {
     if (view === 'projects:create') {
@@ -353,6 +350,19 @@ function StudioInner() {
       startTour();
     }
   }, [startTour]);
+  // "Create a project" on the first-visit offer: a new starter project, opened at once.
+  const handleCreateFromOffer = useCallback(async () => {
+    try {
+      const project = await createFirstProject(tp('firstSiteName'));
+      track('project_create', { method: 'tour_offer', runtime: 'static', template: 'blank' });
+      setSelectedProject(project);
+      writeProjectParam(project.id);
+    } catch (err) {
+      console.warn('[TourOffer] create failed:', err);
+      toast.error(tp('createFailed'));
+    }
+  }, [tp]);
+  useTourOffer(handleStartTour, studioView, selectedProject ? undefined : handleCreateFromOffer);
 
   const handleProjectOpen = useCallback((project: Project) => {
     setSelectedProject(project);
@@ -367,9 +377,9 @@ function StudioInner() {
         handleProjectOpen(project);
       }
     } catch {
-      toast.error('Could not open project');
+      toast.error(tw('openProjectFailed'));
     }
-  }, [handleProjectOpen]);
+  }, [handleProjectOpen, tw]);
 
   const content = useMemo(() => {
     if (restoringProject && !selectedProject) {
@@ -384,7 +394,7 @@ function StudioInner() {
         <Workspace
           project={selectedProject}
           onBack={() => { setSelectedProject(null); clearProjectParam(); }}
-          backLabel={`Back to ${currentView}`}
+          backLabel={tw('backTo', { view: viewName })}
         />
       );
     }
@@ -400,7 +410,7 @@ function StudioInner() {
         autoCreateProject={autoCreateProject}
       />
     );
-  }, [restoringProject, selectedProject, currentView, handleNavigate, handleStartTour, autoCreateProject, handleProjectOpen]);
+  }, [restoringProject, selectedProject, currentView, handleNavigate, handleStartTour, autoCreateProject, handleProjectOpen, tw, viewName]);
 
   return (
     <>
@@ -429,13 +439,14 @@ function StudioInner() {
 }
 
 export function StudioApp() {
+  const tc = useTranslations('common');
   return (
     // Browser mode's equivalent of the workspace layout's provider. Without one the chrome reads
     // the context default and shows the studio however this device is set. `initialStudioView` is null
     // because there is no server render to seed it from; the provider reads storage instead.
     <ViewModeProvider initialStudioView={null}>
       <GuidedTourProvider>
-        <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]"><p className="text-zinc-400">Loading...</p></div>}>
+        <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]"><p className="text-zinc-400">{tc('loading')}</p></div>}>
           <StudioInner />
         </React.Suspense>
       </GuidedTourProvider>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { EdgeFunction } from '@/lib/vfs/types';
 import {
   Plus, Loader2, AlertCircle, Code2, MoreVertical, Pencil, Trash2,
@@ -25,6 +26,8 @@ interface FunctionsManagerProps {
 }
 
 export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatures, workspaceId }: FunctionsManagerProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('backend');
   const apiBase = workspaceId ? `/api/w/${workspaceId}` : '/api';
   const [functions, setFunctions] = useState<EdgeFunction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,13 +50,13 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
         const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/functions`);
         if (!res.ok) {
           const data = await res.json();
-          throw new Error(data.error || 'Failed to load functions');
+          throw new Error(data.error || t('loadFunctionsFailed'));
         }
         const data = await res.json();
         setFunctions(data.functions);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load functions');
+      setError(err instanceof Error ? err.message : t('loadFunctionsFailed'));
     } finally {
       setLoading(false);
     }
@@ -80,7 +83,7 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
   };
 
   const deleteFunction = async (fn: EdgeFunction) => {
-    if (!confirm(`Delete function "${fn.name}"? This cannot be undone.`)) return;
+    if (!confirm(t('confirmDeleteFunction', { name: fn.name }))) return;
 
     try {
       if (dataProvider) {
@@ -112,7 +115,7 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
       if (dataProvider) {
         await dataProvider.save(editingFunction?.id || null, data);
       } else if (!deploymentId) {
-        throw new Error('No deployment ID available');
+        throw new Error(t('noDeploymentId'));
       } else if (editingFunction) {
         const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/functions/${editingFunction.id}`, {
           method: 'PUT',
@@ -121,7 +124,7 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
         });
         if (!res.ok) {
           const err = await res.json();
-          throw new Error(err.error || 'Failed to update function');
+          throw new Error(err.error || t('updateFunctionFailed'));
         }
       } else {
         const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/functions`, {
@@ -131,7 +134,7 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
         });
         if (!res.ok) {
           const err = await res.json();
-          throw new Error(err.error || 'Failed to create function');
+          throw new Error(err.error || t('createFunctionFailed'));
         }
       }
 
@@ -157,7 +160,7 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
         <AlertCircle className="h-8 w-8 text-destructive" />
         <p className="text-sm text-muted-foreground">{error}</p>
         <Button variant="outline" onClick={loadFunctions}>
-          Retry
+          {tc('actions.retry')}
         </Button>
       </div>
     );
@@ -166,10 +169,10 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium">Edge Functions</h3>
+        <h3 className="text-sm font-medium">{t('edgeFunctions')}</h3>
         <Button size="sm" onClick={() => setIsCreating(true)}>
           <Plus className="h-4 w-4 mr-1" />
-          New Function
+          {t('newFunction')}
         </Button>
       </div>
 
@@ -177,13 +180,13 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
         {functions.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center border rounded-lg">
             <Code2 className="h-8 w-8 text-muted-foreground mb-2" />
-            <p className="text-sm text-muted-foreground">No edge functions yet</p>
+            <p className="text-sm text-muted-foreground">{t('noEdgeFunctions')}</p>
             <p className="text-xs text-muted-foreground mt-1 mb-4">
-              Create your first API endpoint
+              {t('createFirstEndpoint')}
             </p>
             <Button size="sm" onClick={() => setIsCreating(true)}>
               <Plus className="h-4 w-4 mr-1" />
-              Create Function
+              {t('createFunction')}
             </Button>
           </div>
         ) : (
@@ -212,7 +215,7 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
                         {fn.method}
                       </span>
                       {!fn.enabled && (
-                        <span className="text-xs bg-muted px-1.5 py-0.5 rounded shrink-0">disabled</span>
+                        <span className="text-xs bg-muted px-1.5 py-0.5 rounded shrink-0">{t('disabledBadge')}</span>
                       )}
                     </div>
                     {fn.description && (
@@ -221,7 +224,7 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
                       </p>
                     )}
                     <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                      <span className="shrink-0">Timeout: {fn.timeoutMs / 1000}s</span>
+                      <span className="shrink-0">{t('timeoutValue', { seconds: fn.timeoutMs / 1000 })}</span>
                       {!hideRuntimeFeatures && deploymentId && (
                         <button
                           onClick={() => copyUrl(fn)}
@@ -230,12 +233,12 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
                           {copiedUrl === fn.id ? (
                             <>
                               <CheckCircle2 className="h-3 w-3 text-green-500" />
-                              Copied!
+                              {tc('labels.copied')}
                             </>
                           ) : (
                             <>
                               <Copy className="h-3 w-3" />
-                              Copy URL
+                              {tc('actions.copyUrl')}
                             </>
                           )}
                         </button>
@@ -252,18 +255,18 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => setEditingFunction(fn)}>
                         <Pencil className="h-4 w-4 mr-2" />
-                        Edit
+                        {tc('actions.edit')}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => toggleEnabled(fn)}>
                         {fn.enabled ? (
                           <>
                             <ToggleLeft className="h-4 w-4 mr-2" />
-                            Disable
+                            {tc('actions.disable')}
                           </>
                         ) : (
                           <>
                             <ToggleRight className="h-4 w-4 mr-2" />
-                            Enable
+                            {tc('actions.enable')}
                           </>
                         )}
                       </DropdownMenuItem>
@@ -272,7 +275,7 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
                           onClick={() => window.open(`${apiBase}/deployments/${deploymentId}/functions/${fn.name}`, '_blank')}
                         >
                           <ExternalLink className="h-4 w-4 mr-2" />
-                          Open in Browser
+                          {t('openInBrowser')}
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem
@@ -280,7 +283,7 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
                         className="text-destructive"
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
-                        Delete
+                        {tc('actions.delete')}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

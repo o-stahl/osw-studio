@@ -283,14 +283,12 @@ export class AgentLoop {
           this.progress.onEvent('stopped', { reason: 'user' });
           break;
         }
-        if (this.config.onPausableError && error instanceof Error) {
-          const action = await this.config.onPausableError(error);
+        if (this.config.onProviderError && error instanceof Error) {
+          const action = await this.config.onProviderError(error);
           if (action === 'stop') {
             exitReason = 'error_stop';
             break;
           }
-          // 'continue' - inject error feedback and retry
-          this.context.addUserMessage(harnessMessage(`⚠️ ${error.message}\n\nPlease try a different approach.`));
           continue;
         }
         throw error;

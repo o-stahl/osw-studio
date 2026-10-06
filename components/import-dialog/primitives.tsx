@@ -21,26 +21,28 @@
  */
 
 import * as React from 'react';
+import { useTranslations } from 'next-intl';
+import { useArchiveMessage } from '@/lib/i18n/use-archive-message';
 import { AlertTriangle, ArrowLeftRight, ChevronDown, Info, Plus } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import type { ArchiveIssue, FileResolution, SettingResolution } from '@/lib/vfs/archive';
 import { splitPath } from './logic';
 
-export const FILE_OPTION_LABELS: Record<FileResolution, string> = {
-  'keep-mine': 'Keep mine',
-  replace: 'Replace',
-  'keep-both': 'Keep both',
-};
+/** The resolution choices' labels, in the interface language. */
+export function useFileOptionLabels(): Record<FileResolution, string> {
+  const t = useTranslations('importDialog.fileOptions');
+  return { 'keep-mine': t('keepMine'), replace: t('replace'), 'keep-both': t('keepBoth') };
+}
 
 export const ALL_FILE_OPTIONS: FileResolution[] = ['keep-mine', 'replace', 'keep-both'];
 
 /** Two options, not three: a project has exactly one runtime, so there is no 'keep both'. */
 export const SETTING_OPTIONS: SettingResolution[] = ['keep-current', 'use-archive'];
-export const SETTING_OPTION_LABELS: Record<SettingResolution, string> = {
-  'keep-current': 'Keep current',
-  'use-archive': 'Use archive',
-};
+export function useSettingOptionLabels(): Record<SettingResolution, string> {
+  const t = useTranslations('importDialog.settingOptions');
+  return { 'keep-current': t('keepCurrent'), 'use-archive': t('useArchive') };
+}
 
 export type BannerTone = 'red' | 'orange' | 'neutral';
 
@@ -159,14 +161,16 @@ export function ApplyToAll({
   value: FileResolution | undefined;
   onChange: (value: FileResolution) => void;
 }) {
+  const t = useTranslations('importDialog');
+  const fileOptionLabels = useFileOptionLabels();
   return (
     <span className="flex items-center gap-2 text-xs text-muted-foreground">
-      All:
+      {t('allLabel')}
       <Segmented
         ariaLabel={label}
         value={value}
         options={ALL_FILE_OPTIONS}
-        labels={FILE_OPTION_LABELS}
+        labels={fileOptionLabels}
         onChange={onChange}
       />
     </span>
@@ -200,6 +204,7 @@ export function ResolutionRow({
   onToggleDetail?: () => void;
   detailOpen?: boolean;
 }) {
+  const t = useTranslations('importDialog');
   return (
     <div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md p-2 transition-colors hover:bg-muted/50">
@@ -223,7 +228,7 @@ export function ResolutionRow({
             <ChevronDown
               className={cn('w-3.5 h-3.5 transition-transform', detailOpen && 'rotate-180')}
             />
-            <span className="sr-only">Compare versions</span>
+            <span className="sr-only">{t('compareVersions')}</span>
           </button>
         )}
         <span className="order-6 basis-full sm:hidden" />
@@ -259,6 +264,7 @@ export function AddedRow({ path, label }: { path?: string; label?: React.ReactNo
 }
 
 export function BlockedList({ issues }: { issues: ArchiveIssue[] }) {
+  const archiveMessage = useArchiveMessage();
   return (
     <div className="flex flex-col gap-0.5">
       {issues.map((issue, index) => (
@@ -273,7 +279,7 @@ export function BlockedList({ issues }: { issues: ArchiveIssue[] }) {
                 {issue.path}
               </span>
             )}
-            {issue.message}
+            {archiveMessage(issue)}
           </div>
         </div>
       ))}

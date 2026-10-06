@@ -4,8 +4,11 @@ import { ServerConfigManager } from './server-config-manager';
 import { runWithVFS } from './vfs-context';
 import type { SSEEventBus } from './sse-event-bus';
 import type { TaskManager } from './task-manager';
-import type { ServerGenerationParams, ServerOrchestratorContext, StartGenerationRequest, BuildResult, SearchDelegationResult, ServerWebSearchConfig } from './types';
+import type { ServerGenerationParams, ServerOrchestratorContext, StartGenerationRequest, BuildResult, SearchDelegationResult, ImageDelegationResult, ServerWebSearchConfig } from './types';
 import { VirtualFileSystem } from '@/lib/vfs';
+import { randomUUID } from 'crypto';
+import { addImageRequest, dropImageRequest } from './image-requests';
+import { imageDelegationTimeoutMs } from '@/lib/llm/image-gen-timeout';
 import type { VirtualFile } from '@/lib/vfs/types';
 
 interface RunnerDeps {
@@ -94,6 +97,8 @@ export async function runServerGeneration(
     onBuildRequested: () => awaitBuildResult(taskId, deps),
     onSearchRequested: (args) => awaitSearchResult(taskId, deps, args, request.webSearch),
     webSearchAvailable: request.webSearchAvailable,
+    onImageRequested: (prompt, opts) => awaitImageResult(taskId, deps, prompt, opts),
+    imageGenAvailable: request.imageGenAvailable,
   };
 
   const flushDirtyPaths = () => {
@@ -236,6 +241,42 @@ export async function awaitBuildResult(taskId: string, deps: RunnerDeps): Promis
   ]);
 
   return result;
+}
+
+/**
+ * Delegate an image generation to the connected browser, which holds the image model's key: emits
+ * `image_requested`, and the client generates and POSTs the image back. Image models can take a
+ * while, so the wait is long; with no browser answering, the agent is told to continue without it.
+ */
+export async function awaitImageResult(
+  taskId: string,
+  deps: RunnerDeps,
+  prompt: string,
+  opts: { aspectRatio?: string; imageSize?: string },
+): Promise<ImageDelegationResult> {
+  const { taskManager, eventBus } = deps;
+  const task = taskManager.getTask(taskId);
+  if (!task) return { error: 'task not found' };
+
+  const requestId = randomUUID();
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const answered = new Promise<ImageDelegationResult>((resolve) => {
+    addImageRequest(task, requestId, (r) => {
+      clearTimeout(timeoutId);
+      resolve(r);
+    });
+  });
+  eventBus.emit(taskId, task.projectId, 'image_requested', { taskId, requestId, prompt, ...opts }, task.sessionId);
+
+  return Promise.race<ImageDelegationResult>([
+    answered,
+    new Promise<ImageDelegationResult>((resolve) => {
+      timeoutId = setTimeout(() => {
+        dropImageRequest(task, requestId);
+        resolve({ error: 'no connected browser answered the image request. Continue without it.' });
+      }, imageDelegationTimeoutMs());
+    }),
+  ]);
 }
 
 /**

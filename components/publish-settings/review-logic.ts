@@ -30,14 +30,8 @@ const DURATION_MS: Record<ReviewExpiryDuration, number> = {
   '1y': 365 * DAY_MS,
 };
 
-export const REVIEW_EXPIRY_CHOICES: { value: 'never' | ReviewExpiryDuration; label: string }[] = [
-  { value: 'never', label: 'Never' },
-  { value: '1h', label: 'In 1 hour' },
-  { value: '24h', label: 'In 24 hours' },
-  { value: '7d', label: 'In 7 days' },
-  { value: '30d', label: 'In 30 days' },
-  { value: '1y', label: 'In 1 year' },
-];
+/** The expiry menu, in order; each value is also its label's key under `publishSettings.expiry`. */
+export const REVIEW_EXPIRY_CHOICES: ('never' | ReviewExpiryDuration)[] = ['never', '1h', '24h', '7d', '30d', '1y'];
 
 /**
  * The deadline a choice resolves to, or undefined for "no expiry".
@@ -181,28 +175,93 @@ export function describeAnchor(comment: WireComment): string {
   return element ? `${comment.page_path} · ${element}` : comment.page_path;
 }
 
+/** The password row's state: what the next save will do to the stored password, or what is stored. */
+export type ReviewPasswordState = 'pending-set' | 'pending-clear' | 'set' | 'unset';
+
+/** Reads the draft's three-state `password` field (see `ReviewDraft`) against what is stored. */
+export function reviewPasswordState(password: string | null | undefined, passwordSet: boolean): ReviewPasswordState {
+  return typeof password === 'string'
+    ? 'pending-set'
+    : password === null
+      ? 'pending-clear'
+      : passwordSet
+        ? 'set'
+        : 'unset';
+}
+
+/** The password row's status line, as its key under `publishSettings`. */
+export function passwordStateKey(state: ReviewPasswordState): 'setOnSave' | 'clearedOnSave' | 'set' | 'notSet' {
+  return state === 'pending-set'
+    ? 'setOnSave'
+    : state === 'pending-clear'
+      ? 'clearedOnSave'
+      : state === 'set'
+        ? 'set'
+        : 'notSet';
+}
+
 /**
- * How long ago something happened, in the coarsest unit that still says something.
+ * Whether the review copy exists and is current, and the notice that says why not.
  *
- * Falls back to an absolute date past a week, where "23 days ago" stops being easier to read than
- * the date itself. A timestamp that will not parse renders as nothing rather than "NaN ago".
+ * Two different situations were being reported with one sentence. A deployment that has never
+ * produced a copy is not the same as one whose copy exists but predates the latest changes, and
+ * the second is the ordinary state after any settings edit — settingsVersion bumps for SEO or
+ * scripts just as it does for the review toggle. Calling that "not built yet" claimed the address
+ * returns nothing while it was serving, and disabled Open on a link that works.
  */
-export function timeAgo(iso: string, now: Date = new Date()): string {
-  const then = Date.parse(iso);
-  if (Number.isNaN(then)) return '';
+export function reviewBuildState(state: {
+  enabled: boolean;
+  isDirty: boolean;
+  hasBeenPublished: boolean;
+  hasPendingChanges: boolean;
+}): { nothingToOpen: boolean; outOfDate: boolean; notice: 'reviewNotSaved' | 'neverPublished' | 'changesNotInCopy' | null } {
+  const { enabled, isDirty, hasBeenPublished, hasPendingChanges } = state;
+  const nothingToOpen = enabled && (isDirty || !hasBeenPublished);
+  const outOfDate = enabled && !nothingToOpen && hasPendingChanges;
+  const notice = !enabled
+    ? null
+    : isDirty
+      ? 'reviewNotSaved'
+      : !hasBeenPublished
+        ? 'neverPublished'
+        : outOfDate
+          ? 'changesNotInCopy'
+          : null;
+  return { nothingToOpen, outOfDate, notice };
+}
 
-  const seconds = Math.round((now.getTime() - then) / 1000);
-  if (seconds < 60) return 'just now';
+/** The status badge beside the Review mode heading, as its key under `publishSettings`. */
+export function reviewStatus(state: {
+  enabled: boolean;
+  notBuilt: boolean;
+  outOfDate: boolean;
+  expired: boolean;
+}): 'off' | 'publishToApply' | 'publishToUpdate' | 'closed' | 'live' {
+  return !state.enabled
+    ? 'off'
+    : state.notBuilt
+      ? 'publishToApply'
+      : state.outOfDate
+        ? 'publishToUpdate'
+        : state.expired
+          ? 'closed'
+          : 'live';
+}
 
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+/** The expiry row's description, as its key under `publishSettings`. */
+export function reviewExpiryKey(hasDeadline: boolean, expired: boolean): 'reviewClosedOn' | 'reviewClosesOn' | 'reviewNoExpiry' {
+  return hasDeadline
+    ? expired
+      ? 'reviewClosedOn'
+      : 'reviewClosesOn'
+    : 'reviewNoExpiry';
+}
 
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-
-  const days = Math.round(hours / 24);
-  if (days === 1) return 'yesterday';
-  if (days < 7) return `${days} days ago`;
-
-  return new Date(then).toLocaleDateString();
+/** What an empty comment list says: nothing at all yet, or nothing under the current filter. */
+export function emptyThreadsKey(total: number, filter: ReviewFilter): 'noComments' | 'nothingOpen' | 'nothingResolved' {
+  return total === 0
+    ? 'noComments'
+    : filter === 'open'
+      ? 'nothingOpen'
+      : 'nothingResolved';
 }

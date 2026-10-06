@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslations } from 'next-intl';
+import { useInterviewCatalog } from '@/lib/i18n/use-interview-catalog';
 import type { InterviewTemplate } from '@/lib/interview/types';
 import { interviewTemplatesService } from '@/lib/interview/templates-service';
 import { track } from '@/lib/telemetry';
@@ -43,6 +45,10 @@ export function InterviewTemplatesPanel({
   initialMode = 'list',
   onChanged,
 }: InterviewTemplatesPanelProps) {
+  const tc = useTranslations('common');
+  const ti = useTranslations('interviews');
+  const interviewCopy = useInterviewCatalog();
+  const tn = useTranslations('nav');
   const [templates, setTemplates] = useState<InterviewTemplate[]>([]);
   const listScrollRef = useRef<HTMLDivElement | null>(null);
   const [compactRows, measureRowsRef] = useNarrowContainer(COMPACT_ROW_WIDTH);
@@ -56,11 +62,15 @@ export function InterviewTemplatesPanel({
   const reloadList = useCallback(async () => {
     try {
       const all = await interviewTemplatesService.getAllTemplates();
-      setTemplates(all);
+      // Built-in copy is translated here so the table and the search filter both see one string.
+      setTemplates(all.map((tpl) => {
+        const copy = tpl.isBuiltIn ? interviewCopy[tpl.id] : undefined;
+        return copy ? { ...tpl, title: copy.title, description: copy.description } : tpl;
+      }));
     } catch {
-      toast.error('Failed to load interview templates');
+      toast.error(ti('loadFailed'));
     }
-  }, []);
+  }, [ti, interviewCopy]);
 
   useEffect(() => {
     reloadList();
@@ -68,11 +78,12 @@ export function InterviewTemplatesPanel({
 
   const handleDuplicate = async (src: InterviewTemplate) => {
     try {
-      const id = await interviewTemplatesService.generateId(src.title + ' copy');
+      // From the source id, not its title: a translated built-in title can slug to nothing.
+      const id = await interviewTemplatesService.generateId(`${src.id} copy`);
       await interviewTemplatesService.createTemplate({
         ...src,
         id,
-        title: `${src.title} copy`,
+        title: ti('copyTitle', { name: src.title }),
         isBuiltIn: false,
       });
       track('interview_template_created');
@@ -80,11 +91,11 @@ export function InterviewTemplatesPanel({
       onChanged?.();
       const created = await interviewTemplatesService.getTemplate(id);
       if (created) {
-        toast.success(`Duplicated: ${src.title}`);
+        toast.success(ti('duplicated', { name: src.title }));
         setView({ mode: 'edit', template: created });
       }
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Failed to duplicate template';
+      const message = e instanceof Error ? e.message : ti('duplicateFailed');
       toast.error(message);
     }
   };
@@ -94,7 +105,7 @@ export function InterviewTemplatesPanel({
     try {
       await interviewTemplatesService.deleteTemplate(templateToDelete.id);
       track('interview_template_deleted');
-      toast.success(`Deleted: ${templateToDelete.title}`);
+      toast.success(ti('deleted', { name: templateToDelete.title }));
       await reloadList();
       onChanged?.();
     } catch (e) {
@@ -130,17 +141,17 @@ export function InterviewTemplatesPanel({
       <div className="flex flex-col h-full">
         <div className="px-6 pt-6 pb-3 shrink-0 flex flex-col gap-3">
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <h1 className="text-lg font-semibold shrink-0">Interviews</h1>
+            <h1 className="text-lg font-semibold shrink-0">{tn('items.interviews')}</h1>
             <div className="flex items-center shrink-0">
               <Button size="sm" onClick={() => setView({ mode: 'create' })}>
                 <Plus className="w-4 h-4 mr-2" />
-                New
+                {tc('actions.new')}
               </Button>
             </div>
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search templates..."
+                placeholder={ti('searchTemplates')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -149,7 +160,7 @@ export function InterviewTemplatesPanel({
             <ViewModeToggle value={viewMode} onChange={setViewMode} />
           </div>
           <div className="flex items-center gap-2 text-xs">
-            <span className="text-muted-foreground">Show:</span>
+            <span className="text-muted-foreground">{tc('labels.show')}</span>
             <Button
               variant="outline"
               size="sm"
@@ -161,7 +172,7 @@ export function InterviewTemplatesPanel({
               aria-pressed={showBuiltIn}
             >
               <FileText className="w-3 h-3" />
-              Built-in
+              {tc('labels.builtIn')}
             </Button>
             <Button
               variant="outline"
@@ -172,7 +183,7 @@ export function InterviewTemplatesPanel({
               aria-pressed={showCustom}
             >
               <ClipboardList className="w-3 h-3" />
-              Custom
+              {ti('custom')}
             </Button>
           </div>
         </div>
@@ -181,18 +192,18 @@ export function InterviewTemplatesPanel({
           {filtered.length === 0 ? (
             <div className="text-center py-12">
               <ClipboardList className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-              <h3 className="text-lg font-semibold mb-2">No templates found</h3>
+              <h3 className="text-lg font-semibold mb-2">{ti('noTemplatesFound')}</h3>
               <p className="text-muted-foreground mb-4">
                 {!showBuiltIn && !showCustom
-                  ? 'Both Built-in and Custom are hidden. Enable at least one above.'
+                  ? ti('bothHidden')
                   : searchQuery
-                    ? 'Try a different search query'
-                    : 'Create your first interview template'}
+                    ? ti('tryDifferentSearch')
+                    : ti('createFirst')}
               </p>
               {!searchQuery && (
                 <Button onClick={() => setView({ mode: 'create' })}>
                   <Plus className="w-4 h-4 mr-2" />
-                  New Template
+                  {ti('newTemplate')}
                 </Button>
               )}
             </div>
@@ -201,10 +212,10 @@ export function InterviewTemplatesPanel({
               <table className="w-full table-auto border-collapse">
                 <thead className="sticky top-0 z-10">
                   <tr>
-                    <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none w-full">Title</th>
-                    <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Type</th>
-                    <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Items</th>
-                    <th className="@max-5xl:hidden bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Artifact</th>
+                    <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none w-full">{ti('title')}</th>
+                    <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{tc('labels.type')}</th>
+                    <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{ti('items')}</th>
+                    <th className="@max-5xl:hidden bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{ti('artifact')}</th>
                     <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none"></th>
                   </tr>
                 </thead>
@@ -219,7 +230,7 @@ export function InterviewTemplatesPanel({
                       </td>
                       <td className="p-[4px_10px] align-middle whitespace-nowrap">
                         <Badge variant={t.isBuiltIn ? 'secondary' : 'outline'} className="text-[11px] px-[7px] py-[1px] h-auto rounded-full">
-                          {t.isBuiltIn ? 'Built-in' : 'Custom'}
+                          {t.isBuiltIn ? tc('labels.builtIn') : tc('labels.custom')}
                         </Badge>
                       </td>
                       <td className="p-[4px_10px] text-[13px] text-muted-foreground align-middle whitespace-nowrap tabular-nums">{t.items.length}</td>
@@ -230,15 +241,15 @@ export function InterviewTemplatesPanel({
                         <div className="flex items-center justify-end gap-1">
                           {t.isBuiltIn ? (
                             <>
-                              <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => setView({ mode: 'view', template: t })}>View</Button>
-                              <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleDuplicate(t)}>Duplicate</Button>
+                              <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => setView({ mode: 'view', template: t })}>{ti('view')}</Button>
+                              <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleDuplicate(t)}>{ti('duplicate')}</Button>
                             </>
                           ) : (
                             <>
                               <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => setView({ mode: 'edit', template: t })}>
-                                <Edit className="w-3 h-3" />Edit
+                                <Edit className="w-3 h-3" />{tc('actions.edit')}
                               </Button>
-                              <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleDuplicate(t)}>Duplicate</Button>
+                              <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleDuplicate(t)}>{ti('duplicate')}</Button>
                             </>
                           )}
                           {/* The menu was custom-only, so a built-in row would have been left with
@@ -253,21 +264,21 @@ export function InterviewTemplatesPanel({
                                   <>
                                     {t.isBuiltIn ? (
                                       <DropdownMenuItem onClick={() => setView({ mode: 'view', template: t })}>
-                                        <Eye className="w-4 h-4 mr-2" />View
+                                        <Eye className="w-4 h-4 mr-2" />{ti('view')}
                                       </DropdownMenuItem>
                                     ) : (
                                       <DropdownMenuItem onClick={() => setView({ mode: 'edit', template: t })}>
-                                        <Edit className="w-4 h-4 mr-2" />Edit
+                                        <Edit className="w-4 h-4 mr-2" />{tc('actions.edit')}
                                       </DropdownMenuItem>
                                     )}
                                     <DropdownMenuItem onClick={() => handleDuplicate(t)}>
-                                      <Copy className="w-4 h-4 mr-2" />Duplicate
+                                      <Copy className="w-4 h-4 mr-2" />{ti('duplicate')}
                                     </DropdownMenuItem>
                                   </>
                                 )}
                                 {!t.isBuiltIn && (
                                   <DropdownMenuItem onClick={() => setTemplateToDelete(t)} className="text-destructive focus:text-destructive">
-                                    <Trash2 className="w-4 h-4 mr-2" />Delete
+                                    <Trash2 className="w-4 h-4 mr-2" />{tc('actions.delete')}
                                   </DropdownMenuItem>
                                 )}
                               </DropdownMenuContent>
@@ -290,7 +301,7 @@ export function InterviewTemplatesPanel({
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <h3 className="font-semibold truncate">{t.title}</h3>
                         <Badge variant={t.isBuiltIn ? 'secondary' : 'outline'} className="text-xs">
-                          {t.isBuiltIn ? 'Built-in' : 'Custom'}
+                          {t.isBuiltIn ? tc('labels.builtIn') : tc('labels.custom')}
                         </Badge>
                       </div>
                       <p className="text-sm text-muted-foreground line-clamp-2">{t.description}</p>
@@ -307,7 +318,7 @@ export function InterviewTemplatesPanel({
                             variant="ghost"
                             size="sm"
                             onClick={() => setView({ mode: 'view', template: t })}
-                            title="View"
+                            title={ti('view')}
                           >
                             <Eye className="w-4 h-4" />
                           </Button>
@@ -315,7 +326,7 @@ export function InterviewTemplatesPanel({
                             variant="ghost"
                             size="sm"
                             onClick={() => handleDuplicate(t)}
-                            title="Duplicate"
+                            title={ti('duplicate')}
                           >
                             <Copy className="w-4 h-4" />
                           </Button>
@@ -326,7 +337,7 @@ export function InterviewTemplatesPanel({
                             variant="ghost"
                             size="sm"
                             onClick={() => setView({ mode: 'edit', template: t })}
-                            title="Edit"
+                            title={tc('actions.edit')}
                           >
                             <Edit className="w-4 h-4" />
                           </Button>
@@ -334,7 +345,7 @@ export function InterviewTemplatesPanel({
                             variant="ghost"
                             size="sm"
                             onClick={() => handleDuplicate(t)}
-                            title="Duplicate"
+                            title={ti('duplicate')}
                           >
                             <Copy className="w-4 h-4" />
                           </Button>
@@ -342,7 +353,7 @@ export function InterviewTemplatesPanel({
                             variant="ghost"
                             size="sm"
                             onClick={() => setTemplateToDelete(t)}
-                            title="Delete"
+                            title={tc('actions.delete')}
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -363,7 +374,7 @@ export function InterviewTemplatesPanel({
         <DialogContent className="max-w-[90vw] sm:max-w-[85vw] lg:max-w-3xl h-[90vh] p-0 overflow-hidden">
           <DialogHeader className="sr-only">
             <DialogTitle>
-              {editorTemplate ? `Edit ${editorTemplate.title}` : 'Create interview template'}
+              {editorTemplate ? ti('editTitle', { title: editorTemplate.title }) : ti('createTitle')}
             </DialogTitle>
           </DialogHeader>
           {inEditor && (
@@ -380,19 +391,19 @@ export function InterviewTemplatesPanel({
       <Dialog open={!!templateToDelete} onOpenChange={(o) => !o && setTemplateToDelete(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Template</DialogTitle>
+            <DialogTitle>{ti('deleteTitle')}</DialogTitle>
             <DialogDescription>
               {templateToDelete
-                ? `Are you sure you want to delete "${templateToDelete.title}"? This action cannot be undone.`
+                ? ti('confirmDelete', { title: templateToDelete.title })
                 : ''}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTemplateToDelete(null)}>
-              Cancel
+              {tc('actions.cancel')}
             </Button>
             <Button variant="destructive" onClick={confirmDelete}>
-              Delete
+              {tc('actions.delete')}
             </Button>
           </DialogFooter>
         </DialogContent>

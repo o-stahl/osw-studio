@@ -51,9 +51,9 @@ const DEFAULT_COMPLIANCE: ComplianceConfig = {
   enabled: false,
   bannerPosition: 'bottom',
   bannerStyle: 'bar',
-  message: 'This site uses cookies to improve your experience.',
-  acceptButtonText: 'Accept',
-  declineButtonText: 'Decline',
+  message: 'This site uses cookies to improve your experience.', // i18n-ignore: default banner text for the site's visitors, editable in Compliance
+  acceptButtonText: 'Accept', // i18n-ignore: default banner text for the site's visitors
+  declineButtonText: 'Decline', // i18n-ignore: default banner text for the site's visitors
   mode: 'opt-in',
   blockAnalytics: true,
 };
@@ -634,6 +634,11 @@ export class SQLiteAdapter implements StorageAdapter {
   /**
    * Get or create a ProjectDatabase instance for a project
    */
+  /** Where this adapter keeps project databases: its workspace's directory, or the shared data directory. */
+  getProjectDatabaseBaseDir(): string | undefined {
+    return this.baseDir;
+  }
+
   getProjectDatabase(projectId: string): ProjectDatabase {
     let projectDb = this.projectDatabases.get(projectId);
     if (!projectDb) {

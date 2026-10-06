@@ -1,11 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslations } from 'next-intl';
+import { useSkillGroupCopy } from '@/lib/i18n/use-skill-group-catalog';
 import { Skill, SkillGroup } from '@/lib/vfs/skills/types';
 import { skillsService } from '@/lib/vfs/skills';
 import { vfs } from '@/lib/vfs';
 import { track } from '@/lib/telemetry';
-import { logger, formatCompactAge } from '@/lib/utils';
+import { logger } from '@/lib/utils';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Input } from '@/components/ui/input';
@@ -64,7 +67,38 @@ import { ViewModeToggle, useViewMode } from '@/components/ui/view-mode-toggle';
 import { COMPACT_ROW_WIDTH } from '@/lib/constants/layout';
 import { useNarrowContainer } from '@/lib/hooks/use-narrow-container';
 
+/** The skills the list shows for a search and the built-in/custom filters, custom first. */
+export function filterSkills(skills: Skill[], searchQuery: string, showBuiltIn: boolean, showCustom: boolean): Skill[] {
+  return skills.filter(skill => {
+    const q = searchQuery.toLowerCase();
+    const matchesSearch =
+      skill.name.toLowerCase().includes(q) ||
+      skill.description.toLowerCase().includes(q);
+    if (!matchesSearch) return false;
+    if (skill.isBuiltIn && !showBuiltIn) return false;
+    if (!skill.isBuiltIn && !showCustom) return false;
+    return true;
+  }).sort((a, b) => Number(!!a.isBuiltIn) - Number(!!b.isBuiltIn)); // custom first, then built-in
+}
+
+/** The groups the list shows for a search, matched against the name and description as shown. */
+export function filterGroups(
+  groups: SkillGroup[],
+  searchQuery: string,
+  groupCopy: (group: SkillGroup) => { name: string; description: string },
+): SkillGroup[] {
+  return groups.filter(g => {
+    const q = searchQuery.toLowerCase();
+    const { name, description } = groupCopy(g);
+    return !q || name.toLowerCase().includes(q) || description.toLowerCase().includes(q);
+  });
+}
+
 export function SkillsManager() {
+  const when = useLocalFormat();
+  const t = useTranslations('skills');
+  const tc = useTranslations('common');
+  const groupCopy = useSkillGroupCopy();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [groups, setGroups] = useState<SkillGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,7 +136,7 @@ export function SkillsManager() {
       await loadEnabledState(allSkills, allGroups);
     } catch (error) {
       logger.error('[SkillsManager] Failed to load skills/groups', error);
-      toast.error('Failed to load skills');
+      toast.error(t('loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -136,9 +170,9 @@ export function SkillsManager() {
       await skillsService.setGlobalEnabled(enabled);
       setGlobalEnabled(enabled);
       await vfs.reloadTransientSkills();
-      toast.success(enabled ? 'Skills enabled' : 'Skills disabled');
+      toast.success(enabled ? t('skillsEnabled') : t('skillsDisabled'));
     } catch {
-      toast.error('Failed to update skills state');
+      toast.error(t('updateStateFailed'));
     }
   };
 
@@ -146,15 +180,15 @@ export function SkillsManager() {
     try {
       await skillsService.setEvaluationEnabled(enabled);
       setEvaluationEnabled(enabled);
-      toast.success(enabled ? 'Skill evaluation enabled' : 'Skill evaluation disabled');
+      toast.success(enabled ? t('evalEnabled') : t('evalDisabled'));
     } catch {
-      toast.error('Failed to update evaluation state');
+      toast.error(t('updateEvalFailed'));
     }
   };
 
   const handleBulkSkillToggle = async (skillIds: string[], enabled: boolean) => {
     if (skillIds.length === 0) {
-      toast.error('No skills to update');
+      toast.error(t('noneToUpdate'));
       return;
     }
     try {
@@ -171,9 +205,9 @@ export function SkillsManager() {
         return next;
       });
       await vfs.reloadTransientSkills();
-      toast.success(`${enabled ? 'Enabled' : 'Disabled'} ${skillIds.length} skill${skillIds.length === 1 ? '' : 's'}`);
+      toast.success(t(enabled ? 'enabledSkills' : 'disabledSkills', { count: skillIds.length }));
     } catch {
-      toast.error('Failed to update skills');
+      toast.error(t('updateFailed'));
     }
   };
 
@@ -192,7 +226,7 @@ export function SkillsManager() {
       }
       await vfs.reloadTransientSkills();
     } catch {
-      toast.error('Failed to toggle skill');
+      toast.error(t('toggleFailed'));
     }
   };
 
@@ -211,7 +245,7 @@ export function SkillsManager() {
       }
       await vfs.reloadTransientSkills();
     } catch {
-      toast.error('Failed to toggle group');
+      toast.error(t('toggleGroupFailed'));
     }
   };
 
@@ -235,11 +269,11 @@ export function SkillsManager() {
       try {
         await skillsService.deleteSkill(skillToDelete.id);
         track('skill_deleted');
-        toast.success(`Deleted skill: ${skillToDelete.name}`);
+        toast.success(t('deletedSkill', { name: skillToDelete.name }));
         await loadAll();
         await vfs.reloadTransientSkills();
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to delete skill';
+        const message = error instanceof Error ? error.message : t('deleteSkillFailed');
         toast.error(message);
       } finally {
         setDeleteConfirmOpen(false);
@@ -248,11 +282,11 @@ export function SkillsManager() {
     } else if (groupToDelete) {
       try {
         await skillsService.deleteGroup(groupToDelete.id);
-        toast.success(`Deleted group: ${groupToDelete.name}`);
+        toast.success(t('deletedGroup', { name: groupToDelete.name }));
         await loadAll();
         await vfs.reloadTransientSkills();
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to delete group';
+        const message = error instanceof Error ? error.message : t('deleteGroupFailed');
         toast.error(message);
       } finally {
         setDeleteConfirmOpen(false);
@@ -274,15 +308,15 @@ export function SkillsManager() {
       try {
         if (file.name.endsWith('.zip')) {
           const imported = await skillsService.importSkills(file);
-          toast.success(`Imported ${imported.length} skill(s)`);
+          toast.success(t('importedSkills', { count: imported.length }));
         } else {
           const skill = await skillsService.importSkillFile(file);
-          toast.success(`Imported skill: ${skill.name}`);
+          toast.success(t('importedSkill', { name: skill.name }));
         }
         await loadAll();
         await vfs.reloadTransientSkills();
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to import skill';
+        const message = error instanceof Error ? error.message : t('importSkillFailed');
         toast.error(message);
       }
     };
@@ -294,7 +328,7 @@ export function SkillsManager() {
     try {
       const customSkills = skills.filter(s => !s.isBuiltIn);
       if (customSkills.length === 0) {
-        toast.error('No custom skills to export');
+        toast.error(t('noCustomToExport'));
         return;
       }
 
@@ -305,9 +339,9 @@ export function SkillsManager() {
       a.download = `osw-skills-${new Date().toISOString().split('T')[0]}.zip`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success(`Exported ${customSkills.length} skill(s)`);
+      toast.success(t('exportedSkills', { count: customSkills.length }));
     } catch {
-      toast.error('Failed to export skills');
+      toast.error(t('exportFailed'));
     }
   };
 
@@ -360,21 +394,8 @@ export function SkillsManager() {
     return map;
   }, [groups]);
 
-  const filteredSkills = skills.filter(skill => {
-    const q = searchQuery.toLowerCase();
-    const matchesSearch =
-      skill.name.toLowerCase().includes(q) ||
-      skill.description.toLowerCase().includes(q);
-    if (!matchesSearch) return false;
-    if (skill.isBuiltIn && !showBuiltIn) return false;
-    if (!skill.isBuiltIn && !showCustom) return false;
-    return true;
-  }).sort((a, b) => Number(!!a.isBuiltIn) - Number(!!b.isBuiltIn)); // custom first, then built-in
-
-  const filteredGroups = groups.filter(g => {
-    const q = searchQuery.toLowerCase();
-    return !q || g.name.toLowerCase().includes(q) || (g.description ?? '').toLowerCase().includes(q);
-  });
+  const filteredSkills = filterSkills(skills, searchQuery, showBuiltIn, showCustom);
+  const filteredGroups = filterGroups(groups, searchQuery, groupCopy);
 
   const skillsPagination = usePagination(filteredSkills, {
     perPage: 30,
@@ -389,7 +410,7 @@ export function SkillsManager() {
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <Spinner size={48} className="mx-auto text-primary" />
-          <p className="mt-4">Loading skills...</p>
+          <p className="mt-4">{t('loading')}</p>
         </div>
       </div>
     );
@@ -402,11 +423,11 @@ export function SkillsManager() {
         <div className="pt-4 px-4 pb-3 sm:pt-6 sm:px-6 sm:pb-3 shrink-0">
           <div className="mx-auto max-w-7xl flex flex-col gap-3">
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <h1 className="text-lg font-semibold shrink-0">Skills</h1>
+              <h1 className="text-lg font-semibold shrink-0">{tc('terms.skills')}</h1>
               <div className="flex items-center shrink-0">
                 <Button onClick={handleCreateNew} size="sm">
                   <Plus className="w-4 h-4 mr-2" />
-                  New
+                  {tc('actions.new')}
                 </Button>
               </div>
 
@@ -414,7 +435,7 @@ export function SkillsManager() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search skills and groups..."
+                  placeholder={t('searchPlaceholder')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9"
@@ -426,22 +447,22 @@ export function SkillsManager() {
                 <ViewModeToggle value={viewMode} onChange={setViewMode} />
                 <Button variant="outline" size="sm" onClick={handleOpenCreateGroup}>
                   <FolderTree className="w-4 h-4 mr-2" />
-                  New Group
+                  {t('newGroup')}
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="px-2" title="More">
+                    <Button variant="outline" size="sm" className="px-2" title={t('more')}>
                       <MoreVertical className="w-4 h-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onClick={handleImport}>
                       <Upload className="w-4 h-4 mr-2" />
-                      Import
+                      {tc('actions.import')}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleExportAll}>
                       <Download className="w-4 h-4 mr-2" />
-                      Export
+                      {tc('actions.export')}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -452,12 +473,10 @@ export function SkillsManager() {
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
               <Power className="w-4 h-4 text-muted-foreground shrink-0" />
               <Label htmlFor="global-toggle" className="text-[13px] font-medium cursor-pointer">
-                Skills system
+                {t('skillsSystem')}
               </Label>
               <InfoTip>
-                Skills are reusable instructions that steer how the AI builds. When on, the ones you
-                enable below are added to the AI&apos;s guidance for every build. Turn off to run with
-                no skills at all.
+                {t('systemInfo')}
               </InfoTip>
               <Switch
                 id="global-toggle"
@@ -469,12 +488,10 @@ export function SkillsManager() {
 
               <Sparkles className="w-4 h-4 text-muted-foreground shrink-0" />
               <Label htmlFor="eval-toggle" className="text-[13px] font-medium cursor-pointer">
-                Skill evaluation
+                {t('skillEvaluation')}
               </Label>
               <InfoTip>
-                Before each message a quick check picks which of your enabled skills are relevant, so
-                only those get added instead of all of them. Sharpens relevance but spends some extra
-                tokens up front. Leave off to always include every enabled skill.
+                {t('evalInfo')}
               </InfoTip>
               <Switch
                 id="eval-toggle"
@@ -497,19 +514,19 @@ export function SkillsManager() {
                   <TabsList className="h-8 bg-muted/60">
                     <TabsTrigger value="skills" className="gap-1.5 h-6 data-[state=active]:bg-primary/15 data-[state=active]:text-primary data-[state=active]:shadow-none">
                       <Sparkles className="w-3.5 h-3.5" />
-                      Skills
+                      {tc('terms.skills')}
                       <Badge variant="outline" className="text-xs ml-1">{filteredSkills.length}</Badge>
                     </TabsTrigger>
                     <TabsTrigger value="groups" className="gap-1.5 h-6 data-[state=active]:bg-primary/15 data-[state=active]:text-primary data-[state=active]:shadow-none">
                       <FolderTree className="w-3.5 h-3.5" />
-                      Groups
+                      {t('groups')}
                       <Badge variant="outline" className="text-xs ml-1">{filteredGroups.length}</Badge>
                     </TabsTrigger>
                   </TabsList>
 
                   {activeTab === 'skills' && (
                     <div className="ml-auto flex flex-wrap items-center gap-2">
-                      <span className="text-xs text-muted-foreground">Show:</span>
+                      <span className="text-xs text-muted-foreground">{tc('labels.show')}</span>
                       <Button
                         variant="outline"
                         size="sm"
@@ -517,10 +534,10 @@ export function SkillsManager() {
                         style={showBuiltIn ? { backgroundColor: 'color-mix(in oklab, var(--primary) 5%, transparent)', borderColor: 'color-mix(in oklab, var(--primary) 30%, transparent)' } : undefined}
                         onClick={() => setShowBuiltIn(v => !v)}
                         aria-pressed={showBuiltIn}
-                        title="Show or hide the skills that ship with OSW Studio"
+                        title={t('showBuiltIn')}
                       >
                         <FileText className="w-3 h-3" />
-                        Built-in
+                        {tc('labels.builtIn')}
                       </Button>
                       <Button
                         variant="outline"
@@ -529,10 +546,10 @@ export function SkillsManager() {
                         style={showCustom ? { backgroundColor: 'color-mix(in oklab, var(--primary) 5%, transparent)', borderColor: 'color-mix(in oklab, var(--primary) 30%, transparent)' } : undefined}
                         onClick={() => setShowCustom(v => !v)}
                         aria-pressed={showCustom}
-                        title="Show or hide the skills you created"
+                        title={t('showCustom')}
                       >
                         <Sparkles className="w-3 h-3" />
-                        Custom
+                        {t('custom')}
                       </Button>
                       <span className="w-px h-5 bg-border mx-0.5" />
                       <Button
@@ -541,9 +558,9 @@ export function SkillsManager() {
                         className="h-7 px-2"
                         onClick={() => handleBulkSkillToggle(filteredSkills.map(s => s.id), true)}
                         disabled={!globalEnabled || filteredSkills.length === 0}
-                        title="Enable all skills currently shown"
+                        title={t('enableAllShown')}
                       >
-                        Enable all
+                        {t('enableAll')}
                       </Button>
                       <Button
                         variant="outline"
@@ -551,9 +568,9 @@ export function SkillsManager() {
                         className="h-7 px-2"
                         onClick={() => handleBulkSkillToggle(filteredSkills.map(s => s.id), false)}
                         disabled={!globalEnabled || filteredSkills.length === 0}
-                        title="Disable all skills currently shown"
+                        title={t('disableAllShown')}
                       >
-                        Disable all
+                        {t('disableAll')}
                       </Button>
                     </div>
                   )}
@@ -563,18 +580,18 @@ export function SkillsManager() {
                   {filteredSkills.length === 0 ? (
                   <div className="text-center py-12">
                     <Sparkles className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                    <h3 className="text-lg font-semibold mb-2">No skills found</h3>
+                    <h3 className="text-lg font-semibold mb-2">{t('noSkillsFound')}</h3>
                     <p className="text-muted-foreground mb-4">
                       {!showBuiltIn && !showCustom
-                        ? 'Both Built-in and Custom are hidden — enable at least one above.'
+                        ? t('bothHidden')
                         : searchQuery
-                          ? 'Try a different search query'
-                          : 'Create your first custom skill'}
+                          ? t('tryDifferentSearch')
+                          : t('createFirstSkill')}
                     </p>
                     {!searchQuery && showBuiltIn && showCustom && (
                       <Button onClick={handleCreateNew}>
                         <Plus className="w-4 h-4 mr-2" />
-                        Create Skill
+                        {t('createSkill')}
                       </Button>
                     )}
                   </div>
@@ -602,10 +619,10 @@ export function SkillsManager() {
                         <table className="w-full table-auto border-collapse">
                           <thead className="sticky top-0 z-10">
                             <tr>
-                              <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none w-full">Name</th>
-                              <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Type</th>
-                              <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Group</th>
-                              <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Updated</th>
+                              <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none w-full">{tc('labels.name')}</th>
+                              <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{tc('labels.type')}</th>
+                              <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{t('group')}</th>
+                              <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{tc('labels.updated')}</th>
                               <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none"></th>
                             </tr>
                           </thead>
@@ -622,19 +639,19 @@ export function SkillsManager() {
                                   </td>
                                   <td className="p-[4px_10px] align-middle whitespace-nowrap">
                                     <Badge variant={skill.isBuiltIn ? 'secondary' : 'outline'} className="text-[11px] px-[7px] py-[1px] h-auto rounded-full">
-                                      {skill.isBuiltIn ? 'Built-in' : 'Custom'}
+                                      {skill.isBuiltIn ? tc('labels.builtIn') : tc('labels.custom')}
                                     </Badge>
                                   </td>
                                   <td className="p-[4px_10px] text-[13px] text-muted-foreground align-middle whitespace-nowrap">
-                                    {memberOf.length > 0 ? memberOf[0].name : '—'}
+                                    {memberOf.length > 0 ? groupCopy(memberOf[0]).name : '—'}
                                   </td>
                                   <td className="p-[4px_10px] text-[13px] text-muted-foreground align-middle whitespace-nowrap overflow-hidden text-ellipsis">
-                                    {formatCompactAge(skill.updatedAt)}
+                                    {when.age(skill.updatedAt)}
                                   </td>
                                   <td className="p-[4px_10px] align-middle whitespace-nowrap text-right" onClick={e => e.stopPropagation()}>
                                     <div className="flex items-center justify-end gap-1">
                                       <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleEdit(skill)}>
-                                        <Edit className="w-3 h-3" />Edit
+                                        <Edit className="w-3 h-3" />{tc('actions.edit')}
                                       </Button>
                                       <Button
                                         variant={enabledSkills.has(skill.id) ? 'outline' : 'ghost'}
@@ -643,7 +660,7 @@ export function SkillsManager() {
                                         onClick={() => handleSkillToggle(skill.id, !enabledSkills.has(skill.id))}
                                         disabled={!globalEnabled}
                                       >
-                                        {enabledSkills.has(skill.id) ? 'On' : 'Off'}
+                                        {enabledSkills.has(skill.id) ? t('on') : t('off')}
                                       </Button>
                                       {!skill.isBuiltIn && (
                                         <Button variant="ghost" size="xs" className="@max-3xl:hidden" onClick={() => handleDelete(skill)}>
@@ -659,18 +676,18 @@ export function SkillsManager() {
                                           </DropdownMenuTrigger>
                                           <DropdownMenuContent align="end">
                                             <DropdownMenuItem onClick={() => handleEdit(skill)}>
-                                              <Edit className="w-4 h-4 mr-2" />Edit
+                                              <Edit className="w-4 h-4 mr-2" />{tc('actions.edit')}
                                             </DropdownMenuItem>
                                             <DropdownMenuItem
                                               onClick={() => handleSkillToggle(skill.id, !enabledSkills.has(skill.id))}
                                               disabled={!globalEnabled}
                                             >
                                               <Sparkles className="w-4 h-4 mr-2" />
-                                              {enabledSkills.has(skill.id) ? 'Disable' : 'Enable'}
+                                              {enabledSkills.has(skill.id) ? t('disable') : t('enable')}
                                             </DropdownMenuItem>
                                             {!skill.isBuiltIn && (
                                               <DropdownMenuItem onClick={() => handleDelete(skill)} className="text-destructive focus:text-destructive">
-                                                <Trash2 className="w-4 h-4 mr-2" />Delete
+                                                <Trash2 className="w-4 h-4 mr-2" />{tc('actions.delete')}
                                               </DropdownMenuItem>
                                             )}
                                           </DropdownMenuContent>
@@ -711,14 +728,14 @@ export function SkillsManager() {
                 {filteredGroups.length === 0 ? (
                   <div className="text-center py-12">
                     <FolderTree className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                    <h3 className="text-lg font-semibold mb-2">No groups found</h3>
+                    <h3 className="text-lg font-semibold mb-2">{t('noGroupsFound')}</h3>
                     <p className="text-muted-foreground mb-4">
-                      {searchQuery ? 'Try a different search query' : 'Create your first group to bundle skills together'}
+                      {searchQuery ? t('tryDifferentSearch') : t('createFirstGroup')}
                     </p>
                     {!searchQuery && (
                       <Button onClick={handleOpenCreateGroup}>
                         <FolderTree className="w-4 h-4 mr-2" />
-                        New Group
+                        {t('newGroup')}
                       </Button>
                     )}
                   </div>
@@ -784,19 +801,19 @@ export function SkillsManager() {
       }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{skillToDelete ? 'Delete Skill' : 'Delete Group'}</DialogTitle>
+            <DialogTitle>{skillToDelete ? t('deleteSkill') : t('deleteGroup')}</DialogTitle>
             <DialogDescription>
               {skillToDelete
-                ? `Are you sure you want to delete "${skillToDelete.name}"? This action cannot be undone.`
-                : `Are you sure you want to delete the group "${groupToDelete?.name}"? Member skills will not be deleted.`}
+                ? t('confirmDeleteSkill', { name: skillToDelete.name })
+                : t('confirmDeleteGroup', { name: groupToDelete?.name ?? '' })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>
-              Cancel
+              {tc('actions.cancel')}
             </Button>
             <Button variant="destructive" onClick={confirmDelete}>
-              Delete
+              {tc('actions.delete')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -817,6 +834,10 @@ interface SkillCardProps {
 }
 
 function SkillCard({ skill, isEnabled, globalEnabled, groups, enabledGroups, onToggle, onEdit, onDelete }: SkillCardProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('skills');
+  const groupCopy = useSkillGroupCopy();
+  const when = useLocalFormat();
   const [isOpen, setIsOpen] = useState(false);
   const enabledMemberGroups = groups.filter(g => enabledGroups.has(g.id));
   const enabledByGroup = enabledMemberGroups.length > 0;
@@ -842,24 +863,24 @@ function SkillCard({ skill, isEnabled, globalEnabled, groups, enabledGroups, onT
                 </CollapsibleTrigger>
                 {skill.isBuiltIn && (
                   <Badge variant="secondary" className="text-xs">
-                    Built-in
+                    {tc('labels.builtIn')}
                   </Badge>
                 )}
                 {!effectiveEnabled && (
                   <Badge variant="outline" className="text-xs text-muted-foreground">
-                    Disabled
+                    {t('disabled')}
                   </Badge>
                 )}
                 {enabledByGroup && (
                   <Badge
                     variant="outline"
                     className="text-xs gap-1"
-                    title={`Active via group${enabledMemberGroups.length > 1 ? 's' : ''}: ${enabledMemberGroups.map(g => g.name).join(', ')}${individualOverridden ? ' (overrides individual disable)' : ''}`}
+                    title={t('activeViaGroups', { count: enabledMemberGroups.length, groups: enabledMemberGroups.map(g => groupCopy(g).name).join(', '), override: individualOverridden ? 'yes' : 'no' })}
                   >
                     <FolderTree className="w-3 h-3" />
                     {enabledMemberGroups.length === 1
-                      ? enabledMemberGroups[0].name
-                      : `${enabledMemberGroups.length} groups`}
+                      ? groupCopy(enabledMemberGroups[0]).name
+                      : t('groupCount', { count: enabledMemberGroups.length })}
                   </Badge>
                 )}
               </div>
@@ -899,15 +920,15 @@ function SkillCard({ skill, isEnabled, globalEnabled, groups, enabledGroups, onT
           <div className="border-t px-4 py-3 bg-muted/30">
             <div className="text-sm space-y-2">
               <div className="flex items-center gap-2 text-muted-foreground">
-                <span className="font-medium">Updated:</span>
-                <span>{skill.updatedAt.toLocaleDateString()}</span>
+                <span className="font-medium">{t('updatedLabel')}</span>
+                <span>{when.dateTime(skill.updatedAt, { dateStyle: 'medium' })}</span>
               </div>
               <div>
-                <span className="font-medium text-muted-foreground">Description:</span>
+                <span className="font-medium text-muted-foreground">{t('descriptionLabel')}</span>
                 <p className="mt-1">{skill.description}</p>
               </div>
               <div>
-                <span className="font-medium text-muted-foreground">Content:</span>
+                <span className="font-medium text-muted-foreground">{t('contentLabel')}</span>
                 <pre className="mt-1 text-xs bg-background p-3 rounded border overflow-auto max-h-96 whitespace-pre-wrap">
                   {skill.markdown}
                 </pre>
@@ -943,6 +964,9 @@ function GroupCard({
   onEditGroup,
   onDeleteGroup,
 }: GroupCardProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('skills');
+  const groupCopy = useSkillGroupCopy();
   const [isOpen, setIsOpen] = useState(false);
   const effectiveEnabled = globalEnabled && isEnabled;
   const memberSkills = group.memberIds
@@ -963,25 +987,25 @@ function GroupCard({
                   ) : (
                     <ChevronRight className="w-4 h-4 shrink-0" />
                   )}
-                  <h3 className="font-semibold truncate">{group.name}</h3>
+                  <h3 className="font-semibold truncate">{groupCopy(group).name}</h3>
                 </CollapsibleTrigger>
                 <Badge variant="outline" className="text-xs">
-                  {memberSkills.length} {memberSkills.length === 1 ? 'skill' : 'skills'}
+                  {t('memberCount', { count: memberSkills.length })}
                 </Badge>
                 {group.isBuiltIn && (
-                  <Badge variant="secondary" className="text-xs">Built-in</Badge>
+                  <Badge variant="secondary" className="text-xs">{tc('labels.builtIn')}</Badge>
                 )}
                 {!effectiveEnabled && (
-                  <Badge variant="outline" className="text-xs text-muted-foreground">Disabled</Badge>
+                  <Badge variant="outline" className="text-xs text-muted-foreground">{t('disabled')}</Badge>
                 )}
                 {missingCount > 0 && (
                   <Badge variant="outline" className="text-xs text-amber-600 border-amber-600/30">
-                    {missingCount} missing
+                    {t('missingCount', { count: missingCount })}
                   </Badge>
                 )}
               </div>
-              {group.description && (
-                <p className="text-sm text-muted-foreground line-clamp-2">{group.description}</p>
+              {groupCopy(group).description && (
+                <p className="text-sm text-muted-foreground line-clamp-2">{groupCopy(group).description}</p>
               )}
             </div>
             <div className="flex items-center gap-2">
@@ -1007,7 +1031,7 @@ function GroupCard({
         <CollapsibleContent>
           <div className="border-t bg-muted/30">
             {memberSkills.length === 0 ? (
-              <div className="px-4 py-3 text-xs text-muted-foreground">No member skills.</div>
+              <div className="px-4 py-3 text-xs text-muted-foreground">{t('noMemberSkills')}</div>
             ) : (
               <div className="divide-y">
                 {memberSkills.map(skill => {
@@ -1018,7 +1042,7 @@ function GroupCard({
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium truncate">{skill.name}</span>
                           {skill.isBuiltIn && (
-                            <Badge variant="secondary" className="text-[10px] py-0">Built-in</Badge>
+                            <Badge variant="secondary" className="text-[10px] py-0">{tc('labels.builtIn')}</Badge>
                           )}
                         </div>
                         <p className="text-xs text-muted-foreground line-clamp-1">{skill.description}</p>
@@ -1050,6 +1074,8 @@ interface GroupEditorDialogProps {
 }
 
 function GroupEditorDialog({ open, mode, group, allSkills, onSave, onCancel }: GroupEditorDialogProps) {
+  const t = useTranslations('skills');
+  const tc = useTranslations('common');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [memberIds, setMemberIds] = useState<Set<string>>(new Set());
@@ -1073,7 +1099,7 @@ function GroupEditorDialog({ open, mode, group, allSkills, onSave, onCancel }: G
 
   const handleSave = async () => {
     if (!name.trim()) {
-      toast.error('Group name is required');
+      toast.error(t('groupNameRequired'));
       return;
     }
     setSaving(true);
@@ -1084,18 +1110,18 @@ function GroupEditorDialog({ open, mode, group, allSkills, onSave, onCancel }: G
           description: description.trim() || undefined,
           memberIds: Array.from(memberIds),
         });
-        toast.success(`Created group: ${name.trim()}`);
+        toast.success(t('createdGroup', { name: name.trim() }));
       } else if (group) {
         await skillsService.updateGroup(group.id, {
           name: name.trim(),
           description: description.trim() || undefined,
           memberIds: Array.from(memberIds),
         });
-        toast.success(`Updated group: ${name.trim()}`);
+        toast.success(t('updatedGroup', { name: name.trim() }));
       }
       onSave();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to save group';
+      const message = error instanceof Error ? error.message : t('saveGroupFailed');
       toast.error(message);
     } finally {
       setSaving(false);
@@ -1112,33 +1138,33 @@ function GroupEditorDialog({ open, mode, group, allSkills, onSave, onCancel }: G
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
       <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>{mode === 'create' ? 'New Skill Group' : 'Edit Skill Group'}</DialogTitle>
+          <DialogTitle>{mode === 'create' ? t('newGroupTitle') : t('editGroupTitle')}</DialogTitle>
           <DialogDescription>
-            Bundle skills together for one-click enable/disable. A skill in multiple groups stays active if any of its groups is enabled.
+            {t('groupDialogDesc')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto space-y-4">
           <div>
-            <Label htmlFor="group-name" className="text-sm font-medium">Name</Label>
+            <Label htmlFor="group-name" className="text-sm font-medium">{tc('labels.name')}</Label>
             <Input
               id="group-name"
-              placeholder="e.g. Webdev Skills"
+              placeholder={t('groupNamePlaceholder')}
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={mode === 'edit'}
               className="mt-1"
             />
             {mode === 'edit' && (
-              <p className="text-xs text-muted-foreground mt-1">Group ID cannot be changed.</p>
+              <p className="text-xs text-muted-foreground mt-1">{t('groupIdFixed')}</p>
             )}
           </div>
 
           <div>
-            <Label htmlFor="group-description" className="text-sm font-medium">Description (optional)</Label>
+            <Label htmlFor="group-description" className="text-sm font-medium">{tc('labels.descriptionOptional')}</Label>
             <Textarea
               id="group-description"
-              placeholder="What this group is for"
+              placeholder={t('groupPurpose')}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="mt-1"
@@ -1149,16 +1175,16 @@ function GroupEditorDialog({ open, mode, group, allSkills, onSave, onCancel }: G
           <div>
             <div className="flex items-center justify-between mb-2">
               <Label className="text-sm font-medium">
-                Members
+                {t('members')}
                 <span className="ml-2 text-xs text-muted-foreground font-normal">
-                  ({memberIds.size} selected)
+                  {t('selectedCount', { count: memberIds.size })}
                 </span>
               </Label>
             </div>
             <div className="relative mb-2">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Filter skills..."
+                placeholder={t('filterSkills')}
                 value={memberFilter}
                 onChange={(e) => setMemberFilter(e.target.value)}
                 className="pl-9"
@@ -1166,7 +1192,7 @@ function GroupEditorDialog({ open, mode, group, allSkills, onSave, onCancel }: G
             </div>
             <div className="border rounded-lg max-h-72 overflow-y-auto divide-y">
               {filteredSkills.length === 0 ? (
-                <div className="px-3 py-4 text-xs text-muted-foreground text-center">No skills match.</div>
+                <div className="px-3 py-4 text-xs text-muted-foreground text-center">{t('noSkillsMatch')}</div>
               ) : (
                 filteredSkills.map(skill => (
                   <label
@@ -1189,7 +1215,7 @@ function GroupEditorDialog({ open, mode, group, allSkills, onSave, onCancel }: G
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium truncate">{skill.name}</span>
                         {skill.isBuiltIn && (
-                          <Badge variant="secondary" className="text-[10px] py-0">Built-in</Badge>
+                          <Badge variant="secondary" className="text-[10px] py-0">{tc('labels.builtIn')}</Badge>
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground line-clamp-1">{skill.description}</p>
@@ -1202,9 +1228,9 @@ function GroupEditorDialog({ open, mode, group, allSkills, onSave, onCancel }: G
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onCancel} disabled={saving}>Cancel</Button>
+          <Button variant="outline" onClick={onCancel} disabled={saving}>{tc('actions.cancel')}</Button>
           <Button onClick={handleSave} disabled={saving || !name.trim()}>
-            {saving ? 'Saving...' : mode === 'create' ? 'Create Group' : 'Save'}
+            {saving ? tc('actions.saving') : mode === 'create' ? t('createGroup') : tc('actions.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,0 +1,12 @@
+{
+  "ko": {
+    "message": "OSW Studio를 한국어로 사용할 수 있어요.",
+    "accept": "한국어로 전환",
+    "note": "언어는 나중에 설정에서 바꿀 수 있어요."
+  },
+  "fi": {
+    "message": "OSW Studiota voi käyttää suomeksi.",
+    "accept": "Vaihda suomeksi",
+    "note": "Voit vaihtaa kielen myöhemmin asetuksista."
+  }
+}

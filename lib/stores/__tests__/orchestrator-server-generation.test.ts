@@ -4,6 +4,7 @@ import { getProjectAssignment } from '@/lib/llm/models/project-assignment';
 import { getProvider } from '@/lib/llm/providers/registry';
 import { configManager } from '@/lib/config/storage';
 import { toast } from 'sonner';
+import { checkpointManager } from '@/lib/vfs/checkpoint';
 
 // Side-effects reached only on the success path — stubbed so the test stays
 // deterministic in the node environment (no window / EventSource / VFS).
@@ -58,6 +59,41 @@ describe('orchestrator slice — startServerGeneration model resolution', () => 
     // configManager.getProviderModel() which the shared mock returns as 'gpt-4'.
     expect(body.model).toBe('minimax-m2.7');
     expect(body.providerConfig.provider).toBe('opencode-go');
+  });
+
+  // An unnamed project sends no name, so the server applies its own default rather than storing
+  // whichever language's "Untitled" this tab happened to be in.
+  it('sends no project name for a project that has none', async () => {
+    store.setState({ projectName: '' });
+    await store.getState().startServerGeneration('proj1', 'build a landing page', false);
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect('projectName' in body).toBe(false);
+  });
+
+  // The server runs the loop but the browser holds the image model's key, so the server only
+  // advertises `generate-image` when the tab says there is a model to delegate to.
+  it('tells the server whether the project has an image model', async () => {
+    await store.getState().startServerGeneration('proj1', 'a hero image', false);
+    expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string).imageGenAvailable).toBe(false);
+
+    vi.mocked(getProjectAssignment).mockResolvedValue({
+      agent: { provider: 'opencode-go', model: 'minimax-m2.7' },
+      imageGen: { provider: 'openrouter', model: 'img' },
+      voiceInput: null,
+      autoCompact: false,
+      compactLimit: null,
+    } as any);
+    store = createTestStore();
+    store.setState({ connectSSE: vi.fn() });
+    await store.getState().startServerGeneration('proj2', 'a hero image', false);
+    expect(JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string).imageGenAvailable).toBe(true);
+  });
+
+  it('labels the snapshot it takes before the run, so the panel can word it', async () => {
+    await store.getState().startServerGeneration('proj1', 'build a landing page', false);
+    expect(checkpointManager.createCheckpoint).toHaveBeenCalledWith(
+      'proj1', 'Pre-generation snapshot', { kind: 'auto', label: { key: 'preGeneration' } },
+    );
   });
 
   it('aborts with a clear message when the project has no model selected', async () => {

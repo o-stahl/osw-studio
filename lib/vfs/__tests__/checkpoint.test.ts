@@ -162,6 +162,51 @@ describe('CheckpointManager', () => {
       expect(cp.baseRevisionId).toBe('cp_previous');
     });
 
+    // The panel translates `label` and falls back to `description`, so a label that did not survive
+    // the store would show the English silently.
+    it('keeps a label across a reload from storage', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      await checkpointManager.createCheckpoint('proj1', 'Before import: Site', {
+        kind: 'manual',
+        label: { key: 'beforeImport', values: { name: 'Site' } },
+      });
+
+      vi.resetModules();
+      const reloaded = (await import('../checkpoint')).checkpointManager;
+      const [listed] = await reloaded.getCheckpoints('proj1');
+
+      expect(listed.label).toEqual({ key: 'beforeImport', values: { name: 'Site' } });
+      expect(listed.description).toBe('Before import: Site');
+    });
+
+    it('lists a label straight after create, before any reload', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      await checkpointManager.createCheckpoint('proj1', 'Pre-generation snapshot', {
+        kind: 'auto',
+        label: { key: 'preGeneration' },
+      });
+
+      const [listed] = await checkpointManager.getCheckpoints('proj1');
+      expect(listed.label).toEqual({ key: 'preGeneration' });
+    });
+
+    // Pinning reads the whole stored checkpoint and writes it back; the label has to ride along.
+    it('keeps a label through a pin and a reload', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      const cp = await checkpointManager.createCheckpoint('proj1', 'Before import: Site', {
+        kind: 'manual',
+        label: { key: 'beforeImport', values: { name: 'Site' } },
+      });
+      expect(await checkpointManager.pinCheckpoint(cp.id)).toBe(true);
+
+      vi.resetModules();
+      const reloaded = (await import('../checkpoint')).checkpointManager;
+      const [listed] = await reloaded.getCheckpoints('proj1');
+
+      expect(listed.pinned).toBe(true);
+      expect(listed.label).toEqual({ key: 'beforeImport', values: { name: 'Site' } });
+    });
+
     it('captures nested directory structure', async () => {
       setProjectFiles([
         { path: '/src/components/ui/Button.tsx', content: 'export default ...' },

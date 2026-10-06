@@ -1,6 +1,7 @@
 'use client';
 
 import { Dispatch, SetStateAction, useEffect, useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import { SyncableItem } from '@/lib/vfs/sync-types';
 import { SummaryBar } from './summary-bar';
 import { SyncItemRow } from '../sync-item-row';
@@ -36,6 +37,7 @@ export function ProjectsTab({
   onRegisterPushSelected,
   onRegisterPullSelected,
 }: ProjectsTabProps) {
+  const t = useTranslations('sync');
   const syncManager = getSyncManager();
 
   // Use refs to hold the latest values for use in mount-only handlers
@@ -62,11 +64,11 @@ export function ProjectsTab({
     onSyncingIdsChange((prev: Set<string>) => new Set(prev).add(item.id));
     // A push is one request per batch, so a large project is a sequence of them. The toast
     // resolves to this push's own outcome, replacing the ones the code below used to raise.
-    const progress = createSyncProgressToast(`Pushing "${item.name}"`);
+    const progress = createSyncProgressToast(t('pushingName', { name: item.name }));
     try {
       const project = await vfs.getProject(item.id);
       if (!project) {
-        progress.error(`Project "${item.name}" not found`);
+        progress.error(t('projectNotFound', { name: item.name }));
         return;
       }
 
@@ -90,19 +92,19 @@ export function ProjectsTab({
             syncStatus: 'synced',
           });
         }
-        progress.success(`Pushed "${item.name}" to server`);
+        progress.success(t('pushedName', { name: item.name }));
         if (!opts?.silent) {
           track('sync_manual', { item_type: 'project', direction: 'push', bulk: false, count: 1 });
         }
         onRefresh();
         onSyncComplete();
       } else {
-        progress.error(result.error || 'Failed to push project');
+        progress.error(result.error || t('pushProjectFailed'));
         track('sync_fail', { item_type: 'project', direction: 'push' });
       }
     } catch (error) {
       logger.error('Push error:', error);
-      progress.error('Failed to push project');
+      progress.error(t('pushProjectFailed'));
       track('sync_fail', { item_type: 'project', direction: 'push' });
     } finally {
       onSyncingIdsChange((prev: Set<string>) => {
@@ -117,12 +119,12 @@ export function ProjectsTab({
     onSyncingIdsChange((prev: Set<string>) => new Set(prev).add(item.id));
     // The download is one request, but writing the files back is one VFS call each — which is the
     // part that takes visible time on a large project and showed nothing until it finished.
-    const progress = createSyncProgressToast(`Pulling "${item.name}"`);
+    const progress = createSyncProgressToast(t('pullingName', { name: item.name }));
     try {
       const result = await syncManager.pullSingleProject(item.id);
 
       if (!result.success || !result.project) {
-        progress.error(result.error || 'Failed to pull project');
+        progress.error(result.error || t('pullProjectFailed'));
         track('sync_fail', { item_type: 'project', direction: 'pull' });
         return false;
       }
@@ -177,7 +179,7 @@ export function ProjectsTab({
         await vfs.updateProject(pulledProject, { preserveUpdatedAt: true });
       }
 
-      progress.success(`Pulled "${item.name}" from server`);
+      progress.success(t('pulledName', { name: item.name }));
       if (!opts?.silent) {
         track('sync_manual', { item_type: 'project', direction: 'pull', bulk: false, count: 1 });
       }
@@ -186,7 +188,7 @@ export function ProjectsTab({
       return true;
     } catch (error) {
       logger.error('Pull error:', error);
-      progress.error('Failed to pull project');
+      progress.error(t('pullProjectFailed'));
       track('sync_fail', { item_type: 'project', direction: 'pull' });
       return false;
     } finally {
@@ -203,14 +205,14 @@ export function ProjectsTab({
       const draft = await vfs.forkLocalDraft(item.id);
       const pulled = await handlePullSingle(item, { silent: true });
       if (!pulled) {
-        toast.error(`Saved your draft as "${draft.name}" but the pull failed. Use that copy if this project looks wrong.`);
+        toast.error(t('draftSavedPullFailed', { name: draft.name }));
         return;
       }
-      toast.success(`Kept your draft as "${draft.name}". This project now matches the server.`);
+      toast.success(t('draftKept', { name: draft.name }));
       track('sync_manual', { item_type: 'project', direction: 'keep_both', bulk: false, count: 1 });
     } catch (error) {
       logger.error('Keep both error:', error);
-      toast.error(error instanceof Error ? error.message : 'Could not keep both copies');
+      toast.error(error instanceof Error ? error.message : t('keepBothFailed'));
     }
   };
 
@@ -271,7 +273,7 @@ export function ProjectsTab({
   if (items.length === 0) {
     return (
       <div className="text-center py-8 text-muted-foreground">
-        No projects to sync
+        {t('noProjectsToSync')}
       </div>
     );
   }

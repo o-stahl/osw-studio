@@ -1,10 +1,13 @@
 'use client';
 
 import { Shield } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useWorkspaceStore } from '@/lib/stores/workspace';
 import { Button } from '@/components/ui/button';
 
 export function ApprovalCard() {
+  const tc = useTranslations('common');
+  const tp = useTranslations('permissions');
   const pendingApproval = useWorkspaceStore((s) => s.pendingApproval);
   const resolveApproval = useWorkspaceStore((s) => s.resolveApproval);
 
@@ -22,17 +25,17 @@ export function ApprovalCard() {
         {req.command}
       </pre>
       <p className="text-xs text-muted-foreground">
-        The agent wants to run this. Allow it?
+        {tp('approvalPrompt')}
       </p>
       <div className="flex items-center gap-2">
         <Button size="sm" onClick={() => resolveApproval('once')}>
-          Allow once
+          {tp('allowOnce')}
         </Button>
         <Button size="sm" onClick={() => resolveApproval('always')}>
-          Always allow
+          {tp('alwaysAllow')}
         </Button>
         <Button variant="outline" size="sm" onClick={() => resolveApproval('deny')}>
-          Deny
+          {tc('actions.deny')}
         </Button>
       </div>
     </div>

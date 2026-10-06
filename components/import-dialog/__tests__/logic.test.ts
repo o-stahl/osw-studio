@@ -7,21 +7,19 @@ import type {
   ImportTarget,
 } from '@/lib/vfs/archive';
 import {
-  appliedSummary,
   applyToAllBackend,
   applyToAllFiles,
   backendResolutionOf,
   canConfirm,
-  confirmLabel,
+  confirmAction,
   countReplacements,
   emptyResolutions,
   fileOptionsFor,
   fileResolutionOf,
   formatSettingValue,
-  formatWhen,
   hasAnythingToImport,
   isWrongFormat,
-  nothingToDoSummary,
+  nothingToDoCounts,
   planTallies,
   selectPhase,
   settingResolutionOf,
@@ -110,7 +108,7 @@ describe('countReplacements', () => {
       secretsAdded: [],
       secretsMetadataChanged: [],
     },
-    settingChanges: [{ key: 'runtime', label: 'Runtime', from: 'handlebars', to: 'static' }],
+    settingChanges: [{ key: 'runtime', from: 'handlebars', to: 'static' }],
   });
 
   it('counts only explicit replaces', () => {
@@ -150,7 +148,7 @@ describe('countReplacements', () => {
   });
 });
 
-describe('confirmLabel', () => {
+describe('confirmAction', () => {
   const plan = makePlan({
     files: {
       added: [],
@@ -168,15 +166,17 @@ describe('confirmLabel', () => {
       secretsAdded: [],
       secretsMetadataChanged: [],
     },
-    settingChanges: [{ key: 'runtime', label: 'Runtime', from: 'handlebars', to: 'static' }],
+    settingChanges: [{ key: 'runtime', from: 'handlebars', to: 'static' }],
   });
 
-  it('says Create project for a new project', () => {
-    expect(confirmLabel(plan, emptyResolutions(), NEW)).toBe('Create project');
+  it('creates a new project', () => {
+    expect(confirmAction(plan, emptyResolutions(), NEW)).toEqual({ kind: 'create' });
   });
 
-  it('says Import when nothing is replaced', () => {
-    expect(confirmLabel(plan, emptyResolutions(), EXISTING)).toBe('Import');
+  it('replaces nothing when no conflict is set to replace', () => {
+    expect(confirmAction(plan, emptyResolutions(), EXISTING)).toEqual({
+      kind: 'import', files: 0, backend: 0, settings: 0,
+    });
   });
 
   it('counts the damage', () => {
@@ -186,7 +186,9 @@ describe('confirmLabel', () => {
       settings: {},
       skipBlocked: false,
     };
-    expect(confirmLabel(plan, resolutions, EXISTING)).toBe('Import · replace 2 files');
+    expect(confirmAction(plan, resolutions, EXISTING)).toEqual({
+      kind: 'import', files: 2, backend: 0, settings: 0,
+    });
   });
 
   it('names every category that loses something', () => {
@@ -196,9 +198,9 @@ describe('confirmLabel', () => {
       settings: { runtime: 'use-archive' },
       skipBlocked: false,
     };
-    expect(confirmLabel(plan, resolutions, EXISTING)).toBe(
-      'Import · replace 1 file, 1 function, 1 setting'
-    );
+    expect(confirmAction(plan, resolutions, EXISTING)).toEqual({
+      kind: 'import', files: 1, backend: 1, settings: 1,
+    });
   });
 });
 
@@ -304,7 +306,7 @@ describe('plan shape helpers', () => {
     });
     expect(planTallies(plan, NEW)).toEqual([
       { tone: 'added', count: 2, label: 'files' },
-      { tone: 'added', count: 1, label: 'server function' },
+      { tone: 'added', count: 1, label: 'serverFunctions' },
     ]);
   });
 
@@ -324,8 +326,8 @@ describe('plan shape helpers', () => {
       },
     });
     expect(planTallies(plan, EXISTING)).toEqual([
-      { tone: 'added', count: 1, label: 'new server function' },
-      { tone: 'conflicting', count: 2, label: 'server functions already exist' },
+      { tone: 'added', count: 1, label: 'newServerFunctions' },
+      { tone: 'conflicting', count: 2, label: 'serverFunctionsExist' },
     ]);
   });
 
@@ -341,11 +343,11 @@ describe('plan shape helpers', () => {
     });
     expect(planTallies(plan, EXISTING)).toEqual([
       { tone: 'added', count: 1, label: 'new' },
-      { tone: 'blocked', count: 2, label: "can't be imported" },
+      { tone: 'blocked', count: 2, label: 'blocked' },
     ]);
     expect(planTallies(plan, NEW)).toEqual([
-      { tone: 'added', count: 1, label: 'file' },
-      { tone: 'blocked', count: 2, label: "can't be imported" },
+      { tone: 'added', count: 1, label: 'files' },
+      { tone: 'blocked', count: 2, label: 'blocked' },
     ]);
   });
 
@@ -353,7 +355,7 @@ describe('plan shape helpers', () => {
   // writes no files and no functions, and a row of nothing is not a summary of anything.
   it('counts nothing for a settings-only import', () => {
     const plan = makePlan({
-      settingChanges: [{ key: 'runtime', label: 'Runtime', from: 'static', to: 'react' }],
+      settingChanges: [{ key: 'runtime', from: 'static', to: 'react' }],
     });
     expect(planTallies(plan, EXISTING)).toEqual([]);
   });
@@ -430,11 +432,11 @@ describe('selectPhase', () => {
     );
   });
 
-  it('says why there is nothing to do', () => {
-    expect(nothingToDoSummary(makePlan({ files: { added: [], conflicts: [], unchanged: ['/a'] } })))
-      .toBe('1 file in this archive already matches the project.');
+  it('counts what already matches, which is why there is nothing to do', () => {
+    expect(nothingToDoCounts(makePlan({ files: { added: [], conflicts: [], unchanged: ['/a'] } })))
+      .toEqual({ files: 1, backend: 0 });
     expect(
-      nothingToDoSummary(
+      nothingToDoCounts(
         makePlan({
           files: { added: [], conflicts: [], unchanged: ['/a', '/b'] },
           backend: {
@@ -446,12 +448,8 @@ describe('selectPhase', () => {
           },
         })
       )
-    ).toBe(
-      '2 files and 1 server function in this archive already match the project.'
-    );
-    expect(nothingToDoSummary(makePlan())).toBe(
-      'This archive has no files to import.'
-    );
+    ).toEqual({ files: 2, backend: 1 });
+    expect(nothingToDoCounts(makePlan())).toEqual({ files: 0, backend: 0 });
   });
 });
 
@@ -467,24 +465,10 @@ describe('presentation helpers', () => {
     expect(formatSettingValue('runtime', 'static')).toBe('Static');
     expect(formatSettingValue('runtime', 'nonsense')).toBe('nonsense');
     expect(formatSettingValue('entryPoint', '/index.html')).toBe('/index.html');
-    expect(formatSettingValue('description', undefined)).toBe('not set');
   });
 
-  it('states recent times relatively and older ones as dates', () => {
-    const now = new Date('2026-08-04T12:00:00Z').getTime();
-    expect(formatWhen(undefined, now)).toBe('unknown');
-    expect(formatWhen(new Date(now - 30_000), now)).toBe('just now');
-    expect(formatWhen(new Date(now - 6 * 60_000), now)).toBe('6 minutes ago');
-    expect(formatWhen(new Date(now - 61 * 60_000), now)).toBe('1 hour ago');
-    expect(formatWhen(new Date(now - 3 * 24 * 3600_000), now)).toBe('3 days ago');
-    expect(formatWhen(new Date(now - 40 * 24 * 3600_000), now)).toMatch(/2026/);
-  });
-
-  it('summarizes what an apply did', () => {
-    expect(appliedSummary({ files: 0, backend: 0, settings: 0 })).toBe('Nothing was written.');
-    expect(appliedSummary({ files: 1, backend: 0, settings: 0 })).toBe('Imported 1 file.');
-    expect(appliedSummary({ files: 4, backend: 2, settings: 1 })).toBe(
-      'Imported 4 files, 2 functions, 1 setting.'
-    );
+  it('leaves an unset or empty setting value for the view to word', () => {
+    expect(formatSettingValue('description', undefined)).toBeUndefined();
+    expect(formatSettingValue('description', '')).toBeUndefined();
   });
 });

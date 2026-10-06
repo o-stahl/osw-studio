@@ -1,4 +1,5 @@
 import type { ProjectRuntime } from '../types';
+import type { ArchiveText } from './text';
 
 /** One entry from a zip or a dropped folder, normalized to a project-root-relative path. */
 export interface ArchiveEntry {
@@ -64,7 +65,10 @@ export interface ArchiveIssue {
     | 'unsupported-field'
     /** Imports and is kept, but cannot run until the project reaches a Server Mode instance. */
     | 'server-mode-required';
+  /** English, for logs and for code that reads it. */
   message: string;
+  /** The same message as a key the UI translates; absent when it is a thrown error's own words. */
+  text?: ArchiveText;
 }
 
 export interface FileConflict {
@@ -101,12 +105,13 @@ export interface BackendConflict {
    * something: replacing `send-email` is exactly the moment its method matters.
    */
   detail: string;
+  /** Set when the archive's copy is switched off; the dialog says so beside `detail`. */
+  disabled?: true;
   keepBothName: string;
 }
 
 export interface SettingChange {
   key: 'runtime' | 'entryPoint' | 'globalStyles' | 'databaseSchema' | 'name' | 'description';
-  label: string;
   from?: string;
   to: string;
 }
@@ -137,7 +142,7 @@ export interface ImportPlan {
     unchanged: string[];
   };
   backend: {
-    added: Array<{ kind: BackendConflict['kind']; name: string; detail: string }>;
+    added: Array<{ kind: BackendConflict['kind']; name: string; detail: string; disabled?: true }>;
     conflicts: BackendConflict[];
     /**
      * Records the project already has, identical in every field an archive carries. Listed rather
@@ -189,6 +194,6 @@ export interface ImportResolutions {
 export interface ApplyResult {
   projectId: string;
   applied: { files: number; backend: number; settings: number };
-  failed: Array<{ path: string; message: string }>;
+  failed: Array<{ path: string; message: string; text?: ArchiveText }>;
   checkpointId?: string;
 }

@@ -3,6 +3,7 @@
 /** Image picker dialog. Does not write; onApply is injected by the workspace. */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   Dialog,
   DialogContent,
@@ -21,6 +22,7 @@ import type { ApplyResult } from '@/lib/direct-edit/types';
 import {
   imageConfirmationMessage,
   imageRefusal,
+  imageRefusalAgentPrompt,
   imageRefusalMessage,
   imageRefusalOffersAgent,
   imageRefusalTitle,
@@ -67,6 +69,10 @@ export function ImagePicker({
   onApply,
   onAskAgent,
 }: ImagePickerProps) {
+  const tsx = useTranslations('styles');
+  const ttx = useTranslations('tooltips');
+  const tc = useTranslations('common');
+  const tip = useTranslations('imagePicker');
   const [entries, setEntries] = useState<ImageEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -154,7 +160,7 @@ export function ImagePicker({
 
   const askAgent = () => {
     if (!refusal || !onAskAgent) return;
-    onAskAgent(imageRefusalMessage(refusal));
+    onAskAgent(imageRefusalAgentPrompt(refusal));
     onOpenChange(false);
   };
 
@@ -162,9 +168,9 @@ export function ImagePicker({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Replace image</DialogTitle>
+          <DialogTitle>{tip('title')}</DialogTitle>
           <DialogDescription>
-            Pick a picture from this project, or upload a new one.
+            {tip('description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -172,12 +178,12 @@ export function ImagePicker({
           <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
             <div className="flex items-center gap-2 font-medium">
               <AlertTriangle className="h-4 w-4" />
-              {imageRefusalTitle(refusal)}
+              {imageRefusalTitle(refusal, tip)}
             </div>
-            <p className="mt-1 text-muted-foreground">{imageRefusalMessage(refusal)}</p>
+            <p className="mt-1 text-muted-foreground">{imageRefusalMessage(refusal, tip)}</p>
             {onAskAgent && imageRefusalOffersAgent(refusal) && (
               <Button className="mt-2" size="sm" variant="outline" onClick={askAgent}>
-                Ask the agent
+                {tsx('askAgent')}
               </Button>
             )}
           </div>
@@ -187,17 +193,17 @@ export function ImagePicker({
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
             <div className="flex items-center gap-2 font-medium">
               <AlertTriangle className="h-4 w-4" />
-              This is used more than once
+              {ttx('usedMoreThanOnce')}
             </div>
             <p className="mt-1 text-muted-foreground">
-              {imageConfirmationMessage(pending.instances, pending.file)}
+              {imageConfirmationMessage(pending.instances, tip, pending.file)}
             </p>
             <div className="mt-2 flex gap-2">
               <Button size="sm" disabled={busy} onClick={() => void apply(pending.path, true)}>
-                {pending.instances > 1 ? `Replace all ${pending.instances}` : 'Replace it'}
+                {pending.instances > 1 ? tip('replaceAll', { count: pending.instances }) : tip('replaceIt')}
               </Button>
               <Button size="sm" variant="outline" disabled={busy} onClick={() => setPending(null)}>
-                Cancel
+                {tc('actions.cancel')}
               </Button>
             </div>
           </div>
@@ -206,11 +212,11 @@ export function ImagePicker({
         <div className="max-h-[50vh] overflow-y-auto" data-osw-image-list>
           {loading ? (
             <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Reading this project&rsquo;s images…
+              <Loader2 className="h-4 w-4 animate-spin" /> {tip('reading')}
             </div>
           ) : entries.length === 0 ? (
             <p className="py-8 text-sm text-muted-foreground">
-              This project has no image files yet. Upload one to use it here.
+              {tip('noImages')}
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -256,9 +262,9 @@ export function ImagePicker({
             }}
           />
           <Button variant="outline" disabled={busy} onClick={() => fileInputRef.current?.click()}>
-            <Upload className="mr-2 h-4 w-4" /> Upload an image
+            <Upload className="mr-2 h-4 w-4" /> {tip('upload')}
           </Button>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>{tc('actions.cancel')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

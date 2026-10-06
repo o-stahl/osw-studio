@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { ChevronDown, GripVertical } from 'lucide-react';
 import type { SemanticBlock } from '@/lib/semantic-blocks/types';
 
@@ -423,6 +424,7 @@ interface BlockCardProps {
 }
 
 export function BlockCard({ block, onDragStart }: BlockCardProps) {
+  const t = useTranslations('semanticBlocks');
   const [expanded, setExpanded] = useState(false);
 
   const handleDragStart = useCallback((e: React.DragEvent) => {
@@ -453,7 +455,7 @@ export function BlockCard({ block, onDragStart }: BlockCardProps) {
             onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
             onMouseDown={(e) => e.stopPropagation()}
             className="flex-shrink-0 p-0.5 rounded text-muted-foreground/60 hover:text-muted-foreground transition-all"
-            title={expanded ? 'Hide description' : 'Show description'}
+            title={expanded ? t('hideDescription') : t('showDescription')}
           >
             <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
           </button>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,10 @@ export function ProjectSwapDialog({
   onSwapComplete,
   workspaceId,
 }: ProjectSwapDialogProps) {
+  const tb = useTranslations('backend');
+  const tc = useTranslations('common');
+  const tid = useTranslations('importDialog');
+  const tt = useTranslations('tooltips');
   const apiBase = workspaceId ? `/api/w/${workspaceId}` : '/api';
   const [diff, setDiff] = useState<SwapDiff | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,12 +74,12 @@ export function ProjectSwapDialog({
       );
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to analyze swap');
+        throw new Error(data.error || tb('analyzeSwapFailed'));
       }
       const data = await res.json();
       setDiff(data.diff);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to analyze swap');
+      setError(err instanceof Error ? err.message : tb('analyzeSwapFailed'));
     } finally {
       setLoading(false);
     }
@@ -91,12 +96,12 @@ export function ProjectSwapDialog({
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to swap project');
+        throw new Error(data.error || tb('swapFailed'));
       }
       onSwapComplete();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to swap project');
+      setError(err instanceof Error ? err.message : tb('swapFailed'));
     } finally {
       setSwapping(false);
     }
@@ -112,10 +117,9 @@ export function ProjectSwapDialog({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Swap Source Project</DialogTitle>
+          <DialogTitle>{tb('swapTitle')}</DialogTitle>
           <DialogDescription>
-            Change &ldquo;{deploymentName}&rdquo; to use &ldquo;{newProjectName}&rdquo; as its source project.
-            This will rebuild the deployment with the new project&apos;s files and backend features.
+            {tb('swapDesc', { deployment: deploymentName, project: newProjectName })}
           </DialogDescription>
         </DialogHeader>
 
@@ -123,7 +127,7 @@ export function ProjectSwapDialog({
           {loading && (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-sm text-muted-foreground">Analyzing changes...</span>
+              <span className="ml-2 text-sm text-muted-foreground">{tb('analyzingChanges')}</span>
             </div>
           )}
 
@@ -138,14 +142,14 @@ export function ProjectSwapDialog({
             <div className="space-y-4">
               {isEmpty && (
                 <p className="text-sm text-muted-foreground">
-                  No backend feature changes detected. The deployment will be rebuilt with the new project&apos;s files.
+                  {tb('noBackendChanges')}
                 </p>
               )}
 
               {/* Edge Functions diff */}
               <DiffSection
                 icon={<Code2 className="h-4 w-4" />}
-                title="Edge Functions"
+                title={tb('edgeFunctions')}
                 added={diff.edgeFunctions.added}
                 removed={diff.edgeFunctions.removed}
                 changed={diff.edgeFunctions.changed}
@@ -154,7 +158,7 @@ export function ProjectSwapDialog({
               {/* Server Functions diff */}
               <DiffSection
                 icon={<Wrench className="h-4 w-4" />}
-                title="Server Functions"
+                title={tid('serverFunctions')}
                 added={diff.serverFunctions.added}
                 removed={diff.serverFunctions.removed}
                 changed={diff.serverFunctions.changed}
@@ -165,7 +169,7 @@ export function ProjectSwapDialog({
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-sm font-medium">
                     <Key className="h-4 w-4" />
-                    Secrets
+                    {tb('secretsTitle')}
                   </div>
                   <div className="pl-6 space-y-1 text-sm">
                     {diff.secrets.added.map(name => (
@@ -190,7 +194,7 @@ export function ProjectSwapDialog({
               {/* Scheduled Functions diff */}
               <DiffSection
                 icon={<Clock className="h-4 w-4" />}
-                title="Scheduled Functions"
+                title={tt('scheduledFunctions')}
                 added={diff.scheduledFunctions.added}
                 removed={diff.scheduledFunctions.removed}
                 changed={diff.scheduledFunctions.changed}
@@ -200,7 +204,7 @@ export function ProjectSwapDialog({
                 <div className="flex items-start gap-2 p-3 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                   <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mt-0.5 shrink-0" />
                   <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                    Some backend features will be removed or replaced. Analytics data will be preserved.
+                    {tb('swapConflictWarning')}
                   </p>
                 </div>
               )}
@@ -210,7 +214,7 @@ export function ProjectSwapDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={swapping}>
-            Cancel
+            {tc('actions.cancel')}
           </Button>
           <Button
             onClick={handleSwap}
@@ -220,10 +224,10 @@ export function ProjectSwapDialog({
             {swapping ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Swapping...
+                {tb('swapping')}
               </>
             ) : (
-              'Swap & Republish'
+              tb('swapAndRepublish')
             )}
           </Button>
         </DialogFooter>

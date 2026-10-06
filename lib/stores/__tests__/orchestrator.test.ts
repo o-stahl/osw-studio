@@ -20,7 +20,6 @@ function setActiveTask(
     startedAt: Date.now(),
     result: null,
     paused: false,
-    pausedMessage: null,
     orchestratorInstance: null,
     persistedInstance: null,
     ...overrides,

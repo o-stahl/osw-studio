@@ -2,30 +2,36 @@
  * What a gated capability means, said plainly.
  *
  * The permission system labels a gate for a developer (`rm / rmdir (delete)`); a person who asked for
- * a change needs to know what the agent wants to do, not which command does it. Keyed by gate, with
- * the developer label as the fallback so an unlisted gate still says something true.
+ * a change needs to know what the agent wants to do, not which command does it. Keyed by gate, each
+ * to a whole sentence under `quickEdit.wants`; an unlisted gate is worded around its developer label
+ * (`wants.other`) so it still says something true.
  */
-const PHRASES: Record<string, string> = {
-  rm: 'delete a file',
-  mv: 'move a file',
-  cp: 'copy a file',
-  mkdir: 'create a folder',
-  touch: 'create a file',
-  'sed:write': 'edit a file',
-  ss: 'edit a file',
-  'curl:external': 'fetch something from the internet',
-  'curl:local': 'call one of the site\'s own functions',
-  search: 'search the web',
-  'sqlite3:write': 'change the site\'s data',
-  'sqlite3:read': 'read the site\'s data',
-  python: 'run a script',
-  lua: 'run a script',
-  'generate-image': 'generate an image',
-  build: 'rebuild the site',
-  runtime: 'change how the site is built',
+export type ApprovalPhraseKey =
+  | 'deleteFile' | 'moveFile' | 'copyFile' | 'createFolder' | 'createFile' | 'editFile'
+  | 'fetchInternet' | 'callSiteFunction' | 'searchWeb' | 'changeData' | 'readData'
+  | 'runScript' | 'generateImage' | 'rebuildSite' | 'changeBuild';
+
+const PHRASES: Record<string, ApprovalPhraseKey> = {
+  rm: 'deleteFile',
+  mv: 'moveFile',
+  cp: 'copyFile',
+  mkdir: 'createFolder',
+  touch: 'createFile',
+  'sed:write': 'editFile',
+  ss: 'editFile',
+  'curl:external': 'fetchInternet',
+  'curl:local': 'callSiteFunction',
+  search: 'searchWeb',
+  'sqlite3:write': 'changeData',
+  'sqlite3:read': 'readData',
+  python: 'runScript',
+  lua: 'runScript',
+  'generate-image': 'generateImage',
+  build: 'rebuildSite',
+  runtime: 'changeBuild',
 };
 
-/** "delete a file", or the gate's own label when nothing plainer is known. */
-export function approvalPhrase(gateKey: string, capabilityLabel: string): string {
-  return PHRASES[gateKey] ?? capabilityLabel;
+/** The sentence's key for a gate, or undefined when only its developer label is known. */
+export function approvalPhrase(gateKey: string): ApprovalPhraseKey | undefined {
+  return PHRASES[gateKey];
 }

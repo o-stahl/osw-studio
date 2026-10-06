@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useTranslations } from 'next-intl';
+import { useTemplateCatalog, type TemplateCopy } from '@/lib/i18n/use-template-catalog';
 import { useRouter } from 'next/navigation';
 import { Project, CustomTemplate, type BackendFeatures, type PromptSuggestion, type TemplateIntent } from '@/lib/vfs/types';
 import { getRuntimeBadge } from '@/lib/runtimes/registry';
@@ -81,7 +83,7 @@ import {
 } from '@/components/ui/popover';
 import { useGuidedTour } from '@/components/guided-tour/context';
 import { GuidedTourOverlay } from '@/components/guided-tour/overlay';
-import { configManager, migrateBackendKey } from '@/lib/config/storage';
+import { migrateBackendKey } from '@/lib/config/storage';
 import { TemplateExportDialog } from '@/components/templates/template-export-dialog';
 import { ProjectSettingsModal } from '@/components/project-backend';
 import { DescribeMode } from '@/components/describe-mode';
@@ -90,6 +92,7 @@ import { usePagination } from '@/lib/hooks/use-pagination';
 import { Pagination, PaginationRange } from '@/components/ui/pagination';
 import { COMPACT_ROW_WIDTH } from '@/lib/constants/layout';
 import { useNarrowContainer } from '@/lib/hooks/use-narrow-container';
+import { REPO_URL } from '@/lib/constants/links';
 
 interface ProjectManagerProps {
   onProjectSelect: (project: Project) => void;
@@ -101,7 +104,44 @@ interface ProjectManagerProps {
 
 type SortOption = 'updated' | 'created' | 'name';
 
+/** A template id as the create dialog names it: a custom template by its name, a built-in in the interface language. */
+export function templateDisplayName(
+  templateId: string,
+  customTemplates: CustomTemplate[],
+  templateCatalog: Record<string, TemplateCopy>,
+  t: (key: 'customTemplate' | 'selectTemplate') => string,
+): string {
+  if (templateId.startsWith('custom:')) {
+    const customId = templateId.replace('custom:', '');
+    const template = customTemplates.find(t => t.id === customId);
+    return template?.name || t('customTemplate');
+  }
+  const builtIn = BUILT_IN_TEMPLATES.find(t => t.id === templateId);
+  if (!builtIn) return t('selectTemplate');
+  return templateCatalog[builtIn.id]?.name ?? builtIn.name;
+}
+
+/** A template id's description, translated for a built-in; empty when there is none. */
+export function templateDescription(
+  templateId: string,
+  customTemplates: CustomTemplate[],
+  templateCatalog: Record<string, TemplateCopy>,
+): string {
+  if (templateId.startsWith('custom:')) {
+    const customId = templateId.replace('custom:', '');
+    return customTemplates.find(t => t.id === customId)?.description || '';
+  }
+  const builtIn = BUILT_IN_TEMPLATES.find(t => t.id === templateId);
+  if (!builtIn) return '';
+  return templateCatalog[builtIn.id]?.description ?? builtIn.description ?? '';
+}
+
 export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter = false, autoCreate = false, workspaceId }: ProjectManagerProps) {
+  const t = useTranslations('projects');
+  const templateCatalog = useTemplateCatalog();
+  const tSort = useTranslations('common.sort');
+  const tNav = useTranslations('nav');
+  const tc = useTranslations('common');
   const router = useRouter();
   // Offered only where the route exists. In the simple view the row already opens quick edit, so
   // this is the studio's way in: the fast path for a small change without opening four panels.
@@ -135,10 +175,10 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
   const isCreateDirty = createMode === 'describe' ? describeDirty : isQuickDirty;
 
   const confirmDiscard = useCallback((action: () => void) => {
-    if (!isCreateDirty || window.confirm('You have unsaved changes. Discard them?')) {
+    if (!isCreateDirty || window.confirm(t('discardUnsavedConfirm'))) {
       action();
     }
-  }, [isCreateDirty]);
+  }, [isCreateDirty, t]);
 
   // Auto-open create dialog when navigated from dashboard "New Project"
   useEffect(() => {
@@ -148,23 +188,11 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
   }, [autoCreate]);
 
   // Helper to get template name from ID for display
-  const getTemplateDisplayName = (templateId: string): string => {
-    if (templateId.startsWith('custom:')) {
-      const customId = templateId.replace('custom:', '');
-      const template = customTemplates.find(t => t.id === customId);
-      return template?.name || 'Custom Template';
-    }
-    const builtIn = BUILT_IN_TEMPLATES.find(t => t.id === templateId);
-    return builtIn?.name || 'Select a template';
-  };
+  const getTemplateDisplayName = (templateId: string): string =>
+    templateDisplayName(templateId, customTemplates, templateCatalog, t);
 
-  const getTemplateDescription = (templateId: string): string => {
-    if (templateId.startsWith('custom:')) {
-      const customId = templateId.replace('custom:', '');
-      return customTemplates.find(t => t.id === customId)?.description || '';
-    }
-    return BUILT_IN_TEMPLATES.find(t => t.id === templateId)?.description || '';
-  };
+  const getTemplateDescription = (templateId: string): string =>
+    templateDescription(templateId, customTemplates, templateCatalog);
   const [sortBy, setSortBy] = useState<SortOption>('updated');
   const [viewMode, setViewMode] = useViewMode('projects');
   const [previewProject, setPreviewProject] = useState<Project | null>(null);
@@ -173,7 +201,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
   const [backendProject, setBackendProject] = useState<Project | null>(null);
   const [importSource, setImportSource] = useState<ImportDialogSource | null>(null);
   const [importOpen, setImportOpen] = useState(false);
-  const { state: tourState, setProjectList, start: startTour, setTourDemoProjectId } = useGuidedTour();
+  const { state: tourState, setProjectList, start: startTour } = useGuidedTour();
   const tourStep = tourState.currentStep?.id;
   const tourRunning = tourState.status === 'running';
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
@@ -231,7 +259,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
 
     } catch (error) {
       logger.error('Failed to load projects:', error);
-      toast.error('Failed to load projects');
+      toast.error(t('loadFailed'));
 
     } finally {
       setLoading(false);
@@ -262,7 +290,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
         }
         if (result.conflicts.length > 0) {
           toast.warning(
-            `${result.conflicts.length} project(s) were edited on another device. Open Server Sync to compare.`,
+            t('conflictsEdited', { count: result.conflicts.length }),
             { duration: 8000 }
           );
         }
@@ -276,7 +304,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
         setBackgroundPullDone(true);
       }
     }
-  }, [setProjectList, loadCustomTemplates]);
+  }, [setProjectList, loadCustomTemplates, t]);
 
   // Separate function for reloading projects without demo creation logic
   const reloadProjects = useCallback(async () => {
@@ -290,9 +318,9 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
       setProjectList(sorted);
     } catch (error) {
       logger.error('Failed to reload projects:', error);
-      toast.error('Failed to reload projects');
+      toast.error(t('reloadFailed'));
     }
-  }, [setProjectList]);
+  }, [setProjectList, t]);
 
   const createDemoProject = async () => {
     if (demoCreationRef.current) {
@@ -303,47 +331,27 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
     
     try {
       const demo = await loadBuiltInProjectTemplate('demo');
+      // The project's own name from here on, so it is written in the language of the person creating it.
       const demoProject = await vfs.createProject(
-        'Multi-File Demo',
-        'Interactive examples showing how HTML, CSS, and JavaScript files work together'
+        templateCatalog.demo.name,
+        templateCatalog.demo.description
       );
       await createProjectFromTemplate(vfs, demoProject.id, demo, demo.assets);
-      toast.success('Demo project created successfully');
+      toast.success(t('demoCreated'));
       await reloadProjects();
       onProjectSelect(demoProject);
       return demoProject;
     } catch (error) {
       logger.error('Failed to create demo project:', error);
-      toast.error('Failed to create demo project');
+      toast.error(t('demoCreateFailed'));
       demoCreationRef.current = false; // Reset on failure
       throw error;
     }
   };
 
-  const handleStartTour = async () => {
-    try {
-      // Always create a fresh demo project for the tour to ensure correct file structure
-      const demo = await loadBuiltInProjectTemplate('demo');
-      const tourDemo = await vfs.createProject(
-        'Example Studios (Tour)',
-        'Demo project for guided tour'
-      );
-      await createProjectFromTemplate(vfs, tourDemo.id, demo, demo.assets);
-
-      // Store the demo project ID in tour context
-      setTourDemoProjectId(tourDemo.id);
-
-      // Reload projects to show the new demo
-      await reloadProjects();
-
-      // Start the tour
-      startTour();
-
-      logger.info('[Tour] Created tour demo project:', tourDemo.id);
-    } catch (error) {
-      logger.error('Failed to prepare for tour:', error);
-      toast.error('Failed to start tour - could not create demo project');
-    }
+  // The tour creates its own demo project when it starts.
+  const handleStartTour = () => {
+    void startTour();
   };
 
   // Initial load only - no dependency on loadProjects to prevent re-runs
@@ -355,6 +363,13 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
 
   // Keep the new-project template picker current when a template is imported/saved/deleted
   // (e.g. from the Templates view), without relying on a remount or a full app reload.
+  // The guided tour adds and removes its demo project; show the change.
+  useEffect(() => {
+    const handleProjectsChanged = () => { void reloadProjects(); };
+    window.addEventListener('projectsChanged', handleProjectsChanged);
+    return () => window.removeEventListener('projectsChanged', handleProjectsChanged);
+  }, [reloadProjects]);
+
   useEffect(() => {
     const handleTemplatesChanged = () => { loadCustomTemplates(); };
     window.addEventListener('templatesChanged', handleTemplatesChanged);
@@ -386,28 +401,19 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
     }
   }, [tourRunning, tourStep, projects]);
 
-  // Handle automatic tour start for first-time users with no projects.
-  // Wait for background pull to finish so server projects are counted before
-  // deciding the user has "no projects" and auto-creating a demo.
-  useEffect(() => {
-    if (initialLoadComplete && backgroundPullDone && projects.length === 0 && !tourRunning && !configManager.hasSeenTour()) {
-      handleStartTour();
-    }
-  }, [initialLoadComplete, backgroundPullDone, projects.length, tourRunning]);
-
   const createProject = async () => {
     if (!newProjectName.trim()) {
-      toast.error('Please enter a project name');
+      toast.error(t('nameRequired'));
       return;
     }
 
     if (newProjectName.length > 50) {
-      toast.error('Project name must be 50 characters or less');
+      toast.error(t('nameTooLong'));
       return;
     }
 
     if (newProjectDescription.length > 200) {
-      toast.error('Description must be 200 characters or less');
+      toast.error(t('descTooLong'));
       return;
     }
 
@@ -420,7 +426,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
           const data = await res.json();
           const quota = data.quota?.projects;
           if (quota && quota.used >= quota.max) {
-            toast.error(`Project limit reached (${quota.max}). Delete a project to create a new one.`);
+            toast.error(t('limitReached', { max: quota.max }));
             return;
           }
         }
@@ -485,7 +491,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
             await provisionBackendFeatures(finalProject.id, backendFeatures);
           } catch (provisionError) {
             logger.error('Failed to provision backend features:', provisionError);
-            toast.warning('Project created but backend features provisioning failed.');
+            toast.warning(t('backendProvisionFailed'));
           }
         }
       }
@@ -502,7 +508,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
         template_intent: templateIntent,
       });
 
-      toast.success('Project created successfully');
+      toast.success(t('created'));
       setCreateDialogOpen(false);
       setCreateMode('quick');
       setNewProjectName('');
@@ -512,12 +518,12 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
       onProjectSelect(finalProject);
     } catch (error) {
       logger.error('Failed to create project:', error);
-      toast.error('Failed to create project');
+      toast.error(t('createFailed'));
     }
   };
 
   const deleteProject = useCallback(async (project: Project) => {
-    if (!confirm(`Are you sure you want to delete "${project.name}"? This cannot be undone.`)) {
+    if (!confirm(t('confirmDelete', { name: project.name }))) {
       return;
     }
 
@@ -525,27 +531,27 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
       await vfs.deleteProject(project.id);
       clearLegacyProjectSchema(project.id);
       import('@/lib/vfs/auto-sync').then(m => m.autoDeleteProject(project.id)).catch(() => {});
-      toast.success('Project deleted');
+      toast.success(t('deleted'));
       track('project_delete');
       await reloadProjects();
     } catch (error) {
       logger.error('Failed to delete project:', error);
-      toast.error('Failed to delete project');
+      toast.error(t('deleteFailed'));
     }
-  }, [reloadProjects]);
+  }, [reloadProjects, t]);
 
   const duplicateProject = useCallback(async (project: Project) => {
     try {
       const newProject = await vfs.duplicateProject(project.id);
       await pushProjectToServer(newProject.id, workspaceId);
-      toast.success('Project duplicated successfully');
+      toast.success(t('duplicated'));
       await reloadProjects();
       onProjectSelect(newProject);
     } catch (error) {
       logger.error('Failed to duplicate project:', error);
-      toast.error('Failed to duplicate project');
+      toast.error(t('duplicateFailed'));
     }
-  }, [reloadProjects, onProjectSelect, workspaceId]);
+  }, [reloadProjects, onProjectSelect, workspaceId, t]);
 
   const exportProject = useCallback(async (project: Project) => {
     try {
@@ -562,13 +568,13 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      toast.success('Project exported');
+      toast.success(t('exported'));
       track('project_export', { format: 'json' });
     } catch (error) {
       logger.error('Failed to export project:', error);
-      toast.error('Failed to export project');
+      toast.error(t('exportFailed'));
     }
-  }, []);
+  }, [t]);
 
   const exportProjectAsZip = useCallback(async (project: Project) => {
     try {
@@ -583,13 +589,13 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      toast.success('Project exported as ZIP');
+      toast.success(t('exportedZip'));
       track('project_export', { format: 'zip' });
     } catch (error) {
       logger.error('Failed to export project as ZIP:', error);
-      toast.error('Failed to export project as ZIP');
+      toast.error(t('exportZipFailed'));
     }
-  }, []);
+  }, [t]);
 
   // A fresh object every time, so the dialog re-analyses whenever the user picks something new.
   const openImport = useCallback((source: ImportDialogSource) => {
@@ -612,13 +618,13 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
 
       const imported = await vfs.importProject(data);
       await pushProjectToServer(imported.id, workspaceId);
-      toast.success('Project imported successfully');
+      toast.success(t('imported'));
       track('project_import', { format: 'json' });
       await reloadProjects();
       onProjectSelect(imported);
     } catch (error) {
       logger.error('Failed to import project:', error);
-      toast.error('Failed to import project');
+      toast.error(t('importFailed'));
     }
   };
 
@@ -654,10 +660,10 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
       onProjectSelect(imported);
     } catch (error) {
       logger.error('Failed to open the imported project:', error);
-      toast.error('The project was imported, but could not be opened');
+      toast.error(t('importedNotOpened'));
       await reloadProjects();
     }
-  }, [importSource, workspaceId, reloadProjects, onProjectSelect]);
+  }, [importSource, workspaceId, reloadProjects, onProjectSelect, t]);
 
   const sortProjects = (projects: Project[], sortBy: SortOption): Project[] => {
     const sorted = [...projects];
@@ -699,7 +705,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <Spinner size={48} className="mx-auto text-primary" />
-          <p className="mt-4">Loading projects...</p>
+          <p className="mt-4">{t('loading')}</p>
         </div>
       </div>
     );
@@ -713,12 +719,12 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
             {/* Toolbar */}
             <div className="pt-4 px-4 pb-3 sm:pt-6 sm:px-6 sm:pb-3 shrink-0">
               <div className="mx-auto max-w-7xl flex flex-col sm:flex-row sm:items-center gap-3" data-tour-id="projects-actions">
-                <h1 className="text-lg font-semibold shrink-0">Projects</h1>
+                <h1 className="text-lg font-semibold shrink-0">{tc('terms.projects')}</h1>
                 {/* New Project */}
                 <div className="flex items-center shrink-0">
                   <Button onClick={() => setCreateDialogOpen(true)} size="sm" className="gap-2" data-tour-id="new-project-button">
                     <Plus className="h-4 w-4" />
-                    <span>New</span>
+                    <span>{tc('actions.new')}</span>
                   </Button>
                 </div>
 
@@ -726,7 +732,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search projects..."
+                    placeholder={t('searchPlaceholder')}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9"
@@ -740,20 +746,20 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
                     <PopoverTrigger asChild>
                       <Button variant="outline" size="sm" className="gap-2">
                         <ArrowUpDown className="h-4 w-4" />
-                        <span className="hidden sm:inline">Sort</span>
+                        <span className="hidden sm:inline">{tc('labels.sort')}</span>
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-48" align="end">
                       <div className="space-y-2">
-                        <h4 className="font-semibold text-sm">Sort by</h4>
+                        <h4 className="font-semibold text-sm">{tSort('by')}</h4>
                         <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortOption)}>
                           <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="updated">Last Updated</SelectItem>
-                            <SelectItem value="created">Date Created</SelectItem>
-                            <SelectItem value="name">Name</SelectItem>
+                            <SelectItem value="updated">{tSort('lastUpdated')}</SelectItem>
+                            <SelectItem value="created">{tSort('dateCreated')}</SelectItem>
+                            <SelectItem value="name">{tc('labels.name')}</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -768,17 +774,17 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" size="sm" className="gap-2">
                         <Upload className="h-4 w-4" />
-                        <span>Import</span>
+                        <span>{tc('actions.import')}</span>
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={importProjectFromFile}>
                         <FileArchive className="h-4 w-4 mr-2" />
-                        From a file
+                        {t('fromFile')}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => pickFolderSource(openImport)}>
                         <FolderOpen className="h-4 w-4 mr-2" />
-                        From a folder
+                        {t('fromFolder')}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -792,28 +798,28 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
                 {filteredProjects.length === 0 && !backgroundPullDone ? (
                   <div className="flex items-center justify-center py-12">
                     <Spinner size={24} className="text-muted-foreground" />
-                    <span className="ml-3 text-muted-foreground">Loading projects...</span>
+                    <span className="ml-3 text-muted-foreground">{t('loading')}</span>
                   </div>
                 ) : filteredProjects.length === 0 ? (
                   <div className="text-center py-12">
                     <FolderOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                     <h2 className="text-xl font-semibold mb-2">
-                      {searchQuery ? 'No projects found' : 'No projects yet'}
+                      {searchQuery ? t('noProjectsFound') : t('noProjectsYet')}
                     </h2>
                     <p className="text-muted-foreground mb-6">
                       {searchQuery
-                        ? 'Try a different search term'
-                        : 'Create your first project to get started'}
+                        ? t('tryDifferentSearch')
+                        : t('createFirstProjectHint')}
                     </p>
                     {!searchQuery && (
                       <div className="flex gap-3 justify-center">
                         <Button onClick={() => setCreateDialogOpen(true)}>
                           <Plus className="mr-2 h-4 w-4" />
-                          Create Project
+                          {t('createProject')}
                         </Button>
                         <Button variant="outline" onClick={createDemoProject}>
                           <FolderOpen className="mr-2 h-4 w-4" />
-                          Create Demo Project
+                          {t('createDemoProject')}
                         </Button>
                       </div>
                     )}
@@ -837,18 +843,19 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
                         />
                       </div>
                     )}
-                    {viewMode === 'table' ? (
+                    {/* The tour points at the grid's cards and their menu, which the table rows lack. */}
+                    {viewMode === 'table' && !tourRunning ? (
                       <div ref={(el) => { contentScrollRef.current = el; measureRowsRef(el); }} className="@container flex-1 min-h-0 overflow-auto border rounded-lg" data-tour-id="projects-list">
                         <table className="w-full table-auto border-collapse">
                           <thead className="sticky top-0 z-10">
                             <tr>
                               <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none"></th>
-                              <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none w-full">Name</th>
-                              <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Runtime</th>
-                              <th className="@max-5xl:hidden bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Files</th>
-                              <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Size</th>
-                              <th className="@max-5xl:hidden bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Cost</th>
-                              <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Updated</th>
+                              <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none w-full">{tc('labels.name')}</th>
+                              <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{tc('labels.runtime')}</th>
+                              <th className="@max-5xl:hidden bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{t('columns.files')}</th>
+                              <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{t('columns.size')}</th>
+                              <th className="@max-5xl:hidden bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{t('columns.cost')}</th>
+                              <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{tc('labels.updated')}</th>
                               <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none"></th>
                             </tr>
                           </thead>
@@ -925,7 +932,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
               data-tour-id="footer-guided-tour"
             >
               <Info className="mr-2 h-4 w-4" />
-              Guided Tour
+              {tNav('items.tour')}
             </Button>
             <Button
               variant="outline"
@@ -933,7 +940,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
               onClick={() => router.push('/test-generation')}
             >
               <TestTube className="mr-2 h-4 w-4" />
-              Benchmark
+              {tNav('items.tester')}
             </Button>
             <Button
               variant="outline"
@@ -941,7 +948,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
               onClick={() => setAboutModalOpen(true)}
             >
               <Info className="mr-2 h-4 w-4" />
-              About OSW Studio
+              {t('about')}
             </Button>
             <Button
               variant="outline"
@@ -949,7 +956,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
               asChild
             >
               <a
-                href="https://github.com/o-stahl/osw-studio"
+                href={REPO_URL}
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -999,8 +1006,8 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => confirmDiscard(() => { setCreateMode('quick'); setDescribeDirty(false); })}>
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
-                <DialogTitle className="text-sm">Describe your project</DialogTitle>
-                <DialogDescription className="sr-only">Conversational project setup with AI</DialogDescription>
+                <DialogTitle className="text-sm">{t('describeProject')}</DialogTitle>
+                <DialogDescription className="sr-only">{t('describeProjectSr')}</DialogDescription>
               </div>
             </DialogHeader>
           ) : createMode === 'template' ? (
@@ -1011,21 +1018,21 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
                 <div className="min-w-0 flex items-baseline gap-2">
-                  <DialogTitle className="text-sm shrink-0">Choose a template</DialogTitle>
+                  <DialogTitle className="text-sm shrink-0">{t('chooseTemplate')}</DialogTitle>
                   <span className="text-xs text-muted-foreground truncate">
                     {getTemplateDisplayName(templatePending ?? newProjectTemplate)}
                   </span>
                 </div>
                 <DialogDescription className="sr-only">
-                  Pick the template to start from. It sets the project runtime.
+                  {t('templateHint')}
                 </DialogDescription>
               </div>
             </DialogHeader>
           ) : (
             /* ── Quick mode header ── */
             <DialogHeader>
-              <DialogTitle>Create a project</DialogTitle>
-              <DialogDescription className="sr-only">Set up a new project</DialogDescription>
+              <DialogTitle>{t('createTitle')}</DialogTitle>
+              <DialogDescription className="sr-only">{t('setUpNewProjectSr')}</DialogDescription>
             </DialogHeader>
           )}
           {createMode === 'quick' ? (
@@ -1040,8 +1047,8 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
                   <MessageSquare className="h-4 w-4 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-primary">Plan the project first</p>
-                  <p className="text-xs text-muted-foreground">Chat with the agent to work out what you need. Skip repetitive setup once you start building.</p>
+                  <p className="text-sm font-medium text-primary">{t('planFirst')}</p>
+                  <p className="text-xs text-muted-foreground">{t('planFirstHint')}</p>
                 </div>
                 <ArrowRight className="h-4 w-4 text-primary/60 shrink-0 group-hover:translate-x-0.5 transition-transform" />
               </button>
@@ -1052,7 +1059,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
               <div className="space-y-4 min-w-0">
                 <div>
                   <div className="flex justify-between items-center">
-                    <Label htmlFor="name">Project name</Label>
+                    <Label htmlFor="name">{t('nameLabel')}</Label>
                     <span className="text-xs text-muted-foreground">
                       {newProjectName.length}/50
                     </span>
@@ -1061,13 +1068,13 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
                     id="name"
                     value={newProjectName}
                     onChange={(e) => setNewProjectName(e.target.value.slice(0, 50))}
-                    placeholder="My awesome website"
+                    placeholder={t('namePlaceholder')}
                     className="mt-2"
                     maxLength={50}
                   />
                 </div>
                 <div>
-                  <Label htmlFor="template">Template</Label>
+                  <Label htmlFor="template">{t('templateLabel')}</Label>
                   <button
                     id="template"
                     type="button"
@@ -1079,7 +1086,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
                         {getTemplateDisplayName(newProjectTemplate)}
                       </span>
                       <span className="block truncate text-xs text-muted-foreground mt-0.5">
-                        {getTemplateDescription(newProjectTemplate) || 'Browse templates'}
+                        {getTemplateDescription(newProjectTemplate) || t('browseTemplates')}
                       </span>
                     </span>
                     <Badge
@@ -1090,12 +1097,12 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
                     <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
                   </button>
                   <p className="text-xs text-muted-foreground mt-1.5">
-                    The template sets the runtime. You can change it later in project settings.
+                    {t('templateSetsRuntime')}
                   </p>
                 </div>
                 <div>
                   <div className="flex justify-between items-center">
-                    <Label htmlFor="description">Description (optional)</Label>
+                    <Label htmlFor="description">{tc('labels.descriptionOptional')}</Label>
                     <span className="text-xs text-muted-foreground">
                       {newProjectDescription.length}/200
                     </span>
@@ -1104,7 +1111,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
                     id="description"
                     value={newProjectDescription}
                     onChange={(e) => setNewProjectDescription(e.target.value.slice(0, 200))}
-                    placeholder="A brief description of your project"
+                    placeholder={t('descriptionPlaceholder')}
                     className="mt-2 resize-none"
                     rows={3}
                     maxLength={200}
@@ -1113,10 +1120,10 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
               </div>
               <DialogFooter className="sm:justify-between">
                 <Button variant="outline" onClick={() => confirmDiscard(() => { setCreateDialogOpen(false); setCreateMode('quick'); })}>
-                  Cancel
+                  {tc('actions.cancel')}
                 </Button>
                 <Button onClick={createProject}>
-                  Create project
+                  {t('create')}
                 </Button>
               </DialogFooter>
             </>
@@ -1151,7 +1158,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
         <Dialog open={!!previewProject} onOpenChange={() => setPreviewProject(null)}>
           <DialogContent className="max-w-[90vw] sm:max-w-[85vw] lg:max-w-[80vw] 2xl:max-w-[1400px] max-h-[90vh] w-full h-full p-0 flex flex-col">
             <DialogHeader className="p-4 border-b">
-              <DialogTitle>Preview: {previewProject.name}</DialogTitle>
+              <DialogTitle>{t('preview', { name: previewProject.name })}</DialogTitle>
             </DialogHeader>
             <div className="flex-1 overflow-hidden">
               <MultipagePreview

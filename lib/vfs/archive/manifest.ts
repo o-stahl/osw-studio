@@ -1,5 +1,6 @@
 import type { Project, VirtualFile } from '../types';
 import { isTextExtension } from '../types';
+import { ArchiveError } from './text';
 import { ARCHIVE_FORMAT_VERSION, type ProjectManifest } from './types';
 
 /** Fixed key order — a manifest must serialize byte-identically for the same project state. */
@@ -73,16 +74,14 @@ export function parseManifest(text: string, filename = 'project.json'): ProjectM
   try {
     raw = JSON.parse(text);
   } catch {
-    throw new Error(`${filename} could not be read — it is not valid JSON.`);
+    throw new ArchiveError('manifestNotJson', { file: filename });
   }
   const data = raw as Partial<ProjectManifest>;
   if (typeof data?.formatVersion !== 'number' || typeof data?.name !== 'string') {
-    throw new Error(`${filename} could not be read — it is missing required fields.`);
+    throw new ArchiveError('manifestMissingFields', { file: filename });
   }
   if (data.formatVersion > ARCHIVE_FORMAT_VERSION) {
-    throw new Error(
-      `This archive was made by a newer version of OSW Studio (format ${data.formatVersion}). Update the app to import it.`
-    );
+    throw new ArchiveError('manifestNewer', { version: data.formatVersion });
   }
   return {
     formatVersion: data.formatVersion,

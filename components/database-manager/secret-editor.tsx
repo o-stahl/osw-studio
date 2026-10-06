@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { Secret } from '@/lib/vfs/types';
 import {
   Dialog,
@@ -13,6 +14,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, AlertCircle, Eye, EyeOff, Info } from 'lucide-react';
+
+const KEY_EXAMPLE = 'sk_live_...'; // i18n-ignore: the shape of an API key, not prose
 
 interface SecretEditorProps {
   secret: Secret | null;
@@ -27,6 +30,8 @@ export function SecretEditor({
   onClose,
   onSave,
 }: SecretEditorProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('backend');
   const [name, setName] = useState(secret?.name || '');
   const [value, setValue] = useState('');
   const [description, setDescription] = useState(secret?.description || '');
@@ -58,17 +63,17 @@ export function SecretEditor({
 
     // Basic validation
     if (!name.trim()) {
-      setError('Secret name is required');
+      setError(t('validation.secretNameRequired'));
       return;
     }
     // Validate SCREAMING_SNAKE_CASE
     if (!/^[A-Z][A-Z0-9_]*$/.test(name)) {
-      setError('Name must be SCREAMING_SNAKE_CASE (uppercase letters, numbers, underscores; must start with letter)');
+      setError(t('validation.secretNameFormat'));
       return;
     }
     // Value required for new secrets
     if (!secret && !value.trim()) {
-      setError('Secret value is required');
+      setError(t('validation.secretValueRequired'));
       return;
     }
 
@@ -80,7 +85,7 @@ export function SecretEditor({
         description: description.trim() || undefined,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save secret');
+      setError(err instanceof Error ? err.message : t('saveSecretFailed'));
     } finally {
       setSaving(false);
     }
@@ -91,34 +96,34 @@ export function SecretEditor({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {secret ? 'Edit Secret' : 'Create Secret'}
+            {secret ? t('editSecret') : t('createSecret')}
           </DialogTitle>
           <DialogDescription>
-            Store sensitive values like API keys securely. Edge functions can access them via secrets.get('{name || 'NAME'}').
+            {t('secretDialogDesc', { name: name || 'NAME' })}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           {/* Name */}
           <div className="space-y-2">
-            <Label htmlFor="name">Secret Name</Label>
+            <Label htmlFor="name">{t('secretName')}</Label>
             <Input
               id="name"
               value={name}
               onChange={handleNameChange}
-              placeholder="STRIPE_API_KEY"
+              placeholder={t('secretNamePlaceholder')}
               disabled={!!secret}
               className="font-mono"
             />
             <p className="text-xs text-muted-foreground">
-              Use SCREAMING_SNAKE_CASE (e.g., API_KEY, SENDGRID_TOKEN)
+              {t('screamingSnakeHelp')}
             </p>
           </div>
 
           {/* Value */}
           <div className="space-y-2">
             <Label htmlFor="value">
-              {secret ? 'New Value (leave empty to keep current)' : 'Secret Value'}
+              {secret ? t('newValueLabel') : t('secretValueLabel')}
             </Label>
             <div className="relative">
               <Input
@@ -126,7 +131,7 @@ export function SecretEditor({
                 type={showValue ? 'text' : 'password'}
                 value={value}
                 onChange={e => setValue(e.target.value)}
-                placeholder={secret ? 'Enter new value to change...' : 'sk_live_...'}
+                placeholder={secret ? t('newValuePlaceholder') : KEY_EXAMPLE}
                 className="pr-10 font-mono"
               />
               <Button
@@ -144,20 +149,18 @@ export function SecretEditor({
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              {secret
-                ? 'Leave empty to keep the existing value'
-                : 'This value will be encrypted and never displayed again'}
+              {secret ? t('leaveEmptyHelp') : t('encryptedHelp')}
             </p>
           </div>
 
           {/* Description */}
           <div className="space-y-2">
-            <Label htmlFor="description">Description (optional)</Label>
+            <Label htmlFor="description">{tc('labels.descriptionOptional')}</Label>
             <Input
               id="description"
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="Production Stripe API key"
+              placeholder={t('secretDescPlaceholder')}
             />
           </div>
 
@@ -165,7 +168,7 @@ export function SecretEditor({
           <div className="bg-muted/30 border rounded-lg p-4 space-y-2">
             <div className="flex items-center gap-2 text-sm font-medium">
               <Info className="h-4 w-4" />
-              Usage in Edge Functions
+              {t('usageInEdgeFunctions')}
             </div>
             <pre className="text-xs font-mono bg-background p-2 rounded overflow-x-auto">
 {`// Get secret value
@@ -193,16 +196,16 @@ const allSecrets = secrets.list(); // ['${name || 'STRIPE_API_KEY'}', ...]`}
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 pt-4 border-t">
           <Button variant="outline" onClick={onClose} disabled={saving}>
-            Cancel
+            {tc('actions.cancel')}
           </Button>
           <Button onClick={handleSave} disabled={saving}>
             {saving ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Saving...
+                {tc('actions.saving')}
               </>
             ) : (
-              secret ? 'Save Changes' : 'Create Secret'
+              secret ? tc('actions.saveChanges') : t('createSecret')
             )}
           </Button>
         </div>

@@ -1,6 +1,6 @@
 // lib/llm/provider-adapter.ts
 // Implements the ProviderAdapter interface: call(), getModel(), getProvider(), supportsTools().
-// Stateless regarding pause/resume — throws PausableApiError for the caller to handle.
+// Throws ProviderApiError for the caller to handle; it keeps no state between calls.
 
 import type { ProviderAdapter, ProviderCallParams, ParsedResponse, ProgressReporter } from './core/types';
 import type { ProviderModel } from './providers/types';
@@ -13,15 +13,16 @@ import { apiFetch } from '@/lib/api/backend-status';
 import { requestSnapshotStore } from './request-snapshot';
 import { logger } from '@/lib/utils';
 import { configManager } from '@/lib/config/storage';
+import { classifyProviderError, type ApiErrorBody, type ApiErrorCode } from './provider-errors';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ---------------------------------------------------------------------------
-// PausableApiError — typed error thrown on non-transient API failures.
-// The caller (AgentLoop) catches this and invokes onPausableError for UI flow.
+// ProviderApiError — typed error thrown on non-transient API failures.
+// The caller (AgentLoop) catches this and invokes onProviderError, which decides whether to stop.
 // ---------------------------------------------------------------------------
 
-export class PausableApiError extends Error {
+export class ProviderApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
@@ -29,11 +30,32 @@ export class PausableApiError extends Error {
     public readonly errorCategory: string,
     public readonly provider: string,
     public readonly model: string,
+    /** Timing the provider gave with the error: how long to wait, or when an allowance renews. */
+    public readonly timing: { retryAfterMs?: number; resetAt?: number } = {},
   ) {
     super(message);
-    this.name = 'PausableApiError';
+    this.name = 'ProviderApiError';
   }
 }
+
+/**
+ * Codes `/api/generate` attaches that are categories in their own right. The keyword fallback in
+ * `classifyError` only runs for an error without one (a custom endpoint relayed verbatim).
+ */
+const CODE_CATEGORIES: Record<ApiErrorCode, string> = {
+  rate_limited: 'rate_limited',
+  model_busy: 'model_busy',
+  daily_limit: 'daily_limit',
+  credit_exhausted: 'credit_exhausted',
+  auth: 'auth_expired',
+  model_unavailable: 'model_not_found',
+  overloaded: 'server_error',
+  tool_unsupported: 'tool_not_supported',
+  context_too_long: 'context_too_long',
+};
+
+/** A wait does not help these: the allowance is spent until it renews or is topped up. */
+const NO_RETRY_CODES = new Set<ApiErrorCode>(['daily_limit', 'credit_exhausted', 'model_busy']);
 
 // ---------------------------------------------------------------------------
 // Config interface — narrow dependency injection for testability
@@ -143,8 +165,10 @@ export class OswsProviderAdapter implements ProviderAdapter {
       const status = response.status;
 
       let errorMessage = `API call failed: ${response.statusText}`;
+      let body: Partial<ApiErrorBody> = {};
       try {
         const errorData = await response.json();
+        body = errorData ?? {};
         if (errorData.error) {
           errorMessage = typeof errorData.error === 'string'
             ? errorData.error
@@ -152,7 +176,11 @@ export class OswsProviderAdapter implements ProviderAdapter {
         }
       } catch { /* ignore parse failures */ }
 
-      const { errorType, errorCategory } = this.classifyError(status, errorMessage);
+      const { errorType, errorCategory } = this.classifyError(status, errorMessage, body.code);
+      const timing = {
+        ...(typeof body.retryAfterMs === 'number' ? { retryAfterMs: body.retryAfterMs } : {}),
+        ...(typeof body.resetAt === 'number' ? { resetAt: body.resetAt } : {}),
+      };
 
       // HF refused the sign-in. Drop it now so Settings stops showing "Connected", the chat
       // footer offers sign-in again, and no retry can re-send the same dead token.
@@ -163,7 +191,7 @@ export class OswsProviderAdapter implements ProviderAdapter {
         errorMessage = 'Your HuggingFace sign-in has expired. Sign in again to keep going.';
       }
 
-      throw new PausableApiError(errorMessage, status, errorType, errorCategory, provider, model);
+      throw new ProviderApiError(errorMessage, status, errorType, errorCategory, provider, model, timing);
     }
 
     // Only 'bash' is ever advertised, but derive from the tools we actually sent
@@ -175,11 +203,18 @@ export class OswsProviderAdapter implements ProviderAdapter {
 
     // Midstream error: provider sent error in SSE stream (HTTP 200 but upstream rejected)
     if (result.midstreamError && (!result.toolCalls || result.toolCalls.length === 0) && !result.content) {
-      throw new PausableApiError(
+      const midstreamStatus = typeof result.midstreamError.code === 'number' ? result.midstreamError.code : 0;
+      // A provider error relayed inside the stream still says what happened: a busy free model
+      // arrives this way as often as on the status line.
+      const midstreamCode = midstreamStatus === 429
+        ? classifyProviderError({ status: 429, provider, message: result.midstreamError.message }).code
+        : undefined;
+      const midstreamCategory = midstreamCode ? CODE_CATEGORIES[midstreamCode] : 'midstream_error';
+      throw new ProviderApiError(
         result.midstreamError.message,
-        typeof result.midstreamError.code === 'number' ? result.midstreamError.code : 0,
+        midstreamStatus,
         'midstream',
-        'midstream_error',
+        midstreamCategory,
         provider,
         model,
       );
@@ -219,6 +254,12 @@ export class OswsProviderAdapter implements ProviderAdapter {
         return response;
       }
 
+      // Waiting cannot help a spent allowance, and a busy model is better replaced than waited on.
+      if (response.status === 429) {
+        const code = await response.clone().json().then((b: Partial<ApiErrorBody>) => b?.code).catch(() => undefined);
+        if (code && NO_RETRY_CODES.has(code)) return response;
+      }
+
       const retryAfter = response.headers.get('Retry-After');
       const parsed = retryAfter ? parseInt(retryAfter) : NaN;
       const delay = !isNaN(parsed) ? parsed * 1000 : Math.pow(2, attempt) * 1000;
@@ -228,6 +269,7 @@ export class OswsProviderAdapter implements ProviderAdapter {
       logger.warn(message);
 
       this.config.progress.onEvent('retry', {
+        provider: this.getProvider(),
         attempt: attempt + 1,
         delay,
         status: response.status,
@@ -342,17 +384,21 @@ export class OswsProviderAdapter implements ProviderAdapter {
   // Classifies HTTP error status + message into errorType + errorCategory.
   // ---------------------------------------------------------------------------
 
-  private classifyError(status: number, errorMessage: string): { errorType: string; errorCategory: string } {
+  private classifyError(status: number, errorMessage: string, code?: ApiErrorCode): { errorType: string; errorCategory: string } {
     let errorType = 'unknown';
     if (status === 429) errorType = 'rate_limit';
     else if (status === 401 || status === 403) errorType = 'auth';
     else if (status >= 500 || status === 529) errorType = 'server';
     else if (status === 400) errorType = 'invalid_request';
 
+    if (code && CODE_CATEGORIES[code]) return { errorType, errorCategory: CODE_CATEGORIES[code] };
+
     const lowerMsg = errorMessage.toLowerCase();
     let errorCategory = 'unknown';
+    // "limit" alone is not evidence of spent credit: it is inside every "rate-limited" too.
+    const ratePhrased = lowerMsg.includes('rate-limit') || lowerMsg.includes('rate limit') || lowerMsg.includes('temporarily');
 
-    if (status === 402 || (status === 429 && (lowerMsg.includes('credit') || lowerMsg.includes('usage') || lowerMsg.includes('limit') || lowerMsg.includes('exceeded') || lowerMsg.includes('quota')))) {
+    if (status === 402 || (status === 429 && !ratePhrased && (lowerMsg.includes('credit') || lowerMsg.includes('usage') || lowerMsg.includes('exceeded') || lowerMsg.includes('quota')))) {
       errorCategory = 'credit_exhausted';
     } else if (status === 429) {
       errorCategory = 'rate_limited';

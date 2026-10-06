@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Project, LICENSE_OPTIONS } from '@/lib/vfs/types';
 import { vfs } from '@/lib/vfs';
 import { templateService, TemplateMetadata } from '@/lib/vfs/template-service';
@@ -38,6 +39,8 @@ export function TemplateExportDialog({
   open,
   onOpenChange,
 }: TemplateExportDialogProps) {
+  const t = useTranslations('templatesUi');
+  const tc = useTranslations('common');
   const [exporting, setExporting] = useState(false);
   const [metadata, setMetadata] = useState<TemplateMetadata>({
     name: project?.name || '',
@@ -58,17 +61,17 @@ export function TemplateExportDialog({
 
     // Validate required fields
     if (!metadata.name || metadata.name.length < 1 || metadata.name.length > 50) {
-      toast.error('Template name must be between 1 and 50 characters');
+      toast.error(t('nameLength'));
       return;
     }
 
     if (!metadata.description || metadata.description.length < 10 || metadata.description.length > 500) {
-      toast.error('Description must be between 10 and 500 characters');
+      toast.error(t('descLength'));
       return;
     }
 
     if (!metadata.version || !/^\d+\.\d+\.\d+$/.test(metadata.version)) {
-      toast.error('Version must be in format x.y.z (e.g., 1.0.0)');
+      toast.error(t('versionFormat'));
       return;
     }
 
@@ -93,7 +96,7 @@ export function TemplateExportDialog({
         exportMetadata
       );
 
-      toast.success('Template created! You can find it on the Templates page.');
+      toast.success(t('created'));
       onOpenChange(false);
 
       // Reset form
@@ -112,7 +115,7 @@ export function TemplateExportDialog({
       setTagsInput('');
     } catch (error) {
       logger.error('Failed to export template:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to export template');
+      toast.error(error instanceof Error ? error.message : t('exportFailed'));
     } finally {
       setExporting(false);
     }
@@ -137,9 +140,9 @@ export function TemplateExportDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create a Template</DialogTitle>
+          <DialogTitle>{t('createTemplate')}</DialogTitle>
           <DialogDescription>
-            Save this project as a reusable template
+            {t('exportDesc')}
           </DialogDescription>
         </DialogHeader>
 
@@ -147,28 +150,28 @@ export function TemplateExportDialog({
           {/* Preview Thumbnail */}
           {metadata.thumbnail && (
             <div className="space-y-2">
-              <Label>Preview Thumbnail</Label>
+              <Label>{t('previewThumbnail')}</Label>
               <div className="w-full rounded-lg overflow-hidden bg-muted border">
                 <img
                   src={metadata.thumbnail}
-                  alt="Template preview"
+                  alt={t('previewAlt')}
                   className="w-full h-auto"
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                This preview was captured when you saved the project
+                {t('previewCapturedNote')}
               </p>
             </div>
           )}
 
           {!metadata.thumbnail && (
             <div className="space-y-2">
-              <Label>Preview Thumbnail</Label>
+              <Label>{t('previewThumbnail')}</Label>
               <div className="w-full h-48 rounded-lg bg-muted flex items-center justify-center border">
                 <div className="text-center text-muted-foreground">
                   <FileBox className="h-12 w-12 mx-auto mb-2" />
-                  <p className="text-sm">No preview available</p>
-                  <p className="text-xs">Save your project to capture a preview</p>
+                  <p className="text-sm">{t('noPreview')}</p>
+                  <p className="text-xs">{t('saveToCapture')}</p>
                 </div>
               </div>
             </div>
@@ -178,7 +181,7 @@ export function TemplateExportDialog({
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <Label htmlFor="template-name">
-                Template Name <span className="text-destructive">*</span>
+                {t('templateName')} <span className="text-destructive">*</span>
               </Label>
               <span className="text-xs text-muted-foreground">
                 {metadata.name.length}/50
@@ -188,7 +191,7 @@ export function TemplateExportDialog({
               id="template-name"
               value={metadata.name}
               onChange={(e) => setMetadata({ ...metadata, name: e.target.value.slice(0, 50) })}
-              placeholder="My Awesome Template"
+              placeholder={t('namePlaceholder')}
               maxLength={50}
               required
             />
@@ -198,7 +201,7 @@ export function TemplateExportDialog({
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <Label htmlFor="template-description">
-                Description <span className="text-destructive">*</span>
+                {tc('labels.description')} <span className="text-destructive">*</span>
               </Label>
               <span className="text-xs text-muted-foreground">
                 {metadata.description.length}/500
@@ -208,7 +211,7 @@ export function TemplateExportDialog({
               id="template-description"
               value={metadata.description}
               onChange={(e) => setMetadata({ ...metadata, description: e.target.value.slice(0, 500) })}
-              placeholder="A complete multi-page template with..."
+              placeholder={t('descPlaceholder')}
               className="resize-none"
               rows={3}
               maxLength={500}
@@ -219,7 +222,7 @@ export function TemplateExportDialog({
           {/* Version */}
           <div className="space-y-2">
             <Label htmlFor="template-version">
-              Version <span className="text-destructive">*</span>
+              {tc('labels.version')} <span className="text-destructive">*</span>
             </Label>
             <Input
               id="template-version"
@@ -230,25 +233,25 @@ export function TemplateExportDialog({
               required
             />
             <p className="text-xs text-muted-foreground">
-              Semantic version format (e.g., 1.0.0)
+              {t('versionHelp')}
             </p>
           </div>
 
           {/* Author */}
           <div className="space-y-2">
-            <Label htmlFor="template-author">Author</Label>
+            <Label htmlFor="template-author">{tc('labels.author')}</Label>
             <Input
               id="template-author"
               value={metadata.author}
               onChange={(e) => setMetadata({ ...metadata, author: e.target.value.slice(0, 50) })}
-              placeholder="Your Name"
+              placeholder={t('authorPlaceholder')}
               maxLength={50}
             />
           </div>
 
           {/* Author URL */}
           <div className="space-y-2">
-            <Label htmlFor="template-author-url">Author URL</Label>
+            <Label htmlFor="template-author-url">{t('authorUrl')}</Label>
             <Input
               id="template-author-url"
               type="url"
@@ -261,7 +264,7 @@ export function TemplateExportDialog({
           {/* License */}
           <div className="space-y-2">
             <Label htmlFor="template-license">
-              License <span className="text-destructive">*</span>
+              {t('license')} <span className="text-destructive">*</span>
             </Label>
             <Select
               value={metadata.license}
@@ -288,21 +291,21 @@ export function TemplateExportDialog({
 
           {/* Tags */}
           <div className="space-y-2">
-            <Label htmlFor="template-tags">Tags</Label>
+            <Label htmlFor="template-tags">{t('tags')}</Label>
             <Input
               id="template-tags"
               value={tagsInput}
               onChange={(e) => setTagsInput(e.target.value)}
-              placeholder="saas, marketing, landing (comma-separated)"
+              placeholder={t('tagsPlaceholder')}
             />
             <p className="text-xs text-muted-foreground">
-              Add up to 10 tags, separated by commas
+              {t('tagsHelp')}
             </p>
           </div>
 
           {/* Marketplace URL */}
           <div className="space-y-2">
-            <Label htmlFor="template-download-url">Marketplace URL</Label>
+            <Label htmlFor="template-download-url">{t('marketplaceUrl')}</Label>
             <Input
               id="template-download-url"
               type="url"
@@ -311,17 +314,17 @@ export function TemplateExportDialog({
               placeholder="https://example.com/templates/..."
             />
             <p className="text-xs text-muted-foreground">
-              Where users can find this template
+              {t('marketplaceUrlHelp')}
             </p>
           </div>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={exporting}>
-            Cancel
+            {tc('actions.cancel')}
           </Button>
           <Button onClick={handleExport} disabled={exporting}>
-            {exporting ? 'Creating...' : 'Create Template'}
+            {exporting ? tc('actions.creating') : t('createTemplateButton')}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -22,6 +22,9 @@ import { PROJECT_BUSY_NOTICE } from '@/lib/stores/slices/orchestrator';
 import { useCostSettings } from '@/lib/hooks/use-cost-settings';
 import { getModelInputModalities } from '@/lib/llm/providers/registry';
 import { isProjectProviderReady } from '@/lib/llm/models/project-assignment';
+import type { ModelRef } from '@/lib/llm/models/assignment';
+import { continueAfterStop } from '@/lib/llm/continue-prompt';
+import { createOpenCheckpoint } from './open-checkpoint';
 import { resolveActiveAssignment } from '@/lib/llm/models/template-store';
 import { toast } from 'sonner';
 import { debugEventsState } from '@/lib/llm/debug-events-state';
@@ -51,6 +54,9 @@ import { getBlockById } from '@/lib/semantic-blocks/registry';
 import { DebugPanel } from '@/components/debug-panel';
 import { ChatPanel } from '@/components/chat-panel';
 import { DeploymentSelector } from '@/components/workspace/deployment-selector';
+import { useTranslations } from 'next-intl';
+import { translator } from '@/lib/i18n/runtime';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { CheckpointPanel } from '@/components/checkpoint-panel';
 import { ProjectSettingsModal } from '@/components/project-backend';
 import { SkillsPanel } from '@/components/workspace/skills-panel';
@@ -214,9 +220,45 @@ export function focusMessageContext<T extends { domPath: string }>(
 }
 
 /** The panel set quick edit shows, in order; the store's order is not consulted. */
+/**
+ * A panel button's tooltip in that panel's colour, on the app tooltip's tinted treatment: a 15% tint
+ * of the colour on the popover surface, the colour as text, and a 40% border.
+ */
+function panelTooltipStyle(token: string, fallback?: string): React.CSSProperties {
+  const colour = fallback ? `var(--button-${token}-active, ${fallback})` : `var(--button-${token}-active)`;
+  return {
+    backgroundColor: `color-mix(in oklab, ${colour} 15%, var(--popover))`,
+    color: colour,
+    borderColor: `color-mix(in oklab, ${colour} 40%, transparent)`,
+  };
+}
+
+/** The guided tour holds the composer for the whole of its run, wrap-up included. */
+export function tourLocksInput(tour: { status: string }): boolean {
+  return tour.status === 'running';
+}
+
+/**
+ * Whether leaving the workspace goes ahead. Unsaved changes ask first; during generation the user
+ * leaves freely, as the generation shelf carries the run's status.
+ */
+export function mayLeave(state: { generating: boolean; isDirty: boolean }, ask: () => boolean): boolean {
+  if (!state.generating && state.isDirty) return ask();
+  return true;
+}
+
+/** Continue a stopped task, on the model the person picked on its card when they picked one. */
+export function continueHandler(generate: (prompt: string) => unknown): (withModel?: ModelRef) => void {
+  return (withModel) => continueAfterStop(withModel, generate);
+}
+
 const QUICK_PANEL_ORDER = ['chat', 'preview', 'elements'];
 
 export function Workspace({ project, onBack, backLabel, workspaceId, initialPreviewPath }: WorkspaceProps) {
+  const t = useTranslations('workspace');
+  const tc = useTranslations('common');
+  const tp = useTranslations('preview');
+  const { number } = useLocalFormat();
   // The page the preview is on, for suggestions that are scoped to particular pages. Null until the
   // preview reports one, which selectPromptSuggestions reads as "offer everything".
   const [previewPath, setPreviewPath] = useState<string | null>(initialPreviewPath ?? null);
@@ -367,7 +409,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   const { state: tourState, setWorkspaceHandler } = useGuidedTour();
   const tourStep = tourState.currentStep?.id;
   const tourRunning = tourState.status === 'running';
-  const isTourLockingInput = tourRunning && tourStep !== 'wrap-up';
+  const isTourLockingInput = tourLocksInput(tourState);
 
   // Keep generatingRef in sync for runtime error listener
   useEffect(() => { generatingRef.current = generating; }, [generating]);
@@ -375,11 +417,9 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   // Guard against accidental navigation away with unsaved changes
   // During generation, let the user leave freely — the generation shelf handles status
   const guardedBack = useCallback(() => {
-    if (!generating && isDirty) {
-      if (!window.confirm('You have unsaved changes. Leave anyway?')) return;
-    }
+    if (!mayLeave({ generating, isDirty }, () => window.confirm(t('leaveUnsavedConfirm')))) return;
     onBack();
-  }, [generating, isDirty, onBack]);
+  }, [generating, isDirty, onBack, t]);
 
   // Reattach to any server-side tasks that were running before page reload
   useEffect(() => {
@@ -707,7 +747,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   const baseSize = visiblePanelCount > 0 ? Math.floor(100 / visiblePanelCount) : 100;
 
   const getModelDisplayName = (modelId: string) => {
-    if (!modelId) return 'Select Model';
+    if (!modelId) return t('selectModel');
     const parts = modelId.split('/');
     const modelName = parts[parts.length - 1];
     return modelName
@@ -775,7 +815,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
     return [
       'Focus context:',
       `- Target: ${descriptor}`,
-      `- DOM path: ${domPath}`,
+      `- DOM path: ${domPath}`, // i18n-ignore: part of the context block sent to the agent
       '- HTML snippet:',
       '```html',
       snippet,
@@ -794,7 +834,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       const block = getBlockById(placed.blockId);
       if (!block) return;
       lines.push(`[${index + 1}] ${block.name} (page: ${placed.page})`);
-      lines.push(`    Description: ${block.description}`);
+      lines.push(`    Description: ${block.description}`); // i18n-ignore: part of the context block sent to the agent
       if (placed.htmlContext) {
         const marker = `<!-- INSERT ${block.name} HERE -->`;
         const snippet = truncateHtmlAroundMarker(placed.htmlContext, marker, 1200);
@@ -803,7 +843,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
         lines.push(`    ${snippet}`);
         lines.push('    ```');
       } else {
-        lines.push(`    Position: insert ${placed.position} ${placed.domPath}`);
+        lines.push(`    Position: insert ${placed.position} ${placed.domPath}`); // i18n-ignore: part of the context block sent to the agent
       }
       lines.push('');
     });
@@ -1120,9 +1160,9 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
     try {
       handleFileSelectRef.current?.(await vfs.readFile(project.id, path));
     } catch {
-      toast.error(`Could not open ${path}`);
+      toast.error(t('couldNotOpen', { path }));
     }
-  }, [project.id]);
+  }, [t, project.id]);
 
   /**
    * The Styles tab handing a message to the chat rather than starting a run.
@@ -1269,12 +1309,12 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       await vfs.updateProject(proj);
       vfs.scheduleAutoSync(proj.id);
       useWorkspaceStore.getState().updateProjectSettings({ previewEntryPoint: path });
-      toast.success(`Entry point set to ${path}`);
+      toast.success(t('entryPointSet', { path }));
     } catch (err) {
       logger.error('Failed to set entry point:', err);
-      toast.error('Failed to set entry point');
+      toast.error(t('setEntryPointFailed'));
     }
-  }, [project.id]);
+  }, [project.id, t]);
 
   const handleAddPromptFile = useCallback(async () => {
     try {
@@ -1282,12 +1322,12 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       const runtime = projectRuntime || 'handlebars';
       await vfs.createFile(project.id, '/.PROMPT.md', getDomainPrompt(runtime));
       window.dispatchEvent(new CustomEvent('filesChanged', { detail: { projectId: project.id } }));
-      toast.success('.PROMPT.md added to project');
+      toast.success(t('promptFileAdded'));
     } catch (err) {
       logger.error('Failed to add .PROMPT.md:', err);
-      toast.error('Failed to add .PROMPT.md');
+      toast.error(t('promptFileAddFailed'));
     }
-  }, [project.id, projectRuntime]);
+  }, [project.id, projectRuntime, t]);
 
   /**
    * The selection *as the composer sees it* — the third read on the send path, and the one that is
@@ -1382,16 +1422,10 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
         if (saveManager.isDirty(project.id)) useWorkspaceStore.getState().markDirty();
 
         // Ensure a starting-point checkpoint exists so the user can always roll back.
-        // preserveUpdatedAt: this fires on the first open of every project, including one that
-        // was just imported and pushed. Bumping updatedAt here is a local write nothing pushes,
-        // so it left freshly imported projects stuck on "Local newer" in Server Sync.
         if (!latestProject.lastSavedCheckpointId) {
           try {
-            const cp = await checkpointManager.createCheckpoint(project.id, 'Project opened', { kind: 'auto' });
-            latestProject.lastSavedCheckpointId = cp.id;
-            latestProject.lastSavedAt = latestProject.updatedAt;
-            await vfs.updateProject(latestProject, { preserveUpdatedAt: true });
-            useWorkspaceStore.setState({ initialCheckpointId: cp.id });
+            const checkpointId = await createOpenCheckpoint(project.id);
+            useWorkspaceStore.setState({ initialCheckpointId: checkpointId });
           } catch { /* non-fatal */ }
         }
         // Initialize mode from localStorage (migrating the legacy chat-mode key)
@@ -1521,7 +1555,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
         if (event.checkpointId) {
           await addDebugEvent('checkpoint_created', {
             checkpointId: event.checkpointId,
-            description: `Tour checkpoint: ${event.content.substring(0, 60)}`
+            description: `Tour checkpoint: ${event.content.substring(0, 60)}` // i18n-ignore: the guided tour, deferred
           });
         }
       } else if (event.role === 'tool') {
@@ -1719,15 +1753,15 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
         initialCheckpointId: checkpoint.id,
       });
       useWorkspaceStore.getState().incrementCheckpointRefresh();
-      toast.success('Project saved');
+      toast.success(t('projectSaved'));
     } catch (error) {
       logger.error('Failed to save project', error);
-      toast.error('Failed to save project');
+      toast.error(t('saveProjectFailed'));
     } finally {
       useWorkspaceStore.setState({ saveInProgress: false });
     }
 
-  }, [project.id]);
+  }, [project.id, t]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1792,7 +1826,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
    */
   const refuseWhileGenerating = useCallback(() => {
     if (!useWorkspaceStore.getState().isProjectGenerating(project.id)) return false;
-    toast.info(PROJECT_BUSY_NOTICE);
+    toast.info(translator()(PROJECT_BUSY_NOTICE));
     return true;
   }, [project.id]);
 
@@ -1804,7 +1838,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
         : checkpointId;
       const exists = await checkpointManager.checkpointExists(targetId);
       if (!exists) {
-        toast.error('Checkpoint no longer exists - it may have been cleaned up');
+        toast.error(t('checkpointGone'));
         logger.warn(`[Workspace] Checkpoint ${targetId} no longer exists`);
         return;
       }
@@ -1818,7 +1852,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
         if (success) {
           setUndoCursor(checkpointId);
           await remountBackendContext();
-          toast.success(`Restored to: ${description || 'checkpoint'}`);
+          toast.success(t('restoredTo', { description: description || t('checkpointFallback') }));
           track(options?.isDiscard ? 'changes_discarded' : 'checkpoint_restore');
           handleFilesChange();
 
@@ -1831,14 +1865,14 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
             saveManager.markDirty(project.id);
           }
         } else {
-          toast.error('Failed to restore checkpoint');
+          toast.error(t('restoreCheckpointFailed'));
         }
       });
     } catch (error) {
       logger.error('Error restoring checkpoint:', error);
-      toast.error('Failed to restore checkpoint');
+      toast.error(t('restoreCheckpointFailed'));
     }
-  }, [handleFilesChange, project.id, remountBackendContext, runRestore, refuseWhileGenerating]);
+  }, [handleFilesChange, project.id, remountBackendContext, runRestore, refuseWhileGenerating, t]);
 
   const handleScrollToCheckpoint = useCallback((checkpointId: string) => {
     if (!useWorkspaceStore.getState().showChat) useWorkspaceStore.getState().togglePanel('chat');
@@ -1858,7 +1892,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       // First check if checkpoint exists
       const exists = await checkpointManager.checkpointExists(checkpointId);
       if (!exists) {
-        toast.error('Checkpoint no longer exists - cannot retry');
+        toast.error(t('checkpointGoneRetry'));
         logger.warn(`[Workspace] Checkpoint ${checkpointId} no longer exists`);
         return;
       }
@@ -1882,7 +1916,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       }
 
       if (!userMessageContent) {
-        toast.error('Cannot find original user message to retry');
+        toast.error(t('noOriginalMessage'));
         logger.warn('[Workspace] No user message found before checkpoint');
         return;
       }
@@ -1899,7 +1933,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       }
 
       if (userMessageIndex === -1) {
-        toast.error('Cannot find user message event to truncate');
+        toast.error(t('noMessageEvent'));
         logger.warn('[Workspace] User message event not found in debug events');
         return;
       }
@@ -1910,7 +1944,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
           checkpointManager.restoreCheckpoint(checkpointId)
         );
         if (!success) {
-          toast.error('Failed to restore checkpoint');
+          toast.error(t('restoreCheckpointFailed'));
           return;
         }
         await remountBackendContext();
@@ -1931,7 +1965,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
         useWorkspaceStore.getState().resetOrchestrator();
         await debugEventsState.truncateEvents(project.id, truncatedEvents);
 
-        toast.success('Restored checkpoint and retrying...');
+        toast.success(t('restoringAndRetrying'));
         handleFilesChange();
 
         // Retry generation with the original user message.
@@ -1940,9 +1974,9 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       });
     } catch (error) {
       logger.error('Error during retry:', error);
-      toast.error('Failed to retry');
+      toast.error(t('retryFailed'));
     }
-  }, [handleFilesChange, project.id, debugEvents, remountBackendContext, runRestore, refuseWhileGenerating]);
+  }, [handleFilesChange, project.id, debugEvents, remountBackendContext, runRestore, refuseWhileGenerating, t]);
 
   const storeStartGeneration = useWorkspaceStore(s => s.startGeneration);
 
@@ -2043,16 +2077,12 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   handleGenerateRef.current = handleGenerate;
 
   const stopGeneration = useWorkspaceStore(s => s.stopGeneration);
-  const continueGeneration = useWorkspaceStore(s => s.continueGeneration);
-  const canContinue = useWorkspaceStore(s => s.canContinueGeneration());
 
   const handleStop = useCallback(() => {
     stopGeneration();
   }, [stopGeneration]);
 
-  const handleContinue = useCallback(() => {
-    continueGeneration();
-  }, [continueGeneration]);
+  const handleContinue = useMemo(() => continueHandler(handleGenerate), [handleGenerate]);
 
   const handleSendRuntimeErrors = useCallback(() => {
     const storeErrors = useWorkspaceStore.getState().runtimeErrors;
@@ -2102,7 +2132,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   const headerActions: HeaderAction[] = [
     {
       id: 'back',
-      label: backLabel ?? 'Back to projects',
+      label: backLabel ?? t('backToProjects'),
       icon: ArrowLeft,
       onClick: guardedBack,
       variant: 'outline'
@@ -2111,14 +2141,14 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
 
   if (quick) {
     headerActions.push(
-      { id: 'undo', label: 'Undo', icon: Undo2, onClick: handleUndo, variant: 'outline', disabled: !undoTargetId || generating },
-      { id: 'redo', label: 'Redo', icon: Redo2, onClick: handleRedo, variant: 'outline', disabled: !redoTargetId || generating },
+      { id: 'undo', label: tc('actions.undo'), icon: Undo2, onClick: handleUndo, variant: 'outline', disabled: !undoTargetId || generating },
+      { id: 'redo', label: tc('actions.redo'), icon: Redo2, onClick: handleRedo, variant: 'outline', disabled: !redoTargetId || generating },
     );
   }
 
   headerActions.push({
     id: 'save',
-    label: saveInProgress ? 'Saving…' : isDirty ? 'Save' : 'Saved',
+    label: saveInProgress ? t('saving') : isDirty ? tc('actions.save') : t('saved'),
     icon: Save,
     onClick: handleSave,
     variant: isDirty ? 'default' : 'outline',
@@ -2130,9 +2160,9 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   if (discardCheckpointId && quick) {
     headerActions.push({
       id: 'discard',
-      label: 'Discard Changes',
+      label: t('discardChanges'),
       icon: RotateCcw,
-      onClick: () => handleRestoreCheckpoint(discardCheckpointId, 'Last saved state', { isDiscard: true }),
+      onClick: () => handleRestoreCheckpoint(discardCheckpointId, t('lastSavedState'), { isDiscard: true }),
       variant: 'outline',
       disabled: saveInProgress || !isDirty,
     });
@@ -2140,19 +2170,19 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
     const discardDisabled = saveInProgress || !isDirty;
     headerActions.push({
       id: 'discard',
-      label: 'Discard Changes',
+      label: t('discardChanges'),
       onClick: () => {},
       content: (
         <div className="flex items-center" data-tour-id="discard-changes-button">
           <Button
             variant="outline"
             size="sm"
-            onClick={() => handleRestoreCheckpoint(discardCheckpointId, 'Last saved state', { isDiscard: true })}
+            onClick={() => handleRestoreCheckpoint(discardCheckpointId, t('lastSavedState'), { isDiscard: true })}
             disabled={discardDisabled}
             className="rounded-r-none border-r-0"
           >
             <RotateCcw className="h-4 w-4 mr-2" />
-            Discard Changes
+            {t('discardChanges')}
           </Button>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -2173,7 +2203,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                 }}
                 disabled={saveInProgress}
                 className="rounded-l-none px-2 group/chev"
-                aria-label={showCheckpoints ? 'Close checkpoints panel' : 'Open checkpoints panel'}
+                aria-label={showCheckpoints ? t('closeCheckpointsPanel') : t('openCheckpointsPanel')}
               >
                 {showCheckpoints
                   ? <ChevronUp className="h-4 w-4 transition-transform group-hover/chev:-translate-y-0.5" />
@@ -2181,7 +2211,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {showCheckpoints ? 'Close checkpoints' : 'All checkpoints'}
+              {showCheckpoints ? t('closeCheckpoints') : t('allCheckpoints')}
             </TooltipContent>
           </Tooltip>
         </div>
@@ -2210,10 +2240,10 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
         size="sm"
         className="h-8 px-3 flex items-center gap-2"
         onClick={() => setPublishOpen(true)}
-        title="Deploy this project"
+        title={t('deployTooltip')}
       >
         <Upload className="h-4 w-4" />
-        <span className="text-sm hidden lg:inline">Deploy</span>
+        <span className="text-sm hidden lg:inline">{t('deploy')}</span>
       </Button>
 
       {/* Settings — cost + all settings (app + project) in one modal */}
@@ -2222,10 +2252,10 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
         size="sm"
         className="h-8 px-3 flex items-center gap-2"
         onClick={() => useWorkspaceStore.getState().setShowProjectSettingsModal(true)}
-        title="Settings"
+        title={tc('terms.settings')}
       >
         {shouldShowCosts && (
-          <span className="text-sm font-medium">${projectCost.toFixed(3)}</span>
+          <span className="text-sm font-medium">{number(projectCost, { style: 'currency', currency: 'USD', minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
         )}
         <Settings className="h-4 w-4" />
       </Button>
@@ -2237,7 +2267,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       {shouldShowCosts && (
         <div className="pb-2 border-b border-border/50">
           <span className="text-sm font-medium">
-            Project cost: ${projectCost.toFixed(projectCost >= 10 ? 2 : 3)}
+            {t('projectCost', { cost: number(projectCost, { style: 'currency', currency: 'USD', maximumFractionDigits: projectCost >= 10 ? 2 : 3, minimumFractionDigits: projectCost >= 10 ? 2 : 3 }) })}
           </span>
         </div>
       )}
@@ -2248,7 +2278,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
         onClick={() => useWorkspaceStore.getState().setShowProjectSettingsModal(true)}
       >
         <Settings className="h-4 w-4 mr-2" />
-        Settings
+        {tc('terms.settings')}
       </Button>
     </div>
   );
@@ -2273,11 +2303,11 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
         // proceed without asking again, and the task restarts from history.
         track('approval_response', { via: 'quick', decision: 'allow', gate: gateKey });
         configManager.setPermissionOverride(gateKey, 'allow');
-        void handleGenerate(`Approved ${label}. Continue the task.`);
+        void handleGenerate(`Approved ${label}. Continue the task.`); // i18n-ignore: sent to the agent as the user's message; English by decision
       }}
       onDeny={(label) => {
         track('approval_response', { via: 'quick', decision: 'deny' });
-        void handleGenerate(`I declined ${label}. Continue without it.`);
+        void handleGenerate(`I declined ${label}. Continue without it.`); // i18n-ignore: sent to the agent as the user's message; English by decision
       }}
     />
   ) : undefined;
@@ -2287,7 +2317,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
         {/* Header */}
         <AppHeader
           leftText={project.name}
-          leftSubtext={quick ? undefined : { chat: 'Chat', files: 'Files', editor: 'Editor', preview: 'Preview', elements: 'Inspector', checkpoints: 'Checkpoints', console: 'Console', skills: 'Skills', debug: 'Debug' }[activeMobilePanel]}
+          leftSubtext={quick ? undefined : { chat: tc('terms.chat'), files: t('tabs.filesShort'), editor: t('tabs.editorShort'), preview: t('tabs.preview'), elements: t('tabs.inspector'), checkpoints: t('tabs.checkpoints'), console: t('tabs.console'), skills: tc('terms.skills'), debug: t('tabs.debugShort') }[activeMobilePanel]}
           onLogoClick={guardedBack}
           actions={headerActions}
           mobileMenuContent={quick ? undefined : mobileMenuContent}
@@ -2328,7 +2358,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
             setPendingRestore(null);
             pending?.restore().catch(error => {
               logger.error('Error restoring checkpoint:', error);
-              toast.error('Failed to restore checkpoint');
+              toast.error(t('restoreCheckpointFailed'));
             });
           }}
         />
@@ -2339,9 +2369,9 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
           {quick && (
             <div className="w-10 bg-muted/70 border-r border-border flex flex-col items-center py-3 gap-1.5">
               {([
-                { key: 'chat', label: 'Chat', Icon: MessageSquare, on: showChat, token: 'assistant' },
-                { key: 'preview', label: 'Live Preview', Icon: Eye, on: showPreview, token: 'preview' },
-                { key: 'elements', label: 'Inspector', Icon: ListTree, on: showElements, token: 'elements' },
+                { key: 'chat', label: tc('terms.chat'), Icon: MessageSquare, on: showChat, token: 'assistant' },
+                { key: 'preview', label: tp('livePreview'), Icon: Eye, on: showPreview, token: 'preview' },
+                { key: 'elements', label: t('tabs.inspector'), Icon: ListTree, on: showElements, token: 'elements' },
               ] as const).map(({ key, label, Icon, on, token }) => (
                 <Tooltip key={key}>
                   <TooltipTrigger asChild>
@@ -2362,9 +2392,8 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                   </TooltipTrigger>
                   <TooltipContent
                     side="right"
-                    className="border-0"
-                    style={{ backgroundColor: `var(--button-${token}-active)`, color: 'white' }}
-                    arrowStyle={{ backgroundColor: `var(--button-${token}-active)`, fill: `var(--button-${token}-active)` }}
+                    style={panelTooltipStyle(token)}
+                    arrowStyle={panelTooltipStyle(token)}
                   >
                     <p>{label}</p>
                   </TooltipContent>
@@ -2394,17 +2423,10 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
               </TooltipTrigger>
               <TooltipContent
                 side="right"
-                className="border-0"
-                style={{
-                  backgroundColor: 'var(--button-assistant-active)',
-                  color: 'white'
-                }}
-                arrowStyle={{
-                  backgroundColor: 'var(--button-assistant-active)',
-                  fill: 'var(--button-assistant-active)'
-                }}
+                style={panelTooltipStyle('assistant')}
+                arrowStyle={panelTooltipStyle('assistant')}
               >
-                <p>Chat</p>
+                <p>{tc('terms.chat')}</p>
               </TooltipContent>
             </Tooltip>
 
@@ -2429,17 +2451,10 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
               </TooltipTrigger>
               <TooltipContent
                 side="right"
-                className="border-0"
-                style={{
-                  backgroundColor: 'var(--button-files-active)',
-                  color: 'white'
-                }}
-                arrowStyle={{
-                  backgroundColor: 'var(--button-files-active)',
-                  fill: 'var(--button-files-active)'
-                }}
+                style={panelTooltipStyle('files')}
+                arrowStyle={panelTooltipStyle('files')}
               >
-                <p>File Explorer</p>
+                <p>{t('tabs.fileExplorer')}</p>
               </TooltipContent>
             </Tooltip>
             
@@ -2462,19 +2477,12 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                   <Code2 className="h-3.5 w-3.5" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent 
-                side="right" 
-                className="border-0"
-                style={{ 
-                  backgroundColor: 'var(--button-editor-active)', 
-                  color: 'white'
-                }}
-                arrowStyle={{
-                  backgroundColor: 'var(--button-editor-active)',
-                  fill: 'var(--button-editor-active)'
-                }}
+              <TooltipContent
+                side="right"
+                style={panelTooltipStyle('editor')}
+                arrowStyle={panelTooltipStyle('editor')}
               >
-                <p>Code Editor</p>
+                <p>{t('tabs.codeEditor')}</p>
               </TooltipContent>
             </Tooltip>
             
@@ -2499,17 +2507,10 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
               </TooltipTrigger>
               <TooltipContent
                 side="right"
-                className="border-0"
-                style={{
-                  backgroundColor: 'var(--button-preview-active)',
-                  color: 'white'
-                }}
-                arrowStyle={{
-                  backgroundColor: 'var(--button-preview-active)',
-                  fill: 'var(--button-preview-active)'
-                }}
+                style={panelTooltipStyle('preview')}
+                arrowStyle={panelTooltipStyle('preview')}
               >
-                <p>Preview</p>
+                <p>{t('tabs.preview')}</p>
               </TooltipContent>
             </Tooltip>
 
@@ -2528,24 +2529,17 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                   onClick={() => togglePanel('elements')}
                   onMouseEnter={() => handleSidebarHover('elements')}
                   onMouseLeave={() => handleSidebarHover(null)}
-                  aria-label={showElements ? 'Close inspector panel' : 'Open inspector panel'}
+                  aria-label={showElements ? t('closeInspectorPanel') : t('openInspectorPanel')}
                 >
                   <ListTree className="h-3.5 w-3.5" />
                 </button>
               </TooltipTrigger>
               <TooltipContent
                 side="right"
-                className="border-0"
-                style={{
-                  backgroundColor: 'var(--button-elements-active)',
-                  color: 'white'
-                }}
-                arrowStyle={{
-                  backgroundColor: 'var(--button-elements-active)',
-                  fill: 'var(--button-elements-active)'
-                }}
+                style={panelTooltipStyle('elements')}
+                arrowStyle={panelTooltipStyle('elements')}
               >
-                <p>Inspector</p>
+                <p>{t('tabs.inspector')}</p>
               </TooltipContent>
             </Tooltip>
 
@@ -2570,17 +2564,10 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
               </TooltipTrigger>
               <TooltipContent
                 side="right"
-                className="border-0"
-                style={{
-                  backgroundColor: 'var(--button-skills-active, #a855f7)',
-                  color: 'white'
-                }}
-                arrowStyle={{
-                  backgroundColor: 'var(--button-skills-active, #a855f7)',
-                  fill: 'var(--button-skills-active, #a855f7)'
-                }}
+                style={panelTooltipStyle('skills', '#a855f7')}
+                arrowStyle={panelTooltipStyle('skills', '#a855f7')}
               >
-                <p>Skills</p>
+                <p>{tc('terms.skills')}</p>
               </TooltipContent>
             </Tooltip>
 
@@ -2608,17 +2595,10 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
               </TooltipTrigger>
               <TooltipContent
                 side="right"
-                className="border-0"
-                style={{
-                  backgroundColor: 'var(--button-terminal-active, #22c55e)',
-                  color: 'white'
-                }}
-                arrowStyle={{
-                  backgroundColor: 'var(--button-terminal-active, #22c55e)',
-                  fill: 'var(--button-terminal-active, #22c55e)'
-                }}
+                style={panelTooltipStyle('terminal', '#22c55e')}
+                arrowStyle={panelTooltipStyle('terminal', '#22c55e')}
               >
-                <p>Console</p>
+                <p>{t('tabs.console')}</p>
               </TooltipContent>
             </Tooltip>
 
@@ -2643,17 +2623,10 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
               </TooltipTrigger>
               <TooltipContent
                 side="right"
-                className="border-0"
-                style={{
-                  backgroundColor: 'var(--button-checkpoint-active)',
-                  color: 'white'
-                }}
-                arrowStyle={{
-                  backgroundColor: 'var(--button-checkpoint-active)',
-                  fill: 'var(--button-checkpoint-active)'
-                }}
+                style={panelTooltipStyle('checkpoint')}
+                arrowStyle={panelTooltipStyle('checkpoint')}
               >
-                <p>Checkpoints</p>
+                <p>{t('tabs.checkpoints')}</p>
               </TooltipContent>
             </Tooltip>
 
@@ -2675,15 +2648,8 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                   <Bug className="h-3.5 w-3.5" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent
-                side="right"
-                className="border-0 bg-foreground text-background"
-                arrowStyle={{
-                  backgroundColor: 'var(--foreground)',
-                  fill: 'var(--foreground)'
-                }}
-              >
-                <p>Debug Events</p>
+              <TooltipContent side="right">
+                <p>{t('tabs.debugEvents')}</p>
               </TooltipContent>
             </Tooltip>
 
@@ -2712,7 +2678,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                   generating={generating}
                   onGenerate={handleGenerate}
                   onStop={handleStop}
-                  onContinue={canContinue ? handleContinue : undefined}
+                  onContinue={handleContinue}
                   focusContext={includedFocus}
                   onClearFocus={handleDesktopClearFocus}
                   focusPreviewSnippet={focusPreviewSnippet}
@@ -2824,7 +2790,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                 <PanelContainer>
                   <PanelHeader
                     icon={ListTree}
-                    title="Inspector"
+                    title={t('tabs.inspector')}
                     color="var(--button-elements-active)"
                     panelKey="elements"
                     onClose={quick
@@ -2997,7 +2963,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                 generating={generating}
                 onGenerate={handleMobileGenerate}
                 onStop={handleStop}
-                onContinue={canContinue ? handleContinue : undefined}
+                onContinue={handleContinue}
                 focusContext={includedFocus}
                 onClearFocus={handleMobileClearFocus}
                 focusPreviewSnippet={focusPreviewSnippet}
@@ -3226,7 +3192,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                   backgroundColor: activeMobilePanel === 'elements' ? 'var(--button-elements-active)' : undefined,
                 }}
                 onClick={() => { useWorkspaceStore.getState().setActiveMobilePanel('elements'); }}
-                aria-label="Inspector"
+                aria-label={t('tabs.inspector')}
               >
                 <ListTree className="h-4 w-4" />
               </button>
@@ -3263,7 +3229,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                         onClick={() => { useWorkspaceStore.getState().setActiveMobilePanel('checkpoints'); }}
                       >
                         <History className="h-4 w-4" />
-                        <span>Checkpoints</span>
+                        <span>{t('tabs.checkpoints')}</span>
                       </button>
                       <button
                         className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${
@@ -3275,7 +3241,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                         onClick={() => { useWorkspaceStore.getState().setActiveMobilePanel('console'); }}
                       >
                         <TerminalIcon className="h-4 w-4" />
-                        <span>Console</span>
+                        <span>{t('tabs.console')}</span>
                         {hasUnreadConsole && activeMobilePanel !== 'console' && (
                           <span className="ml-auto h-2 w-2 rounded-full bg-[var(--button-terminal-active,#22c55e)]" />
                         )}
@@ -3290,7 +3256,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                         onClick={() => { useWorkspaceStore.getState().setActiveMobilePanel('skills'); }}
                       >
                         <Sparkles className="h-4 w-4" />
-                        <span>Skills</span>
+                        <span>{tc('terms.skills')}</span>
                       </button>
                       <button
                         className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${
@@ -3302,7 +3268,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                         onClick={() => { useWorkspaceStore.getState().setActiveMobilePanel('debug'); }}
                       >
                         <Bug className="h-4 w-4" />
-                        <span>Debug</span>
+                        <span>{t('tabs.debugShort')}</span>
                       </button>
                     </div>
                   </>

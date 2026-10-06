@@ -1,6 +1,7 @@
 'use client';
 
 import { Dispatch, SetStateAction, useEffect, useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import { SyncableItem } from '@/lib/vfs/sync-types';
 import { SummaryBar } from './summary-bar';
 import { SyncItemRow } from '../sync-item-row';
@@ -33,6 +34,7 @@ export function TemplatesTab({
   onRegisterPushSelected,
   onRegisterPullSelected,
 }: TemplatesTabProps) {
+  const t = useTranslations('sync');
   const syncManager = getSyncManager();
 
   // Use refs to hold the latest values for use in mount-only handlers
@@ -63,26 +65,26 @@ export function TemplatesTab({
       const template = await vfs.getStorageAdapter().getCustomTemplate(item.id);
 
       if (!template) {
-        toast.error(`Template "${item.name}" not found`);
+        toast.error(t('templateNotFound', { name: item.name }));
         return;
       }
 
       const result = await syncManager.pushTemplate(template);
 
       if (result.success) {
-        toast.success(`Pushed "${item.name}" to server`);
+        toast.success(t('pushedName', { name: item.name }));
         if (!opts?.silent) {
           track('sync_manual', { item_type: 'template', direction: 'push', bulk: false, count: 1 });
         }
         onRefresh();
         onSyncComplete();
       } else {
-        toast.error(result.error || 'Failed to push template');
+        toast.error(result.error || t('pushTemplateFailed'));
         track('sync_fail', { item_type: 'template', direction: 'push' });
       }
     } catch (error) {
       logger.error('Push template error:', error);
-      toast.error('Failed to push template');
+      toast.error(t('pushTemplateFailed'));
       track('sync_fail', { item_type: 'template', direction: 'push' });
     } finally {
       onSyncingIdsChange((prev: Set<string>) => {
@@ -99,7 +101,7 @@ export function TemplatesTab({
       const result = await syncManager.pullTemplate(item.id);
 
       if (!result.success || !result.template) {
-        toast.error(result.error || 'Failed to pull template');
+        toast.error(result.error || t('pullTemplateFailed'));
         track('sync_fail', { item_type: 'template', direction: 'pull' });
         return;
       }
@@ -116,7 +118,7 @@ export function TemplatesTab({
 
       await vfs.getStorageAdapter().saveCustomTemplate(template);
 
-      toast.success(`Pulled "${item.name}" from server`);
+      toast.success(t('pulledName', { name: item.name }));
       if (!opts?.silent) {
         track('sync_manual', { item_type: 'template', direction: 'pull', bulk: false, count: 1 });
       }
@@ -124,7 +126,7 @@ export function TemplatesTab({
       onSyncComplete();
     } catch (error) {
       logger.error('Pull template error:', error);
-      toast.error('Failed to pull template');
+      toast.error(t('pullTemplateFailed'));
       track('sync_fail', { item_type: 'template', direction: 'pull' });
     } finally {
       onSyncingIdsChange((prev: Set<string>) => {
@@ -192,7 +194,7 @@ export function TemplatesTab({
   if (items.length === 0) {
     return (
       <div className="text-center py-8 text-muted-foreground">
-        No custom templates to sync
+        {t('noTemplatesToSync')}
       </div>
     );
   }

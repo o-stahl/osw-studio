@@ -75,15 +75,24 @@ export function imageRefusal(result: ApplyResult): ImageRefusal | null {
   return { reason, file: result.file };
 }
 
+/** The image picker's own message keys, so a translator passed in is checked against them. */
+type ImagePickerMessageKey =
+  | 'titleGenerating' | 'titleStale' | 'titleMissing' | 'titleNoSrc' | 'titleExpression' | 'titleUnresolvable'
+  | 'msgGenerating' | 'msgStale' | 'msgStaleFile' | 'msgMissing' | 'msgMissingFile' | 'msgNoSrc' | 'msgNoSrcFile'
+  | 'msgExpression' | 'msgUnresolvable'
+  | 'confirmMany' | 'confirmManyFrom' | 'confirmShared' | 'confirmSharedFrom';
+
+export type ImagePickerTranslator = (key: ImagePickerMessageKey, values?: Record<string, string | number>) => string;
+
 /** Separate from message so the headline does not contradict the detail. */
-export function imageRefusalTitle(refusal: ImageRefusal): string {
+export function imageRefusalTitle(refusal: ImageRefusal, t: ImagePickerTranslator): string {
   switch (refusal.reason) {
-    case 'generating':      return 'The agent is working';
-    case 'stale-index':     return 'The preview is out of date';
-    case 'missing-file':    return 'The source file is gone';
-    case 'no-src':          return 'Nothing to replace';
-    case 'expression-src':  return 'This image is set by the template';
-    case 'unresolvable':    return 'Nothing to replace here';
+    case 'generating':      return t('titleGenerating');
+    case 'stale-index':     return t('titleStale');
+    case 'missing-file':    return t('titleMissing');
+    case 'no-src':          return t('titleNoSrc');
+    case 'expression-src':  return t('titleExpression');
+    case 'unresolvable':    return t('titleUnresolvable');
   }
 }
 
@@ -95,26 +104,42 @@ export function imageRefusalTitle(refusal: ImageRefusal): string {
  * a limitation to work around but the reason the image is right in the first place, and writing the
  * literal would both put a wrong path in the file and delete the binding that computes the real one.
  */
-export function imageRefusalMessage(refusal: ImageRefusal): string {
+export function imageRefusalMessage(refusal: ImageRefusal, t: ImagePickerTranslator): string {
+  const file = refusal.file;
+  switch (refusal.reason) {
+    case 'generating':      return t('msgGenerating');
+    case 'stale-index':     return file ? t('msgStaleFile', { file }) : t('msgStale');
+    case 'missing-file':    return file ? t('msgMissingFile', { file }) : t('msgMissing');
+    case 'no-src':          return file ? t('msgNoSrcFile', { file }) : t('msgNoSrc');
+    case 'expression-src':  return t('msgExpression');
+    case 'unresolvable':    return t('msgUnresolvable');
+  }
+}
+
+/**
+ * The refusal as a request to the agent, in English like everything the agent is sent. The panel
+ * shows {@link imageRefusalMessage} instead.
+ */
+export function imageRefusalAgentPrompt(refusal: ImageRefusal): string {
   switch (refusal.reason) {
     case 'generating':
-      return 'The agent is editing this project. Image changes wait until it finishes.';
+      return 'The agent is editing this project. Image changes wait until it finishes.'; // i18n-ignore: part of a request to the agent
     case 'stale-index':
-      return `The preview is out of date${refusal.file ? `: ${refusal.file} has changed since it was compiled` : ''}. `
-        + 'Refresh the preview and select the image again.';
+      return `The preview is out of date${refusal.file ? `: ${refusal.file} has changed since it was compiled` : ''}. ` // i18n-ignore: part of a request to the agent
+        + 'Refresh the preview and select the image again.'; // i18n-ignore: part of a request to the agent
     case 'missing-file':
-      return `${refusal.file ?? 'The source file'} no longer exists, so there is nothing to edit. `
-        + 'Refreshing will not help — ask the agent to rebuild it.';
+      return `${refusal.file ?? 'The source file'} no longer exists, so there is nothing to edit. ` // i18n-ignore: part of a request to the agent
+        + 'Refreshing will not help — ask the agent to rebuild it.'; // i18n-ignore: part of a request to the agent
     case 'no-src':
-      return `This image has no src to change${refusal.file ? ` in ${refusal.file}` : ''} — it is set somewhere else, `
-        + 'most likely by a script or a condition. Ask the agent to change it instead.';
+      return `This image has no src to change${refusal.file ? ` in ${refusal.file}` : ''} — it is set somewhere else, ` // i18n-ignore: part of a request to the agent
+        + 'most likely by a script or a condition. Ask the agent to change it instead.'; // i18n-ignore: part of a request to the agent
     case 'expression-src':
-      return 'This image\'s address comes from the template, not from the page, so replacing it here '
-        + 'would break the link and still show the wrong picture. Ask the agent to change what the '
-        + 'template points at.';
+      return 'This image\'s address comes from the template, not from the page, so replacing it here ' // i18n-ignore: part of a request to the agent
+        + 'would break the link and still show the wrong picture. Ask the agent to change what the ' // i18n-ignore: part of a request to the agent
+        + 'template points at.'; // i18n-ignore: part of a request to the agent
     case 'unresolvable':
-      return 'This image is built at runtime, so there is no source tag to edit. '
-        + 'Ask the agent to change it instead.';
+      return 'This image is built at runtime, so there is no source tag to edit. ' // i18n-ignore: part of a request to the agent
+        + 'Ask the agent to change it instead.'; // i18n-ignore: part of a request to the agent
   }
 }
 
@@ -125,9 +150,7 @@ export function imageRefusalOffersAgent(refusal: ImageRefusal): boolean {
 }
 
 /** What the picker says before writing to a source tag that renders more than once. */
-export function imageConfirmationMessage(instances: number, file?: string): string {
-  const where = file ? ` from ${file}` : '';
-  return instances > 1
-    ? `This image${where} is rendered ${instances} times. Replacing it replaces all ${instances}.`
-    : `This image${where} is shared. Replacing it replaces every place it renders.`;
+export function imageConfirmationMessage(instances: number, t: ImagePickerTranslator, file?: string): string {
+  if (instances > 1) return file ? t('confirmManyFrom', { file, count: instances }) : t('confirmMany', { count: instances });
+  return file ? t('confirmSharedFrom', { file }) : t('confirmShared');
 }

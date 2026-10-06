@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 import { getLoginUrl } from '@/lib/config/storage';
 import {
   Building2,
@@ -36,7 +37,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { logger } from '@/lib/utils';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { PageShell, PageHeader, PageBody } from '@/components/ui/page-shell';
+import { useRoleLabel } from './role-label';
 
 interface WorkspaceMember {
   userId: string;
@@ -80,6 +83,10 @@ interface WorkspaceDetail extends WorkspaceInfo {
 }
 
 export function WorkspacesView() {
+  const t = useTranslations('admin');
+  const roleLabel = useRoleLabel();
+  const { dateTime } = useLocalFormat();
+  const tc = useTranslations('common');
   const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -131,7 +138,7 @@ export function WorkspacesView() {
       setWorkspaces(data.workspaces);
     } catch (err) {
       logger.error('[WorkspacesView] Failed to load workspaces:', err);
-      toast.error('Failed to load workspaces');
+      toast.error(t('loadWorkspacesFailed'));
     } finally {
       setLoading(false);
     }
@@ -164,9 +171,9 @@ export function WorkspacesView() {
       });
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.error || 'Failed to update workspace');
+        throw new Error(error.error || t('updateWorkspaceFailed'));
       }
-      toast.success('Workspace updated');
+      toast.success(t('workspaceUpdated'));
       setShowEditDialog(false);
       setEditWorkspace(null);
       await loadWorkspaces();
@@ -175,7 +182,7 @@ export function WorkspacesView() {
       }
     } catch (err) {
       logger.error('[WorkspacesView] Failed to update workspace:', err);
-      toast.error(err instanceof Error ? err.message : 'Failed to update workspace');
+      toast.error(err instanceof Error ? err.message : t('updateWorkspaceFailed'));
     } finally {
       setSaving(false);
     }
@@ -183,7 +190,7 @@ export function WorkspacesView() {
 
   const handleCreate = async () => {
     if (!createForm.name || !createForm.ownerEmail) {
-      toast.error('Workspace name and owner email are required');
+      toast.error(t('workspaceNameOwnerRequired'));
       return;
     }
     setSaving(true);
@@ -198,29 +205,29 @@ export function WorkspacesView() {
       });
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.error || 'Failed to create workspace');
+        throw new Error(error.error || t('createWorkspaceFailed'));
       }
-      toast.success('Workspace created');
+      toast.success(t('workspaceCreated'));
       setShowCreateDialog(false);
       setCreateForm({ name: '', ownerEmail: '' });
       await loadWorkspaces();
     } catch (err) {
       logger.error('[WorkspacesView] Failed to create workspace:', err);
-      toast.error(err instanceof Error ? err.message : 'Failed to create workspace');
+      toast.error(err instanceof Error ? err.message : t('createWorkspaceFailed'));
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (ws: WorkspaceInfo) => {
-    if (!confirm(`Delete workspace "${ws.name}"? This cannot be undone.`)) return;
+    if (!confirm(t('confirmDeleteWorkspace', { name: ws.name }))) return;
     try {
       const res = await fetch(`/api/admin/workspaces/${ws.id}`, { method: 'DELETE' });
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.error || 'Failed to delete workspace');
+        throw new Error(error.error || t('deleteWorkspaceFailed'));
       }
-      toast.success('Workspace deleted');
+      toast.success(t('workspaceDeleted'));
       if (expandedId === ws.id) {
         setExpandedId(null);
         setWorkspaceDetail(null);
@@ -228,7 +235,7 @@ export function WorkspacesView() {
       await loadWorkspaces();
     } catch (err) {
       logger.error('[WorkspacesView] Failed to delete workspace:', err);
-      toast.error(err instanceof Error ? err.message : 'Failed to delete workspace');
+      toast.error(err instanceof Error ? err.message : t('deleteWorkspaceFailed'));
     }
   };
 
@@ -241,7 +248,7 @@ export function WorkspacesView() {
       setWorkspaceDetail(data);
     } catch (err) {
       logger.error('[WorkspacesView] Failed to load workspace details:', err);
-      toast.error('Failed to load workspace details');
+      toast.error(t('loadWorkspaceDetailsFailed'));
       setExpandedId(null);
     } finally {
       setLoadingDetail(false);
@@ -260,7 +267,7 @@ export function WorkspacesView() {
 
   const handleAddMember = async () => {
     if (!expandedId || !addMemberForm.email) {
-      toast.error('Email is required');
+      toast.error(t('emailRequired'));
       return;
     }
     setAddingMember(true);
@@ -272,23 +279,23 @@ export function WorkspacesView() {
       });
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.error || 'Failed to add member');
+        throw new Error(error.error || t('addMemberFailed'));
       }
-      toast.success('Member added');
+      toast.success(t('memberAdded'));
       setShowAddMemberDialog(false);
       setAddMemberForm({ email: '', role: 'editor' });
       await loadDetail(expandedId);
       await loadWorkspaces();
     } catch (err) {
       logger.error('[WorkspacesView] Failed to add member:', err);
-      toast.error(err instanceof Error ? err.message : 'Failed to add member');
+      toast.error(err instanceof Error ? err.message : t('addMemberFailed'));
     } finally {
       setAddingMember(false);
     }
   };
 
   const handleRemoveMember = async (wsId: string, userId: string, memberEmail: string) => {
-    if (!confirm(`Remove ${memberEmail} from this workspace?`)) return;
+    if (!confirm(t('confirmRemoveMember', { email: memberEmail }))) return;
     try {
       const res = await fetch(`/api/admin/workspaces/${wsId}/access`, {
         method: 'DELETE',
@@ -297,14 +304,14 @@ export function WorkspacesView() {
       });
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.error || 'Failed to remove member');
+        throw new Error(error.error || t('removeMemberFailed'));
       }
-      toast.success('Member removed');
+      toast.success(t('memberRemoved'));
       await loadDetail(wsId);
       await loadWorkspaces();
     } catch (err) {
       logger.error('[WorkspacesView] Failed to remove member:', err);
-      toast.error(err instanceof Error ? err.message : 'Failed to remove member');
+      toast.error(err instanceof Error ? err.message : t('removeMemberFailed'));
     }
   };
 
@@ -320,7 +327,7 @@ export function WorkspacesView() {
 
   const formatDate = (dateStr: string) => {
     try {
-      return new Date(dateStr).toLocaleDateString(undefined, {
+      return dateTime(dateStr, {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
@@ -342,7 +349,7 @@ export function WorkspacesView() {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center text-muted-foreground">
-          <p>Workspace management is only available in Server Mode</p>
+          <p>{t('workspacesServerOnly')}</p>
         </div>
       </div>
     );
@@ -353,7 +360,7 @@ export function WorkspacesView() {
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
           <Spinner size={48} color="#f97316" className="mx-auto" />
-          <p className="mt-4">Loading workspaces...</p>
+          <p className="mt-4">{t('loadingWorkspaces')}</p>
         </div>
       </div>
     );
@@ -362,17 +369,17 @@ export function WorkspacesView() {
   return (
     <>
       <PageShell>
-        <PageHeader title="Workspaces">
+        <PageHeader title={tc('terms.workspaces')}>
           <div className="flex items-center shrink-0">
             <Button onClick={() => setShowCreateDialog(true)} size="sm" className="gap-2">
               <Plus className="h-4 w-4" />
-              <span>New Workspace</span>
+              <span>{t('newWorkspace')}</span>
             </Button>
           </div>
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search workspaces..."
+              placeholder={t('searchWorkspaces')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9"
@@ -387,16 +394,16 @@ export function WorkspacesView() {
                 <Building2 className="h-16 w-16 text-muted-foreground mb-4" />
                 {workspaces.length === 0 ? (
                   <>
-                    <h2 className="text-xl font-semibold mb-2">No Workspaces Yet</h2>
+                    <h2 className="text-xl font-semibold mb-2">{t('noWorkspacesYet')}</h2>
                     <p className="text-muted-foreground mb-4 max-w-md">
-                      Create your first workspace by clicking the &quot;New Workspace&quot; button above.
+                      {t('firstWorkspaceHint')}
                     </p>
                   </>
                 ) : (
                   <>
-                    <h2 className="text-xl font-semibold mb-2">No workspaces found</h2>
+                    <h2 className="text-xl font-semibold mb-2">{t('noWorkspacesFound')}</h2>
                     <p className="text-muted-foreground mb-4 max-w-md">
-                      Try adjusting your search criteria
+                      {t('tryAdjustingSearch')}
                     </p>
                   </>
                 )}
@@ -407,11 +414,11 @@ export function WorkspacesView() {
                   <thead className="sticky top-0 z-10">
                     <tr>
                       <th className="bg-muted p-[6px_10px] border-b select-none"></th>
-                      <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none w-full">Workspace</th>
-                      <th className="@max-5xl:hidden bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Members</th>
-                      <th className="@max-5xl:hidden bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Projects</th>
-                      <th className="@max-5xl:hidden bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Deployments</th>
-                      <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Created</th>
+                      <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none w-full">{tc('labels.workspace')}</th>
+                      <th className="@max-5xl:hidden bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{t('members')}</th>
+                      <th className="@max-5xl:hidden bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{tc('terms.projects')}</th>
+                      <th className="@max-5xl:hidden bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{tc('terms.deployments')}</th>
+                      <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{tc('labels.created')}</th>
                       <th className="bg-muted p-[6px_10px] border-b select-none"></th>
                     </tr>
                   </thead>
@@ -430,7 +437,7 @@ export function WorkspacesView() {
                             <td className="w-full p-[4px_10px] text-[13px] align-middle overflow-hidden" style={{ maxWidth: 0 }}>
                               <div className="min-w-0">
                                 <span className="block font-medium text-foreground text-[13px] truncate">{ws.name}</span>
-                                {ws.ownerEmail && <span className="block text-[11px] text-muted-foreground truncate">Owner: {ws.ownerEmail}</span>}
+                                {ws.ownerEmail && <span className="block text-[11px] text-muted-foreground truncate">{t('ownerIs', { email: ws.ownerEmail })}</span>}
                               </div>
                             </td>
                             <td className="@max-5xl:hidden p-[4px_10px] text-[13px] text-muted-foreground align-middle whitespace-nowrap tabular-nums">{ws.memberCount}</td>
@@ -447,14 +454,14 @@ export function WorkspacesView() {
                                 <DropdownMenuContent align="end">
                                   <DropdownMenuItem onClick={() => handleOpenEdit(ws)}>
                                     <Pencil className="h-4 w-4 mr-2" />
-                                    Edit
+                                    {tc('actions.edit')}
                                   </DropdownMenuItem>
                                   <DropdownMenuItem
                                     onClick={() => handleDelete(ws)}
                                     className="text-destructive focus:text-destructive"
                                   >
                                     <Trash2 className="h-4 w-4 mr-2" />
-                                    Delete
+                                    {tc('actions.delete')}
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -467,29 +474,29 @@ export function WorkspacesView() {
                           {/* The counts the row drops at narrow widths, shown only there so the panel
                               does not repeat columns already on screen. */}
                           <div className="@5xl:hidden mb-3 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-muted-foreground">
-                            <span>Members <span className="text-foreground tabular-nums">{ws.memberCount}</span></span>
-                            <span>Projects <span className="text-foreground tabular-nums">{ws.projectCount}</span></span>
-                            <span>Deployments <span className="text-foreground tabular-nums">{ws.deploymentCount}</span></span>
+                            <span>{t('members')}{' '}<span className="text-foreground tabular-nums">{ws.memberCount}</span></span>
+                            <span>{tc('terms.projects')}{' '}<span className="text-foreground tabular-nums">{ws.projectCount}</span></span>
+                            <span>{tc('terms.deployments')}{' '}<span className="text-foreground tabular-nums">{ws.deploymentCount}</span></span>
                           </div>
                           {loadingDetail ? (
                             <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
                               <Spinner size={16} color="#f97316" />
-                              <span>Loading details...</span>
+                              <span>{t('loadingDetails')}</span>
                             </div>
                           ) : workspaceDetail ? (
                             <div className="space-y-4">
                               {/* Quotas row */}
                               <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                                <span>Max projects: {workspaceDetail.maxProjects}</span>
-                                <span>Max deployments: {workspaceDetail.maxDeployments}</span>
-                                <span>Max storage: {workspaceDetail.maxStorageMb} MB</span>
+                                <span>{t('quotaProjects', { count: workspaceDetail.maxProjects })}</span>
+                                <span>{t('quotaDeployments', { count: workspaceDetail.maxDeployments })}</span>
+                                <span>{t('quotaStorage', { mb: workspaceDetail.maxStorageMb })}</span>
                               </div>
 
                               {/* Members */}
                               <div>
                                 <div className="flex items-center justify-between mb-2">
                                   <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                                    Members ({workspaceDetail.members.length})
+                                    {t('membersCount', { count: workspaceDetail.members.length })}
                                   </div>
                                   <Button
                                     size="sm"
@@ -501,7 +508,7 @@ export function WorkspacesView() {
                                     }}
                                   >
                                     <UserPlus className="h-3 w-3" />
-                                    Add Member
+                                    {t('addMemberTitle')}
                                   </Button>
                                 </div>
                                 {workspaceDetail.members.length > 0 ? (
@@ -516,7 +523,7 @@ export function WorkspacesView() {
                                           <div className="flex items-center gap-2 flex-wrap">
                                             <span className="font-medium truncate">{member.email}</span>
                                             <Badge variant={roleBadgeVariant(member.role)} className="text-xs">
-                                              {member.role}
+                                              {roleLabel(member.role)}
                                             </Badge>
                                           </div>
                                           {member.displayName && (
@@ -535,7 +542,7 @@ export function WorkspacesView() {
                                               e.stopPropagation();
                                               handleRemoveMember(ws.id, member.userId, member.email);
                                             }}
-                                            title="Remove member"
+                                            title={t('removeMember')}
                                           >
                                             <UserMinus className="h-3.5 w-3.5" />
                                           </Button>
@@ -544,14 +551,14 @@ export function WorkspacesView() {
                                     ))}
                                   </div>
                                 ) : (
-                                  <div className="text-sm text-muted-foreground py-1">No members</div>
+                                  <div className="text-sm text-muted-foreground py-1">{t('noMembers')}</div>
                                 )}
                               </div>
 
                               {/* Projects */}
                               <div>
                                 <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                                  Projects ({workspaceDetail.projects?.length ?? workspaceDetail.projectCount})
+                                  {t('projectsCount', { count: workspaceDetail.projects?.length ?? workspaceDetail.projectCount })}
                                 </div>
                                 {workspaceDetail.projects && workspaceDetail.projects.length > 0 ? (
                                   <div className="space-y-1">
@@ -563,20 +570,20 @@ export function WorkspacesView() {
                                         <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                                         <span className="flex-1 min-w-0 truncate font-medium">{project.name}</span>
                                         <span className="text-xs text-muted-foreground shrink-0">
-                                          Updated {formatDate(project.updatedAt)}
+                                          {t('updatedOn', { date: formatDate(project.updatedAt) })}
                                         </span>
                                       </div>
                                     ))}
                                   </div>
                                 ) : (
-                                  <div className="text-sm text-muted-foreground py-1">No projects</div>
+                                  <div className="text-sm text-muted-foreground py-1">{t('noProjects')}</div>
                                 )}
                               </div>
 
                               {/* Deployments */}
                               <div>
                                 <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                                  Deployments ({workspaceDetail.deployments?.length ?? workspaceDetail.deploymentCount})
+                                  {t('deploymentsCount', { count: workspaceDetail.deployments?.length ?? workspaceDetail.deploymentCount })}
                                 </div>
                                 {workspaceDetail.deployments && workspaceDetail.deployments.length > 0 ? (
                                   <div className="space-y-1">
@@ -598,7 +605,7 @@ export function WorkspacesView() {
                                     ))}
                                   </div>
                                 ) : (
-                                  <div className="text-sm text-muted-foreground py-1">No deployments</div>
+                                  <div className="text-sm text-muted-foreground py-1">{t('noDeployments')}</div>
                                 )}
                               </div>
                             </div>
@@ -620,21 +627,21 @@ export function WorkspacesView() {
       <Dialog open={showEditDialog} onOpenChange={(open) => { setShowEditDialog(open); if (!open) setEditWorkspace(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Workspace</DialogTitle>
+            <DialogTitle>{t('editWorkspace')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="edit-name">Name</Label>
+              <Label htmlFor="edit-name">{tc('labels.name')}</Label>
               <Input
                 id="edit-name"
                 value={editForm.name}
                 onChange={(e) => setEditForm(f => ({ ...f, name: e.target.value }))}
-                placeholder="Workspace name"
+                placeholder={t('workspaceNamePlaceholder')}
               />
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="edit-maxProjects">Max Projects</Label>
+                <Label htmlFor="edit-maxProjects">{t('maxProjects')}</Label>
                 <Input
                   id="edit-maxProjects"
                   type="number"
@@ -644,7 +651,7 @@ export function WorkspacesView() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-maxDeployments">Max Deploys</Label>
+                <Label htmlFor="edit-maxDeployments">{t('maxDeploys')}</Label>
                 <Input
                   id="edit-maxDeployments"
                   type="number"
@@ -654,7 +661,7 @@ export function WorkspacesView() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-maxStorage">Storage (MB)</Label>
+                <Label htmlFor="edit-maxStorage">{t('storageMb')}</Label>
                 <Input
                   id="edit-maxStorage"
                   type="number"
@@ -666,9 +673,9 @@ export function WorkspacesView() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowEditDialog(false); setEditWorkspace(null); }}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setShowEditDialog(false); setEditWorkspace(null); }}>{tc('actions.cancel')}</Button>
             <Button onClick={handleSaveEdit} disabled={saving}>
-              {saving ? 'Saving...' : 'Save Changes'}
+              {saving ? tc('actions.saving') : t('saveChanges')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -678,20 +685,20 @@ export function WorkspacesView() {
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Create Workspace</DialogTitle>
+            <DialogTitle>{t('createWorkspace')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="create-name">Name</Label>
+              <Label htmlFor="create-name">{tc('labels.name')}</Label>
               <Input
                 id="create-name"
                 value={createForm.name}
                 onChange={(e) => setCreateForm(f => ({ ...f, name: e.target.value }))}
-                placeholder="Workspace name"
+                placeholder={t('workspaceNamePlaceholder')}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="create-ownerEmail">Owner Email</Label>
+              <Label htmlFor="create-ownerEmail">{t('ownerEmail')}</Label>
               <Input
                 id="create-ownerEmail"
                 type="email"
@@ -702,9 +709,9 @@ export function WorkspacesView() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>{tc('actions.cancel')}</Button>
             <Button onClick={handleCreate} disabled={saving}>
-              {saving ? 'Creating...' : 'Create Workspace'}
+              {saving ? t('creating') : t('createWorkspace')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -714,11 +721,11 @@ export function WorkspacesView() {
       <Dialog open={showAddMemberDialog} onOpenChange={setShowAddMemberDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Member</DialogTitle>
+            <DialogTitle>{t('addMemberTitle')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="add-member-email">User Email</Label>
+              <Label htmlFor="add-member-email">{t('userEmail')}</Label>
               <Input
                 id="add-member-email"
                 type="email"
@@ -728,23 +735,23 @@ export function WorkspacesView() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="add-member-role">Role</Label>
+              <Label htmlFor="add-member-role">{t('role')}</Label>
               <select
                 id="add-member-role"
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 value={addMemberForm.role}
                 onChange={(e) => setAddMemberForm(f => ({ ...f, role: e.target.value }))}
               >
-                <option value="viewer">viewer</option>
-                <option value="editor">editor</option>
-                <option value="owner">owner</option>
+                <option value="viewer">{t('roleViewer')}</option>
+                <option value="editor">{t('roleEditor')}</option>
+                <option value="owner">{t('roleOwner')}</option>
               </select>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddMemberDialog(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setShowAddMemberDialog(false)}>{tc('actions.cancel')}</Button>
             <Button onClick={handleAddMember} disabled={addingMember}>
-              {addingMember ? 'Adding...' : 'Add Member'}
+              {addingMember ? tc('actions.adding') : t('addMemberTitle')}
             </Button>
           </DialogFooter>
         </DialogContent>

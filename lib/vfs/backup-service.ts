@@ -3,6 +3,7 @@ import { Project, VirtualFile } from './types';
 import { Checkpoint } from './checkpoint';
 import { arrayBufferToBase64, base64ToArrayBuffer } from './binary-encoding';
 import { logger } from '@/lib/utils';
+import { translator } from '@/lib/i18n/runtime';
 
 export interface BackupData {
   version: string;
@@ -28,9 +29,11 @@ export interface BackupData {
   };
 }
 
+export type BackupImportStage = 'reading' | 'validating' | 'clearing' | 'importing' | 'done';
+
 export interface ImportOptions {
   mode: 'replace' | 'merge';
-  onProgress?: (progress: number, message: string) => void;
+  onProgress?: (progress: number, stage: BackupImportStage) => void;
 }
 
 /** Marker for a value that was an ArrayBuffer before JSON encoding. */
@@ -107,7 +110,7 @@ export class BackupService {
       logger.info(`Export completed: ${backupData.metadata.projectCount} projects, ${this.formatBytes(backupData.metadata.totalSize)}`);
     } catch (error) {
       logger.error('Export failed:', error);
-      throw new Error(`Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(translator()('settings.backup.exportFailed', { error: error instanceof Error ? error.message : translator()('common.labels.unknown') }));
     }
   }
 
@@ -118,14 +121,14 @@ export class BackupService {
     try {
       // Validate file
       if (!file.name.endsWith(this.FILE_EXTENSION)) {
-        throw new Error(`Invalid file type. Expected ${this.FILE_EXTENSION} file.`);
+        throw new Error(translator()('settings.backup.invalidType', { ext: this.FILE_EXTENSION }));
       }
 
       if (file.size > this.MAX_IMPORT_SIZE) {
-        throw new Error(`File too large. Maximum size is ${this.formatBytes(this.MAX_IMPORT_SIZE)}.`);
+        throw new Error(translator()('settings.backup.tooLarge', { size: this.formatBytes(this.MAX_IMPORT_SIZE) }));
       }
 
-      options.onProgress?.(10, 'Reading backup file...');
+      options.onProgress?.(10, 'reading');
 
       // Read and parse backup file
       const zip = new JSZip();
@@ -133,7 +136,7 @@ export class BackupService {
       const backupFile = zipData.file('backup.json');
 
       if (!backupFile) {
-        throw new Error('Invalid backup file format.');
+        throw new Error(translator()('settings.backup.invalidFormat'));
       }
 
       const backupJson = await backupFile.async('string');
@@ -142,7 +145,7 @@ export class BackupService {
       // Validate backup data
       this.validateBackupData(backupData);
 
-      options.onProgress?.(30, 'Validating backup data...');
+      options.onProgress?.(30, 'validating');
 
       // Older backups keep conversations and checkpoints beside vfs rather than inside it.
       const stores: Record<string, unknown[]> = {
@@ -166,21 +169,21 @@ export class BackupService {
       const db = await this.getLiveDatabase();
 
       if (options.mode === 'replace') {
-        options.onProgress?.(40, 'Clearing existing data...');
+        options.onProgress?.(40, 'clearing');
         await this.clearLiveDatabase(db);
       }
 
-      options.onProgress?.(50, 'Importing all data...');
+      options.onProgress?.(50, 'importing');
       const written = await this.writeStores(db, stores);
 
-      options.onProgress?.(100, 'Import completed successfully!');
+      options.onProgress?.(100, 'done');
 
       logger.info(
-        `Import completed: ${(stores.projects || []).length} projects restored into ${db.name} (${written.join(', ')})`
+        `Import completed: ${(stores.projects || []).length} projects restored into ${db.name} (${written.join(', ')})` // i18n-ignore: a log line
       );
     } catch (error) {
       logger.error('Import failed:', error);
-      throw new Error(`Import failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(translator()('settings.backup.importFailed', { error: error instanceof Error ? error.message : translator()('common.labels.unknown') }));
     }
   }
 
@@ -190,11 +193,11 @@ export class BackupService {
   static async validateBackupFile(file: File): Promise<{ valid: boolean; reason?: string; metadata?: BackupData['metadata'] }> {
     try {
       if (!file.name.endsWith(this.FILE_EXTENSION)) {
-        return { valid: false, reason: 'Invalid file extension' };
+        return { valid: false, reason: translator()('settings.backup.invalidType', { ext: this.FILE_EXTENSION }) };
       }
 
       if (file.size > this.MAX_IMPORT_SIZE) {
-        return { valid: false, reason: 'File too large' };
+        return { valid: false, reason: translator()('settings.backup.tooLarge', { size: this.formatBytes(this.MAX_IMPORT_SIZE) }) };
       }
 
       const zip = new JSZip();
@@ -202,7 +205,7 @@ export class BackupService {
       const backupFile = zipData.file('backup.json');
 
       if (!backupFile) {
-        return { valid: false, reason: 'Invalid backup file format' };
+        return { valid: false, reason: translator()('settings.backup.invalidFormat') };
       }
 
       const backupJson = await backupFile.async('string');
@@ -212,7 +215,7 @@ export class BackupService {
 
       return { valid: true, metadata: backupData.metadata };
     } catch (error) {
-      return { valid: false, reason: error instanceof Error ? error.message : 'Unknown error' };
+      return { valid: false, reason: error instanceof Error ? error.message : translator()('common.labels.unknown') };
     }
   }
 
@@ -402,11 +405,11 @@ export class BackupService {
 
   private static validateBackupData(data: BackupData): void {
     if (!data.version || !data.exportDate || !data.databases || !data.metadata) {
-      throw new Error('Invalid backup file structure');
+      throw new Error(translator()('settings.backup.invalidStructure'));
     }
 
     if (!data.databases.vfs || !data.databases.conversations || !data.databases.checkpoints) {
-      throw new Error('Incomplete backup data');
+      throw new Error(translator()('settings.backup.incomplete'));
     }
 
     // Version compatibility check (for future versions)
@@ -414,7 +417,7 @@ export class BackupService {
     const currentVersion = this.BACKUP_VERSION.split('.').map(Number);
 
     if (backupVersion[0] > currentVersion[0]) {
-      throw new Error(`Backup version ${data.version} is not compatible with current version ${this.BACKUP_VERSION}`);
+      throw new Error(translator()('settings.backup.incompatible', { version: String(data.version), current: this.BACKUP_VERSION }));
     }
   }
 

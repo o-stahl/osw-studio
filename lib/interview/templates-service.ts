@@ -3,6 +3,7 @@
  * Custom templates are stored in localStorage and merged with built-ins at read time.
  */
 
+import { translator } from '@/lib/i18n/runtime';
 import type { InterviewTemplate } from './types';
 import { BUILT_IN_INTERVIEWS, isBuiltInInterviewTemplateId } from './templates';
 import { slugify } from './template-form';
@@ -85,8 +86,8 @@ class InterviewTemplatesService {
 
   async createTemplate(t: InterviewTemplate): Promise<InterviewTemplate> {
     await this.init();
-    if (isBuiltInInterviewTemplateId(t.id)) throw new Error('Cannot overwrite a built-in template.');
-    if (this.custom.has(t.id)) throw new Error(`A template with id "${t.id}" already exists.`);
+    if (isBuiltInInterviewTemplateId(t.id)) throw new Error(translator()('interviews.builtInOverwrite'));
+    if (this.custom.has(t.id)) throw new Error(translator()('interviews.idTaken', { id: t.id }));
     const now = new Date();
     const saved: InterviewTemplate = { ...t, isBuiltIn: false, createdAt: now, updatedAt: now };
     this.custom.set(saved.id, saved);
@@ -97,9 +98,9 @@ class InterviewTemplatesService {
 
   async updateTemplate(id: string, t: InterviewTemplate): Promise<InterviewTemplate> {
     await this.init();
-    if (isBuiltInInterviewTemplateId(id)) throw new Error('Cannot edit a built-in template.');
+    if (isBuiltInInterviewTemplateId(id)) throw new Error(translator()('interviews.builtInEdit'));
     const existing = this.custom.get(id);
-    if (!existing) throw new Error(`Template "${id}" not found.`);
+    if (!existing) throw new Error(`Template "${id}" not found.`); // i18n-ignore: an invariant
     const saved: InterviewTemplate = { ...existing, ...t, id, isBuiltIn: false, updatedAt: new Date() };
     this.custom.set(id, saved);
     this.save();
@@ -109,8 +110,8 @@ class InterviewTemplatesService {
 
   async deleteTemplate(id: string): Promise<void> {
     await this.init();
-    if (isBuiltInInterviewTemplateId(id)) throw new Error('Cannot delete a built-in template.');
-    if (!this.custom.delete(id)) throw new Error(`Template "${id}" not found.`);
+    if (isBuiltInInterviewTemplateId(id)) throw new Error(translator()('interviews.builtInDelete'));
+    if (!this.custom.delete(id)) throw new Error(`Template "${id}" not found.`); // i18n-ignore: an invariant
     this.save();
     import('@/lib/vfs/auto-sync').then(({ autoDeleteInterviewTemplate }) => autoDeleteInterviewTemplate(id)).catch(() => {});
   }

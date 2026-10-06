@@ -14,7 +14,7 @@ const { vfs } = await import('@/lib/vfs');
 const { analyzeImport } = await import('@/lib/vfs/archive/analyze');
 const { exportProjectArchive } = await import('@/lib/vfs/archive/export');
 const { readZipArchive } = await import('@/lib/vfs/archive/read-zip');
-const { selectPhase, nothingToDoSummary } = await import('../logic');
+const { selectPhase, nothingToDoCounts } = await import('../logic');
 
 describe('importing a project back into itself', () => {
   beforeAll(async () => {
@@ -51,6 +51,8 @@ describe('importing a project back into itself', () => {
     expect(plan.backend.unchanged).toEqual([{ kind: 'edge', name: 'send-email' }]);
 
     expect(selectPhase(plan)).toBe('nothing-to-do');
-    expect(nothingToDoSummary(plan)).toContain('already match the project');
+    // Counts, not zero: the summary says the files already match, not that the archive is empty.
+    // The three files written above (.PROMPT.md travels in this format) and the one edge function.
+    expect(nothingToDoCounts(plan)).toEqual({ files: 3, backend: 1 });
   });
 });

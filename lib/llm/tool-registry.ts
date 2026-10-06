@@ -680,7 +680,7 @@ async function executeShellSegment(
         return `Error: ${result.stderr || 'Command failed'}`;
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Server request failed';
+      const message = error instanceof Error ? error.message : 'Server request failed'; // i18n-ignore: returned to the agent
       return `Error: ${message}`;
     }
   }

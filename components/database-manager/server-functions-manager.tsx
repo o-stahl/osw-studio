@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { ServerFunction } from '@/lib/vfs/types';
 import {
   Plus, Loader2, AlertCircle, Wrench, MoreVertical, Pencil, Trash2,
@@ -24,6 +25,8 @@ interface ServerFunctionsManagerProps {
 }
 
 export function ServerFunctionsManager({ deploymentId, dataProvider, workspaceId }: ServerFunctionsManagerProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('backend');
   const apiBase = workspaceId ? `/api/w/${workspaceId}` : '/api';
   const [functions, setFunctions] = useState<ServerFunction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,13 +48,13 @@ export function ServerFunctionsManager({ deploymentId, dataProvider, workspaceId
         const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/server-functions`);
         if (!res.ok) {
           const data = await res.json();
-          throw new Error(data.error || 'Failed to load server functions');
+          throw new Error(data.error || t('loadHelpersFailed'));
         }
         const data = await res.json();
         setFunctions(data.functions);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load server functions');
+      setError(err instanceof Error ? err.message : t('loadHelpersFailed'));
     } finally {
       setLoading(false);
     }
@@ -78,7 +81,7 @@ export function ServerFunctionsManager({ deploymentId, dataProvider, workspaceId
   };
 
   const deleteFunction = async (fn: ServerFunction) => {
-    if (!confirm(`Delete server function "${fn.name}"? This cannot be undone.`)) return;
+    if (!confirm(t('confirmDeleteHelper', { name: fn.name }))) return;
 
     try {
       if (dataProvider) {
@@ -102,7 +105,7 @@ export function ServerFunctionsManager({ deploymentId, dataProvider, workspaceId
       if (dataProvider) {
         await dataProvider.save(editingFunction?.id || null, data);
       } else if (!deploymentId) {
-        throw new Error('No deployment ID available');
+        throw new Error(t('noDeploymentId'));
       } else if (editingFunction) {
         const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/server-functions/${editingFunction.id}`, {
           method: 'PUT',
@@ -111,7 +114,7 @@ export function ServerFunctionsManager({ deploymentId, dataProvider, workspaceId
         });
         if (!res.ok) {
           const err = await res.json();
-          throw new Error(err.error || 'Failed to update server function');
+          throw new Error(err.error || t('updateHelperFailed'));
         }
       } else {
         const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/server-functions`, {
@@ -121,7 +124,7 @@ export function ServerFunctionsManager({ deploymentId, dataProvider, workspaceId
         });
         if (!res.ok) {
           const err = await res.json();
-          throw new Error(err.error || 'Failed to create server function');
+          throw new Error(err.error || t('createHelperFailed'));
         }
       }
 
@@ -147,7 +150,7 @@ export function ServerFunctionsManager({ deploymentId, dataProvider, workspaceId
         <AlertCircle className="h-8 w-8 text-destructive" />
         <p className="text-sm text-muted-foreground">{error}</p>
         <Button variant="outline" onClick={loadFunctions}>
-          Retry
+          {tc('actions.retry')}
         </Button>
       </div>
     );
@@ -156,10 +159,10 @@ export function ServerFunctionsManager({ deploymentId, dataProvider, workspaceId
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium">Server Functions (Helpers)</h3>
+        <h3 className="text-sm font-medium">{t('helpersTitle')}</h3>
         <Button size="sm" onClick={() => setIsCreating(true)}>
           <Plus className="h-4 w-4 mr-1" />
-          New Helper
+          {t('newHelper')}
         </Button>
       </div>
 
@@ -167,13 +170,13 @@ export function ServerFunctionsManager({ deploymentId, dataProvider, workspaceId
         {functions.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center border rounded-lg">
             <Wrench className="h-8 w-8 text-muted-foreground mb-2" />
-            <p className="text-sm text-muted-foreground">No server functions yet</p>
+            <p className="text-sm text-muted-foreground">{t('noHelpersYet')}</p>
             <p className="text-xs text-muted-foreground mt-1 mb-4">
-              Create reusable helpers for your edge functions
+              {t('noHelpersHint')}
             </p>
             <Button size="sm" onClick={() => setIsCreating(true)}>
               <Plus className="h-4 w-4 mr-1" />
-              Create Helper
+              {t('createHelper')}
             </Button>
           </div>
         ) : (
@@ -192,7 +195,7 @@ export function ServerFunctionsManager({ deploymentId, dataProvider, workspaceId
                       <Wrench className="h-4 w-4 text-orange-500 shrink-0" />
                       <span className="font-mono font-medium truncate">{fn.name}</span>
                       {!fn.enabled && (
-                        <span className="text-xs bg-muted px-1.5 py-0.5 rounded shrink-0">disabled</span>
+                        <span className="text-xs bg-muted px-1.5 py-0.5 rounded shrink-0">{t('disabledBadge')}</span>
                       )}
                     </div>
                     {fn.description && (
@@ -214,18 +217,18 @@ export function ServerFunctionsManager({ deploymentId, dataProvider, workspaceId
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => setEditingFunction(fn)}>
                         <Pencil className="h-4 w-4 mr-2" />
-                        Edit
+                        {tc('actions.edit')}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => toggleEnabled(fn)}>
                         {fn.enabled ? (
                           <>
                             <ToggleLeft className="h-4 w-4 mr-2" />
-                            Disable
+                            {tc('actions.disable')}
                           </>
                         ) : (
                           <>
                             <ToggleRight className="h-4 w-4 mr-2" />
-                            Enable
+                            {tc('actions.enable')}
                           </>
                         )}
                       </DropdownMenuItem>
@@ -234,7 +237,7 @@ export function ServerFunctionsManager({ deploymentId, dataProvider, workspaceId
                         className="text-destructive"
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
-                        Delete
+                        {tc('actions.delete')}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

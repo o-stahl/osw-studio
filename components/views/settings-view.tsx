@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import React, { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { UnifiedSettings, SETTINGS_PANE_IDS, type SettingsPane } from '@/components/unified-settings';
@@ -34,8 +35,9 @@ function SettingsViewInner({ tab, workspaceId }: SettingsViewProps) {
 }
 
 export function SettingsView({ tab, workspaceId }: SettingsViewProps) {
+  const tc = useTranslations('common');
   return (
-    <Suspense fallback={<div className="h-full flex items-center justify-center"><p className="text-muted-foreground">Loading...</p></div>}>
+    <Suspense fallback={<div className="h-full flex items-center justify-center"><p className="text-muted-foreground">{tc('loading')}</p></div>}>
       <SettingsViewInner tab={tab} workspaceId={workspaceId} />
     </Suspense>
   );

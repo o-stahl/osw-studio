@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { resolveDeploymentByIdOrSlug } from '@/lib/vfs/adapters/deployment-adapter';
 import { executeFunction } from '@/lib/edge-functions/executor';
 import { FunctionRequest } from '@/lib/edge-functions/types';
+import { functionRequestHeaders, functionResponseHeaders } from '@/lib/edge-functions/http-boundary';
 import { logger } from '@/lib/utils';
 
 interface RouteParams {
@@ -128,24 +129,7 @@ async function handleRequest(
       query[key] = value;
     });
 
-    // Build headers (filter sensitive ones)
-    const headers: Record<string, string> = {};
-    const safeHeaders = [
-      'accept',
-      'accept-language',
-      'content-type',
-      'content-length',
-      'origin',
-      'referer',
-      'user-agent',
-      'x-requested-with',
-      'cookie',
-    ];
-    request.headers.forEach((value, key) => {
-      if (safeHeaders.includes(key.toLowerCase())) {
-        headers[key.toLowerCase()] = value;
-      }
-    });
+    const headers = functionRequestHeaders(request.headers);
 
     // Build function request
     const functionRequest: FunctionRequest = {
@@ -183,10 +167,7 @@ async function handleRequest(
     }
 
     // Build response
-    const responseHeaders = new Headers();
-    Object.entries(result.response.headers).forEach(([key, value]) => {
-      responseHeaders.set(key, value);
-    });
+    const responseHeaders = functionResponseHeaders(result.response.headers);
 
     // Add timing header
     responseHeaders.set('X-Execution-Time', `${Date.now() - startTime}ms`);

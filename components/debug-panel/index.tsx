@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo, useSyncExternalStore } from 'react';
+import { useTranslations } from 'next-intl';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronUp, ChevronsUpDown, ChevronsDownUp, Bug, Trash2, Copy, Download } from 'lucide-react';
@@ -20,6 +22,8 @@ interface DebugPanelProps {
 }
 
 export function DebugPanel({ events, onClear, onClose }: DebugPanelProps) {
+  const t = useTranslations('debug');
+  const tw = useTranslations('workspace');
   const [activeTab, setActiveTab] = useState<'events' | 'messages'>('events');
   const [filter, setFilter] = useState<string>('');
   const eventsEndRef = useRef<HTMLDivElement>(null);
@@ -101,9 +105,9 @@ export function DebugPanel({ events, onClear, onClose }: DebugPanelProps) {
   const handleCopyEvents = async () => {
     try {
       await navigator.clipboard.writeText(JSON.stringify(events, null, 2));
-      toast.success('Events copied');
+      toast.success(t('eventsCopied'));
     } catch {
-      toast.error('Copy failed');
+      toast.error(t('copyFailed'));
     }
   };
 
@@ -122,7 +126,7 @@ export function DebugPanel({ events, onClear, onClose }: DebugPanelProps) {
     <PanelContainer>
       <PanelHeader
         icon={Bug}
-        title="Debug Events"
+        title={tw('tabs.debugEvents')}
         onClose={onClose}
         panelKey="debug"
       >
@@ -132,8 +136,8 @@ export function DebugPanel({ events, onClear, onClose }: DebugPanelProps) {
       {/* Tabs */}
       <div className="flex border-b border-border text-xs">
         {([
-          ['events', `Events (${filteredEvents.length}/${events.length})`],
-          ['messages', messageSnapshot ? `Messages (${messageSnapshot.messages.length})` : 'Messages'],
+          ['events', t('tabEvents', { shown: filteredEvents.length, total: events.length })],
+          ['messages', messageSnapshot ? t('tabMessagesCount', { count: messageSnapshot.messages.length }) : t('tabMessages')],
         ] as const).map(([key, label]) => (
           <button
             key={key}
@@ -176,7 +180,7 @@ export function DebugPanel({ events, onClear, onClose }: DebugPanelProps) {
           <div className="p-2 border-b border-border">
             <input
               type="text"
-              placeholder="Filter events..."
+              placeholder={t('filterEvents')}
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               className="w-full px-2 py-1 text-xs rounded bg-background border border-border"
@@ -192,11 +196,11 @@ export function DebugPanel({ events, onClear, onClose }: DebugPanelProps) {
                 onChange={(e) => setAutoScroll(e.target.checked)}
                 className="rounded"
               />
-              Auto-scroll
+              {t('autoScroll')}
             </label>
             <label
               className="text-xs flex items-center gap-1 cursor-pointer"
-              title="Emit llm_request and stream_raw_chunk events. Ephemeral, not persisted."
+              title={t('streamDebugHint')}
             >
               <input
                 type="checkbox"
@@ -207,24 +211,24 @@ export function DebugPanel({ events, onClear, onClose }: DebugPanelProps) {
                 }}
                 className="rounded"
               />
-              Stream debug
+              {t('streamDebug')}
             </label>
             <div className="ml-auto flex items-center">
-              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title="Expand all"
+              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title={t('expandAll')}
                 onClick={() => setEventsForce(v => ({ open: true, v: (v?.v ?? 0) + 1 }))}>
                 <ChevronsUpDown className="h-3 w-3" />
               </Button>
-              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title="Collapse all"
+              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title={t('collapseAll')}
                 onClick={() => setEventsForce(v => ({ open: false, v: (v?.v ?? 0) + 1 }))}>
                 <ChevronsDownUp className="h-3 w-3" />
               </Button>
-              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title="Copy events as JSON" onClick={handleCopyEvents}>
+              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title={t('copyEventsJson')} onClick={handleCopyEvents}>
                 <Copy className="h-3 w-3" />
               </Button>
-              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title="Export to JSON file" onClick={handleExport}>
+              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title={t('exportJson')} onClick={handleExport}>
                 <Download className="h-3 w-3" />
               </Button>
-              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title="Clear all events — also clears the chat, which is built from the same event log" onClick={handleClear}>
+              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title={t('clearEventsHint')} onClick={handleClear}>
                 <Trash2 className="h-3 w-3" />
               </Button>
             </div>
@@ -234,7 +238,7 @@ export function DebugPanel({ events, onClear, onClose }: DebugPanelProps) {
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {filteredEvents.length === 0 ? (
               <div className="text-xs text-muted-foreground text-center p-4">
-                No events yet. Events will appear here as they occur.
+                {t('noEvents')}
               </div>
             ) : (
               filteredEvents.map((event) => (
@@ -251,12 +255,13 @@ export function DebugPanel({ events, onClear, onClose }: DebugPanelProps) {
 }
 
 function EventItem({ event, force }: { event: DebugEvent; force?: ForceState }) {
+  const { dateTime } = useLocalFormat();
   const [isOpen, setIsOpen] = useState(false);
   // Expand/collapse-all override — rows remain individually toggleable after
   useEffect(() => {
     if (force) setIsOpen(force.open);
   }, [force]);
-  const time = new Date(event.timestamp).toLocaleTimeString();
+  const time = dateTime(event.timestamp, { timeStyle: 'medium' });
 
   // Color code by event type
   const getEventColor = (eventType: string) => {

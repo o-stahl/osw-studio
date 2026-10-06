@@ -86,10 +86,12 @@ class SaveManager {
     const activeVFS = getActiveVFS();
     await activeVFS.init();
     const project = await activeVFS.getProject(projectId);
-    const fallbackDescription = `Manual save @ ${new Date().toLocaleTimeString()}`;
+    const fallbackDescription = `Manual save @ ${new Date().toLocaleTimeString()}`; // i18n-ignore: stored English; the panel shows `label`
     const previousSavedId = project.lastSavedCheckpointId ?? null;
     const checkpoint = await checkpointManager.createCheckpoint(projectId, description || fallbackDescription, {
       kind: 'manual',
+      // The time is read from the checkpoint's own timestamp when shown, in the viewer's format.
+      label: description ? undefined : { key: 'manualSave' },
       pinned: true,
       baseRevisionId: previousSavedId
     });

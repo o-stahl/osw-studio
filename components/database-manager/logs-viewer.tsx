@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { FunctionLog } from '@/lib/vfs/types';
 import {
   Loader2, AlertCircle, RefreshCw, Trash2, CheckCircle2, XCircle,
@@ -19,6 +21,9 @@ interface EnrichedLog extends FunctionLog {
 }
 
 export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('backend');
+  const { dateTime, number } = useLocalFormat();
   const apiBase = workspaceId ? `/api/w/${workspaceId}` : '/api';
   const [logs, setLogs] = useState<EnrichedLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,19 +40,19 @@ export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
       const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/database/logs?limit=200`);
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to load logs');
+        throw new Error(data.error || t('loadLogsFailed'));
       }
       const data = await res.json();
       setLogs(data.logs);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load logs');
+      setError(err instanceof Error ? err.message : t('loadLogsFailed'));
     } finally {
       setLoading(false);
     }
   };
 
   const clearLogs = async () => {
-    if (!confirm('Clear all function execution logs? This cannot be undone.')) return;
+    if (!confirm(t('confirmClearLogs'))) return;
 
     try {
       const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/database/logs`, {
@@ -60,10 +65,7 @@ export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
     }
   };
 
-  const formatDate = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleString();
-  };
+  const formatDate = (date: Date | string) => dateTime(date, { dateStyle: 'short', timeStyle: 'medium' });
 
   if (loading) {
     return (
@@ -79,7 +81,7 @@ export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
         <AlertCircle className="h-8 w-8 text-destructive" />
         <p className="text-sm text-muted-foreground">{error}</p>
         <Button variant="outline" onClick={loadLogs}>
-          Retry
+          {tc('actions.retry')}
         </Button>
       </div>
     );
@@ -88,11 +90,11 @@ export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium">Execution Logs</h3>
+        <h3 className="text-sm font-medium">{t('executionLogs')}</h3>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={loadLogs}>
             <RefreshCw className="h-4 w-4 mr-1" />
-            Refresh
+            {tc('actions.refresh')}
           </Button>
           <Button
             variant="ghost"
@@ -102,7 +104,7 @@ export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
             className="text-destructive hover:text-destructive"
           >
             <Trash2 className="h-4 w-4 mr-1" />
-            Clear
+            {tc('actions.clear')}
           </Button>
         </div>
       </div>
@@ -111,21 +113,21 @@ export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
         {logs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center">
             <Clock className="h-8 w-8 text-muted-foreground mb-2" />
-            <p className="text-sm text-muted-foreground">No execution logs yet</p>
+            <p className="text-sm text-muted-foreground">{t('noExecutionLogs')}</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Logs will appear here when functions are invoked
+              {t('logsHint')}
             </p>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-muted">
               <tr>
-                <th className="text-left p-3 font-medium">Status</th>
-                <th className="text-left p-3 font-medium">Function</th>
-                <th className="text-left p-3 font-medium">Method</th>
-                <th className="text-left p-3 font-medium">Path</th>
-                <th className="text-left p-3 font-medium">Duration</th>
-                <th className="text-left p-3 font-medium">Time</th>
+                <th className="text-left p-3 font-medium">{t('status')}</th>
+                <th className="text-left p-3 font-medium">{t('function')}</th>
+                <th className="text-left p-3 font-medium">{t('method')}</th>
+                <th className="text-left p-3 font-medium">{t('path')}</th>
+                <th className="text-left p-3 font-medium">{t('duration')}</th>
+                <th className="text-left p-3 font-medium">{t('time')}</th>
               </tr>
             </thead>
             <tbody>
@@ -159,7 +161,7 @@ export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
                     {log.path}
                   </td>
                   <td className="p-3 text-muted-foreground">
-                    {log.durationMs}ms
+                    {number(log.durationMs, { style: 'unit', unit: 'millisecond', unitDisplay: 'narrow' })}
                   </td>
                   <td className="p-3 text-xs text-muted-foreground">
                     {formatDate(log.timestamp)}

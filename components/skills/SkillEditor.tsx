@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { Skill } from '@/lib/vfs/skills/types';
 import { skillsService } from '@/lib/vfs/skills';
 import { createSkillTemplate, parseSkillFile, generateSkillFile } from '@/lib/vfs/skills/parser';
@@ -20,6 +21,9 @@ interface SkillEditorProps {
 }
 
 export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps) {
+  const t = useTranslations('skills');
+  const te = useTranslations('skills.editor');
+  const tc = useTranslations('common');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [markdown, setMarkdown] = useState('');
@@ -79,15 +83,15 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
       if (mode === 'create') {
         await skillsService.createSkill(rawContent);
         track('skill_created');
-        toast.success(`Created skill: ${frontmatter.name}`);
+        toast.success(t('createdSkill', { name: frontmatter.name }));
       } else if (skill) {
         await skillsService.updateSkill(skill.id, rawContent);
-        toast.success(`Updated skill: ${frontmatter.name}`);
+        toast.success(t('updatedSkill', { name: frontmatter.name }));
       }
 
       onSave();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to save skill';
+      const message = error instanceof Error ? error.message : t('saveSkillFailed');
       toast.error(message);
     } finally {
       setSaving(false);
@@ -112,20 +116,20 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
             </Button>
             <div>
               <h1 className="text-2xl font-bold">
-                {mode === 'create' ? 'Create New Skill' : 'Edit Skill'}
+                {mode === 'create' ? te('createTitle') : te('editTitle')}
               </h1>
               <p className="text-sm text-muted-foreground">
-                Define specialized knowledge for the AI assistant
+                {te('subtitle')}
               </p>
             </div>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={onCancel}>
-              Cancel
+              {tc('actions.cancel')}
             </Button>
             <Button onClick={handleSave} disabled={saving}>
               <Save className="w-4 h-4 mr-2" />
-              {saving ? 'Saving...' : 'Save Skill'}
+              {saving ? tc('actions.saving') : te('saveSkill')}
             </Button>
           </div>
         </div>
@@ -143,7 +147,7 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
-              Form Editor
+              {te('formEditor')}
             </button>
             <button
               onClick={() => setActiveTab('raw')}
@@ -153,7 +157,7 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
-              Raw Markdown
+              {te('rawMarkdown')}
             </button>
           </div>
         </div>
@@ -162,58 +166,58 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
           <div className="flex-1 overflow-y-auto px-6 py-4">
             <div className="space-y-6">
               <div>
-                <Label htmlFor="name">Skill Name *</Label>
+                <Label htmlFor="name">{te('nameLabel')}</Label>
                 <Input
                   id="name"
-                  placeholder="e.g., react-hooks, python-testing, ui-design"
+                  placeholder={te('namePlaceholder')}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="mt-1.5"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Lowercase with hyphens (will be used as file name)
+                  {te('nameHelp')}
                 </p>
               </div>
 
               <div>
-                <Label htmlFor="description">Description *</Label>
+                <Label htmlFor="description">{te('descLabel')}</Label>
                 <Input
                   id="description"
-                  placeholder="Brief description of what this skill covers"
+                  placeholder={t('descriptionPlaceholder')}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="mt-1.5"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Max 200 characters - shown in skills list
+                  {te('descHelp')}
                 </p>
               </div>
 
               <div>
-                <Label htmlFor="markdown">Skill Content *</Label>
+                <Label htmlFor="markdown">{te('contentLabel')}</Label>
                 <Textarea
                   id="markdown"
-                  placeholder="Write the skill content in markdown format...&#10;&#10;## Guidelines&#10;- Guideline 1&#10;- Guideline 2&#10;&#10;## Examples&#10;```javascript&#10;// Example code&#10;```"
+                  placeholder={te('contentPlaceholder')}
                   value={markdown}
                   onChange={(e) => setMarkdown(e.target.value)}
                   className="mt-1.5 font-mono text-sm min-h-[400px]"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Markdown content that the AI will read when using this skill
+                  {te('contentHelp')}
                 </p>
               </div>
 
               <div className="bg-muted/50 rounded-lg p-4">
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
                   <FileText className="w-4 h-4" />
-                  Tips for Writing Skills
+                  {te('tipsTitle')}
                 </h3>
                 <ul className="text-sm text-muted-foreground space-y-1 ml-5 list-disc">
-                  <li>Be specific and actionable - provide clear guidelines and examples</li>
-                  <li>Use markdown formatting for better readability</li>
-                  <li>Include code examples where relevant</li>
-                  <li>Focus on practical knowledge the AI can apply</li>
-                  <li>Keep it concise but comprehensive</li>
+                  <li>{t('tipSpecific')}</li>
+                  <li>{t('tipMarkdown')}</li>
+                  <li>{t('tipExamples')}</li>
+                  <li>{t('tipPractical')}</li>
+                  <li>{t('tipConcise')}</li>
                 </ul>
               </div>
             </div>
@@ -224,7 +228,7 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
           <div className="flex-1 overflow-auto px-6 py-4">
             <div className="max-w-4xl">
               <div>
-                <Label htmlFor="raw-content">Raw SKILL.md Content</Label>
+                <Label htmlFor="raw-content">{t('rawContent')}</Label>
                 <Textarea
                   id="raw-content"
                   value={rawContent}
@@ -233,7 +237,7 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
                   spellCheck={false}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Direct editing of the SKILL.md file (YAML frontmatter + markdown)
+                  {te('rawHelp')}
                 </p>
               </div>
             </div>

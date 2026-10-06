@@ -5,7 +5,7 @@ import type { GenerationTask } from '../types';
 
 const mockExecute = vi.fn().mockResolvedValue({ success: true, summary: 'done', totalCost: 0, toolCount: 0, turnCount: 0, apiErrorCount: 0 });
 vi.mock('@/lib/llm/multi-agent-orchestrator', () => ({
-  MultiAgentOrchestrator: vi.fn().mockImplementation(() => ({ execute: mockExecute, stop: vi.fn(), continue: vi.fn(), importConversation: vi.fn() })),
+  MultiAgentOrchestrator: vi.fn().mockImplementation(() => ({ execute: mockExecute, stop: vi.fn(), importConversation: vi.fn() })),
 }));
 vi.mock('@/lib/interview/templates-service', () => ({ interviewTemplatesService: { getTemplate: vi.fn() } }));
 
@@ -20,8 +20,8 @@ function runningTask(store: ReturnType<typeof createTestStore>, projectId: strin
   const tasks = new Map(store.getState().generationTasks);
   tasks.set(projectId, {
     projectId, projectName: 'T', prompt: 'p', model: 'm', startedAt: Date.now() - 1000,
-    result: null, paused: false, pausedMessage: null,
-    orchestratorInstance: { stop: vi.fn(), continue: vi.fn() } as unknown as GenerationTask['orchestratorInstance'],
+    result: null, paused: false,
+    orchestratorInstance: { stop: vi.fn() } as unknown as GenerationTask['orchestratorInstance'],
     persistedInstance: null,
     ...overrides,
   });
@@ -87,25 +87,5 @@ describe('a stop the user made', () => {
     }
 
     expect(store.getState().userStop).toMatchObject({ projectId: 'p1' });
-  });
-});
-
-describe('whether Continue is offered', () => {
-  let store: ReturnType<typeof createTestStore>;
-  beforeEach(() => { store = createTestStore(); });
-
-  it('is, when the viewed project has a client-side orchestrator to resume', () => {
-    runningTask(store, 'p1');
-    expect(store.getState().canContinueGeneration()).toBe(true);
-  });
-
-  it('is not, for a server-mode run, which has no instance to resume', () => {
-    runningTask(store, 'p1', { orchestratorInstance: null, serverTaskId: 'srv-1' } as Partial<GenerationTask>);
-    expect(store.getState().canContinueGeneration()).toBe(false);
-  });
-
-  it('is not, when nothing is running', () => {
-    store.setState({ projectId: 'p1' });
-    expect(store.getState().canContinueGeneration()).toBe(false);
   });
 });

@@ -2,17 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ProviderId } from '@/lib/llm/providers/types';
 import { getProvider } from '@/lib/llm/providers/registry';
 import { CODEX_BASE_URL, createCodexHeaders, getCodexAccountId } from '@/lib/llm/codex-utils';
+import { OPENROUTER_ATTRIBUTION } from '@/lib/llm/request-builder';
+import { imageGenTimeoutMs } from '@/lib/llm/image-gen-timeout';
 
 /**
  * Image generation runs long, and an upstream that stalls or never closes its stream left nothing
  * to break the wait: the agent sat on the tool call for good, which read as "stuck". Every
- * upstream fetch here carries a deadline and the caller's own abort, so Stop in the chat ends it
- * and a dead upstream ends itself. Overridable for tests; two minutes is generous for a real one.
+ * upstream fetch here carries a deadline (`imageGenTimeoutMs`) and the caller's own abort, so Stop
+ * in the chat ends it and a dead upstream ends itself.
  */
-function imageGenTimeoutMs(): number {
-  return Number(process.env.IMAGE_GEN_TIMEOUT_MS) || 120_000;
-}
-
 function deadlineSignal(request: NextRequest): AbortSignal {
   const timeout = AbortSignal.timeout(imageGenTimeoutMs());
   return request.signal ? AbortSignal.any([request.signal, timeout]) : timeout;
@@ -50,6 +48,96 @@ function codexImageSize(aspectRatio?: string): string {
   if (aspectRatio === '16:9' || aspectRatio === 'landscape') return '1536x1024';
   if (aspectRatio === '9:16' || aspectRatio === 'portrait') return '1024x1536';
   return '1024x1024';
+}
+
+/** Base64 image data's type, read from its first bytes. */
+function base64ImageType(b64: string): string {
+  if (b64.startsWith('/9j/')) return 'image/jpeg';
+  if (b64.startsWith('UklGR')) return 'image/webp';
+  if (b64.startsWith('R0lGOD')) return 'image/gif';
+  return 'image/png';
+}
+
+/**
+ * Pollinations generates images through its OpenAI-compatible `/v1/images/generations`, which
+ * answers with base64 data, not through chat completions.
+ */
+async function generatePollinationsImage(
+  baseUrl: string,
+  apiKey: string,
+  model: string,
+  prompt: string,
+  aspectRatio: string | undefined,
+  signal: AbortSignal,
+): Promise<NextResponse> {
+  const response = await fetch(`${baseUrl.replace(/\/$/, '')}/images/generations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model, prompt, size: codexImageSize(aspectRatio), response_format: 'b64_json' }),
+    signal,
+  });
+  if (!response.ok) {
+    const error = await upstreamError(response, `Pollinations image request failed (${response.status})`);
+    return NextResponse.json({ error }, { status: response.status });
+  }
+  const data = await response.json();
+  const b64: unknown = data?.data?.[0]?.b64_json;
+  if (typeof b64 !== 'string' || !b64) return NextResponse.json({ error: 'Model returned no image' }, { status: 422 });
+  return NextResponse.json({ image: `data:${base64ImageType(b64)};base64,${b64}` });
+}
+
+/** An upstream error body's message, else `fallback`. */
+async function upstreamError(response: Response, fallback: string): Promise<string> {
+  try {
+    const err = await response.json();
+    const detail = err?.error?.message || err?.error || err?.message;
+    if (typeof detail === 'string' && detail) return detail;
+  } catch { /* use the fallback */ }
+  return fallback;
+}
+
+/**
+ * OpenRouter generates images through its Image API, `/images`, which serves every image model it
+ * lists. Image models added since the API launched are served only there, and refuse chat
+ * completions. Aspect ratio and resolution are enums that differ per model, so a request whose
+ * options the model refuses is sent once more without them.
+ */
+async function generateOpenRouterImage(
+  baseUrl: string,
+  apiKey: string,
+  model: string,
+  prompt: string,
+  imageConfig: { aspect_ratio?: string; image_size?: string } | undefined,
+  signal: AbortSignal,
+): Promise<NextResponse> {
+  const options: Record<string, string> = {};
+  if (imageConfig?.aspect_ratio) options.aspect_ratio = imageConfig.aspect_ratio;
+  if (imageConfig?.image_size) options.resolution = imageConfig.image_size;
+
+  const request = (body: Record<string, string>) => fetch(`${baseUrl.replace(/\/$/, '')}/images`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`, ...OPENROUTER_ATTRIBUTION },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  let response = await request({ model, prompt, ...options });
+  if (response.status === 400 && Object.keys(options).length > 0) {
+    await response.body?.cancel();
+    response = await request({ model, prompt });
+  }
+  if (!response.ok) {
+    const error = await upstreamError(response, `OpenRouter image request failed (${response.status})`);
+    return NextResponse.json({ error }, { status: response.status });
+  }
+  const data = await response.json();
+  const image = data?.data?.[0];
+  const b64: unknown = image?.b64_json;
+  if (typeof b64 !== 'string' || !b64) return NextResponse.json({ error: 'Model returned no image' }, { status: 422 });
+  const type = typeof image.media_type === 'string' && image.media_type.startsWith('image/')
+    ? image.media_type
+    : base64ImageType(b64);
+  return NextResponse.json({ image: `data:${type};base64,${b64}` });
 }
 
 function extractCodexImage(value: unknown): string | undefined {
@@ -170,8 +258,9 @@ async function generateCodexImage(
 }
 
 /**
- * Image generation via an OpenAI-compatible chat-completions endpoint with the
- * `modalities: ["image"]` extension (OpenRouter and compatible providers). The
+ * Image generation. Codex, OpenRouter and Pollinations have their own image endpoints; any other
+ * provider goes through an OpenAI-compatible chat-completions endpoint with the
+ * `modalities: ["image"]` extension. The
  * generated image comes back at choices[0].message.images[0].image_url.url as a
  * base64 data URL, which we return verbatim for the caller to decode and store.
  */
@@ -204,6 +293,25 @@ export async function POST(request: NextRequest) {
     }
 
     const baseUrl = providerConfig.baseUrl || 'https://openrouter.ai/api/v1';
+
+    if (selectedProvider === 'openrouter') {
+      try {
+        return await generateOpenRouterImage(baseUrl, apiKey, model, prompt, image_config, signal);
+      } catch (err) {
+        if (wasCutShort(signal, err)) return abortedResponse(request);
+        throw err;
+      }
+    }
+
+    if (selectedProvider === 'pollinations') {
+      try {
+        return await generatePollinationsImage(baseUrl, apiKey, model, prompt, image_config?.aspect_ratio, signal);
+      } catch (err) {
+        if (wasCutShort(signal, err)) return abortedResponse(request);
+        throw err;
+      }
+    }
+
     const endpoint = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
 
     // Request the model's actual output modalities. Image-only models (FLUX,

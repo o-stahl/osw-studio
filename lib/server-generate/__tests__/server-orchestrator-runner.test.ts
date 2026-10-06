@@ -1,9 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { runServerGeneration, awaitBuildResult } from '../server-orchestrator-runner';
+import { runServerGeneration, awaitBuildResult, awaitImageResult } from '../server-orchestrator-runner';
+import { imageDelegationTimeoutMs } from '@/lib/llm/image-gen-timeout';
+import { claimImageRequest, settleImageRequest } from '../image-requests';
 import { TaskManager } from '../task-manager';
 import { SSEEventBus } from '../sse-event-bus';
 import type { StartGenerationRequest, BuildResult } from '../types';
 import type { VirtualFileSystem } from '@/lib/vfs';
+import { MultiAgentOrchestrator } from '@/lib/llm/multi-agent-orchestrator';
 
 const mockExecute = vi.fn().mockResolvedValue({ success: true });
 const mockStop = vi.fn();
@@ -210,6 +213,32 @@ describe('runServerGeneration', () => {
     expect(mockImportConversation).not.toHaveBeenCalled();
   });
 
+  // The agent only offers `generate-image` when the tab said it has an image model, and the
+  // generation itself has to travel back to that tab.
+  it('wires image generation through to the browser that asked for the run', async () => {
+    const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
+    await runServerGeneration(taskId, makeRequest({ imageGenAvailable: true }), makeDeps());
+
+    const options = vi.mocked(MultiAgentOrchestrator).mock.calls[0][3] as { serverContext: {
+      imageGenAvailable?: boolean;
+      onImageRequested?: (prompt: string, opts: { aspectRatio?: string }) => Promise<unknown>;
+    } };
+    expect(options.serverContext.imageGenAvailable).toBe(true);
+
+    const answer = options.serverContext.onImageRequested!('a lighthouse', { aspectRatio: '16:9' });
+    const request = bus.getBuffer(taskId).find((e) => e.event === 'image_requested')!.data as unknown as { requestId: string; prompt: string; aspectRatio: string };
+    expect(request).toMatchObject({ prompt: 'a lighthouse', aspectRatio: '16:9' });
+    settleImageRequest(tm.getTask(taskId)!, request.requestId, { base64: 'iVBOR', mimeType: 'image/png' });
+    await expect(answer).resolves.toEqual({ base64: 'iVBOR', mimeType: 'image/png' });
+  });
+
+  it('does not advertise image generation when the tab has no image model', async () => {
+    const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
+    await runServerGeneration(taskId, makeRequest(), makeDeps());
+    const options = vi.mocked(MultiAgentOrchestrator).mock.calls[0][3] as { serverContext: { imageGenAvailable?: boolean } };
+    expect(options.serverContext.imageGenAvailable).toBeFalsy();
+  });
+
   it('flushes dirty paths as files_changed on tool_status completed', async () => {
     const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
     const { MultiAgentOrchestrator } = await import('@/lib/llm/multi-agent-orchestrator');
@@ -352,6 +381,81 @@ describe('awaitBuildResult', () => {
       // Advance past timeout — should NOT set buildDeferred since we already resolved
       await vi.advanceTimersByTimeAsync(30_000);
       expect(task.buildDeferred).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('awaitImageResult', () => {
+  let tm: TaskManager;
+  let bus: SSEEventBus;
+
+  beforeEach(() => {
+    tm = new TaskManager({ maxConcurrentPerScope: 5, keyTTLMs: 30 * 60 * 1000 });
+    bus = new SSEEventBus({ maxBufferSize: 500 });
+  });
+  afterEach(() => tm.dispose());
+
+  const deps = () => ({ taskManager: tm, eventBus: bus, createVFS: vi.fn(), apiBaseUrl: 'http://localhost:3000' });
+  const requests = (taskId: string) =>
+    bus.getBuffer(taskId).filter((e) => e.event === 'image_requested').map((e) => e.data as unknown as { requestId: string; prompt: string });
+
+  it('asks the browser for the image and returns what it posts back', async () => {
+    const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
+    const result = awaitImageResult(taskId, deps(), 'a lighthouse', { aspectRatio: '16:9' });
+    const [request] = requests(taskId);
+    expect(request).toMatchObject({ taskId, prompt: 'a lighthouse', aspectRatio: '16:9', requestId: expect.any(String) });
+    const task = tm.getTask(taskId)!;
+    expect(settleImageRequest(task, request.requestId, { base64: 'iVBOR', mimeType: 'image/png' })).toBe(true);
+    await expect(result).resolves.toEqual({ base64: 'iVBOR', mimeType: 'image/png' });
+    expect(task.pendingImages?.size ?? 0).toBe(0);
+  });
+
+  it('gives parallel requests each their own answer, whichever finishes first', async () => {
+    const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
+    const a = awaitImageResult(taskId, deps(), 'A', {});
+    const b = awaitImageResult(taskId, deps(), 'B', {});
+    const [reqA, reqB] = requests(taskId);
+    const task = tm.getTask(taskId)!;
+    settleImageRequest(task, reqB.requestId, { base64: 'BBBB', mimeType: 'image/png' });
+    settleImageRequest(task, reqA.requestId, { base64: 'AAAA', mimeType: 'image/png' });
+    await expect(a).resolves.toMatchObject({ base64: 'AAAA' });
+    await expect(b).resolves.toMatchObject({ base64: 'BBBB' });
+  });
+
+  it('answers with an error for a task that no longer exists', async () => {
+    await expect(awaitImageResult('missing', deps(), 'x', {})).resolves.toEqual({ error: 'task not found' });
+  });
+
+  it('lets one tab claim a request and turns the others away', () => {
+    const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
+    void awaitImageResult(taskId, deps(), 'x', {});
+    const [request] = requests(taskId);
+    const task = tm.getTask(taskId)!;
+    expect(claimImageRequest(task, request.requestId)).toBe(true);
+    expect(claimImageRequest(task, request.requestId)).toBe(false);
+    expect(claimImageRequest(task, 'unknown')).toBe(false);
+  });
+
+  it('tells the agent to continue without it when no browser answers, and forgets only that request', async () => {
+    vi.useFakeTimers();
+    try {
+      const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
+      const wait = imageDelegationTimeoutMs();
+      let firstSettled = false;
+      const first = awaitImageResult(taskId, deps(), 'x', {});
+      void first.then(() => { firstSettled = true; });
+      await vi.advanceTimersByTimeAsync(wait - 80_000);
+      expect(firstSettled).toBe(false);
+      const second = awaitImageResult(taskId, deps(), 'y', {});
+      await vi.advanceTimersByTimeAsync(80_000);
+      await expect(first).resolves.toMatchObject({ error: expect.stringContaining('Continue without it') });
+      const task = tm.getTask(taskId)!;
+      const [reqX, reqY] = requests(taskId);
+      expect(task.pendingImages?.has(reqX.requestId)).toBe(false);
+      expect(settleImageRequest(task, reqY.requestId, { base64: 'YYYY', mimeType: 'image/png' })).toBe(true);
+      await expect(second).resolves.toMatchObject({ base64: 'YYYY' });
     } finally {
       vi.useRealTimers();
     }

@@ -11,8 +11,7 @@ export type GuidedTourStepId =
   | 'workspace-focus'
   | 'workspace-checkpoint'
   | 'clear-conversation'
-  | 'provider-settings'
-  | 'wrap-up';
+  | 'provider-settings';
 
 type StepLocation = 'global' | 'project-manager' | 'workspace' | 'settings';
 

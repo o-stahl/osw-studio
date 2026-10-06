@@ -71,6 +71,13 @@ describe('runtimeForTemplate', () => {
 });
 
 describe('toBrowsableTemplates', () => {
+  it('shows a built-in under the translated copy it is given, and English without one', () => {
+    const rows = toBrowsableTemplates([], { blank: { name: 'Static-pohja', description: 'Kuvaus' } });
+    expect(rows.find((r) => r.value === 'blank')).toMatchObject({ name: 'Static-pohja', description: 'Kuvaus' });
+    const other = BUILT_IN_TEMPLATES.find((t) => t.id !== 'blank')!;
+    expect(rows.find((r) => r.value === other.id)?.name).toBe(other.name);
+  });
+
   it('lists built-in and custom templates together', () => {
     const rows = toBrowsableTemplates([customTemplate({ id: 'c1', name: 'Mine' })]);
 

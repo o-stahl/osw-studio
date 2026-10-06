@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { PublishSettings, Project } from '@/lib/vfs/types';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -25,6 +26,9 @@ interface GeneralTabProps {
 }
 
 export function GeneralTab({ settings, onChange, projectId, deploymentId, publicUrl: resolvedUrl, published, projects, onProjectChange }: GeneralTabProps) {
+  const t = useTranslations('publishSettings');
+  const tc = useTranslations('common');
+  const td = useTranslations('deploymentDetail');
   const [originalProjectId] = useState(projectId);
   const handleChange = (field: keyof PublishSettings, value: PublishSettings[keyof PublishSettings]) => {
     onChange({
@@ -45,9 +49,9 @@ export function GeneralTab({ settings, onChange, projectId, deploymentId, public
   return (
     <div className="flex flex-col gap-4">
       <Section>
-        <SectionHeader icon={Globe} title="Publishing status" />
+        <SectionHeader icon={Globe} title={t('publishingStatus')} />
         <SectionBody className="px-4 py-1">
-          <SettingRow title="Under construction" description="Show a maintenance page instead of the site, from the next publish">
+          <SettingRow title={t('underConstruction')} description={t('underConstructionDesc')}>
             <Switch
               id="under-construction"
               checked={settings.underConstruction}
@@ -59,13 +63,13 @@ export function GeneralTab({ settings, onChange, projectId, deploymentId, public
 
       {projects && projects.length > 0 && onProjectChange && (
         <Section>
-          <SectionHeader icon={FolderOpen} title="Source project" />
+          <SectionHeader icon={FolderOpen} title={t('sourceProject')} />
           <SectionBody className="space-y-3">
             <div className="space-y-2">
-              <Label htmlFor="project-select">Project</Label>
+              <Label htmlFor="project-select">{tc('labels.project')}</Label>
               <Select value={projectId} onValueChange={onProjectChange}>
                 <SelectTrigger id="project-select">
-                  <SelectValue placeholder="Select a project" />
+                  <SelectValue placeholder={t('selectProject')} />
                 </SelectTrigger>
                 <SelectContent>
                   {projects.map((project) => (
@@ -76,7 +80,7 @@ export function GeneralTab({ settings, onChange, projectId, deploymentId, public
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                The project whose files are published to this deployment.
+                {t('sourceProjectHelp')}
               </p>
             </div>
 
@@ -84,9 +88,9 @@ export function GeneralTab({ settings, onChange, projectId, deploymentId, public
               <div className="flex items-start gap-3 p-3 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                 <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mt-0.5 shrink-0" />
                 <div className="text-sm text-yellow-800 dark:text-yellow-200">
-                  <p className="font-medium">Changing the source project may break the published deployment.</p>
+                  <p className="font-medium">{t('changingSourceWarning')}</p>
                   <p className="mt-1 text-yellow-700 dark:text-yellow-300">
-                    The new project may have different files and structure. You will need to republish after saving.
+                    {t('sourceChangeDetail')}
                   </p>
                 </div>
               </div>
@@ -96,25 +100,25 @@ export function GeneralTab({ settings, onChange, projectId, deploymentId, public
       )}
 
       <Section>
-        <SectionHeader icon={Link2} title="Public URL" />
+        <SectionHeader icon={Link2} title={t('publicUrl')} />
         <SectionBody className="space-y-3">
           <div className="space-y-2">
             <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
               <Globe className="h-4 w-4 text-muted-foreground shrink-0" />
               <code className="text-sm flex-1 break-all">{publicUrl}</code>
               <Badge variant={published ? 'default' : 'secondary'} className="ml-2 shrink-0">
-                {published ? 'Live' : 'Not Published'}
+                {published ? t('live') : t('notPublished')}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground">
-              This is the public URL where your deployment will be accessible
+              {t('publicUrlHelp')}
             </p>
           </div>
 
           {/* Show direct path when subdomain or custom domain is set */}
           {servedElsewhere && (
             <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Direct path</Label>
+              <Label className="text-xs text-muted-foreground">{t('directPath')}</Label>
               <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg border border-dashed">
                 <Globe className="h-4 w-4 text-muted-foreground shrink-0" />
                 <code className="text-xs flex-1 text-muted-foreground break-all">{directUrl}</code>
@@ -125,9 +129,9 @@ export function GeneralTab({ settings, onChange, projectId, deploymentId, public
       </Section>
 
       <Section>
-        <SectionHeader icon={Globe} title="Custom domain" />
+        <SectionHeader icon={Globe} title={t('customDomain')} />
         <SectionBody className="space-y-2">
-          <Label htmlFor="custom-domain">Domain name (optional)</Label>
+          <Label htmlFor="custom-domain">{t('domainName')}</Label>
           <Input
             id="custom-domain"
             type="text"
@@ -136,21 +140,21 @@ export function GeneralTab({ settings, onChange, projectId, deploymentId, public
             onChange={(e) => handleChange('customDomain', e.target.value || undefined)}
           />
           <p className="text-xs text-muted-foreground">
-            Enter your custom domain and add a DNS A record pointing to this server. Used for SEO meta tags, sitemaps, and asset paths. Republish after setting.
+            {t('customDomainHelp')}
           </p>
         </SectionBody>
       </Section>
 
       <Section>
-        <SectionHeader icon={History} title="Version" />
+        <SectionHeader icon={History} title={tc('labels.version')} />
         <SectionBody className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3 border rounded-lg">
-              <div className="text-xs text-muted-foreground mb-1">Current version</div>
+              <div className="text-xs text-muted-foreground mb-1">{t('currentVersion')}</div>
               <div className="text-2xl font-semibold tabular-nums">{settings.settingsVersion}</div>
             </div>
             <div className="p-3 border rounded-lg">
-              <div className="text-xs text-muted-foreground mb-1">Published version</div>
+              <div className="text-xs text-muted-foreground mb-1">{t('publishedVersion')}</div>
               <div className="text-2xl font-semibold tabular-nums">
                 {settings.lastPublishedVersion !== null && settings.lastPublishedVersion !== undefined
                   ? settings.lastPublishedVersion
@@ -164,10 +168,10 @@ export function GeneralTab({ settings, onChange, projectId, deploymentId, public
               <div className="p-3 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className="bg-yellow-100 dark:bg-yellow-900">
-                    Pending Changes
+                    {td('pendingChanges')}
                   </Badge>
                   <span className="text-sm">
-                    You have unpublished changes. Republish to apply them.
+                    {t('unpublishedChanges')}
                   </span>
                 </div>
               </div>

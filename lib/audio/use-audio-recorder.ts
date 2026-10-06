@@ -28,9 +28,12 @@ function getAudioContextCtor(): AudioContextCtor | null {
   );
 }
 
+type RecorderError = 'unsupported' | 'noMicrophone' | 'blocked' | 'processFailed';
+
 export function useAudioRecorder() {
   const [isRecording, setIsRecording] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // A code, not text: the chat panel words it under `chat.recording`.
+  const [error, setError] = useState<RecorderError | null>(null);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -53,7 +56,7 @@ export function useAudioRecorder() {
     setError(null);
     const AC = getAudioContextCtor();
     if (!navigator.mediaDevices?.getUserMedia || !AC || typeof MediaRecorder === 'undefined') {
-      setError('Recording is not supported in this browser');
+      setError('unsupported');
       return;
     }
     try {
@@ -81,8 +84,8 @@ export function useAudioRecorder() {
       const name = err instanceof DOMException ? err.name : '';
       setError(
         name === 'NotFoundError' || name === 'DevicesNotFoundError'
-          ? 'No microphone was found'
-          : 'Microphone access was blocked',
+          ? 'noMicrophone'
+          : 'blocked',
       );
       cleanup();
     }
@@ -111,7 +114,7 @@ export function useAudioRecorder() {
           const data = encodeWavBase64(audioBuf);
           resolve({ data, format: 'wav', durationMs });
         } catch {
-          setError('Could not process the recording');
+          setError('processFailed');
           resolve(null);
         } finally {
           decodeCtx?.close().catch(() => {});

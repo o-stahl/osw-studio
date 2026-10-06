@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Check, Copy, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -25,6 +26,7 @@ function ollamaModelToCheck(): string {
  * checks a task depends on, and shows the command that fixes each failed one.
  */
 export function OllamaPreflight() {
+  const t = useTranslations('settings');
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<PreflightResult | null>(null);
 
@@ -41,7 +43,7 @@ export function OllamaPreflight() {
       const failed = data.checks.filter((c) => !c.ok).map((c) => c.id);
       track('preflight_result', { provider: 'ollama', ok: failed.length === 0, failed });
     } catch {
-      toast.error('The check could not run. Try again.');
+      toast.error(t('checkFailed'));
     } finally {
       setRunning(false);
     }
@@ -50,9 +52,9 @@ export function OllamaPreflight() {
   const copy = async (command: string) => {
     try {
       await navigator.clipboard.writeText(command);
-      toast.success('Copied');
+      toast.success(t('copied'));
     } catch {
-      toast.error('Could not copy');
+      toast.error(t('copyFailed'));
     }
   };
 
@@ -60,7 +62,7 @@ export function OllamaPreflight() {
     <div className="mt-2 space-y-2" data-testid="ollama-preflight">
       <Button size="sm" variant="outline" onClick={run} disabled={running} className="h-7 text-xs">
         {running ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
-        Check setup
+        {t('checkSetup')}
       </Button>
       {result && (
         <ul className="space-y-1.5 text-xs">
@@ -79,7 +81,7 @@ export function OllamaPreflight() {
                       variant="ghost"
                       className="h-5 w-5"
                       onClick={() => copy(check.fix ?? '')}
-                      aria-label={`Copy ${check.fix}`}
+                      aria-label={t('copyValue', { value: check.fix ?? '' })}
                     >
                       <Copy className="h-3 w-3" />
                     </Button>

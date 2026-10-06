@@ -3,8 +3,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Check, ChevronRight, Loader2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Tally, TallyStep } from '@/lib/quick-edit/tally';
-import { collate } from '@/lib/quick-edit/collate';
+import { useTranslations } from 'next-intl';
+import { phraseStep, type Tally, type TallyStep } from '@/lib/quick-edit/tally';
+import { collate, phraseCollated } from '@/lib/quick-edit/collate';
 
 /**
  * How tall the open list gets before it scrolls, in steps.
@@ -19,6 +20,7 @@ const STEP_ROW_GAP = 8;
 const EXPANDED_MAX_HEIGHT = EXPANDED_STEPS * STEP_ROW_HEIGHT + (EXPANDED_STEPS - 1) * STEP_ROW_GAP;
 
 function StepRow({ step }: { step: TallyStep }) {
+  const t = useTranslations('quickEdit.step');
   return (
     <div className="flex items-center gap-2 text-xs">
       <span className="shrink-0 flex">
@@ -28,7 +30,7 @@ function StepRow({ step }: { step: TallyStep }) {
             ? <Check className="h-3 w-3 text-primary" />
             : <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
       </span>
-      <span className={cn('flex-1 min-w-0', step.failed && 'text-muted-foreground')}>{step.label}</span>
+      <span className={cn('flex-1 min-w-0', step.failed && 'text-muted-foreground')}>{phraseStep(step, t)}</span>
       {step.steps > 1 && (
         <span className="shrink-0 text-muted-foreground tabular-nums">x{step.steps}</span>
       )}
@@ -44,6 +46,7 @@ function StepRow({ step }: { step: TallyStep }) {
  * sentence. Open, the sentence gives way to every step, in a box that scrolls past eight.
  */
 export function TallyList({ tally, live }: { tally: Tally; live: boolean }) {
+  const t = useTranslations('quickEdit.collate');
   const [open, setOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -51,8 +54,9 @@ export function TallyList({ tally, live }: { tally: Tally; live: boolean }) {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [tally.steps.length, tally.commandCount]);
 
-  const line = collate(tally);
-  if (!line) return null;
+  const collated = collate(tally);
+  if (!collated) return null;
+  const line = phraseCollated(collated, t);
 
   // A single step is its own summary. Collating it would put one row behind a disclosure and
   // restate it in more general words ("Edited index.html" over "Read index.html"), so the step

@@ -1,8 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
+import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { createTranslator } from 'next-intl';
 import { ElementsPanel, unavailableCopy, type TreeUnavailable } from '..';
 import type { ProjectRuntime } from '@/lib/vfs/types';
+import en from '@/messages/en.json';
+
+/**
+ * The real translator over the shipped English, not a stub: a key renamed out of `en.json` then
+ * fails here instead of quietly matching a fixture, and the assertions below stay readable.
+ */
+const t = createTranslator({ locale: 'en', messages: en, namespace: 'elementsPanel' });
 
 /**
  * The tab strip, rendered.
@@ -20,7 +29,7 @@ import type { ProjectRuntime } from '@/lib/vfs/types';
  */
 
 function render(props: Partial<React.ComponentProps<typeof ElementsPanel>> = {}) {
-  return renderToStaticMarkup(
+  return renderToStaticMarkup(withMessages(
     <ElementsPanel
       projectId="p1"
       runtime="handlebars"
@@ -37,7 +46,7 @@ function render(props: Partial<React.ComponentProps<typeof ElementsPanel>> = {})
       onTabChange={vi.fn()}
       {...props}
     />
-  );
+  ));
 }
 
 /** The strip is two `role="tab"` buttons. Counting them catches "rendered, but only one of them". */
@@ -84,7 +93,7 @@ describe('the tab strip', () => {
 
   it.each(UNAVAILABLE)('shows one message for both tabs in $name', ({ name, props }) => {
     const html = render(props);
-    const copy = unavailableCopy(name, (props.runtime as ProjectRuntime) ?? 'handlebars');
+    const copy = unavailableCopy(t, name, (props.runtime as ProjectRuntime) ?? 'handlebars');
     expect(html).toContain(copy.title);
     // Once, not once per tab: every reason here removes the document both tabs read from.
     expect(html.split(copy.title)).toHaveLength(2);
@@ -149,12 +158,12 @@ describe('the Styles tab\'s host hooks', () => {
 describe('what the panel says when it cannot work', () => {
   it('gives each reason its own wording', () => {
     const messages = UNAVAILABLE.map(({ name, props }) =>
-      unavailableCopy(name, (props.runtime as ProjectRuntime) ?? 'handlebars').title);
+      unavailableCopy(t, name, (props.runtime as ProjectRuntime) ?? 'handlebars').title);
     expect(new Set(messages).size).toBe(UNAVAILABLE.length);
   });
 
   it('names the runtime it is talking about', () => {
-    expect(unavailableCopy('terminal-runtime', 'python').hint).toContain('Python');
-    expect(unavailableCopy('bundled-runtime', 'react').hint).toContain('React');
+    expect(unavailableCopy(t, 'terminal-runtime', 'python').hint).toContain('Python');
+    expect(unavailableCopy(t, 'bundled-runtime', 'react').hint).toContain('React');
   });
 });

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -44,6 +45,10 @@ interface HeatmapViewerProps {
 }
 
 export function HeatmapViewer({ deploymentId, pages }: HeatmapViewerProps) {
+  const tc = useTranslations('common');
+  const tt = useTranslations('tooltips');
+  const t = useTranslations('heatmap');
+  const tb = useTranslations('backend');
   const [selectedPage, setSelectedPage] = useState<string>(pages[0] || '/');
   const [deviceFilter, setDeviceFilter] = useState<'all' | 'mobile' | 'tablet' | 'desktop'>('all');
   const [data, setData] = useState<HeatmapData | null>(null);
@@ -77,7 +82,7 @@ export function HeatmapViewer({ deploymentId, pages }: HeatmapViewerProps) {
       setData(heatmapData);
     } catch (error) {
       console.error('Failed to fetch heatmap data:', error);
-      toast.error('Failed to load heatmap data');
+      toast.error(t('loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -155,11 +160,11 @@ export function HeatmapViewer({ deploymentId, pages }: HeatmapViewerProps) {
         const cacheKey = `${selectedPage}-${deviceFilter}`;
         setScreenshotCache(prev => ({ ...prev, [cacheKey]: dataUrl }));
       } else {
-        toast.error('Failed to capture screenshot');
+        toast.error(t('captureFailed'));
       }
     } catch (error) {
       console.error('Failed to capture screenshot:', error);
-      toast.error('Failed to capture page screenshot');
+      toast.error(t('capturePageFailed'));
     } finally {
       setScreenshotLoading(false);
     }
@@ -236,7 +241,7 @@ export function HeatmapViewer({ deploymentId, pages }: HeatmapViewerProps) {
       {/* Controls */}
       <div className="flex gap-4 items-end flex-wrap">
         <div className="min-w-48">
-          <Label htmlFor="page-select">Page</Label>
+          <Label htmlFor="page-select">{tb('page')}</Label>
           <Select value={selectedPage} onValueChange={setSelectedPage}>
             <SelectTrigger id="page-select">
               <SelectValue />
@@ -252,36 +257,36 @@ export function HeatmapViewer({ deploymentId, pages }: HeatmapViewerProps) {
         </div>
 
         <div className="min-w-36">
-          <Label htmlFor="device-select">Device</Label>
+          <Label htmlFor="device-select">{t('device')}</Label>
           <Select value={deviceFilter} onValueChange={(value) => setDeviceFilter(value as any)}>
             <SelectTrigger id="device-select">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Devices</SelectItem>
-              <SelectItem value="mobile">Mobile</SelectItem>
-              <SelectItem value="tablet">Tablet</SelectItem>
-              <SelectItem value="desktop">Desktop</SelectItem>
+              <SelectItem value="all">{t('allDevices')}</SelectItem>
+              <SelectItem value="mobile">{t('mobile')}</SelectItem>
+              <SelectItem value="tablet">{t('tablet')}</SelectItem>
+              <SelectItem value="desktop">{t('desktop')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         <Button onClick={fetchHeatmapData} disabled={loading}>
-          {loading ? 'Loading...' : 'Refresh'}
+          {loading ? tc('loading') : tc('actions.refresh')}
         </Button>
       </div>
 
       {/* Sample Size */}
       {data && (
         <div className="text-sm text-muted-foreground">
-          Sample size: <span className="font-medium">{data.sampleSize.toLocaleString()}</span> interactions
+          {t.rich('sampleSizeCount', { count: data.sampleSize, b: (chunks) => <span className="font-medium">{chunks}</span> })}
         </div>
       )}
 
       {/* Visualization */}
       {loading && (
         <div className="flex items-center justify-center h-96 border rounded-lg">
-          <p className="text-muted-foreground">Loading heatmap data...</p>
+          <p className="text-muted-foreground">{t('loading')}</p>
         </div>
       )}
 
@@ -289,14 +294,14 @@ export function HeatmapViewer({ deploymentId, pages }: HeatmapViewerProps) {
         <div className="border rounded-lg overflow-hidden">
           {!screenshotDataUrl && !screenshotLoading && (
             <div className="p-8 text-center">
-              <p className="text-muted-foreground mb-4">Capture a screenshot of the page to visualize click heatmap</p>
-              <Button onClick={captureScreenshot}>Capture Page Screenshot</Button>
+              <p className="text-muted-foreground mb-4">{t('captureHint')}</p>
+              <Button onClick={captureScreenshot}>{t('capturePage')}</Button>
             </div>
           )}
 
           {screenshotLoading && (
             <div className="p-8 text-center">
-              <p className="text-muted-foreground">Capturing screenshot...</p>
+              <p className="text-muted-foreground">{t('capturing')}</p>
             </div>
           )}
 
@@ -313,25 +318,25 @@ export function HeatmapViewer({ deploymentId, pages }: HeatmapViewerProps) {
               <div className="p-4 bg-muted text-sm border-t">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium mb-2">Click Heatmap Legend:</p>
+                    <p className="font-medium mb-2">{t('legendTitle')}</p>
                     <div className="flex gap-4">
                       <div className="flex items-center gap-2">
                         <div className="w-4 h-4 rounded bg-red-500/70" />
-                        <span>High activity</span>
+                        <span>{t('highActivity')}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="w-4 h-4 rounded bg-orange-500/50" />
-                        <span>Medium activity</span>
+                        <span>{t('mediumActivity')}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="w-4 h-4 rounded bg-yellow-500/20" />
-                        <span>Low activity</span>
+                        <span>{t('lowActivity')}</span>
                       </div>
                     </div>
                   </div>
                   <div className="text-right">
                     <Button variant="outline" size="sm" onClick={captureScreenshot}>
-                      Recapture
+                      {t('recapture')}
                     </Button>
                   </div>
                 </div>
@@ -349,14 +354,14 @@ export function HeatmapViewer({ deploymentId, pages }: HeatmapViewerProps) {
               border: 'none'
               // Width and height set dynamically in captureScreenshot()
             }}
-            title="Page for screenshot"
+            title={tt('pageForScreenshot')}
           />
         </div>
       )}
 
       {!loading && !data && (
         <div className="flex items-center justify-center h-96 border rounded-lg">
-          <p className="text-muted-foreground">No heatmap data available</p>
+          <p className="text-muted-foreground">{t('noData')}</p>
         </div>
       )}
     </div>

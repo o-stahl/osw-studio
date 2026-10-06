@@ -345,7 +345,6 @@ export const providers: Record<BuiltInProviderId, ProviderConfig> = {
     name: 'SambaNova',
     description: 'High-performance AI chips for inference',
     apiKeyRequired: true,
-    apiKeyPlaceholder: 'SambaNova API Key',
     apiKeyHelpUrl: 'https://cloud.sambanova.ai/apis',
     baseUrl: 'https://api.sambanova.ai/v1',
     supportsModelDiscovery: true,
@@ -357,7 +356,6 @@ export const providers: Record<BuiltInProviderId, ProviderConfig> = {
     name: 'DeepSeek',
     description: 'DeepSeek models for coding and reasoning',
     apiKeyRequired: true,
-    apiKeyPlaceholder: 'Your DeepSeek API Key',
     apiKeyHelpUrl: 'https://platform.deepseek.com/api_keys',
     baseUrl: 'https://api.deepseek.com/v1',
     supportsModelDiscovery: true,
@@ -369,7 +367,6 @@ export const providers: Record<BuiltInProviderId, ProviderConfig> = {
     name: 'MiniMax',
     description: 'MiniMax M2 models for coding and reasoning',
     apiKeyRequired: true,
-    apiKeyPlaceholder: 'Your MiniMax API Key',
     apiKeyHelpUrl: 'https://platform.minimax.io/user-center/basic-information/interface-key',
     baseUrl: 'https://api.minimax.io/v1',
     models: minimaxModels,
@@ -382,13 +379,36 @@ export const providers: Record<BuiltInProviderId, ProviderConfig> = {
     name: 'Zhipu AI',
     description: 'GLM models for reasoning, coding, and vision',
     apiKeyRequired: true,
-    apiKeyPlaceholder: 'Your Zhipu AI API Key',
     apiKeyHelpUrl: 'https://z.ai/subscribe',
     baseUrl: 'https://api.z.ai/api/paas/v4',
     models: zhipuModels,
     supportsModelDiscovery: false,
     supportsFunctions: true,
     supportsStreaming: true
+  },
+  pollinations: {
+    id: 'pollinations',
+    name: 'Pollinations',
+    description: 'Many models through one key, paid for in Pollen',
+    apiKeyRequired: true,
+    apiKeyPlaceholder: 'sk_...',
+    apiKeyHelpUrl: 'https://enter.pollinations.ai/keys',
+    baseUrl: 'https://gen.pollinations.ai/v1',
+    supportsModelDiscovery: true,
+    supportsFunctions: true,
+    supportsStreaming: true,
+  },
+  vercel: {
+    id: 'vercel',
+    name: 'Vercel AI Gateway',
+    description: 'Many providers through one key, with a monthly free credit',
+    apiKeyRequired: true,
+    apiKeyPlaceholder: 'vck_...',
+    apiKeyHelpUrl: 'https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai-gateway%2Fapi-keys',
+    baseUrl: 'https://ai-gateway.vercel.sh/v1',
+    supportsModelDiscovery: true,
+    supportsFunctions: true,
+    supportsStreaming: true,
   },
   'opencode-go': {
     id: 'opencode-go',
@@ -498,6 +518,10 @@ export function getDefaultModel(provider: ProviderId): string {
       return 'MiniMax-M2.7';
     case 'opencode-go':
       return '';
+    case 'pollinations':
+      return 'deepseek/deepseek-v4.1-flash';
+    case 'vercel':
+      return 'deepseek/deepseek-v4-flash';
     case 'meshllm':
       // Models come from whatever peers the mesh has, so there is nothing to name up front.
       return '';

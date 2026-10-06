@@ -380,7 +380,7 @@ export function reduceStyles(state: StylesState, event: StylesEvent): StylesTran
       if (offer.kind === 'refresh') {
         return { state, commands: [{ kind: 'refresh' }] };
       }
-      return { state, commands: [{ kind: 'ask-agent', reason: refusalMessage(state.refusal) }] };
+      return { state, commands: [{ kind: 'ask-agent', reason: refusalAgentPrompt(state.refusal) }] };
     }
 
     case 'dismiss-refusal':
@@ -540,10 +540,23 @@ export function canReset(state: StylesState, property: string): boolean {
 }
 
 export type RefusalOffer =
-  | { kind: 'ask-agent'; label: string }
-  | { kind: 'open-file'; label: string; path: string }
-  | { kind: 'refresh'; label: string }
+  | { kind: 'ask-agent' }
+  | { kind: 'open-file'; path: string }
+  | { kind: 'refresh' }
   | null;
+
+/**
+ * The `styles` keys the helpers below read. Named rather than `string`, so passing the panel's own
+ * `t` makes `tsc` check every one exists in the messages.
+ */
+export type StylesMessageKey =
+  | 'titleGenerating' | 'titleAmbiguous' | 'titleStale' | 'titleMissing' | 'titleUnresolvable'
+  | 'msgUnresolvable' | 'msgGenerating' | 'msgStale' | 'msgStaleFile' | 'msgMissing' | 'msgMissingFile'
+  | 'msgAmbiguous' | 'msgAmbiguousDefaultDetail' | 'msgAmbiguousStamped' | 'msgAmbiguousFix'
+  | 'confirmMany' | 'confirmManyFrom' | 'confirmShared' | 'confirmSharedFrom'
+  | 'lossItem' | 'lossUnknownWinner';
+
+export type StylesTranslator = (key: StylesMessageKey, values?: Record<string, string | number>) => string;
 
 /**
  * What the panel offers to do about a refusal, per the plan's table.
@@ -558,11 +571,11 @@ export function refusalOffer(refusal: Refusal): RefusalOffer {
   switch (refusal.reason) {
     case 'unresolvable':
     case 'missing-file':
-      return { kind: 'ask-agent', label: 'Ask the agent' };
+      return { kind: 'ask-agent' };
     case 'stale-index':
-      return { kind: 'refresh', label: 'Refresh the preview' };
+      return { kind: 'refresh' };
     case 'ambiguous-stylesheet':
-      return { kind: 'open-file', label: `Open ${OVERRIDES_PATH}`, path: OVERRIDES_PATH };
+      return { kind: 'open-file', path: OVERRIDES_PATH };
     case 'generating':
       return null;
   }
@@ -575,51 +588,76 @@ export function refusalOffer(refusal: Refusal): RefusalOffer {
  * help, because those are different questions and the answers do not line up: a stale index is worth
  * a refresh, a missing file is not, and a hand-broken stylesheet is worth neither.
  */
-export function refusalMessage(refusal: Refusal): string {
+export function refusalMessage(refusal: Refusal, t: StylesTranslator): string {
   switch (refusal.reason) {
     case 'unresolvable':
-      return 'This element is built at runtime, so there is no source tag to attach a style to. '
+      return t('msgUnresolvable');
+    case 'generating':
+      return t('msgGenerating');
+    case 'stale-index':
+      return refusal.file ? t('msgStaleFile', { file: refusal.file }) : t('msgStale');
+    case 'missing-file':
+      return refusal.file ? t('msgMissingFile', { file: refusal.file }) : t('msgMissing');
+    case 'ambiguous-stylesheet':
+      // Sentences joined, each whole: the stamped note is optional and goes between the other two.
+      return [
+        t('msgAmbiguous', { path: OVERRIDES_PATH, detail: refusal.detail ?? t('msgAmbiguousDefaultDetail') }),
+        refusal.stamped ? t('msgAmbiguousStamped') : null,
+        t('msgAmbiguousFix'),
+      ].filter(Boolean).join(' ');
+  }
+}
+
+/**
+ * The refusal as a request to the agent, when the person presses "Ask the agent".
+ *
+ * Deliberately English and kept apart from `refusalMessage`: that one is the panel's text in the
+ * reader's language, this one is sent to the agent as the person's message (English by decision).
+ */
+export function refusalAgentPrompt(refusal: Refusal): string {
+  switch (refusal.reason) {
+    case 'unresolvable':
+      return 'This element is built at runtime, so there is no source tag to attach a style to. ' // i18n-ignore: part of a request to the agent
         + 'Ask the agent to change it instead.';
     case 'generating':
-      return 'The agent is editing this project. Style changes wait until it finishes.';
+      return 'The agent is editing this project. Style changes wait until it finishes.'; // i18n-ignore: part of a request to the agent
     case 'stale-index':
-      return `The preview is out of date${refusal.file ? `: ${refusal.file} has changed since it was compiled` : ''}. `
+      return `The preview is out of date${refusal.file ? `: ${refusal.file} has changed since it was compiled` : ''}. ` // i18n-ignore: part of a request to the agent
         + 'Refresh the preview and select the element again.';
     case 'missing-file':
-      return `${refusal.file ?? 'The source file'} no longer exists, so there is nothing to attach a style to. `
+      return `${refusal.file ?? 'The source file'} no longer exists, so there is nothing to attach a style to. ` // i18n-ignore: part of a request to the agent
         + 'Refreshing will not help — ask the agent to rebuild it.';
     case 'ambiguous-stylesheet':
-      return `${OVERRIDES_PATH} could not be edited safely: `
+      return `${OVERRIDES_PATH} could not be edited safely: ` // i18n-ignore: part of a request to the agent
         + `${refusal.detail ?? 'its blocks are not in the shape direct editing writes.'} `
         + (refusal.stamped
-          ? 'A marker was already stamped into your source; on its own it does nothing. '
+          ? 'A marker was already stamped into your source; on its own it does nothing. ' // i18n-ignore: part of a request to the agent
           : '')
         + 'Open the file and fix that block by hand — retrying will produce the same refusal.';
   }
 }
 
 /** Separate from refusalMessage so the headline does not contradict the detail. */
-export function refusalTitle(refusal: Refusal): string {
+export function refusalTitle(refusal: Refusal, t: StylesTranslator): string {
   switch (refusal.reason) {
     case 'generating':
-      return 'The agent is working';
+      return t('titleGenerating');
     case 'ambiguous-stylesheet':
-      return `Cannot edit ${OVERRIDES_PATH}`;
+      return t('titleAmbiguous', { path: OVERRIDES_PATH });
     case 'stale-index':
-      return 'The preview is out of date';
+      return t('titleStale');
     case 'missing-file':
-      return 'The source file is gone';
+      return t('titleMissing');
     case 'unresolvable':
-      return 'Nothing to attach a style to';
+      return t('titleUnresolvable');
   }
 }
 
 /** What the panel says before writing to a shared source tag. */
-export function confirmationMessage(pending: PendingConfirmation): string {
-  const where = pending.file ? ` from ${pending.file}` : '';
-  return pending.instances > 1
-    ? `This element${where} is rendered ${pending.instances} times. Changing it changes all ${pending.instances}.`
-    : `This element${where} is shared. Changing it changes every place it renders.`;
+export function confirmationMessage(pending: PendingConfirmation, t: StylesTranslator): string {
+  const values = { count: pending.instances, file: pending.file ?? '' };
+  if (pending.instances > 1) return t(pending.file ? 'confirmManyFrom' : 'confirmMany', values);
+  return t(pending.file ? 'confirmSharedFrom' : 'confirmShared', values);
 }
 
 /**
@@ -666,9 +704,9 @@ export function lostOverrides(state: StylesState): LostOverride[] {
 }
 
 /** One clause per property, same shape. */
-export function lossMessage(lost: readonly LostOverride[]): string {
+export function lossMessage(lost: readonly LostOverride[], t: StylesTranslator): string {
   return lost
-    .map(item => `${item.property} loses to ${item.winner ?? 'something the preview cannot name'}.`)
+    .map(item => t('lossItem', { property: item.property, winner: item.winner ?? t('lossUnknownWinner') }))
     .join(' ');
 }
 
@@ -683,7 +721,7 @@ export function lossAgentPrompt(
   const lines = lost.map(item => {
     const value = declarations[item.property];
     const declaration = value ? `${item.property}: ${value}` : item.property;
-    return `- \`${declaration}\`${item.winner ? ` (beaten by ${item.winner})` : ''}`;
+    return `- \`${declaration}\`${item.winner ? ` (beaten by ${item.winner})` : ''}`; // i18n-ignore: part of a request to the agent
   });
   return 'These style overrides on the selected element have no effect, because something else wins '
     + `the cascade:\n${lines.join('\n')}\n`

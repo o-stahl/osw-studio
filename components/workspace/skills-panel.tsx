@@ -6,6 +6,8 @@ import { skillsService } from '@/lib/vfs/skills';
 import { vfs } from '@/lib/vfs';
 import { logger } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
+import { useTranslations } from 'next-intl';
+import { useSkillGroupCopy } from '@/lib/i18n/use-skill-group-catalog';
 import { Button } from '@/components/ui/button';
 import { Sparkles, Plus, FolderTree } from 'lucide-react';
 import { PanelContainer, PanelHeader } from '@/components/ui/panel';
@@ -20,6 +22,9 @@ interface SkillsPanelProps {
 }
 
 export function SkillsPanel({ onClose }: SkillsPanelProps) {
+  const t = useTranslations('skills');
+  const tc = useTranslations('common');
+  const groupCopy = useSkillGroupCopy();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [groups, setGroups] = useState<SkillGroup[]>([]);
   const [globalEnabled, setGlobalEnabled] = useState(true);
@@ -104,7 +109,7 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
     <PanelContainer>
       <PanelHeader
         icon={Sparkles}
-        title="Skills"
+        title={tc('terms.skills')}
         color="var(--button-skills-active, #a855f7)"
         onClose={onClose}
         panelKey="skills"
@@ -114,10 +119,10 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
             variant="ghost"
             className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 md:h-5 md:w-5 md:px-0 md:border-0 md:bg-transparent md:rounded-md"
             onClick={() => setCreateDialogOpen(true)}
-            title="Create new skill"
+            title={t('createNew')}
           >
             <Plus className="h-2.5 w-2.5 md:h-3 md:w-3" />
-            <span className="text-xs md:hidden">Add skill</span>
+            <span className="text-xs md:hidden">{t('addSkill')}</span>
           </Button>
         }
       />
@@ -126,9 +131,9 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
         {/* Global toggle */}
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-medium">Enable skills</div>
+            <div className="text-sm font-medium">{t('enableSkills')}</div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Domain-specific AI instructions
+              {t('domainSpecificInstructions')}
             </p>
           </div>
           <Switch
@@ -145,16 +150,16 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
                 <div className="flex items-center gap-1.5 mb-2">
                   <FolderTree className="w-3 h-3 text-muted-foreground" />
                   <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Groups
+                    {t('groups')}
                   </div>
                 </div>
                 <div className="space-y-0.5">
                   {groups.map(group => (
                     <div key={group.id} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/50">
                       <div className="flex-1 min-w-0 mr-3">
-                        <div className="text-sm truncate">{group.name}</div>
+                        <div className="text-sm truncate">{groupCopy(group).name}</div>
                         <div className="text-[10px] text-muted-foreground">
-                          {group.memberIds.length} {group.memberIds.length === 1 ? 'skill' : 'skills'}
+                          {t('memberCount', { count: group.memberIds.length })}
                         </div>
                       </div>
                       <Switch
@@ -170,7 +175,7 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
             {builtInSkills.length > 0 && (
               <div>
                 <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                  Built-in
+                  {tc('labels.builtIn')}
                 </div>
                 <div className="space-y-0.5">
                   {builtInSkills.map(skill => (
@@ -191,7 +196,7 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
             {customSkills.length > 0 && (
               <div>
                 <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                  Custom
+                  {t('custom')}
                 </div>
                 <div className="space-y-0.5">
                   {customSkills.map(skill => (
@@ -211,7 +216,7 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
 
             {skills.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-4">
-                No skills available.
+                {t('noSkillsAvailable')}
               </p>
             )}
           </>

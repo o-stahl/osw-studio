@@ -1657,6 +1657,75 @@ export class VirtualFileSystem {
     await this.updateProject(project);
   }
 
+  /**
+   * Count a server-run task's cost in this browser's record of the project. The server reports the
+   * task's running total, and a reconnect replays events it already sent, so the task keeps one
+   * `sessionHistory` entry holding what has been counted and only the difference is added. The
+   * task's token total marks progress too, since a free model's calls all cost nothing.
+   * Returns the project's new total.
+   */
+  async recordServerTaskCost(
+    projectId: string,
+    usage: {
+      taskId: string;
+      taskCost: number;
+      taskTokens?: number;
+      provider: string;
+      tokenUsage?: { input: number; output: number };
+    }
+  ): Promise<number> {
+    this.ensureInitialized();
+
+    const project = await this.getProject(projectId);
+    if (!project) {
+      throw new Error(`Project not found: ${projectId}`);
+    }
+
+    const tracking = project.costTracking ?? { totalCost: 0, providerBreakdown: {} };
+    tracking.providerBreakdown ??= {};
+    tracking.sessionHistory ??= [];
+    project.costTracking = tracking;
+
+    let entry = tracking.sessionHistory.find(e => e.sessionId === usage.taskId);
+    const delta = Math.max(0, usage.taskCost - (entry?.cost ?? 0));
+    const moreTokens = (usage.taskTokens ?? 0) > (entry?.taskTokens ?? 0);
+    if (delta === 0 && !moreTokens) return tracking.totalCost;
+
+    if (!entry) {
+      entry = { sessionId: usage.taskId, cost: 0, provider: usage.provider, timestamp: new Date(), tokenUsage: { input: 0, output: 0 } };
+      tracking.sessionHistory.push(entry);
+      if (tracking.sessionHistory.length > 100) {
+        tracking.sessionHistory = tracking.sessionHistory.slice(-100);
+      }
+    }
+    entry.cost = Math.max(entry.cost, usage.taskCost);
+    if (usage.taskTokens !== undefined) entry.taskTokens = Math.max(entry.taskTokens ?? 0, usage.taskTokens);
+    entry.timestamp = new Date();
+
+    tracking.totalCost += delta;
+    const providerStats = tracking.providerBreakdown[usage.provider] ??= {
+      totalCost: 0,
+      tokenUsage: { input: 0, output: 0 },
+      requestCount: 0,
+      lastUpdated: new Date()
+    };
+    providerStats.totalCost += delta;
+    providerStats.requestCount += 1;
+    providerStats.lastUpdated = new Date();
+    if (usage.tokenUsage) {
+      providerStats.tokenUsage.input += usage.tokenUsage.input;
+      providerStats.tokenUsage.output += usage.tokenUsage.output;
+      entry.tokenUsage = {
+        input: (entry.tokenUsage?.input ?? 0) + usage.tokenUsage.input,
+        output: (entry.tokenUsage?.output ?? 0) + usage.tokenUsage.output,
+      };
+    }
+
+    // Spend is not an edit: a newer `updatedAt` would read as unsynced local changes.
+    await this.updateProject(project, { preserveUpdatedAt: true });
+    return tracking.totalCost;
+  }
+
   async deleteProject(id: string): Promise<void> {
     this.ensureInitialized();
     

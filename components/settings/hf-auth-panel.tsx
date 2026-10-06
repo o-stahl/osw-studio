@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +20,9 @@ interface HFAuthPanelProps {
 }
 
 export function HFAuthPanel({ onAuthChange }: HFAuthPanelProps) {
+  const t = useTranslations('settings');
+  const tcn = useTranslations('connections');
+  const tch = useTranslations('chat');
   const [oauthAvailable, setOauthAvailable] = useState(false);
   const [oauthUsername, setOauthUsername] = useState<string>();
   const [tokenInput, setTokenInput] = useState('');
@@ -85,13 +89,13 @@ export function HFAuthPanel({ onAuthChange }: HFAuthPanelProps) {
         caps = await checkHFCapabilities();
         capabilitiesRef.current = caps;
       } catch {
-        toast.error('Failed to connect. Please try again.');
+        toast.error(t('connectFailed'));
         return;
       }
     }
 
     if (!caps.clientId) {
-      toast.error('OAuth is not configured on this instance.');
+      toast.error(t('oauthNotConfigured'));
       return;
     }
 
@@ -101,7 +105,7 @@ export function HFAuthPanel({ onAuthChange }: HFAuthPanelProps) {
   const handleConnect = async () => {
     const key = tokenInput.trim();
     if (!key) {
-      toast.error('Please enter an access token');
+      toast.error(t('tokenRequired'));
       return;
     }
     setIsConnecting(true);
@@ -118,14 +122,14 @@ export function HFAuthPanel({ onAuthChange }: HFAuthPanelProps) {
         configManager.setHFAuth({ access_token: key, username });
         setIsConnected(true);
         setTokenInput('');
-        toast.success('Connected to HuggingFace');
+        toast.success(t('hfConnected'));
         track('connection_added', { provider: 'huggingface', method: 'key' });
         dispatchAuthEvent(true);
       } else {
-        toast.error('Invalid token. Check that it has "Inference Providers" permission.');
+        toast.error(t('hfInvalidToken'));
       }
     } catch {
-      toast.error('Failed to validate token. Please try again.');
+      toast.error(t('validateTokenFailed'));
     } finally {
       setIsConnecting(false);
     }
@@ -139,11 +143,11 @@ export function HFAuthPanel({ onAuthChange }: HFAuthPanelProps) {
       setIsConnected(false);
       setOauthUsername(undefined);
       setTokenInput('');
-      toast.success('Disconnected from HuggingFace');
+      toast.success(t('hfDisconnected'));
       track('connection_removed', { provider: 'huggingface' });
       dispatchAuthEvent(false);
     } catch {
-      toast.error('Failed to disconnect. Please try again.');
+      toast.error(t('disconnectFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -154,19 +158,22 @@ export function HFAuthPanel({ onAuthChange }: HFAuthPanelProps) {
     return (
       <div className="space-y-3">
         <ConnectionBadge
-          method={oauthUsername ? 'OAuth' : 'API Key'}
+          method={oauthUsername ? 'OAuth' : tcn('apiKey')}
           extra={oauthUsername}
           info={
             <>
-              Free tier: $0.10/month in free inference credits.{' '}
-              <a
-                href="https://huggingface.co/pricing"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline inline-flex items-center gap-0.5"
-              >
-                Upgrade <ExternalLink className="h-2.5 w-2.5" />
-              </a>
+              {t.rich('hfFreeTier', {
+                link: (chunks) => (
+                  <a
+                    href="https://huggingface.co/pricing"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline inline-flex items-center gap-0.5"
+                  >
+                    {chunks} <ExternalLink className="h-2.5 w-2.5" />
+                  </a>
+                ),
+              })}
             </>
           }
           onDisconnect={handleDisconnect}
@@ -179,9 +186,9 @@ export function HFAuthPanel({ onAuthChange }: HFAuthPanelProps) {
   // --- Unauthenticated state ---
   return (
     <div className="space-y-3">
-      <Label>HuggingFace Authentication</Label>
+      <Label>{t('hfTitle')}</Label>
       <p className="text-xs text-muted-foreground">
-        Use your HuggingFace account for free AI inference ($0.10/month free credits).
+        {t('hfIntro')}
       </p>
 
       {/* OAuth button — only on HF Spaces */}
@@ -192,7 +199,7 @@ export function HFAuthPanel({ onAuthChange }: HFAuthPanelProps) {
             className="w-full gap-2"
             variant="outline"
           >
-            Sign in with HuggingFace
+            {tch('signInWithHF')}
           </Button>
 
           <div className="relative">
@@ -201,7 +208,7 @@ export function HFAuthPanel({ onAuthChange }: HFAuthPanelProps) {
             </div>
             <div className="relative flex justify-center text-xs uppercase">
               <span className="bg-background px-2 text-muted-foreground">
-                Or use an access token
+                {t('hfOrToken')}
               </span>
             </div>
           </div>
@@ -210,7 +217,7 @@ export function HFAuthPanel({ onAuthChange }: HFAuthPanelProps) {
 
       {/* API key input — always available */}
       <div>
-        <Label htmlFor="hf-token" className="text-xs">Access Token</Label>
+        <Label htmlFor="hf-token" className="text-xs">{t('accessToken')}</Label>
         <div className="flex gap-2 mt-1.5">
           <div className="relative flex-1">
             <Input
@@ -240,35 +247,38 @@ export function HFAuthPanel({ onAuthChange }: HFAuthPanelProps) {
             {isConnecting ? (
               <>
                 <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                Connecting...
+                {tcn('connecting')}
               </>
             ) : (
-              'Connect'
+              tcn('connect')
             )}
           </Button>
         </div>
       </div>
 
       <div className="p-3 border rounded-md bg-muted/50 text-xs text-muted-foreground space-y-2">
-        <p className="font-medium">How to get an access token:</p>
+        <p className="font-medium">{t('hfHowTo')}</p>
         <ol className="list-decimal list-inside space-y-1">
           <li>
-            Go to{' '}
-            <a
-              href="https://huggingface.co/settings/tokens"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline inline-flex items-center gap-0.5"
-            >
-              huggingface.co/settings/tokens <ExternalLink className="h-2.5 w-2.5" />
-            </a>
+            {t.rich('hfGoTo', {
+              link: (chunks) => (
+                <a
+                  href="https://huggingface.co/settings/tokens"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline inline-flex items-center gap-0.5"
+                >
+                  {chunks} <ExternalLink className="h-2.5 w-2.5" />
+                </a>
+              ),
+            })}
           </li>
-          <li>Create a new token with &quot;Make calls to Inference Providers&quot; permission</li>
-          <li>Paste the token above and click Connect</li>
+          <li>{t('hfCreateToken')}</li>
+          <li>{t('pasteToken')}</li>
         </ol>
         {!oauthAvailable && (
           <p className="text-muted-foreground/70 mt-1">
-            OAuth sign-in is available when deployed on HuggingFace Spaces.
+            {t('hfOAuthNote')}
           </p>
         )}
       </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { TableInfo } from '@/lib/vfs/types';
 import { ChevronRight, ChevronDown, Table2, KeyRound, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -14,6 +15,8 @@ interface SchemaViewerProps {
 }
 
 export function SchemaViewer({ deploymentId, schemaEndpoint, showSystemTablesToggle = true, workspaceId }: SchemaViewerProps) {
+  const t = useTranslations('backend');
+  const tc = useTranslations('common');
   const apiBase = workspaceId ? `/api/w/${workspaceId}` : '/api';
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,12 +37,12 @@ export function SchemaViewer({ deploymentId, schemaEndpoint, showSystemTablesTog
       const res = await fetch(endpoint);
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to load schema');
+        throw new Error(data.error || t('loadSchemaFailed'));
       }
       const data = await res.json();
       setTables(data.tables);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load schema');
+      setError(err instanceof Error ? err.message : t('loadSchemaFailed'));
     } finally {
       setLoading(false);
     }
@@ -75,7 +78,7 @@ export function SchemaViewer({ deploymentId, schemaEndpoint, showSystemTablesTog
         <AlertCircle className="h-8 w-8 text-destructive" />
         <p className="text-sm text-muted-foreground">{error}</p>
         <Button variant="outline" onClick={loadSchema}>
-          Retry
+          {tc('actions.retry')}
         </Button>
       </div>
     );
@@ -84,7 +87,7 @@ export function SchemaViewer({ deploymentId, schemaEndpoint, showSystemTablesTog
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium">Database Tables</h3>
+        <h3 className="text-sm font-medium">{t('databaseTables')}</h3>
         {showSystemTablesToggle && (
           <Button
             variant="ghost"
@@ -95,12 +98,12 @@ export function SchemaViewer({ deploymentId, schemaEndpoint, showSystemTablesTog
             {showSystemTables ? (
               <>
                 <EyeOff className="h-3.5 w-3.5 mr-1" />
-                Hide System Tables
+                {t('hideSystemTables')}
               </>
             ) : (
               <>
                 <Eye className="h-3.5 w-3.5 mr-1" />
-                Show System Tables
+                {t('showSystemTables')}
               </>
             )}
           </Button>
@@ -111,9 +114,9 @@ export function SchemaViewer({ deploymentId, schemaEndpoint, showSystemTablesTog
         {filteredTables.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center">
             <Table2 className="h-8 w-8 text-muted-foreground mb-2" />
-            <p className="text-sm text-muted-foreground">No user tables found</p>
+            <p className="text-sm text-muted-foreground">{t('noUserTables')}</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Create tables using the SQL editor
+              {t('sqlEditorHint')}
             </p>
           </div>
         ) : (
@@ -135,10 +138,10 @@ export function SchemaViewer({ deploymentId, schemaEndpoint, showSystemTablesTog
                   <Table2 className="h-4 w-4 text-blue-500" />
                   <span className="flex-1 font-mono text-sm">{table.name}</span>
                   <span className="text-xs text-muted-foreground">
-                    {table.rowCount} row{table.rowCount !== 1 ? 's' : ''}
+                    {t('rowCount', { count: table.rowCount })}
                   </span>
                   {table.isSystemTable && (
-                    <span className="text-xs bg-muted px-1.5 py-0.5 rounded">system</span>
+                    <span className="text-xs bg-muted px-1.5 py-0.5 rounded">{t('systemBadge')}</span>
                   )}
                 </button>
 
@@ -147,10 +150,10 @@ export function SchemaViewer({ deploymentId, schemaEndpoint, showSystemTablesTog
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b bg-muted/30">
-                          <th className="text-left p-2 font-medium">Column</th>
-                          <th className="text-left p-2 font-medium">Type</th>
-                          <th className="text-left p-2 font-medium">Nullable</th>
-                          <th className="text-left p-2 font-medium">Default</th>
+                          <th className="text-left p-2 font-medium">{t('columnLabel')}</th>
+                          <th className="text-left p-2 font-medium">{tc('labels.type')}</th>
+                          <th className="text-left p-2 font-medium">{t('nullable')}</th>
+                          <th className="text-left p-2 font-medium">{t('defaultLabel')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -166,7 +169,7 @@ export function SchemaViewer({ deploymentId, schemaEndpoint, showSystemTablesTog
                               {col.type || 'TEXT'}
                             </td>
                             <td className="p-2 text-muted-foreground">
-                              {col.nullable ? 'Yes' : 'No'}
+                              {col.nullable ? tc('labels.yes') : tc('labels.no')}
                             </td>
                             <td className="p-2 font-mono text-muted-foreground text-xs">
                               {col.defaultValue || '-'}

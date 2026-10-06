@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { ScheduledFunction, EdgeFunction } from '@/lib/vfs/types';
 import {
   Plus, Loader2, AlertCircle, Clock, MoreVertical, Pencil, Trash2,
@@ -24,6 +26,10 @@ interface ScheduledFunctionsManagerProps {
 }
 
 export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspaceId }: ScheduledFunctionsManagerProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('backend');
+  const tt = useTranslations('tooltips');
+  const { dateTime } = useLocalFormat();
   const apiBase = workspaceId ? `/api/w/${workspaceId}` : '/api';
   const [scheduledFunctions, setScheduledFunctions] = useState<ScheduledFunction[]>([]);
   const [edgeFunctions, setEdgeFunctions] = useState<EdgeFunction[]>([]);
@@ -54,11 +60,11 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
         ]);
         if (!schedRes.ok) {
           const data = await schedRes.json();
-          throw new Error(data.error || 'Failed to load scheduled functions');
+          throw new Error(data.error || t('loadSchedulesFailed'));
         }
         if (!fnRes.ok) {
           const data = await fnRes.json();
-          throw new Error(data.error || 'Failed to load edge functions');
+          throw new Error(data.error || t('loadEdgeFunctionsFailed'));
         }
         const schedData = await schedRes.json();
         const fnData = await fnRes.json();
@@ -66,7 +72,7 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
         setEdgeFunctions(fnData.functions);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load scheduled functions');
+      setError(err instanceof Error ? err.message : t('loadSchedulesFailed'));
     } finally {
       setLoading(false);
     }
@@ -93,7 +99,7 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
   };
 
   const deleteFunction = async (fn: ScheduledFunction) => {
-    if (!confirm(`Delete scheduled function "${fn.name}"? This cannot be undone.`)) return;
+    if (!confirm(t('confirmDeleteSchedule', { name: fn.name }))) return;
 
     try {
       if (dataProvider) {
@@ -117,7 +123,7 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
       if (dataProvider) {
         await dataProvider.save(editingFunction?.id || null, data);
       } else if (!deploymentId) {
-        throw new Error('No deployment ID available');
+        throw new Error(t('noDeploymentId'));
       } else if (editingFunction) {
         const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/scheduled-functions/${editingFunction.id}`, {
           method: 'PUT',
@@ -126,7 +132,7 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
         });
         if (!res.ok) {
           const err = await res.json();
-          throw new Error(err.error || 'Failed to update scheduled function');
+          throw new Error(err.error || t('updateScheduleFailed'));
         }
       } else {
         const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/scheduled-functions`, {
@@ -136,7 +142,7 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
         });
         if (!res.ok) {
           const err = await res.json();
-          throw new Error(err.error || 'Failed to create scheduled function');
+          throw new Error(err.error || t('createScheduleFailed'));
         }
       }
 
@@ -150,13 +156,12 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
 
   const getEdgeFunctionName = (functionId: string) => {
     const fn = edgeFunctions.find(f => f.id === functionId);
-    return fn?.name || 'Unknown';
+    return fn?.name || tc('labels.unknown');
   };
 
   const formatDate = (date: Date | string | undefined) => {
-    if (!date) return 'N/A';
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleString(undefined, {
+    if (!date) return tc('labels.notAvailable');
+    return dateTime(date, {
       month: 'short', day: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
@@ -176,7 +181,7 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
         <AlertCircle className="h-8 w-8 text-destructive" />
         <p className="text-sm text-muted-foreground">{error}</p>
         <Button variant="outline" onClick={loadFunctions}>
-          Retry
+          {tc('actions.retry')}
         </Button>
       </div>
     );
@@ -185,10 +190,10 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium">Scheduled Functions</h3>
+        <h3 className="text-sm font-medium">{tt('scheduledFunctions')}</h3>
         <Button size="sm" onClick={() => setIsCreating(true)}>
           <Plus className="h-4 w-4 mr-1" />
-          New Schedule
+          {t('newSchedule')}
         </Button>
       </div>
 
@@ -196,13 +201,13 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
         {scheduledFunctions.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center border rounded-lg">
             <Clock className="h-8 w-8 text-muted-foreground mb-2" />
-            <p className="text-sm text-muted-foreground">No scheduled functions yet</p>
+            <p className="text-sm text-muted-foreground">{t('noSchedulesYet')}</p>
             <p className="text-xs text-muted-foreground mt-1 mb-4">
-              Run edge functions on a cron schedule
+              {t('noSchedulesHint')}
             </p>
             <Button size="sm" onClick={() => setIsCreating(true)}>
               <Plus className="h-4 w-4 mr-1" />
-              Create Schedule
+              {t('schedCreate')}
             </Button>
           </div>
         ) : (
@@ -224,7 +229,7 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
                         {fn.cronExpression}
                       </span>
                       {!fn.enabled && (
-                        <span className="text-xs bg-muted px-1.5 py-0.5 rounded shrink-0">disabled</span>
+                        <span className="text-xs bg-muted px-1.5 py-0.5 rounded shrink-0">{t('disabledBadge')}</span>
                       )}
                     </div>
                     {fn.description && (
@@ -234,15 +239,15 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
                     )}
                     <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
                       <span className="shrink-0">
-                        Function: <span className="font-mono">{getEdgeFunctionName(fn.functionId)}</span>
+                        {t('functionLabel')} <span className="font-mono">{getEdgeFunctionName(fn.functionId)}</span>
                       </span>
-                      <span className="shrink-0">Next: {formatDate(fn.nextRunAt)}</span>
+                      <span className="shrink-0">{t('nextLabel')} {formatDate(fn.nextRunAt)}</span>
                       {fn.lastStatus && (
                         <span className={cn(
                           "shrink-0",
                           fn.lastStatus === 'success' ? "text-green-600" : "text-red-600"
                         )}>
-                          Last: {fn.lastStatus}
+                          {t('lastRun', { status: fn.lastStatus })}
                           {fn.lastRunAt && ` (${formatDate(fn.lastRunAt)})`}
                         </span>
                       )}
@@ -258,18 +263,18 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => setEditingFunction(fn)}>
                         <Pencil className="h-4 w-4 mr-2" />
-                        Edit
+                        {tc('actions.edit')}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => toggleEnabled(fn)}>
                         {fn.enabled ? (
                           <>
                             <ToggleLeft className="h-4 w-4 mr-2" />
-                            Disable
+                            {tc('actions.disable')}
                           </>
                         ) : (
                           <>
                             <ToggleRight className="h-4 w-4 mr-2" />
-                            Enable
+                            {tc('actions.enable')}
                           </>
                         )}
                       </DropdownMenuItem>
@@ -278,7 +283,7 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
                         className="text-destructive"
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
-                        Delete
+                        {tc('actions.delete')}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

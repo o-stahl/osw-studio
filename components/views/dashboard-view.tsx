@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import {
   RefreshCw,
   Plus,
@@ -14,13 +15,15 @@ import {
   Newspaper,
   Clock,
   ChevronRight,
+  MessagesSquare,
 } from 'lucide-react';
-import { DiscordIcon } from '@/components/ui/discord-icon';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import Link from 'next/link';
+import { DISCUSSIONS_URL } from '@/lib/constants/links';
 import { vfs } from '@/lib/vfs';
 import { templateService } from '@/lib/vfs/template-service';
+import { logger } from '@/lib/utils';
 import { skillsService } from '@/lib/vfs/skills';
 import pkg from '@/package.json';
 import { PageShell, PageHeader, PageBody } from '@/components/ui/page-shell';
@@ -166,51 +169,26 @@ async function fetchBrowserModeData(): Promise<BrowserDashboardData> {
   };
 }
 
-function formatUptime(seconds: number): string {
+type NumberFormat = ReturnType<typeof useLocalFormat>['number'];
+
+export function formatUptime(seconds: number, number: NumberFormat): string {
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
+  const unit = (value: number, name: 'day' | 'hour' | 'minute') =>
+    number(value, { style: 'unit', unit: name, unitDisplay: 'narrow' });
 
   if (days > 0) {
-    return `${days}d ${hours}h`;
+    return `${unit(days, 'day')} ${unit(hours, 'hour')}`;
   }
   if (hours > 0) {
-    return `${hours}h ${minutes}m`;
+    return `${unit(hours, 'hour')} ${unit(minutes, 'minute')}`;
   }
-  return `${minutes}m`;
+  return unit(minutes, 'minute');
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-}
-
-function formatNumber(num: number): string {
-  if (num >= 1000000) {
-    return (num / 1000000).toFixed(1) + 'M';
-  }
-  if (num >= 1000) {
-    return (num / 1000).toFixed(1) + 'K';
-  }
-  return num.toString();
-}
-
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return 'just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
+function formatNumber(num: number, number: NumberFormat): string {
+  return number(num, { notation: 'compact', maximumFractionDigits: 1 });
 }
 
 // Quick Actions Bar
@@ -218,9 +196,10 @@ function QuickActionsBar({
   onStartTour,
   onNavigate,
 }: {
-  onStartTour: () => void;
+  onStartTour?: () => void;
   onNavigate?: (view: string) => void;
 }) {
+  const t = useTranslations();
   // In browser mode, use onNavigate callback; in server mode, use Link
   const projectsHref = isServerMode ? '/admin/projects?action=create' : '#';
   const projectsListHref = isServerMode ? '/admin/projects' : '#';
@@ -253,37 +232,39 @@ function QuickActionsBar({
         <Button variant="outline" size="sm" asChild className="gap-1.5">
           <Link href={projectsHref} onClick={handleNewProjectClick}>
             <Plus className="w-4 h-4" />
-            New Project
+            {t('dashboard.newProject')}
           </Link>
         </Button>
         <Button variant="outline" size="sm" asChild className="gap-1.5">
           <Link href={projectsListHref} onClick={handleProjectsClick}>
             <FolderOpen className="w-4 h-4" />
-            Projects
+            {t('common.terms.projects')}
           </Link>
         </Button>
         {isServerMode && (
           <Button variant="outline" size="sm" asChild className="gap-1.5">
             <Link href="/admin/deployments">
               <Globe className="w-4 h-4" />
-              Deployments
+              {t('common.terms.deployments')}
             </Link>
           </Button>
         )}
-        <Button variant="outline" size="sm" onClick={onStartTour} className="gap-1.5">
-          <Sparkles className="w-4 h-4" />
-          Guided Tour
-        </Button>
+        {onStartTour && (
+          <Button variant="outline" size="sm" onClick={onStartTour} className="gap-1.5">
+            <Sparkles className="w-4 h-4" />
+            {t('nav.items.tour')}
+          </Button>
+        )}
         <Button variant="outline" size="sm" asChild className="gap-1.5">
-          <a href="https://discord.gg/mAJ8Ss4u" target="_blank" rel="noopener noreferrer">
-            <DiscordIcon className="w-4 h-4" />
-            Discord
+          <a href={DISCUSSIONS_URL} target="_blank" rel="noopener noreferrer">
+            <MessagesSquare className="w-4 h-4" />
+            {t('nav.discussions')}
           </a>
         </Button>
         <Button variant="outline" size="sm" asChild className="gap-1.5">
           <Link href={docsHref} onClick={handleDocsClick}>
             <BookOpen className="w-4 h-4" />
-            Docs
+            {t('common.terms.docs')}
           </Link>
         </Button>
       </div>
@@ -305,6 +286,7 @@ function WhatsNewCard({
   whatsNew: WhatsNewProps;
   onNavigate?: (view: string) => void;
 }) {
+  const t = useTranslations();
   if (!whatsNew) return null;
 
   const handleReadAll = (e: React.MouseEvent) => {
@@ -323,7 +305,7 @@ function WhatsNewCard({
         <div className="flex items-center gap-2">
           <Newspaper className="w-4 h-4 text-orange-500" />
           <h3 className="text-sm font-medium text-foreground">
-            What&apos;s New in v{whatsNew.version}
+            {t('dashboard.whatsNewIn', { version: whatsNew.version })}
           </h3>
         </div>
         <Link
@@ -331,7 +313,7 @@ function WhatsNewCard({
           onClick={handleReadAll}
           className="text-xs text-orange-500 hover:text-orange-400 flex items-center gap-1"
         >
-          Read all
+          {t('common.actions.readAll')}
           <ExternalLink className="w-3 h-3" />
         </Link>
       </div>
@@ -360,15 +342,17 @@ function CompactOverview({
   loading: boolean;
   onRefresh: () => void;
 }) {
+  const t = useTranslations();
+  const { number, bytes } = useLocalFormat();
   const stats = [
-    { label: 'Version', value: `v${data.system.version}` },
-    { label: 'Projects', value: formatNumber(data.content.projects) },
-    { label: 'Deployments', value: formatNumber(data.hosting.publishedDeployments) },
-    { label: 'Traffic/h', value: formatNumber(data.traffic.requestsLastHour) },
-    { label: 'Traffic/d', value: formatNumber(data.traffic.requestsLastDay) },
-    { label: 'Errors', value: formatNumber(data.traffic.errorCount), highlight: data.traffic.errorCount > 0 },
-    { label: 'Memory', value: formatBytes(data.system.memoryUsed) },
-    { label: 'Uptime', value: formatUptime(data.system.uptime) },
+    { label: t('common.labels.version'), value: `v${data.system.version}` },
+    { label: t('common.terms.projects'), value: formatNumber(data.content.projects, number) },
+    { label: t('common.terms.deployments'), value: formatNumber(data.hosting.publishedDeployments, number) },
+    { label: t('dashboard.trafficHour'), value: formatNumber(data.traffic.requestsLastHour, number) },
+    { label: t('dashboard.trafficDay'), value: formatNumber(data.traffic.requestsLastDay, number) },
+    { label: t('dashboard.errors'), value: formatNumber(data.traffic.errorCount, number), highlight: data.traffic.errorCount > 0 },
+    { label: t('dashboard.memory'), value: bytes(data.system.memoryUsed, 1) },
+    { label: t('dashboard.uptime'), value: formatUptime(data.system.uptime, number) },
   ];
 
   const half = Math.ceil(stats.length / 2);
@@ -378,7 +362,7 @@ function CompactOverview({
   return (
     <div className="bg-card rounded-lg border border-border p-4 flex flex-col">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium text-foreground">System Overview</h3>
+        <h3 className="text-sm font-medium text-foreground">{t('dashboard.systemOverview')}</h3>
         <Button
           variant="ghost"
           size="sm"
@@ -425,11 +409,13 @@ function BrowserOverview({
   loading: boolean;
   onRefresh: () => void;
 }) {
+  const t = useTranslations();
+  const { number } = useLocalFormat();
   const stats = [
-    { label: 'Version', value: `v${pkg.version}` },
-    { label: 'Projects', value: formatNumber(data.content.projects) },
-    { label: 'Templates', value: formatNumber(data.content.templates) },
-    { label: 'Skills', value: formatNumber(data.content.skills) },
+    { label: t('common.labels.version'), value: `v${pkg.version}` },
+    { label: t('common.terms.projects'), value: formatNumber(data.content.projects, number) },
+    { label: t('common.terms.templates'), value: formatNumber(data.content.templates, number) },
+    { label: t('common.terms.skills'), value: formatNumber(data.content.skills, number) },
   ];
 
   const half = Math.ceil(stats.length / 2);
@@ -439,7 +425,7 @@ function BrowserOverview({
   return (
     <div className="bg-card rounded-lg border border-border p-4 flex flex-col">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium text-foreground">Content Overview</h3>
+        <h3 className="text-sm font-medium text-foreground">{t('dashboard.contentOverview')}</h3>
         <Button
           variant="ghost"
           size="sm"
@@ -482,6 +468,8 @@ function RecentProjectsCard({
   onNavigate?: (view: string) => void;
   onProjectSelect?: (projectId: string) => void;
 }) {
+  const t = useTranslations();
+  const when = useLocalFormat();
   const handleViewAll = (e: React.MouseEvent) => {
     if (!isServerMode && onNavigate) {
       e.preventDefault();
@@ -503,20 +491,20 @@ function RecentProjectsCard({
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <FolderOpen className="w-4 h-4 text-orange-500" />
-          <h3 className="text-sm font-medium text-foreground">Recent Projects</h3>
+          <h3 className="text-sm font-medium text-foreground">{t('dashboard.recentProjects')}</h3>
         </div>
         <Link
           href={viewAllHref}
           onClick={handleViewAll}
           className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5"
         >
-          View all
+          {t('common.actions.viewAll')}
           <ChevronRight className="w-3 h-3" />
         </Link>
       </div>
       {projects.length === 0 ? (
         <p className="text-xs text-muted-foreground text-center py-2 flex-1 flex items-center justify-center">
-          No projects yet
+          {t('dashboard.noProjects')}
         </p>
       ) : (
         <div className="space-y-1.5 flex-1">
@@ -531,7 +519,7 @@ function RecentProjectsCard({
               <span className="text-foreground truncate flex-1 mr-2">{project.name}</span>
               <span className="text-muted-foreground shrink-0 flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                {formatRelativeTime(project.updatedAt)}
+                {when.recent(project.updatedAt)}
               </span>
             </Link>
           ))}
@@ -543,24 +531,26 @@ function RecentProjectsCard({
 
 // Recent Deployments Card
 function RecentDeploymentsCard({ deployments }: { deployments: DashboardData['recentDeployments'] }) {
+  const when = useLocalFormat();
+  const t = useTranslations();
   return (
     <div className="bg-card rounded-lg border border-border p-4 flex flex-col">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Globe className="w-4 h-4 text-orange-500" />
-          <h3 className="text-sm font-medium text-foreground">Recent Deployments</h3>
+          <h3 className="text-sm font-medium text-foreground">{t('dashboard.recentDeployments')}</h3>
         </div>
         <Link
           href="/admin/deployments"
           className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5"
         >
-          View all
+          {t('common.actions.viewAll')}
           <ChevronRight className="w-3 h-3" />
         </Link>
       </div>
       {deployments.length === 0 ? (
         <p className="text-xs text-muted-foreground text-center py-2 flex-1 flex items-center justify-center">
-          No deployments yet
+          {t('dashboard.noDeployments')}
         </p>
       ) : (
         <div className="space-y-1.5 flex-1">
@@ -580,7 +570,7 @@ function RecentDeploymentsCard({ deployments }: { deployments: DashboardData['re
               </div>
               <span className="text-muted-foreground shrink-0 flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                {formatRelativeTime(deployment.updatedAt)}
+                {when.recent(deployment.updatedAt)}
               </span>
             </Link>
           ))}
@@ -592,17 +582,19 @@ function RecentDeploymentsCard({ deployments }: { deployments: DashboardData['re
 
 // Compact Top Deployments & Errors
 function TrafficLists({ data }: { data: DashboardData }) {
+  const t = useTranslations();
+  const { number, dateTime } = useLocalFormat();
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* Top Deployments */}
       <div className="bg-card rounded-lg border border-border p-4 flex flex-col">
         <div className="flex items-center gap-2 mb-3">
           <Globe className="w-4 h-4 text-orange-500" />
-          <h3 className="text-sm font-medium text-foreground">Top Deployments (24h)</h3>
+          <h3 className="text-sm font-medium text-foreground">{t('dashboard.topDeployments')}</h3>
         </div>
         {data.traffic.topDeployments.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-2 flex-1 flex items-center justify-center">
-            No traffic recorded yet
+            {t('dashboard.noTraffic')}
           </p>
         ) : (
           <div className="space-y-1.5 flex-1">
@@ -615,7 +607,7 @@ function TrafficLists({ data }: { data: DashboardData }) {
                   <span className="text-muted-foreground w-4">{i + 1}.</span>
                   <span className="text-foreground truncate">{deployment.deploymentName}</span>
                 </div>
-                <span className="text-muted-foreground shrink-0">{formatNumber(deployment.count)}</span>
+                <span className="text-muted-foreground shrink-0">{formatNumber(deployment.count, number)}</span>
               </div>
             ))}
           </div>
@@ -626,11 +618,11 @@ function TrafficLists({ data }: { data: DashboardData }) {
       <div className="bg-card rounded-lg border border-border p-4 flex flex-col">
         <div className="flex items-center gap-2 mb-3">
           <AlertTriangle className="w-4 h-4 text-orange-500" />
-          <h3 className="text-sm font-medium text-foreground">Recent Errors</h3>
+          <h3 className="text-sm font-medium text-foreground">{t('dashboard.recentErrors')}</h3>
         </div>
         {data.traffic.recentErrors.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-2 flex-1 flex items-center justify-center">
-            No errors recorded
+            {t('dashboard.noErrors')}
           </p>
         ) : (
           <div className="space-y-1.5 flex-1">
@@ -652,7 +644,7 @@ function TrafficLists({ data }: { data: DashboardData }) {
                   <span className="text-muted-foreground truncate max-w-[140px]">{error.path}</span>
                 </div>
                 <span className="text-muted-foreground shrink-0 text-[10px]">
-                  {new Date(error.timestamp).toLocaleTimeString([], {
+                  {dateTime(error.timestamp, {
                     hour: '2-digit',
                     minute: '2-digit',
                   })}
@@ -700,7 +692,7 @@ async function fetchWorkspaceData(workspaceId: string): Promise<BrowserDashboard
 }
 
 export function DashboardView({ workspaceId, onNavigate, onProjectSelect, onStartTour }: DashboardViewProps) {
-  const router = useRouter();
+  const t = useTranslations();
   // Server mode admin data
   const [serverData, setServerData] = useState<DashboardData | null>(null);
   // Browser mode / workspace mode data
@@ -729,25 +721,16 @@ export function DashboardView({ workspaceId, onNavigate, onProjectSelect, onStar
         setBrowserData(result);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      logger.error('[DashboardView] Failed to load dashboard data:', err);
+      setError(t('dashboard.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, t]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  const handleStartTour = useCallback(() => {
-    if (onStartTour) {
-      // Browser mode: use callback
-      onStartTour();
-    } else {
-      // Server mode: use router
-      router.push('/admin/projects?tour=start');
-    }
-  }, [router, onStartTour]);
 
   const handleProjectSelect = useCallback((projectId: string) => {
     if (!isServerMode && onProjectSelect) {
@@ -762,7 +745,7 @@ export function DashboardView({ workspaceId, onNavigate, onProjectSelect, onStar
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
           <Spinner size={32} color="#f97316" className="mx-auto" />
-          <p className="mt-3 text-sm text-muted-foreground">Loading dashboard...</p>
+          <p className="mt-3 text-sm text-muted-foreground">{t('dashboard.loading')}</p>
         </div>
       </div>
     );
@@ -776,7 +759,7 @@ export function DashboardView({ workspaceId, onNavigate, onProjectSelect, onStar
           <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-2" />
           <p className="text-muted-foreground text-sm">{error}</p>
           <Button variant="outline" size="sm" onClick={fetchData} className="mt-4">
-            Retry
+            {t('common.actions.retry')}
           </Button>
         </div>
       </div>
@@ -791,10 +774,10 @@ export function DashboardView({ workspaceId, onNavigate, onProjectSelect, onStar
 
     return (
       <PageShell>
-        <PageHeader title="Dashboard" />
+        <PageHeader title={t('common.terms.dashboard')} />
         <PageBody innerClassName="">
           {/* Quick Actions */}
-          <QuickActionsBar onStartTour={handleStartTour} />
+          <QuickActionsBar onStartTour={onStartTour} />
 
           {/* Row 1: System Overview + What's New */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 [&>*]:min-h-[160px]">
@@ -823,10 +806,10 @@ export function DashboardView({ workspaceId, onNavigate, onProjectSelect, onStar
 
     return (
       <PageShell>
-        <PageHeader title="Dashboard" />
+        <PageHeader title={t('common.terms.dashboard')} />
         <PageBody innerClassName="">
           {/* Quick Actions */}
-          <QuickActionsBar onStartTour={handleStartTour} onNavigate={onNavigate} />
+          <QuickActionsBar onStartTour={onStartTour} onNavigate={onNavigate} />
 
           {/* Row 1: Content Overview + What's New */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 [&>*]:min-h-[160px]">

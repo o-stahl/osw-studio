@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 
 export default function AdminPage() {
+  const t = useTranslations('auth');
   const router = useRouter();
 
   useEffect(() => {
@@ -14,7 +16,7 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
-      <p className="text-zinc-400">Redirecting...</p>
+      <p className="text-zinc-400">{t('redirecting')}</p>
     </div>
   );
 }

@@ -281,7 +281,7 @@ describe('analyzeImport', () => {
     });
 
     const change = plan.settingChanges.find((c) => c.key === 'databaseSchema');
-    expect(change).toMatchObject({ label: 'Database schema', from: undefined, to: ddl });
+    expect(change).toMatchObject({ key: 'databaseSchema', from: undefined, to: ddl });
   });
 
   it('does not report the database schema as a change when it already matches', async () => {
@@ -352,6 +352,14 @@ describe('analyzeImport', () => {
     });
 
     expect(plan.errors[0]).toMatchObject({ code: 'too-large', path: '/huge.txt' });
+    expect(plan.errors[0].text).toEqual({
+      key: 'fileTooLarge',
+      values: {
+        path: '/huge.txt',
+        size: Math.round((FILE_SIZE_LIMITS.text + 1) / 1024 / 1024),
+        limit: Math.round(FILE_SIZE_LIMITS.text / 1024 / 1024),
+      },
+    });
     expect(plan.files.added).toEqual([]);
   });
 
@@ -449,11 +457,14 @@ describe('analyzeImport', () => {
     expect(backup.format).toBe('osws-backup');
     expect(backup.files.added).toEqual([]);
     expect(backup.errors).toHaveLength(1);
+    // The dialog shows `text`; each wrong format points the user at a different importer.
+    expect(backup.errors[0].text).toEqual({ key: 'isBackup' });
 
     const template = await analyzeImport(vfs, entriesFrom({ '/template.json': '{}' }), target);
     expect(template.format).toBe('oswt-template');
     expect(template.files.added).toEqual([]);
     expect(template.errors).toHaveLength(1);
+    expect(template.errors[0].text).toEqual({ key: 'isTemplate' });
   });
 
   it('treats a project that merely contains backup.json as ordinary content', async () => {
@@ -731,13 +742,9 @@ describe('analyzeImport', () => {
     // Identical description, and a field the manifest does not carry, are not changes.
     expect(byKey.has('description')).toBe(false);
     expect(byKey.has('globalStyles')).toBe(false);
-    // The label is what the dialog puts in front of the user, and SETTING_LABELS is a fixed map —
-    // 'non-empty' would pass for a label naming the wrong setting.
-    expect(plan.settingChanges.map((c) => [c.key, c.label]).sort()).toEqual([
-      ['entryPoint', 'Entry point'],
-      ['name', 'Project name'],
-      ['runtime', 'Runtime'],
-    ]);
+    // The dialog words each change from its key (importDialog.settingLabels), so the keys are the
+    // whole claim here.
+    expect(plan.settingChanges.map((c) => c.key).sort()).toEqual(['entryPoint', 'name', 'runtime']);
   });
 
   it('reports no setting changes for a new project', async () => {
@@ -810,6 +817,36 @@ describe('analyzeImport', () => {
     expect(plan.errors.some((e) => e.code === 'invalid-json')).toBe(true);
     // Backend source never lands in the file lists.
     expect(plan.files.added).toEqual([]);
+  });
+
+  // The dialog says "disabled" beside a record the archive carries switched off; a server function
+  // has no method to show, so its detail is empty and the dialog names it a helper.
+  it('marks the backend records the archive carries switched off', async () => {
+    const project = await vfs.createProject('Disabled', 'test');
+    await vfs.getStorageAdapter().createEdgeFunction?.(edgeFunction(project.id, { name: 'send-email' }));
+
+    const plan = await analyzeImport(
+      vfs,
+      entriesFrom({
+        '/.server/edge-functions/send-email.js': 'Response.json({ changed: true });',
+        '/.server/edge-functions/send-email.json': JSON.stringify({ method: 'POST', enabled: false }),
+        '/.server/edge-functions/new-fn.js': 'Response.json({});',
+        '/.server/edge-functions/new-fn.json': JSON.stringify({ method: 'GET', enabled: false }),
+        '/.server/edge-functions/live-fn.js': 'Response.json({});',
+        '/.server/edge-functions/live-fn.json': JSON.stringify({ method: 'GET' }),
+        '/.server/server-functions/helper.js': 'return 1;',
+        '/.server/server-functions/helper.json': JSON.stringify({ enabled: false }),
+      }),
+      { kind: 'existing-project', projectId: project.id }
+    );
+
+    expect(plan.backend.conflicts).toEqual([
+      { kind: 'edge', name: 'send-email', detail: 'POST', disabled: true, keepBothName: 'send-email-2' },
+    ]);
+    const added = Object.fromEntries(plan.backend.added.map((a) => [a.name, a]));
+    expect(added['new-fn']).toEqual({ kind: 'edge', name: 'new-fn', detail: 'GET', disabled: true });
+    expect(added['live-fn']).toEqual({ kind: 'edge', name: 'live-fn', detail: 'GET' });
+    expect(added.helper).toEqual({ kind: 'server', name: 'helper', detail: '', disabled: true });
   });
 
   it('counts a backend record as changed when any carried field differs', async () => {

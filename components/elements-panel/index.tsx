@@ -1,6 +1,7 @@
 'use client';
 
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ElementsTreeRow } from './tree-node';
@@ -233,31 +234,63 @@ export interface UnavailableCopy {
   offersOpenPreview: boolean;
 }
 
-/** What the panel says when neither tab can work. */
-export function unavailableCopy(unavailable: TreeUnavailable, runtime: ProjectRuntime): UnavailableCopy {
+/** The keys `unavailableCopy` reads, named so a missing one is a type error and not English copy. */
+type UnavailableKey =
+  | 'noProjectOpen'
+  | 'noProjectOpenHint'
+  | 'noDocument'
+  | 'terminalRuntimeHint'
+  | 'notSupportedRuntime'
+  | 'bundledRuntimeHint'
+  | 'previewClosed'
+  | 'previewClosedHint';
+
+/**
+ * The translator `unavailableCopy` needs.
+ *
+ * Typed to the keys above rather than to `string`: the panel passes `useTranslations`' own `t`,
+ * whose parameter accepts only keys that exist in the messages, so a key named here and missing
+ * from `en.json` fails to assign and `tsc` reports it.
+ */
+type UnavailableTranslator = (
+  key: UnavailableKey,
+  values?: Record<string, string>,
+) => string;
+
+/**
+ * What the panel says when neither tab can work.
+ *
+ * Takes its translator as an argument rather than reading one itself, so it stays a plain function
+ * the panel and its tests can both call.
+ */
+export function unavailableCopy(
+  t: UnavailableTranslator,
+  unavailable: TreeUnavailable,
+  runtime: ProjectRuntime,
+): UnavailableCopy {
   switch (unavailable) {
     case 'no-project':
       return {
-        title: 'No project open',
-        hint: 'Open a project to inspect its rendered elements.',
+        title: t('noProjectOpen'),
+        hint: t('noProjectOpenHint'),
         offersOpenPreview: false,
       };
     case 'terminal-runtime':
       return {
-        title: 'No document to inspect',
-        hint: `${getRuntimeConfig(runtime).label} projects run in a terminal preview and render no HTML document.`,
+        title: t('noDocument'),
+        hint: t('terminalRuntimeHint', { runtime: getRuntimeConfig(runtime).label }),
         offersOpenPreview: false,
       };
     case 'bundled-runtime':
       return {
-        title: 'Not supported for this runtime',
-        hint: `${getRuntimeConfig(runtime).label} builds its DOM at runtime, so no element can be traced back to a source file yet.`,
+        title: t('notSupportedRuntime'),
+        hint: t('bundledRuntimeHint', { runtime: getRuntimeConfig(runtime).label }),
         offersOpenPreview: false,
       };
     case 'preview-closed':
       return {
-        title: 'Preview is closed',
-        hint: 'The tree and the style controls are both read out of the live preview, so they need the preview panel open.',
+        title: t('previewClosed'),
+        hint: t('previewClosedHint'),
         offersOpenPreview: true,
       };
   }
@@ -423,6 +456,8 @@ export const ElementsPanel = forwardRef<ElementsPanelHandle, ElementsPanelProps>
   },
   ref
 ) {
+  const t = useTranslations('elementsPanel');
+  const tmx = useTranslations('models');
   const stylesRef = useRef<StylesContentHandle>(null);
   const [state, setState] = useState<TreeState>(emptyTreeState);
   // The reducer runs against this rather than against a `setState` updater: the transition emits
@@ -465,7 +500,7 @@ export const ElementsPanel = forwardRef<ElementsPanelHandle, ElementsPanelProps>
   }), [dispatch]);
 
   const unavailable = describeUnavailable({ hasProject: Boolean(projectId), previewOpen, runtime });
-  const copy = unavailable ? unavailableCopy(unavailable, runtime) : null;
+  const copy = unavailable ? unavailableCopy(t, unavailable, runtime) : null;
 
   // Drop the tree when there is nothing behind it — a closed preview unmounts the frame, and its
   // ids die with it. Keeping the rows on screen would offer selections that all resolve to nothing.
@@ -511,11 +546,11 @@ export const ElementsPanel = forwardRef<ElementsPanelHandle, ElementsPanelProps>
     >
       {rows.length === 0 ? (
         <Unavailable
-          title="No elements yet"
-          hint="Nothing has been read out of the preview yet. It arrives once the preview finishes loading."
+          title={t('noElements')}
+          hint={t('nothingReadYet')}
           action={
             <Button variant="outline" size="sm" onClick={() => dispatch({ type: 'refresh' })}>
-              Refresh
+              {t('refresh')}
             </Button>
           }
         />
@@ -542,7 +577,7 @@ export const ElementsPanel = forwardRef<ElementsPanelHandle, ElementsPanelProps>
                 className="text-xs text-muted-foreground py-1"
                 style={{ paddingLeft: `${row.depth * 12 + 24}px` }}
               >
-                Loading…
+                {tmx('loadingEllipsis')}
               </div>
             );
           }
@@ -552,7 +587,7 @@ export const ElementsPanel = forwardRef<ElementsPanelHandle, ElementsPanelProps>
               className="text-xs text-muted-foreground italic py-1"
               style={{ paddingLeft: `${row.depth * 12 + 24}px` }}
             >
-              {row.count} more {row.count === 1 ? 'element' : 'elements'} not shown
+              {t('moreNotShown', { count: row.count })}
             </div>
           );
         })
@@ -568,10 +603,10 @@ export const ElementsPanel = forwardRef<ElementsPanelHandle, ElementsPanelProps>
     >
       <TabsList className="h-7 w-full shrink-0 justify-stretch gap-0 rounded-none border-b bg-transparent p-0 text-muted-foreground">
         <TabsTrigger value="tree" className={panelTab(activeTab === 'tree')}>
-          Elements
+          {t('tabElements')}
         </TabsTrigger>
         <TabsTrigger value="styles" className={panelTab(activeTab === 'styles')}>
-          Styles
+          {t('tabStyles')}
         </TabsTrigger>
       </TabsList>
 
@@ -583,7 +618,7 @@ export const ElementsPanel = forwardRef<ElementsPanelHandle, ElementsPanelProps>
             hint={copy.hint}
             action={copy.offersOpenPreview ? (
               <Button variant="outline" size="sm" onClick={onOpenPreview}>
-                Open preview
+                {t('openPreview')}
               </Button>
             ) : undefined}
           />

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createTestStore, setupOrchestratorMocks } from './test-helpers';
+import { toast } from 'sonner';
 
 setupOrchestratorMocks();
 
@@ -30,7 +31,7 @@ describe('orchestrator slice — one task per project in server mode', () => {
     const running = new Map(store.getState().generationTasks);
     running.set('proj1', {
       projectId: 'proj1', projectName: 'P', prompt: 'first', model: 'm', startedAt: Date.now(), result: null,
-      paused: false, pausedMessage: null, orchestratorInstance: null, persistedInstance: null, serverTaskId: 't1',
+      paused: false, orchestratorInstance: null, persistedInstance: null, serverTaskId: 't1',
     });
     store.setState({ generationTasks: running });
 
@@ -38,13 +39,15 @@ describe('orchestrator slice — one task per project in server mode', () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(store.getState().generationTasks.get('proj1')?.serverTaskId).toBe('t1');
+    // A refused send has to say why, or the message just sits in the composer.
+    expect(toast.info).toHaveBeenCalledWith('Still working on the last change. Wait for it to finish, or stop it first.');
   });
 
   it('closes a server task locally when the server has no loop left to stop', async () => {
     const running = new Map(store.getState().generationTasks);
     running.set('proj1', {
       projectId: 'proj1', projectName: 'P', prompt: 'first', model: 'm', startedAt: Date.now(), result: null,
-      paused: false, pausedMessage: null, orchestratorInstance: null, persistedInstance: null, serverTaskId: 't1',
+      paused: false, orchestratorInstance: null, persistedInstance: null, serverTaskId: 't1',
     });
     store.setState({ generationTasks: running });
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, alreadyDone: true }) });
@@ -59,7 +62,7 @@ describe('orchestrator slice — one task per project in server mode', () => {
     const running = new Map(store.getState().generationTasks);
     running.set('proj1', {
       projectId: 'proj1', projectName: 'P', prompt: 'first', model: 'm', startedAt: Date.now(), result: null,
-      paused: false, pausedMessage: null, orchestratorInstance: null, persistedInstance: null, serverTaskId: 't1',
+      paused: false, orchestratorInstance: null, persistedInstance: null, serverTaskId: 't1',
     });
     store.setState({ generationTasks: running });
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, hadOrchestrator: true }) });
@@ -133,7 +136,7 @@ describe('orchestrator slice — one task per project in server mode', () => {
     const running = new Map(store.getState().generationTasks);
     running.set('proj6', {
       projectId: 'proj6', projectName: 'P', prompt: 'first', model: 'm', startedAt: Date.now(), result: null,
-      paused: false, pausedMessage: null, orchestratorInstance: null, persistedInstance: null, serverTaskId: 't1',
+      paused: false, orchestratorInstance: null, persistedInstance: null, serverTaskId: 't1',
     });
     store.setState({ generationTasks: running });
 

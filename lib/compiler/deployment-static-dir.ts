@@ -1,4 +1,5 @@
 import path from 'path';
+import { resolveWithin } from '@/lib/vfs/path-safety';
 
 /**
  * Where a deployment's compiled static output lives.
@@ -24,4 +25,17 @@ export function deploymentsStaticRoot(): string {
 /** The output directory for one deployment. */
 export function deploymentStaticDir(deploymentId: string): string {
   return path.join(deploymentsStaticRoot(), deploymentId);
+}
+
+/** A deployment id is one plain path segment; anything else could name a folder outside the root. */
+const DEPLOYMENT_ID = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * The file a request for `requestPath` inside a deployment maps to, or null when the id is malformed
+ * or the path would leave the deployment's folder. A production server decodes `%2e%2e%2f` into a
+ * single segment of `../`, so the request path cannot be trusted to be normalised.
+ */
+export function deploymentStaticFile(deploymentId: string, requestPath: string): string | null {
+  if (!DEPLOYMENT_ID.test(deploymentId)) return null;
+  return resolveWithin(deploymentStaticDir(deploymentId), '/' + requestPath);
 }

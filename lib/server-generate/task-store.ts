@@ -11,6 +11,7 @@ function toPersistedTask(task: ServerTask): PersistedServerTask {
     orchestrator: _orchestrator,
     pendingBuildResolve: _pendingBuildResolve,
     pendingSearchResolve: _pendingSearchResolve,
+    pendingImages: _pendingImages,
     ...persisted
   } = task;
   return persisted;

@@ -19,7 +19,6 @@ export interface GenerationTask {
   // in-memory manager and the durable store); its outcome is unknown, not a success or failure.
   result: 'completed' | 'failed' | 'unavailable' | null;
   paused: boolean;
-  pausedMessage: string | null;
   orchestratorInstance: MultiAgentOrchestrator | null;
   persistedInstance: MultiAgentOrchestrator | null;
   serverTaskId?: string;

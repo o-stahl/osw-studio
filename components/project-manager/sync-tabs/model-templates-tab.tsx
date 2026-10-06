@@ -1,6 +1,7 @@
 'use client';
 
 import { Dispatch, SetStateAction, useEffect, useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import { SyncableItem } from '@/lib/vfs/sync-types';
 import { SummaryBar } from './summary-bar';
 import { SyncItemRow } from '../sync-item-row';
@@ -33,6 +34,7 @@ export function ModelTemplatesTab({
   onRegisterPushSelected,
   onRegisterPullSelected,
 }: ModelTemplatesTabProps) {
+  const t = useTranslations('sync');
   const syncManager = getSyncManager();
 
   const selectedIdsRef = useRef(selectedIds);
@@ -54,7 +56,7 @@ export function ModelTemplatesTab({
     try {
       const template = configManager.getModelTemplate(item.id);
       if (!template || template.builtin) {
-        toast.error(`Template "${item.name}" not found`);
+        toast.error(t('templateNotFound', { name: item.name }));
         return;
       }
       const result = await syncManager.pushModelTemplate(template);
@@ -62,19 +64,19 @@ export function ModelTemplatesTab({
         if (result.modelTemplate?.updatedAt) {
           configManager.updateModelTemplateSyncMetadata(item.id, new Date(), new Date(result.modelTemplate.updatedAt));
         }
-        toast.success(`Pushed "${item.name}" to server`);
+        toast.success(t('pushedName', { name: item.name }));
         if (!opts?.silent) {
           track('sync_manual', { item_type: 'modelTemplate', direction: 'push', bulk: false, count: 1 });
         }
         onRefresh();
         onSyncComplete();
       } else {
-        toast.error(result.error || 'Failed to push template');
+        toast.error(result.error || t('pushTemplateFailed'));
         track('sync_fail', { item_type: 'modelTemplate', direction: 'push' });
       }
     } catch (error) {
       logger.error('Push model template error:', error);
-      toast.error('Failed to push template');
+      toast.error(t('pushTemplateFailed'));
       track('sync_fail', { item_type: 'modelTemplate', direction: 'push' });
     } finally {
       onSyncingIdsChange((prev: Set<string>) => {
@@ -90,12 +92,12 @@ export function ModelTemplatesTab({
     try {
       const result = await syncManager.pullModelTemplate(item.id);
       if (!result.success || !result.modelTemplate) {
-        toast.error(result.error || 'Failed to pull template');
+        toast.error(result.error || t('pullTemplateFailed'));
         track('sync_fail', { item_type: 'modelTemplate', direction: 'pull' });
         return;
       }
       configManager.importModelTemplateFromServer(result.modelTemplate);
-      toast.success(`Pulled "${item.name}" from server`);
+      toast.success(t('pulledName', { name: item.name }));
       if (!opts?.silent) {
         track('sync_manual', { item_type: 'modelTemplate', direction: 'pull', bulk: false, count: 1 });
       }
@@ -103,7 +105,7 @@ export function ModelTemplatesTab({
       onSyncComplete();
     } catch (error) {
       logger.error('Pull model template error:', error);
-      toast.error('Failed to pull template');
+      toast.error(t('pullTemplateFailed'));
       track('sync_fail', { item_type: 'modelTemplate', direction: 'pull' });
     } finally {
       onSyncingIdsChange((prev: Set<string>) => {
@@ -148,7 +150,7 @@ export function ModelTemplatesTab({
   if (items.length === 0) {
     return (
       <div className="text-center py-8 text-muted-foreground">
-        No model templates to sync
+        {t('noModelTemplatesToSync')}
       </div>
     );
   }

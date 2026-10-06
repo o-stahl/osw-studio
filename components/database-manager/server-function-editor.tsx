@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import MonacoEditor from '@monaco-editor/react';
 import { ServerFunction } from '@/lib/vfs/types';
 import {
@@ -50,6 +51,8 @@ export function ServerFunctionEditor({
   onClose,
   onSave,
 }: ServerFunctionEditorProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('backend');
   const [name, setName] = useState(fn?.name || '');
   const [description, setDescription] = useState(fn?.description || '');
   const [code, setCode] = useState(fn?.code || DEFAULT_CODE);
@@ -76,22 +79,22 @@ export function ServerFunctionEditor({
 
     // Basic validation
     if (!name.trim()) {
-      setError('Function name is required');
+      setError(t('validation.functionNameRequired'));
       return;
     }
     // Validate JS identifier (camelCase or snake_case)
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
-      setError('Name must be a valid identifier (letters, numbers, underscores; cannot start with number)');
+      setError(t('validation.identifierName'));
       return;
     }
     // Check reserved names
     const reserved = ['db', 'fetch', 'console', 'args', 'request', 'Response', 'server'];
     if (reserved.includes(name)) {
-      setError(`"${name}" is reserved and cannot be used`);
+      setError(t('reservedName', { name }));
       return;
     }
     if (!code.trim()) {
-      setError('Function code is required');
+      setError(t('validation.functionCodeRequired'));
       return;
     }
 
@@ -104,7 +107,7 @@ export function ServerFunctionEditor({
         enabled: fn?.enabled ?? true,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save server function');
+      setError(err instanceof Error ? err.message : t('saveHelperFailed'));
     } finally {
       setSaving(false);
     }
@@ -112,22 +115,24 @@ export function ServerFunctionEditor({
 
   if (!mounted) return null;
 
+  const shownName = name || 'name'; // i18n-ignore: a code identifier standing in for the helper's name
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-3xl h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>
-            {fn ? 'Edit Server Function' : 'Create Server Function'}
+            {fn ? t('editHelper') : t('createHelperTitle')}
           </DialogTitle>
           <DialogDescription>
-            Define a reusable helper function that edge functions can call via server.{name || 'name'}(args).
+            {t.rich('helperDialogDesc', { name: shownName, code: (chunks) => <span className="font-mono">{chunks}</span> })}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-auto space-y-4">
           {/* Name */}
           <div className="space-y-2">
-            <Label htmlFor="name">Function Name</Label>
+            <Label htmlFor="name">{t('functionName')}</Label>
             <Input
               id="name"
               value={name}
@@ -136,24 +141,24 @@ export function ServerFunctionEditor({
               disabled={!!fn}
             />
             <p className="text-xs text-muted-foreground">
-              Usage in edge functions: <span className="font-mono">server.{name || 'name'}(arg1, arg2, ...)</span>
+              {t.rich('helperUsage', { name: shownName, code: (chunks) => <span className="font-mono">{chunks}</span> })}
             </p>
           </div>
 
           {/* Description */}
           <div className="space-y-2">
-            <Label htmlFor="description">Description (optional)</Label>
+            <Label htmlFor="description">{tc('labels.descriptionOptional')}</Label>
             <Input
               id="description"
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="What does this helper do?"
+              placeholder={t('helperPlaceholder')}
             />
           </div>
 
           {/* Code Editor */}
           <div className="space-y-2">
-            <Label>Function Code</Label>
+            <Label>{t('functionCode')}</Label>
             <div className="h-64 border rounded-lg overflow-hidden">
               <MonacoEditor
                 language="javascript"
@@ -175,25 +180,24 @@ export function ServerFunctionEditor({
           <div className="bg-muted/30 border rounded-lg p-4 space-y-2">
             <div className="flex items-center gap-2 text-sm font-medium">
               <Info className="h-4 w-4" />
-              Available in Server Functions
+              {t('availableInHelpers')}
             </div>
             <div className="grid gap-2 text-xs font-mono">
-              <div><span className="text-orange-500">args</span> - Array of arguments passed from edge function</div>
+              <div><span className="text-orange-500">args</span> - {t('apiArgsDesc')}</div>
               <div><span className="text-green-500">db</span>.query(sql, params), .run(sql, params), .all(sql, params)</div>
-              <div><span className="text-yellow-500">fetch</span>(url, options) - External HTTP requests</div>
-              <div><span className="text-blue-500">console</span>.log(), .error(), .warn() - Logging</div>
+              <div><span className="text-yellow-500">fetch</span>(url, options) - {t('apiFetchDesc')}</div>
+              <div><span className="text-blue-500">console</span>.log(), .error(), .warn() - {t('apiConsoleDesc')}</div>
             </div>
             <div className="mt-3 pt-3 border-t">
               <p className="text-xs text-muted-foreground">
-                <strong>Note:</strong> Return a value to send data back to the calling edge function.
-                Server functions are synchronous and share the timeout with the parent edge function.
+                {t.rich('helperNote', { b: (chunks) => <strong>{chunks}</strong> })}
               </p>
             </div>
           </div>
 
           {/* Example */}
           <div className="bg-muted/30 border rounded-lg p-4 space-y-2">
-            <div className="text-sm font-medium">Example: Using in Edge Function</div>
+            <div className="text-sm font-medium">{t('helperExample')}</div>
             <pre className="text-xs font-mono bg-background p-2 rounded overflow-x-auto">
 {`// Edge function code
 const auth = server.${name || 'validateAuth'}(request.headers['x-api-key']);
@@ -220,16 +224,16 @@ Response.json({ products });`}
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 pt-4 border-t">
           <Button variant="outline" onClick={onClose} disabled={saving}>
-            Cancel
+            {tc('actions.cancel')}
           </Button>
           <Button onClick={handleSave} disabled={saving}>
             {saving ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Saving...
+                {tc('actions.saving')}
               </>
             ) : (
-              fn ? 'Save Changes' : 'Create Function'
+              fn ? tc('actions.saveChanges') : t('createFunction')
             )}
           </Button>
         </div>

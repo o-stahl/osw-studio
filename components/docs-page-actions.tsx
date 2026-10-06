@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Check, ChevronDown, Copy, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,8 @@ interface DocsPageActionsProps {
 }
 
 export function DocsPageActions({ markdown }: DocsPageActionsProps) {
+  const tc = useTranslations('common');
+  const tda = useTranslations('docsActions');
   const [copied, setCopied] = useState(false);
   const resetTimer = useRef<NodeJS.Timeout | null>(null);
 
@@ -31,7 +34,7 @@ export function DocsPageActions({ markdown }: DocsPageActionsProps) {
       if (resetTimer.current) clearTimeout(resetTimer.current);
       resetTimer.current = setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast.error('Could not copy');
+      toast.error(tda('copyFailed'));
     }
   };
 
@@ -49,14 +52,14 @@ export function DocsPageActions({ markdown }: DocsPageActionsProps) {
         size="sm"
         onClick={copyPage}
         className="rounded-r-none border-r-0"
-        aria-label="Copy page"
+        aria-label={tda('copyPage')}
       >
         {copied ? <Check className="h-4 w-4 sm:mr-2" /> : <Copy className="h-4 w-4 sm:mr-2" />}
-        <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy page'}</span>
+        <span className="hidden sm:inline">{copied ? tc('labels.copied') : tda('copyPage')}</span>
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="rounded-l-none px-2" aria-label="Open page actions">
+          <Button variant="outline" size="sm" className="rounded-l-none px-2" aria-label={tda('pageActions')}>
             <ChevronDown className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
@@ -64,15 +67,15 @@ export function DocsPageActions({ markdown }: DocsPageActionsProps) {
           <DropdownMenuItem onSelect={copyPage} className="items-start gap-3 py-2">
             <Copy className="h-4 w-4 mt-0.5" />
             <span className="flex flex-col gap-0.5">
-              <span>Copy page</span>
-              <span className="text-xs text-muted-foreground">Copy page as Markdown for LLMs</span>
+              <span>{tda('copyPage')}</span>
+              <span className="text-xs text-muted-foreground">{tda('copyPageHint')}</span>
             </span>
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={viewMarkdown} className="items-start gap-3 py-2">
             <FileText className="h-4 w-4 mt-0.5" />
             <span className="flex flex-col gap-0.5">
-              <span>View as Markdown</span>
-              <span className="text-xs text-muted-foreground">Open this page as plain text</span>
+              <span>{tda('viewMarkdown')}</span>
+              <span className="text-xs text-muted-foreground">{tda('viewMarkdownHint')}</span>
             </span>
           </DropdownMenuItem>
         </DropdownMenuContent>

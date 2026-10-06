@@ -1,3 +1,5 @@
+import { createTranslator } from 'next-intl';
+import en from '@/messages/en.json';
 import { describe, it, expect } from 'vitest';
 import {
   OVERRIDES_PATH,
@@ -11,6 +13,7 @@ import {
   lossMessage,
   lostOverrides,
   reduceStyles,
+  refusalAgentPrompt,
   refusalMessage,
   refusalOffer,
   refusalTitle,
@@ -18,9 +21,13 @@ import {
   type StylesCommand,
   type StylesEvent,
   type StylesState,
+  type StylesTranslator,
 } from '../state';
 import type { FocusContextPayload } from '@/lib/preview/types';
 import type { ApplyResult } from '@/lib/direct-edit/types';
+
+/** The real English messages, so the assertions below read the text a user sees. */
+const t: StylesTranslator = createTranslator({ locale: 'en', messages: en, namespace: 'styles' });
 
 /**
  * The Styles tab's logic, tested where it lives.
@@ -261,9 +268,9 @@ describe('the multi-instance confirmation', () => {
   });
 
   it('says how many elements the change reaches', () => {
-    expect(confirmationMessage({ declaration: padding, file: '/partials/nav.hbs', instances: 6 }))
+    expect(confirmationMessage({ declaration: padding, file: '/partials/nav.hbs', instances: 6 }, t))
       .toContain('/partials/nav.hbs');
-    expect(confirmationMessage({ declaration: padding, file: '/partials/nav.hbs', instances: 6 }))
+    expect(confirmationMessage({ declaration: padding, file: '/partials/nav.hbs', instances: 6 }, t))
       .toContain('6');
   });
 });
@@ -281,30 +288,30 @@ describe('refusals', () => {
   it('produces five PAIRWISE DISTINCT messages from identical inputs', () => {
     // Identical inputs on purpose: "each reason maps to its own message" is satisfied by a stub
     // returning the same string five times, and this is what that stub fails.
-    const messages = REFUSAL_REASONS.map(reason => refusalMessage(refusalOf(reason)));
+    const messages = REFUSAL_REASONS.map(reason => refusalMessage(refusalOf(reason), t));
     expect(new Set(messages).size).toBe(5);
     for (const message of messages) expect(message.length).toBeGreaterThan(20);
   });
 
   it('gives each reason its own headline, and never one the sentence contradicts', () => {
-    const titles = REFUSAL_REASONS.map(reason => refusalTitle(refusalOf(reason)));
+    const titles = REFUSAL_REASONS.map(reason => refusalTitle(refusalOf(reason), t));
     expect(new Set(titles).size).toBe(5);
     // The ambiguous-stylesheet message says a marker may already be in source. A headline of
     // "nothing was written" over that sentence is the contradiction this guards against.
-    const ambiguous = refusalTitle({ reason: 'ambiguous-stylesheet', stamped: true });
+    const ambiguous = refusalTitle({ reason: 'ambiguous-stylesheet', stamped: true }, t);
     expect(ambiguous.toLowerCase()).not.toContain('nothing');
     expect(ambiguous).toContain(OVERRIDES_PATH);
   });
 
   it('does not claim nothing happened when a marker was already stamped', () => {
-    const stamped = refusalMessage({ reason: 'ambiguous-stylesheet', detail: 'boom', stamped: true });
-    const clean = refusalMessage({ reason: 'ambiguous-stylesheet', detail: 'boom', stamped: false });
+    const stamped = refusalMessage({ reason: 'ambiguous-stylesheet', detail: 'boom', stamped: true }, t);
+    const clean = refusalMessage({ reason: 'ambiguous-stylesheet', detail: 'boom', stamped: false }, t);
     expect(stamped).toContain('marker');
     expect(stamped).not.toBe(clean);
   });
 
   it('names the file and the reason for an ambiguous stylesheet', () => {
-    const message = refusalMessage({ reason: 'ambiguous-stylesheet', detail: 'nested in @media', stamped: false });
+    const message = refusalMessage({ reason: 'ambiguous-stylesheet', detail: 'nested in @media', stamped: false }, t);
     expect(message).toContain(OVERRIDES_PATH);
     expect(message).toContain('nested in @media');
   });
@@ -364,7 +371,7 @@ describe('the offered action', () => {
     expect(offer('generating')).toEqual([]);
   });
 
-  it('hands the agent the message the user was shown, not a bare code', () => {
+  it('hands the agent the refusal in words, naming the file, not a bare code', () => {
     const command = offer('missing-file')[0] as Extract<StylesCommand, { kind: 'ask-agent' }>;
     expect(command.reason).toContain('/gone.html');
   });
@@ -567,7 +574,7 @@ describe('the one message the panel shows about losses', () => {
   });
 
   it('names each property and what beat it, in one message', () => {
-    const message = lossMessage(lostOverrides(twoLosses()));
+    const message = lossMessage(lostOverrides(twoLosses()), t);
 
     expect(message).toBe('padding-block loses to /styles.css. border-radius loses to inline style.');
   });
@@ -576,8 +583,8 @@ describe('the one message the panel shows about losses', () => {
     let state = edited();
     state = run(state, { type: 'probed', nodeId: 'n1', lost: ['padding-block-start'] });
 
-    expect(lossMessage(lostOverrides(state))).toContain('cannot name');
-    expect(lossMessage(lostOverrides(state))).toContain('padding-block');
+    expect(lossMessage(lostOverrides(state), t)).toContain('cannot name');
+    expect(lossMessage(lostOverrides(state), t)).toContain('padding-block');
   });
 
   it('hands the agent every loss in one request, not one per control', () => {
@@ -863,5 +870,29 @@ describe('reading /overrides.css back', () => {
     );
     state = run(state, { type: 'select', payload: other });
     expect(state.overridden).toEqual([]);
+  });
+});
+
+describe('message variants', () => {
+  const padding = { property: 'padding', value: '8px' } as never;
+
+  it('names the file when a stale or missing refusal has one, and does without when not', () => {
+    expect(refusalMessage({ reason: 'stale-index', file: '/a.html' } as never, t)).toBe(t('msgStaleFile', { file: '/a.html' }));
+    expect(refusalMessage({ reason: 'stale-index' } as never, t)).toBe(t('msgStale'));
+    expect(refusalMessage({ reason: 'missing-file', file: '/a.html' } as never, t)).toBe(t('msgMissingFile', { file: '/a.html' }));
+    expect(refusalMessage({ reason: 'missing-file' } as never, t)).toBe(t('msgMissing'));
+  });
+
+  it('calls a tag rendered once shared, not "all 1", and names its file', () => {
+    expect(confirmationMessage({ declaration: padding, file: '/nav.hbs', instances: 1 }, t))
+      .toBe(t('confirmSharedFrom', { count: 1, file: '/nav.hbs' }));
+    expect(confirmationMessage({ declaration: padding, file: undefined, instances: 1 } as never, t))
+      .toBe(t('confirmShared', { count: 1, file: '' }));
+  });
+
+  it('hands the agent the stylesheet problem it was told, not the generic one', () => {
+    const prompt = refusalAgentPrompt({ reason: 'ambiguous-stylesheet', detail: 'nested in @media', stamped: false } as never);
+    expect(prompt).toContain('nested in @media');
+    expect(prompt).not.toContain('its blocks are not in the shape');
   });
 });

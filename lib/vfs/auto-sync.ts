@@ -16,6 +16,7 @@ import { logger } from '@/lib/utils';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api/backend-status';
 import { track } from '@/lib/telemetry';
+import { translator } from '@/lib/i18n/runtime';
 
 // ── Workspace-scoped URL helpers ─────────────────────────────────────────────
 
@@ -104,19 +105,7 @@ export type SyncStatus = 'synced' | 'local-newer' | 'server-newer' | 'conflict' 
 
 interface SyncStatusResult {
   status: SyncStatus;
-  message: string;
 }
-
-
-const SYNC_STATUS_MESSAGES: Record<SyncStatus, string> = {
-  synced: 'In sync with server',
-  'local-newer': 'Local changes not yet synced',
-  'server-newer': 'Server has updates',
-  conflict: 'Both local and server have changes',
-  'never-synced': 'Never synced with server',
-  'local-only': 'Project exists only locally',
-  'server-only': 'Project exists only on the server',
-};
 
 /**
  * Calculate sync status using three-way timestamp comparison.
@@ -142,7 +131,7 @@ export function calculateSyncStatus(
     localProject.lastSyncedAt ?? null
   ) as SyncStatus;
 
-  return { status, message: SYNC_STATUS_MESSAGES[status] ?? '' };
+  return { status };
 }
 
 const syncRetries = new Map<string, number>();
@@ -207,7 +196,7 @@ async function postProjectBatches(
 ): Promise<Response> {
   const { batches, oversized } = batchFilesBySize(files.map(serializeFileContent));
   if (oversized.length > 0) {
-    throw new Error(`Too large to sync: ${oversized.join(', ')}`);
+    throw new Error(`Too large to sync: ${oversized.join(', ')}`); // i18n-ignore: logged, never shown
   }
 
   let baseRevision = project.revision ?? 0;
@@ -294,8 +283,8 @@ export async function markSyncNeedsRetry(
   }
   if (!options?.silent) {
     const message = options?.reason === 'conflict'
-      ? `"${name}" was edited on another device. Your local work is kept — open Server Sync to compare.`
-      : `"${name}" could not sync. Your local work is kept — Save again, or open Server Sync.`;
+      ? translator()('sync.conflictKept', { name })
+      : translator()('sync.failedKept', { name });
     toast.warning(message, { duration: Infinity });
   }
   syncRetries.delete(projectId);
@@ -342,7 +331,7 @@ async function pushProject(projectId: string, silent: boolean): Promise<void> {
     }
 
     if (!response.ok) {
-      throw new Error(`Sync failed: ${response.status}`);
+      throw new Error(`Sync failed: ${response.status}`); // i18n-ignore: logged, never shown
     }
 
     const data = await response.json();
@@ -361,7 +350,7 @@ async function pushProject(projectId: string, silent: boolean): Promise<void> {
     logger.debug(`[AutoSync] Project ${projectId} synced successfully`);
 
     if (!silent) {
-      toast.success('Project synced', {
+      toast.success(translator()('sync.projectSynced'), {
         duration: 2000,
         position: 'bottom-right'
       });
@@ -439,7 +428,7 @@ export async function pullServerUpdates(projectId: string, showToast = true): Pr
   try {
     const response = await apiFetch(getAutoSyncApiUrl(`/sync/projects/${projectId}`));
     if (!response.ok) {
-      throw new Error(`Failed to pull updates: ${response.status}`);
+      throw new Error(`Failed to pull updates: ${response.status}`); // i18n-ignore: logged, never shown
     }
 
     const data = await response.json();
@@ -478,7 +467,7 @@ export async function pullServerUpdates(projectId: string, showToast = true): Pr
     if (localFiles.length > 0) {
       try {
         const { checkpointManager } = await import('./checkpoint');
-        await checkpointManager.createCheckpoint(projectId, 'Pre-sync backup (before pull)', { kind: 'auto' });
+        await checkpointManager.createCheckpoint(projectId, 'Pre-sync backup (before pull)', { kind: 'auto', label: { key: 'preSyncPull' } });
       } catch (cpErr) {
         logger.warn(`[AutoSync] Failed to create pre-pull checkpoint for ${projectId}:`, cpErr);
       }
@@ -542,7 +531,7 @@ export async function pullServerUpdates(projectId: string, showToast = true): Pr
 
     logger.debug(`[AutoSync] Pulled updates for project ${projectId}`);
     if (showToast) {
-      toast.success('Project updated from server');
+      toast.success(translator()('sync.updatedFromServer'));
     }
 
     return true;
@@ -554,7 +543,7 @@ export async function pullServerUpdates(projectId: string, showToast = true): Pr
       try { await vfs.deleteProject(projectId); } catch { /* best effort */ }
     }
     if (showToast) {
-      toast.error('Failed to pull server updates');
+      toast.error(translator()('sync.pullFailed'));
     }
     return false;
   }

@@ -2,8 +2,9 @@
 
 import { useEffect } from 'react';
 import type { ProviderId } from '@/lib/llm/providers/types';
+import { configManager } from '@/lib/config/storage';
 import { shouldAutoAssignAgent } from '@/lib/llm/models/project-assignment';
-import { activateProviderAsGlobalDefault, reconcileActiveProviderIfConnected } from '@/lib/llm/models/global-auto-assign';
+import { activateProviderAsGlobalDefault, fitModelToAccount, reconcileActiveProviderIfConnected, trackConnectSettling } from '@/lib/llm/models/global-auto-assign';
 
 /**
  * Auto-assign the GLOBAL active model to a freshly connected provider when no working
@@ -27,7 +28,12 @@ export function useProviderAutoAssign(): void {
   // the Default template with a keyless provider) would otherwise be stuck showing onboarding UI —
   // the HF "Sign in" button and a disabled composer — until they re-add the connection. See issue #17.
   useEffect(() => {
-    reconcileActiveProviderIfConnected().catch((err) => {
+    const work = (async () => {
+      await reconcileActiveProviderIfConnected();
+      await fitModelToAccount(configManager.getActiveAssignment().agent.provider);
+    })();
+    trackConnectSettling(work);
+    work.catch((err) => {
       console.warn('[useProviderAutoAssign] load-time provider reconcile failed:', err);
     });
   }, []);
@@ -43,10 +49,14 @@ export function useProviderAutoAssign(): void {
         const provider = detail?.provider;
         if (!provider || !detail?.hasKey) return;
 
-        // Bail if a working model already exists (don't clobber the user's existing choice).
-        if (!shouldAutoAssignAgent()) return;
-
-        await activateProviderAsGlobalDefault(provider);
+        const work = (async () => {
+          // Only when no working model exists yet: don't clobber the user's existing choice.
+          if (shouldAutoAssignAgent()) await activateProviderAsGlobalDefault(provider);
+          // Either way, a model the account cannot use is no choice at all.
+          await fitModelToAccount(provider);
+        })();
+        trackConnectSettling(work);
+        await work;
       } catch (err) {
         if (cancelled) return;
         console.warn('[useProviderAutoAssign] auto-select model on connect failed:', err);

@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo, useCallback, DragEvent, ClipboardEvent } from 'react';
+import { useTranslations } from 'next-intl';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { MessageSquare, Loader2, CheckCircle, XCircle, ChevronRight, FileCode, ClipboardList, Bot, RotateCcw, RefreshCw, Send, ChevronUp, ChevronDown, Code, Trash2, Brain, Image as ImageIcon, Type, Mic, Square, Plus, FileText, LogIn, Settings2, Camera } from 'lucide-react';
 import type { WorkspaceMode, ActiveInterview } from '@/lib/stores/slices/project';
 import { InterviewPicker } from './interview-picker';
@@ -12,7 +14,7 @@ import type { DebugEvent } from '@/lib/stores/types';
 import { EventProcessor, type Turn, type ToolCall } from './event-processor';
 import { classifyCommand } from '@/lib/agent-activity/classify-command';
 import { shouldShowPacingNotice, type PacingToolItem } from '@/lib/pacing-notice';
-import { STOP_REASONS, STOP_REASON_PROMPT, shouldShowStopReason, type StopReasonId } from '@/lib/telemetry/stop-reason';
+import { STOP_REASONS, shouldShowStopReason, type StopReasonId } from '@/lib/telemetry/stop-reason';
 import { configManager } from '@/lib/config/storage';
 import { X } from 'lucide-react';
 import { MarkdownRenderer } from '@/components/markdown-renderer';
@@ -28,8 +30,13 @@ import { UnifiedSettingsModal, type SettingsPane } from '@/components/unified-se
 import { createPortal } from 'react-dom';
 import { ProjectModelsPanel } from '@/components/providers-models/project-models-panel';
 import { hasAnyConnectedProvider } from '@/lib/llm/providers/connection-status';
-import { SUGGESTION_PILLS, QUICK_EDIT_PILLS, INLINE_SUGGESTION_COUNT } from '@/lib/constants/suggestion-pills';
+import { SUGGESTION_PILLS, QUICK_EDIT_PILLS, INLINE_SUGGESTION_COUNT, type BuiltInPillId } from '@/lib/constants/suggestion-pills';
 import { checkHFCapabilities, loginHF } from '@/lib/auth/hf-auth';
+import type { ModelRef } from '@/lib/llm/models/assignment';
+import { StoppedCard, LimitNotice, OPEN_MODEL_PICKER_EVENT } from './limit-cards';
+import { ConnectChooser } from './connect-options';
+import { connectSettled } from '@/lib/llm/models/global-auto-assign';
+import { isFreeModels } from '@/lib/llm/suggestions/free-models';
 import { detectDeploymentType } from '@/lib/telemetry/config';
 import { FocusContextPayload } from '@/lib/preview/types';
 import { PendingImage, PendingAudio, PendingFile } from '@/lib/llm/multi-agent-orchestrator';
@@ -42,6 +49,7 @@ import type { PlacedBlock } from '@/lib/semantic-blocks/types';
 import { MessageContext } from '@/components/message-context';
 import { PermissionModeSelector } from '@/components/permissions/PermissionModeSelector';
 import { ApprovalCard } from '@/components/permissions/ApprovalCard';
+import { useApprovalSentence } from '@/lib/i18n/use-approval-sentence';
 import { track } from '@/lib/telemetry';
 import { toast } from 'sonner';
 import { useWorkspaceStore } from '@/lib/stores/workspace';
@@ -52,6 +60,7 @@ type FocusTarget = FocusContextPayload & { timestamp: number };
 
 // Helper to render user message content (string or ContentBlock[])
 function UserMessageContent({ content, hideImages, hideAudio }: { content: string | ContentBlock[]; hideImages?: boolean; hideAudio?: boolean }) {
+  const t = useTranslations('chat');
   if (typeof content === 'string') {
     return <div className="whitespace-pre-wrap">{content}</div>;
   }
@@ -78,7 +87,7 @@ function UserMessageContent({ content, hideImages, hideAudio }: { content: strin
               <img
                 key={`img-${index}`}
                 src={block.image_url.url}
-                alt="Attached image"
+                alt={t('attachedImage')}
                 className="h-[60px] w-auto rounded border border-border object-cover"
               />
             )
@@ -114,7 +123,8 @@ interface ChatPanelProps {
   generating: boolean;
   onGenerate: (prompt: string, images?: PendingImage[], audio?: PendingAudio[], files?: PendingFile[]) => void;
   onStop: () => void;
-  onContinue?: () => void;
+  /** Continue a stopped task as a new turn, on `withModel` when given, else on the working selection. */
+  onContinue?: (withModel?: ModelRef) => void;
   /**
    * The selected element **as included in the next message**, not merely as selected.
    *
@@ -186,12 +196,6 @@ interface ChatPanelProps {
   systemNote?: string | null;
 }
 
-function formatTokenCount(tokens: number): string {
-  if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`;
-  if (tokens >= 1000) return `${Math.round(tokens / 1000)}K`;
-  return String(tokens);
-}
-
 const toolIcons: Record<string, React.ReactNode> = {
   bash: <ChevronRight className="h-3 w-3 text-blue-500" />,
   write: <FileCode className="h-3 w-3 text-orange-500" />,
@@ -204,6 +208,7 @@ const statusIcons: Record<string, React.ReactNode> = {
   executing: <Loader2 className="h-3 w-3 animate-spin text-blue-500" />,
   completed: <CheckCircle className="h-3 w-3 text-green-500" />,
   failed: <XCircle className="h-3 w-3 text-red-500" />,
+  stopped: <Square className="h-3 w-3 text-muted-foreground" />,
 };
 
 export function ChatPanel({
@@ -245,6 +250,10 @@ export function ChatPanel({
   composerOverlay,
   systemNote,
 }: ChatPanelProps) {
+  const t = useTranslations('chat');
+  const tc = useTranslations('common');
+  const tModels = useTranslations('models');
+  const tConnect = useTranslations('connect');
   const workspaceReady = useWorkspaceStore(s => s.workspaceReady);
   const modelConfigVersion = useWorkspaceStore(s => s.modelConfigVersion);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -256,6 +265,9 @@ export function ChatPanel({
     setSettingsManagePane(tab as SettingsPane);
     setShowSettingsManage(true);
   }, []);
+  // Nothing at all is connected: the empty chat offers ways to connect instead of a blank thread.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- re-read when the model config changes
+  const needsConnection = useMemo(() => !providerReady && !hasAnyConnectedProvider(), [providerReady, modelConfigVersion]);
   // HF Space one-click sign-in: when no provider is connected and we're on an HF
   // Space, offer "Sign in with HuggingFace" OAuth in place of the "Select provider"
   // button. Probed once on mount, only on HF Spaces.
@@ -282,9 +294,9 @@ export function ChatPanel({
     try {
       await loginHF(hfOAuth.clientId, hfOAuth.scopes);
     } catch {
-      toast.error('Could not start HuggingFace sign-in. Please try again.');
+      toast.error(t('hfSignInFailed'));
     }
-  }, [hfOAuth]);
+  }, [hfOAuth, t]);
   const [showModeMenu, setShowModeMenu] = useState(false);
   const [interviewTemplates, setInterviewTemplates] = useState<InterviewTemplate[]>([]);
   const [interviewManagerOpen, setInterviewManagerOpen] = useState(false);
@@ -323,14 +335,40 @@ export function ChatPanel({
   const voiceIsBrowser = voiceInput === 'browser';
 
   const MODE_CONFIG: Record<WorkspaceMode, { label: string; Icon: typeof Code; iconColor: string }> = {
-    code: { label: 'Code', Icon: Code, iconColor: 'text-orange-500' },
-    chat: { label: 'Chat', Icon: MessageSquare, iconColor: 'text-green-500' },
-    interview: { label: 'Interview', Icon: ClipboardList, iconColor: 'text-blue-500' },
+    code: { label: tc('labels.code'), Icon: Code, iconColor: 'text-orange-500' },
+    chat: { label: tc('terms.chat'), Icon: MessageSquare, iconColor: 'text-green-500' },
+    interview: { label: t('modeInterview'), Icon: ClipboardList, iconColor: 'text-blue-500' },
   };
   const isScrollingProgrammatically = useRef(false);
 
   // Prompt state — owned by ChatPanel, never leaves this component until submit
   const [prompt, setPrompt] = useState('');
+  // A message typed before any model is connected is kept, per project, and sent once one is.
+  // sessionStorage, so it survives the round trip to a provider's sign-in page in this tab.
+  const heldProjectId = useWorkspaceStore(s => s.projectId);
+  const heldKey = `osw_held_prompt:${heldProjectId ?? ''}`; // i18n-ignore: storage key
+  const [held, setHeld] = useState<string | null>(null);
+  // Whether the held message made it into storage, which is where panels claim it from.
+  const heldStored = useRef(false);
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem(heldKey);
+      heldStored.current = stored !== null;
+      setHeld(stored);
+    } catch {
+      setHeld(null);
+    }
+  }, [heldKey]);
+  const holdPrompt = useCallback((text: string | null) => {
+    setHeld(text);
+    try {
+      if (text) sessionStorage.setItem(heldKey, text);
+      else sessionStorage.removeItem(heldKey);
+      heldStored.current = !!text;
+    } catch {
+      heldStored.current = false; // kept in memory only
+    }
+  }, [heldKey]);
   /**
    * Text the Styles tab handed over, appended rather than sent.
    *
@@ -361,12 +399,31 @@ export function ChatPanel({
     () => selectPromptSuggestions(allSuggestions, previewPath ?? null),
     [allSuggestions, previewPath]
   );
+  // The built-in starters are translated by id. A project's own suggestions are its owner's text and
+  // are shown as stored. Typed over BuiltInPillId, so a new starter without a label fails `tsc`.
+  const tPills = useTranslations('chat.pills');
+  const pillLabels = useMemo<Record<BuiltInPillId, string>>(() => ({
+    portfolio: tPills('portfolio'),
+    'multipage-site': tPills('multipage-site'),
+    'workspace-setup': tPills('workspace-setup'),
+    'quick-reword': tPills('quick-reword'),
+    'quick-colours': tPills('quick-colours'),
+    'quick-section': tPills('quick-section'),
+    'quick-mobile': tPills('quick-mobile'),
+  }), [tPills]);
+  const pillLabel = (pill: { id: string; label: string }) =>
+    (pillLabels as Record<string, string>)[pill.id] ?? pill.label;
   const inlineSuggestions = suggestions.slice(0, INLINE_SUGGESTION_COUNT);
   const overflowSuggestions = suggestions.slice(INLINE_SUGGESTION_COUNT);
 
+  // The one-time tip above the suggestions; see the effect below `turns`.
+  const [firstPromptTip, setFirstPromptTip] = useState(false);
   const applyPromptSuggestion = useCallback((text: string) => {
     setPrompt(text);
     composerTextareaRef.current?.focus();
+    // Picking a suggestion is the tip done its job.
+    configManager.setFirstPromptTipDone();
+    setFirstPromptTip(false);
   }, []);
 
   // Clear prompt when generation starts
@@ -467,14 +524,14 @@ export function ChatPanel({
   const handleStartRecording = useCallback(() => {
     if (voiceIsBrowser) {
       if (!speech.supported) {
-        toast.error('Speech recognition is not available in this browser');
+        toast.error(t('speechUnavailable'));
         return;
       }
       speech.start();
     } else {
       startRecording();
     }
-  }, [voiceIsBrowser, speech, startRecording]);
+  }, [voiceIsBrowser, speech, startRecording, t]);
 
   // Stop recording and add the result as a pending attachment. Browser keeps the
   // live transcript; a model clip is transcribed later, when the message is sent.
@@ -526,12 +583,12 @@ export function ChatPanel({
     if (!onCaptureContextScreenshot) return;
     const dataUrl = await onCaptureContextScreenshot();
     if (!dataUrl) {
-      toast.error('Could not capture the preview. Wait for it to finish loading and try again.');
+      toast.error(t('previewCaptureFailed'));
       return;
     }
     track('image_attached', { source: 'screenshot', count: 1 });
     setPendingImages(prev => [...prev, pendingImageFromDataUrl(dataUrl)]);
-  }, [onCaptureContextScreenshot]);
+  }, [onCaptureContextScreenshot, t]);
 
   const addTextFiles = useCallback((fileList: FileList | null) => {
     if (!fileList) return;
@@ -555,6 +612,18 @@ export function ChatPanel({
 
   // Handle send with attachments (text + images + audio + files)
   const handleSend = useCallback(() => {
+    if (!providerReady) {
+      // A held message is plain text that survives a reload; attachments can't follow it.
+      if (pendingImages.length || pendingAudio.length || pendingFiles.length) {
+        toast.error(t('connectBeforeAttachments'));
+        return;
+      }
+      if (prompt.trim()) {
+        holdPrompt(prompt.trim());
+        setPrompt('');
+      }
+      return;
+    }
     if (pendingAudio.length) {
       // Mirrors MultiAgentOrchestrator.execute()'s passToAgent check: the clip
       // goes to the agent as audio when the voice slot IS the agent, or is a
@@ -577,7 +646,27 @@ export function ChatPanel({
     setPendingImages([]);
     setPendingAudio([]);
     setPendingFiles([]);
-  }, [onGenerate, pendingImages, pendingAudio, pendingFiles, prompt, resolvedAssignment, voiceInput, voiceIsBrowser]);
+  }, [onGenerate, pendingImages, pendingAudio, pendingFiles, prompt, resolvedAssignment, voiceInput, voiceIsBrowser, providerReady, holdPrompt, t]);
+
+  // Once a model is connected, the held message goes out as if it had just been sent.
+  useEffect(() => {
+    if (!providerReady || !held || generating) return;
+    const text = held;
+    // Claim it from storage first: the desktop and mobile layouts can both have a panel mounted,
+    // and only the one that finds it still stored sends it.
+    if (heldStored.current) {
+      try {
+        if (sessionStorage.getItem(heldKey) !== text) {
+          setHeld(null);
+          return;
+        }
+      } catch { /* storage went away: send the copy in memory */ }
+    }
+    holdPrompt(null);
+    // Wait for the connect handling to settle the model, or the first request could go to a
+    // model the account cannot use.
+    void connectSettled().then(() => onGenerate(text));
+  }, [providerReady, held, generating, holdPrompt, onGenerate, heldKey]);
 
   // Listen for tour event to open provider settings
   useEffect(() => {
@@ -586,8 +675,10 @@ export function ChatPanel({
     };
 
     window.addEventListener('tour-open-provider-settings', handleTourOpenSettings);
+    window.addEventListener(OPEN_MODEL_PICKER_EVENT, handleTourOpenSettings);
     return () => {
       window.removeEventListener('tour-open-provider-settings', handleTourOpenSettings);
+      window.removeEventListener(OPEN_MODEL_PICKER_EVENT, handleTourOpenSettings);
     };
   }, []);
 
@@ -595,6 +686,37 @@ export function ChatPanel({
 
   // Transform events into turns with chronologically ordered items (incremental)
   const turns = useMemo(() => processorRef.current.process(events), [events]);
+
+  // A one-time tip in the empty chat for someone who has never sent a message: what a suggestion
+  // does, and that nothing is sent until they press Send. Read after mount (localStorage), and done
+  // with for good once a suggestion is picked, a conversation has a message, or the tip is dismissed.
+  useEffect(() => {
+    if (configManager.isFirstPromptTipDone()) return;
+    if (turns.length > 0) {
+      configManager.setFirstPromptTipDone();
+      setFirstPromptTip(false);
+      return;
+    }
+    setFirstPromptTip(true);
+  }, [turns.length]);
+  const dismissFirstPromptTip = useCallback(() => {
+    configManager.setFirstPromptTipDone();
+    setFirstPromptTip(false);
+  }, []);
+  // The empty-thread chooser shows the held message itself; anywhere else it sits above the composer.
+  const showConnectChooser = workspaceReady && turns.length === 0 && needsConnection;
+  // Only where the task last stopped can it be continued from; once anything was sent after it,
+  // earlier stops are history.
+  const liveStoppedId = useMemo(() => {
+    for (let i = turns.length - 1; i >= 0; i--) {
+      const items = turns[i].items;
+      for (let j = items.length - 1; j >= 0; j--) {
+        if (items[j].type === 'api_stopped') return items[j].id;
+        if (items[j].type === 'user') return null;
+      }
+    }
+    return null;
+  }, [turns]);
 
   // Pacing notice: reassure the user when a large single-file WRITE has been
   // running for a while (common on models without tool streaming).
@@ -661,6 +783,8 @@ export function ChatPanel({
   // Auto-scroll when turns change (throttled with requestAnimationFrame)
   useEffect(() => {
     if (!autoScroll || !scrollRef.current) return;
+    // An empty thread reads from the top: what it shows is a page, not the end of a conversation.
+    if (turns.length === 0) return;
 
     // Use requestAnimationFrame to batch scroll updates and avoid layout thrashing
     const rafId = requestAnimationFrame(() => {
@@ -738,9 +862,9 @@ export function ChatPanel({
               variant="ghost"
               className="h-6 px-2 text-xs"
               onClick={onClearRuntimeErrors}
-              title="Dismiss runtime errors"
+              title={t('dismissRuntimeErrors')}
             >
-              Clear
+              {tc('actions.clear')}
             </Button>
           )}
           {onSendRuntimeErrors && (
@@ -749,9 +873,9 @@ export function ChatPanel({
               variant="ghost"
               className="h-6 px-2 text-xs text-destructive"
               onClick={onSendRuntimeErrors}
-              title="Send errors to AI for correction"
+              title={t('sendErrorsToAi')}
             >
-              Send
+              {t('send')}
             </Button>
           )}
         </div>
@@ -767,7 +891,7 @@ export function ChatPanel({
       {!hideHeader && (
         <PanelHeader
           icon={MessageSquare}
-          title="Chat"
+          title={tc('terms.chat')}
           color="var(--button-assistant-active)"
           onClose={onClose}
           panelKey="chat"
@@ -778,11 +902,11 @@ export function ChatPanel({
               size="sm"
               onClick={onClearChat}
               className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 md:h-5 md:w-5 md:px-0 md:border-0 md:bg-transparent md:rounded-md"
-              title="Clear chat"
+              title={t('clearChat')}
               data-tour-id="clear-chat-button"
             >
               <Trash2 className="h-2.5 w-2.5 md:h-3 md:w-3" />
-              <span className="text-xs md:hidden">Clear chat</span>
+              <span className="text-xs md:hidden">{t('clearChat')}</span>
             </Button>
             )}
           </>)}
@@ -802,13 +926,19 @@ export function ChatPanel({
         {!workspaceReady && turns.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2 p-4">
             <Loader2 className="h-5 w-5 animate-spin opacity-40" />
-            <span className="text-xs">Loading conversation…</span>
+            <span className="text-xs">{t('loadingConversation')}</span>
           </div>
+        ) : showConnectChooser ? (
+          <ConnectChooser
+            onMoreOptions={() => openProvidersManage('connections')}
+            held={held}
+            onDiscardHeld={() => holdPrompt(null)}
+          />
         ) : simple ? (
           simpleThread
         ) : turns.length === 0 ? (
           <div className="text-xs text-muted-foreground text-center p-4">
-            No messages yet. Start a conversation to see it here.
+            {t('noMessages')}
           </div>
         ) : (
           (() => {
@@ -852,8 +982,8 @@ export function ChatPanel({
                   onRestore={onRestore}
                   onRetry={onRetry}
                   onContinue={onContinue}
-                  onCancel={onStop}
                   generating={generating}
+                  liveStoppedId={generating ? null : liveStoppedId}
                   onGenerate={onGenerate}
                   onHandoff={onHandoff}
                   expandedItems={expandedItems}
@@ -870,12 +1000,12 @@ export function ChatPanel({
           <div role="status" aria-live="polite" className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             <Loader2 aria-hidden="true" className="h-3 w-3 mt-0.5 shrink-0 animate-spin opacity-60" />
             <span className="flex-1">
-              Large file writes can take a while. The agent is still working and will continue as soon as the write finishes.
+              {t('largeWriteNote')}
             </span>
             <button
               type="button"
               onClick={dismissPacingNotice}
-              aria-label="Dismiss notice"
+              aria-label={t('dismissNotice')}
               className="shrink-0 rounded p-0.5 hover:bg-muted-foreground/10"
             >
               <X className="h-3 w-3" />
@@ -883,27 +1013,27 @@ export function ChatPanel({
           </div>
         )}
         {showStopReason && (
-          <div role="group" aria-label="Why did you stop?" data-testid="stop-reason" className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <div role="group" aria-label={t('whyDidYouStop')} data-testid="stop-reason" className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             <div className="flex items-start gap-2">
-              <span className="flex-1">{STOP_REASON_PROMPT}</span>
+              <span className="flex-1">{t('stopReasons.prompt')}</span>
               <button
                 type="button"
                 onClick={clearUserStop}
-                aria-label="Dismiss question"
+                aria-label={t('dismissQuestion')}
                 className="shrink-0 rounded p-0.5 hover:bg-muted-foreground/10"
               >
                 <X className="h-3 w-3" />
               </button>
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {STOP_REASONS.map(r => (
+              {STOP_REASONS.map(id => (
                 <button
-                  key={r.id}
+                  key={id}
                   type="button"
-                  onClick={() => answerStopReason(r.id)}
+                  onClick={() => answerStopReason(id)}
                   className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-foreground hover:bg-primary/15 hover:text-primary"
                 >
-                  {r.label}
+                  {t(`stopReasons.${id}`)}
                 </button>
               ))}
             </div>
@@ -911,6 +1041,18 @@ export function ChatPanel({
         )}
       </div>
       </div>
+
+      {held && !showConnectChooser && (
+        <div className={cn('px-3 pt-3', solo && 'mx-auto w-full max-w-3xl')}>
+          <div className="flex flex-col gap-1 rounded-lg border border-border bg-muted/40 px-3 py-2">
+            <p className="line-clamp-3 whitespace-pre-wrap text-sm text-foreground">{held}</p>
+            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span>{tConnect('held')}</span>
+              <button type="button" onClick={() => holdPrompt(null)} className="underline hover:text-foreground">{tConnect('discard')}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Input — or composerOverlay when present */}
       {composerOverlay ? (
@@ -939,9 +1081,29 @@ export function ChatPanel({
             (focus, images, files) grows MessageContext below and bumps these up. Shown only for
             a fresh, connected, idle composer (not interview or recording). */}
         {((providerReady || hasAnyConnectedProvider()) && (simple || turns.length === 0) && !generating && mode !== 'interview' && !isRecording && !speech.isListening && suggestionsLoaded) && (
-          <div>
+          <div className="relative">
+            {/* The app's tooltip (`components/ui/tooltip.tsx`), held open and pointing at the
+                suggestions until dismissed. It floats over the empty chat rather than pushing the
+                composer down. */}
+            {firstPromptTip && inlineSuggestions.length > 0 && (
+              <div
+                role="note"
+                className="absolute bottom-full left-0 z-20 mb-2 flex max-w-[300px] items-start gap-2 rounded-md border border-primary/40 bg-[color-mix(in_oklab,var(--primary)_15%,var(--popover))] px-3 py-1.5 text-xs text-primary shadow-md animate-in fade-in-0"
+              >
+                <p className="flex-1 leading-snug text-balance">{t('firstPromptTip')}</p>
+                <button
+                  type="button"
+                  onClick={dismissFirstPromptTip}
+                  aria-label={t('firstPromptTipDismiss')}
+                  className="-mr-1 shrink-0 rounded p-0.5 opacity-80 hover:opacity-100"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+                <span aria-hidden="true" className="absolute top-full left-5 size-2.5 -translate-y-1/2 rotate-45 rounded-[2px] border-r border-b border-primary/40 bg-[color-mix(in_oklab,var(--primary)_15%,var(--popover))]" />
+              </div>
+            )}
             {inlineSuggestions.length > 0 && (
-              <div className="text-xs text-muted-foreground mb-1.5">Try one of these:</div>
+              <div className="text-xs text-muted-foreground mb-1.5">{t('tryOneOfThese')}</div>
             )}
             <div className="flex flex-wrap gap-1.5">
               {inlineSuggestions.map((pill) => (
@@ -951,7 +1113,7 @@ export function ChatPanel({
                   onClick={() => applyPromptSuggestion(pill.prompt)}
                   className="text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 cursor-pointer transition-all"
                 >
-                  {pill.label}
+                  {pillLabel(pill)}
                 </button>
               ))}
               {/* Always rendered, even with nothing overflowing: it is the only route from the
@@ -962,8 +1124,8 @@ export function ChatPanel({
                     type="button"
                     aria-label={
                       overflowSuggestions.length > 0
-                        ? `${overflowSuggestions.length} more suggestions, and manage them`
-                        : 'Manage suggestions'
+                        ? t('moreSuggestions', { count: overflowSuggestions.length })
+                        : t('manageSuggestions')
                     }
                     className="text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 cursor-pointer transition-all"
                   >
@@ -977,7 +1139,7 @@ export function ChatPanel({
                       onClick={() => applyPromptSuggestion(pill.prompt)}
                       className="text-xs"
                     >
-                      {pill.label}
+                      {pillLabel(pill)}
                     </DropdownMenuItem>
                   ))}
                   {overflowSuggestions.length > 0 && <DropdownMenuSeparator />}
@@ -990,7 +1152,7 @@ export function ChatPanel({
                     }
                   >
                     <Settings2 className="h-3.5 w-3.5 mr-2" />
-                    Manage suggestions
+                    {t('manageSuggestions')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1016,15 +1178,15 @@ export function ChatPanel({
           onClearAudio={() => setPendingAudio([])}
         />
         {recError && !isRecording && (
-          <p className="text-xs text-destructive">{recError}</p>
+          <p className="text-xs text-destructive">{t(`recording.${recError}`)}</p>
         )}
         <ApprovalCard />
         {/* Modality indicators */}
         <div className="flex !mb-0">
           {[
-            { key: 'text', icon: Type, label: 'Text input', enabled: true },
-            { key: 'image', icon: ImageIcon, label: inputModalities.includes('image') ? 'Image input — drop or paste images' : 'Image input — not supported by this model', enabled: inputModalities.includes('image') },
-            { key: 'audio', icon: Mic, label: voiceInputEnabled ? 'Voice input — click the mic to record' : 'Voice input — off (enable a voice model for this project)', enabled: voiceInputEnabled },
+            { key: 'text', icon: Type, label: t('textInput'), enabled: true },
+            { key: 'image', icon: ImageIcon, label: inputModalities.includes('image') ? t('imageInputOn') : t('imageInputOff'), enabled: inputModalities.includes('image') },
+            { key: 'audio', icon: Mic, label: voiceInputEnabled ? t('voiceInputOn') : t('voiceInputOff'), enabled: voiceInputEnabled },
           ].map((mod, i, arr) => (
             <Tooltip key={mod.key}>
               <TooltipTrigger asChild>
@@ -1059,7 +1221,7 @@ export function ChatPanel({
             <div className="absolute inset-0 flex items-center justify-center bg-primary/10 z-10 pointer-events-none">
               <div className="text-primary font-medium flex items-center gap-2">
                 <ImageIcon className="h-5 w-5" />
-                Drop image here
+                {t('dropImageHere')}
               </div>
             </div>
           )}
@@ -1081,17 +1243,17 @@ export function ChatPanel({
               <span className="h-2.5 w-2.5 rounded-full bg-primary animate-pulse shrink-0" />
               {voiceIsBrowser ? (
                 <span className="flex-1 min-w-0 truncate text-sm text-muted-foreground">
-                  {speech.interim || 'Listening…'}
+                  {speech.interim || t('listening')}
                 </span>
               ) : (
                 <AudioSpectrogram analyser={analyser} className="flex-1 min-w-0" />
               )}
               <Button variant="ghost" size="sm" onClick={handleCancelRecording} className="shrink-0">
-                Cancel
+                {tc('actions.cancel')}
               </Button>
               <Button size="sm" onClick={handleStopRecording} className="shrink-0 gap-1.5">
                 <Square className="h-3.5 w-3.5" />
-                Stop
+                {t('stop')}
               </Button>
             </div>
           ) : (
@@ -1110,27 +1272,27 @@ export function ChatPanel({
                   }
                 }}
                 onPaste={handlePaste}
-                placeholder={!providerReady ? "Select a provider to start..." : simple ? "Ask for a change" : supportsVision ? "Describe what you want to build... (paste or drop images)" : "Describe what you want to build..."}
+                placeholder={!providerReady && !needsConnection ? t('placeholder.selectProvider') : simple ? t('placeholder.askForChange') : supportsVision ? t('placeholder.describeWithImages') : t('placeholder.describe')}
                 className="flex-1 px-3 py-2 bg-transparent border-0 resize-none focus:outline-none text-sm placeholder:text-muted-foreground text-foreground"
                 rows={3}
-                disabled={generating || isTourLockingInput || !providerReady}
+                disabled={generating || isTourLockingInput || (!providerReady && !needsConnection)}
               />
               <div className="flex flex-col p-2 gap-2">
                 <Button
                   onClick={generating ? onStop : handleSend}
-                  disabled={isTourLockingInput ? !generating : (!generating && (!prompt.trim() && pendingImages.length === 0 && pendingAudio.length === 0 && pendingFiles.length === 0 || !providerReady))}
+                  disabled={isTourLockingInput ? !generating : (!generating && (!prompt.trim() && pendingImages.length === 0 && pendingAudio.length === 0 && pendingFiles.length === 0 || (!providerReady && !needsConnection)))}
                   size="sm"
                   className="flex items-center gap-2"
                 >
                   {generating ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Stop
+                      {t('stop')}
                     </>
                   ) : (
                     <>
                       <Send className="h-4 w-4" />
-                      Send
+                      {t('send')}
                     </>
                   )}
                 </Button>
@@ -1142,7 +1304,7 @@ export function ChatPanel({
                           variant="ghost"
                           size="icon"
                           disabled={isTourLockingInput || !providerReady}
-                          title="Add attachment"
+                          title={t('addAttachment')}
                           className="flex-1"
                         >
                           <Plus className="h-4 w-4" />
@@ -1154,19 +1316,19 @@ export function ChatPanel({
                           onSelect={() => setTimeout(() => imageInputRef.current?.click(), 0)}
                         >
                           <ImageIcon className="h-4 w-4" />
-                          Image
-                          {!supportsVision && <span className="ml-auto text-xs text-muted-foreground">unsupported</span>}
+                          {t('attachImage')}
+                          {!supportsVision && <span className="ml-auto text-xs text-muted-foreground">{t('unsupported')}</span>}
                         </DropdownMenuItem>
                         {onCaptureContextScreenshot && (
                           <DropdownMenuItem disabled={!supportsVision} onSelect={() => { void addScreenshot(); }}>
                             <Camera className="h-4 w-4" />
-                            Screenshot of the preview
-                            {!supportsVision && <span className="ml-auto text-xs text-muted-foreground">unsupported</span>}
+                            {t('attachScreenshot')}
+                            {!supportsVision && <span className="ml-auto text-xs text-muted-foreground">{t('unsupported')}</span>}
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuItem onSelect={() => setTimeout(() => fileInputRef.current?.click(), 0)}>
                           <FileText className="h-4 w-4" />
-                          Text file
+                          {t('textFile')}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -1176,7 +1338,7 @@ export function ChatPanel({
                         size="icon"
                         onClick={handleStartRecording}
                         disabled={isTourLockingInput || !providerReady}
-                        title="Record voice"
+                        title={t('recordVoice')}
                         className="flex-1"
                       >
                         <Mic className="h-4 w-4" />
@@ -1213,16 +1375,16 @@ export function ChatPanel({
                   <button
                     type="button"
                     onClick={handleHFSignIn}
-                    aria-label="Sign in with HuggingFace"
+                    aria-label={t('signInWithHF')}
                     className="flex items-center gap-1.5 h-full px-2 text-foreground text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:bg-input/50"
                   >
                     <LogIn className="h-3.5 w-3.5" />
-                    Sign in with HuggingFace
+                    {t('signInWithHF')}
                   </button>
                   <button
                     type="button"
                     onClick={() => openProvidersManage('connections')}
-                    aria-label="Connection options"
+                    aria-label={tc('labels.connectionOptions')}
                     className="h-full px-1.5 border-l border-border text-foreground transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:bg-input/50 flex items-center group/chev"
                   >
                     <ChevronUp className="h-3.5 w-3.5 transition-transform group-hover/chev:-translate-y-0.5" />
@@ -1249,7 +1411,7 @@ export function ChatPanel({
                     data-tour-id="provider-settings-trigger"
                   >
                     <span className="flex items-center h-full px-2">
-                      {providerReady ? getModelDisplayName(effectiveAgentModel) : 'Select provider'}
+                      {providerReady ? (isFreeModels(effectiveAgentModel) ? tModels('freeModels') : getModelDisplayName(effectiveAgentModel)) : t('selectProvider')}
                     </span>
                     <span className="flex items-center h-full px-1.5 border-l border-border group/chev">
                       {showMobileSettings
@@ -1287,7 +1449,7 @@ export function ChatPanel({
               {isMobile && (
                 <Dialog open={showMobileSettings} onOpenChange={setShowMobileSettings}>
                   <DialogContent showCloseButton className="p-0 gap-0 w-[calc(100vw-1.5rem)] max-w-none h-[calc(100dvh-1.5rem)] max-h-none overflow-hidden flex flex-col">
-                    <DialogTitle className="sr-only">Models · this project</DialogTitle>
+                    <DialogTitle className="sr-only">{t('modelsThisProject')}</DialogTitle>
                     <ProjectModelsPanel
                       onManageSettings={() => {
                         setShowMobileSettings(false);
@@ -1368,16 +1530,22 @@ interface TurnDisplayProps {
   collatedTaskStartTime?: number;
   onRestore?: (checkpointId: string) => void;
   onRetry?: (checkpointId: string) => void;
-  onContinue?: () => void;
-  onCancel?: () => void;
+  onContinue?: (withModel?: ModelRef) => void;
   generating?: boolean;
+  /** The stopped-task item that can still be continued from; only its actions apply. */
+  liveStoppedId?: string | null;
   onGenerate?: (prompt: string, images?: PendingImage[]) => void;
   onHandoff?: (handoff: InterviewHandoff) => void;
   expandedItems: Set<string>;
   onToggleExpanded: (itemId: string) => void;
 }
 
-function TurnDisplay({ turn, collatedUsage, collatedTaskStartTime, onRestore, onRetry, onContinue, onCancel, generating, onGenerate, onHandoff, expandedItems, onToggleExpanded }: TurnDisplayProps) {
+function TurnDisplay({ turn, collatedUsage, collatedTaskStartTime, onRestore, onRetry, onContinue, generating, liveStoppedId, onGenerate, onHandoff, expandedItems, onToggleExpanded }: TurnDisplayProps) {
+  const t = useTranslations('chat');
+  const approvalSentence = useApprovalSentence();
+  const { number } = useLocalFormat();
+  const seconds = (n: number) => number(n, { style: 'unit', unit: 'second', unitDisplay: 'narrow' });
+  const tc = useTranslations('common');
   return (
     <div className="space-y-2" {...(turn.checkpointId ? { 'data-checkpoint-id': turn.checkpointId } : {})}>
       {/* Render items in chronological order */}
@@ -1388,7 +1556,7 @@ function TurnDisplay({ turn, collatedUsage, collatedTaskStartTime, onRestore, on
               <div key={item.id} className="bg-muted/30 rounded-md p-2 opacity-70">
                 <div className="flex items-center gap-2 px-1">
                   <Loader2 className="h-3 w-3 animate-spin text-blue-400" />
-                  <span className="text-xs text-muted-foreground">Waiting for response...</span>
+                  <span className="text-xs text-muted-foreground">{t('waitingForResponse')}</span>
                 </div>
               </div>
             );
@@ -1486,7 +1654,7 @@ function TurnDisplay({ turn, collatedUsage, collatedTaskStartTime, onRestore, on
             return (
               <div key={item.id} className="text-sm bg-amber-500/10 border border-amber-500/30 px-3 py-2 rounded">
                 <p className="text-sm text-foreground mb-0.5">
-                  Approval needed: <span className="font-medium">{label}</span>
+                  {approvalSentence(appr.gateKey, label)}
                 </p>
                 {appr.command && (
                   <p className="text-xs text-muted-foreground font-mono truncate mb-2">{appr.command}</p>
@@ -1497,23 +1665,23 @@ function TurnDisplay({ turn, collatedUsage, collatedTaskStartTime, onRestore, on
                       if (generating) return;
                       track('approval_response', { via: 'chip', decision: 'allow', gate: appr.gateKey });
                       configManager.setPermissionOverride(appr.gateKey!, 'allow');
-                      onGenerate?.(`Approved ${label}. Continue the task.`);
+                      onGenerate?.(`Approved ${label}. Continue the task.`); // i18n-ignore: sent to the agent as the user's message; English by decision
                     }}
                     disabled={!!generating}
                     className="text-xs px-3 py-1.5 rounded border border-primary/30 bg-primary/10 text-primary font-medium hover:bg-primary/15 transition-colors disabled:opacity-40 disabled:cursor-default"
                   >
-                    Allow
+                    {t('allow')}
                   </button>
                   <button
                     onClick={() => {
                       if (generating) return;
                       track('approval_response', { via: 'chip', decision: 'deny', gate: appr.gateKey });
-                      onGenerate?.(`I declined ${label}. Continue without it.`);
+                      onGenerate?.(`I declined ${label}. Continue without it.`); // i18n-ignore: sent to the agent as the user's message; English by decision
                     }}
                     disabled={!!generating}
                     className="text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors disabled:opacity-40 disabled:cursor-default"
                   >
-                    Deny
+                    {t('deny')}
                   </button>
                 </div>
               </div>
@@ -1529,7 +1697,7 @@ function TurnDisplay({ turn, collatedUsage, collatedTaskStartTime, onRestore, on
                 >
                   <ChevronRight className={`h-3 w-3 text-muted-foreground transition-transform ${expandedItems.has(item.id) ? 'rotate-90' : ''}`} />
                   <FileCode className="h-3 w-3 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">Project context</span>
+                  <span className="text-xs text-muted-foreground">{t('projectContext')}</span>
                 </button>
                 {expandedItems.has(item.id) && (
                   <div className="mt-2 px-2">
@@ -1546,7 +1714,7 @@ function TurnDisplay({ turn, collatedUsage, collatedTaskStartTime, onRestore, on
               <div key={item.id} className="flex items-center gap-2 py-2 my-1">
                 <div className="flex-1 border-t border-dashed border-muted-foreground/30" />
                 <span className="text-xs text-muted-foreground whitespace-nowrap">
-                  Context compacted — {formatTokenCount(item.data?.preCompactTokens ?? 0)} → ~{formatTokenCount(item.data?.postCompactEstimate ?? 0)} tokens
+                  {t('contextCompacted', { before: number(item.data?.preCompactTokens ?? 0, { notation: 'compact' }), after: number(item.data?.postCompactEstimate ?? 0, { notation: 'compact' }) })}
                 </span>
                 <div className="flex-1 border-t border-dashed border-muted-foreground/30" />
               </div>
@@ -1570,7 +1738,7 @@ function TurnDisplay({ turn, collatedUsage, collatedTaskStartTime, onRestore, on
             const hasAnyContext = !!(item.focusContext || item.semanticBlocks || userImageBlocks.length > 0 || item.attachedFiles?.length || userAudioBlocks.length > 0);
             return (
               <div key={item.id} className="text-sm text-foreground bg-primary/10 px-3 py-2 rounded border border-primary/20">
-                <div className="font-semibold text-primary mb-1 text-xs">User</div>
+                <div className="font-semibold text-primary mb-1 text-xs">{tc('labels.user')}</div>
                 <UserMessageContent content={contentData} hideImages={hasAnyContext} hideAudio={hasAnyContext} />
                 {hasAnyContext && (
                   <MessageContext
@@ -1605,14 +1773,14 @@ function TurnDisplay({ turn, collatedUsage, collatedTaskStartTime, onRestore, on
                 <div className="flex items-start gap-2">
                   <XCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
                   <div className="flex-1">
-                    <div className="font-semibold text-destructive mb-1">Error</div>
+                    <div className="font-semibold text-destructive mb-1">{tc('labels.error')}</div>
                     <div className="text-destructive/90 whitespace-pre-wrap font-mono text-xs">
-                      {item.data?.message || JSON.stringify(item.data, null, 2)}
+                      {item.data?.message || t('errorNoDetails')}
                     </div>
                     {item.data?.stack && (
                       <details className="mt-2">
                         <summary className="text-xs text-destructive/70 cursor-pointer hover:text-destructive">
-                          Stack trace
+                          {t('stackTrace')}
                         </summary>
                         <pre className="text-[10px] text-destructive/60 mt-1 overflow-x-auto">
                           {item.data.stack}
@@ -1624,32 +1792,19 @@ function TurnDisplay({ turn, collatedUsage, collatedTaskStartTime, onRestore, on
               </div>
             );
 
+          case 'api_stopped':
           case 'error_paused':
             return (
-              <div key={item.id} className="text-sm bg-destructive/10 border border-destructive/20 px-3 py-2 rounded">
-                <div className="flex items-start gap-2">
-                  <XCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
-                  <div className="flex-1">
-                    <div className="font-semibold text-destructive mb-1">{generating ? 'Task paused' : 'Error'}</div>
-                    <div className="text-destructive/90 whitespace-pre-wrap font-mono text-xs">
-                      {item.data?.message || 'An API error occurred.'}
-                    </div>
-                    {generating && (
-                      <div className="mt-2 flex gap-3">
-                        {onContinue && (
-                          <button onClick={onContinue} className="text-xs underline text-primary hover:text-primary/80">
-                            Continue
-                          </button>
-                        )}
-                        <button onClick={onCancel} className="text-xs underline text-muted-foreground hover:text-foreground/80">
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+              <StoppedCard
+                key={item.id}
+                data={item.data ?? {}}
+                live={item.id === liveStoppedId}
+                onContinue={onContinue}
+              />
             );
+
+          case 'notice':
+            return <LimitNotice key={item.id} data={item.data} />;
 
           case 'interview_gate': {
             const gate = item.data as { complete: boolean; errored?: boolean; items?: { elicit: string; passed: boolean; reason?: string }[]; handoff?: InterviewHandoff };
@@ -1658,7 +1813,7 @@ function TurnDisplay({ turn, collatedUsage, collatedTaskStartTime, onRestore, on
                 <div key={item.id} className="text-sm bg-muted/50 border border-border px-3 py-2 rounded">
                   <div className="flex items-start gap-2">
                     <ClipboardList className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                    <div className="text-xs text-muted-foreground">Couldn&apos;t verify the interview against its checklist — finished anyway.</div>
+                    <div className="text-xs text-muted-foreground">{t('interviewUnverified')}</div>
                   </div>
                 </div>
               );
@@ -1669,8 +1824,8 @@ function TurnDisplay({ turn, collatedUsage, collatedTaskStartTime, onRestore, on
                   <div className="flex items-start gap-2">
                     <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
                     <div className="flex-1">
-                      <div className="font-semibold text-green-700 dark:text-green-400 mb-0.5">Interview complete</div>
-                      <div className="text-xs text-muted-foreground">All required items are captured in the artifact.</div>
+                      <div className="font-semibold text-green-700 dark:text-green-400 mb-0.5">{t('interviewComplete')}</div>
+                      <div className="text-xs text-muted-foreground">{t('allItemsCaptured')}</div>
                       {gate.handoff && (
                         <button
                           onClick={() => onHandoff?.(gate.handoff!)}
@@ -1680,7 +1835,7 @@ function TurnDisplay({ turn, collatedUsage, collatedTaskStartTime, onRestore, on
                           {gate.handoff.label}
                         </button>
                       )}
-                      <div className="text-[11px] text-muted-foreground mt-1.5">Or clear the chat to start a new interview.</div>
+                      <div className="text-[11px] text-muted-foreground mt-1.5">{t('orClearChat')}</div>
                     </div>
                   </div>
                 </div>
@@ -1692,7 +1847,7 @@ function TurnDisplay({ turn, collatedUsage, collatedTaskStartTime, onRestore, on
                 <div className="flex items-start gap-2">
                   <ClipboardList className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
                   <div className="flex-1">
-                    <div className="font-semibold text-amber-700 dark:text-amber-400 mb-1">Not complete yet</div>
+                    <div className="font-semibold text-amber-700 dark:text-amber-400 mb-1">{t('notCompleteYet')}</div>
                     <ul className="text-xs text-muted-foreground space-y-0.5">
                       {unmet.map((u, idx) => (
                         <li key={idx}>• {u.elicit}{u.reason ? ` — ${u.reason}` : ''}</li>
@@ -1725,9 +1880,9 @@ function TurnDisplay({ turn, collatedUsage, collatedTaskStartTime, onRestore, on
             const durationSec = durationMs > 0 ? Math.round(durationMs / 1000) : 0;
             return (
               <div className="text-xs text-muted-foreground">
-                Tokens: {taskTokens.toLocaleString()}
-                {taskCost > 0 && ` • Cost: $${taskCost.toFixed(4)}`}
-                {durationSec > 0 && ` • ${durationSec < 60 ? `${durationSec}s` : `${Math.floor(durationSec / 60)}m ${durationSec % 60}s`}`}
+                {t('usageTokens', { tokens: number(taskTokens) })}
+                {taskCost > 0 && ` • ${t('usageCost', { cost: number(taskCost, { style: 'currency', currency: 'USD', minimumFractionDigits: 4, maximumFractionDigits: 4 }) })}`}
+                {durationSec > 0 && ` • ${durationSec < 60 ? seconds(durationSec) : `${number(Math.floor(durationSec / 60), { style: 'unit', unit: 'minute', unitDisplay: 'narrow' })} ${seconds(durationSec % 60)}`}`}
               </div>
             );
           })()}
@@ -1745,10 +1900,10 @@ function TurnDisplay({ turn, collatedUsage, collatedTaskStartTime, onRestore, on
                   onClick={() => onRestore(turn.checkpointId!)}
                   disabled={!!generating}
                   className="h-6 px-2 text-xs"
-                  title="Restore to this checkpoint"
+                  title={t('restoreCheckpoint')}
                 >
                   <RotateCcw className="h-3 w-3 mr-1" />
-                  Restore
+                  {t('restore')}
                 </Button>
               )}
               {onRetry && (
@@ -1758,10 +1913,10 @@ function TurnDisplay({ turn, collatedUsage, collatedTaskStartTime, onRestore, on
                   onClick={() => onRetry(turn.checkpointId!)}
                   disabled={!!generating}
                   className="h-6 px-2 text-xs"
-                  title="Restore files and retry from this checkpoint"
+                  title={t('restoreAndRetry')}
                 >
                   <RefreshCw className="h-3 w-3 mr-1" />
-                  Retry
+                  {tc('actions.retry')}
                 </Button>
               )}
             </div>
@@ -1779,6 +1934,8 @@ interface ToolDisplayProps {
 }
 
 function ToolDisplay({ tool, isExpanded, onToggle }: ToolDisplayProps) {
+  const t = useTranslations('chat');
+  const tc = useTranslations('common');
   const category = (tool.name === 'bash' || tool.name === 'shell') ? classifyCommand(tool.parameters?.command ?? tool.parameters?.cmd) : tool.name;
   return (
     <div
@@ -1819,7 +1976,7 @@ function ToolDisplay({ tool, isExpanded, onToggle }: ToolDisplayProps) {
           {tool.parameters && Object.keys(tool.parameters).length > 0 && (
             <div className="px-2">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-                Parameters
+                {t('parameters')}
               </div>
               <pre className="text-xs bg-muted/50 p-2 rounded overflow-x-auto">
                 {JSON.stringify(tool.parameters, null, 2)}
@@ -1831,7 +1988,7 @@ function ToolDisplay({ tool, isExpanded, onToggle }: ToolDisplayProps) {
           {tool.result && (
             <div className="px-2">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-                Result
+                {t('result')}
               </div>
               <pre className="text-xs bg-muted/50 p-2 rounded overflow-x-auto max-h-40 overflow-y-auto">
                 {typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result, null, 2)}
@@ -1843,7 +2000,7 @@ function ToolDisplay({ tool, isExpanded, onToggle }: ToolDisplayProps) {
           {tool.error && (
             <div className="px-2">
               <div className="text-[10px] uppercase tracking-wider text-destructive mb-1">
-                Error
+                {tc('labels.error')}
               </div>
               <pre className="text-xs bg-destructive/10 text-destructive p-2 rounded overflow-x-auto">
                 {tool.error}
@@ -1863,6 +2020,7 @@ interface SyntheticErrorDisplayProps {
 }
 
 function SyntheticErrorDisplay({ content, isExpanded, onToggle }: SyntheticErrorDisplayProps) {
+  const t = useTranslations('chat');
   return (
     <div className={`bg-amber-500/10 rounded-md transition-all ${isExpanded ? 'p-2' : 'p-1.5'}`}>
       <button
@@ -1871,7 +2029,7 @@ function SyntheticErrorDisplay({ content, isExpanded, onToggle }: SyntheticError
       >
         <div className="flex items-center gap-1.5">
           <RefreshCw className="h-3 w-3 text-amber-600" />
-          <span className="text-xs font-mono">Auto-correction</span>
+          <span className="text-xs font-mono">{t('autoCorrection')}</span>
         </div>
         <div className="ml-auto">
           <CheckCircle className="h-3 w-3 text-amber-600" />
@@ -1898,11 +2056,12 @@ interface ReasoningDisplayProps {
 }
 
 function ReasoningDisplay({ content, isComplete, isExpanded, onToggle }: ReasoningDisplayProps) {
+  const t = useTranslations('chat');
   const lines = (content || '').split('\n').filter(l => l.trim());
-  const headPreview = lines.join(' ').substring(0, 80) || 'Reasoning...';
+  const headPreview = lines.join(' ').substring(0, 80) || t('reasoning');
   const tailPreview = lines.length > 0 ? lines.slice(-3).join(' ').slice(-120) : '';
   const isStreaming = !isComplete;
-  const streamingLabel = tailPreview || 'Thinking...';
+  const streamingLabel = tailPreview || t('thinking');
 
   return (
     <div className="bg-violet-500/10 rounded-md transition-all p-1.5">
@@ -1929,7 +2088,7 @@ function ReasoningDisplay({ content, isComplete, isExpanded, onToggle }: Reasoni
       {isExpanded && (
         <div className="mt-2 px-2">
           <div className="text-xs bg-muted/50 p-2 rounded overflow-x-auto max-h-64 overflow-y-auto">
-            <MarkdownRenderer content={content || 'Thinking...'} />
+            <MarkdownRenderer content={content || t('thinking')} />
           </div>
         </div>
       )}
@@ -1944,9 +2103,10 @@ interface PlanDisplayProps {
 }
 
 function PlanDisplay({ content, isExpanded, onToggle }: PlanDisplayProps) {
+  const t = useTranslations('chat');
   // Extract first line for preview
   const lines = content.split('\n');
-  const preview = lines[0]?.replace(/^\*\*|\*\*$/g, '').substring(0, 50) || 'Plan';
+  const preview = lines[0]?.replace(/^\*\*|\*\*$/g, '').substring(0, 50) || t('plan');
 
   return (
     <div className="bg-muted/30 rounded-md transition-all p-1.5">
@@ -1984,9 +2144,10 @@ interface AgentDisplayProps {
 }
 
 function AgentDisplay({ content, isExpanded, onToggle }: AgentDisplayProps) {
+  const t = useTranslations('chat');
   // Extract first line for preview
   const lines = content.split('\n');
-  const preview = lines[0]?.replace(/^\*\*|\*\*$/g, '').replace(/^🤖\s*/, '').substring(0, 50) || 'Agent';
+  const preview = lines[0]?.replace(/^\*\*|\*\*$/g, '').replace(/^🤖\s*/, '').substring(0, 50) || t('agentFallback');
 
   return (
     <div className="bg-muted/30 rounded-md transition-all p-1.5">

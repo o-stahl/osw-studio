@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import type { InterviewTemplate } from '@/lib/interview/types';
 import {
   emptyForm,
@@ -38,6 +39,11 @@ function derivedArtifactPath(title: string): string {
 }
 
 export function InterviewTemplateEditor({ template, onSaved, onCancel }: InterviewTemplateEditorProps) {
+  const t = useTranslations('interviews');
+  const te = useTranslations('interviews.editor');
+  const tc = useTranslations('common');
+  const tg = useTranslations('generationShelf');
+  const tp = useTranslations('publishSettings');
   const isCreate = template === null;
   const readOnly = template?.isBuiltIn === true;
 
@@ -105,14 +111,14 @@ export function InterviewTemplateEditor({ template, onSaved, onCancel }: Intervi
         const id = await interviewTemplatesService.generateId(form.title);
         await interviewTemplatesService.createTemplate(formToTemplate(form, id));
         track('interview_template_created');
-        toast.success(`Created interview template: ${form.title.trim()}`);
+        toast.success(t('createdTemplate', { title: form.title.trim() }));
       } else {
         await interviewTemplatesService.updateTemplate(template.id, formToTemplate(form, template.id));
-        toast.success(`Updated interview template: ${form.title.trim()}`);
+        toast.success(t('updatedTemplate', { title: form.title.trim() }));
       }
       onSaved();
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Failed to save interview template';
+      const message = e instanceof Error ? e.message : t('saveFailed');
       toast.error(message);
     } finally {
       setSaving(false);
@@ -130,23 +136,21 @@ export function InterviewTemplateEditor({ template, onSaved, onCancel }: Intervi
             </Button>
             <div className="min-w-0">
               <h1 className="text-xl font-bold truncate">
-                {readOnly ? 'View Interview Template' : isCreate ? 'Create Interview Template' : 'Edit Interview Template'}
+                {readOnly ? te('viewTitle') : isCreate ? te('createTitle') : te('editTitle')}
               </h1>
               <p className="text-sm text-muted-foreground">
-                {readOnly
-                  ? 'Built-in templates cannot be edited. Duplicate it to make your own version.'
-                  : 'Define the questions and completion criteria for a guided interview.'}
+                {readOnly ? te('readOnlySub') : te('editSub')}
               </p>
             </div>
           </div>
           <div className="flex gap-2 shrink-0">
             <Button variant="outline" onClick={onCancel} disabled={saving}>
-              {readOnly ? 'Close' : 'Cancel'}
+              {readOnly ? tc('actions.close') : tc('actions.cancel')}
             </Button>
             {!readOnly && (
               <Button onClick={handleSave} disabled={saving}>
                 <Save className="w-4 h-4 mr-2" />
-                {saving ? 'Saving...' : 'Save'}
+                {saving ? tc('actions.saving') : tc('actions.save')}
               </Button>
             )}
           </div>
@@ -158,60 +162,54 @@ export function InterviewTemplateEditor({ template, onSaved, onCancel }: Intervi
         <div className="space-y-6 max-w-3xl">
           {readOnly && (
             <div className="rounded-lg border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
-              This is a built-in template shown for reference. To customize it, use Duplicate from the list.
+              {te('builtInNote')}
             </div>
           )}
 
           {!readOnly && (
             <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground leading-relaxed space-y-2">
+              <p>{te('modeExplainer')}</p>
               <p>
-                Interview mode is one of the workspace interaction modes, alongside Chat and Code, picked
-                from the mode selector in the chat panel. In it you choose a template like this one, and
-                the agent works through your items as a conversation, generally one at a time. It cannot
-                finish until every required item is covered.
-              </p>
-              <p>
-                It records what it learns into an <span className="font-medium text-foreground">artifact</span>:
-                a Markdown notes file under <code className="font-mono">/.interviews/</code>. The interview
-                agent reads the whole project freely but can only write inside that one folder, so an
-                interview never changes your actual files. Turning those notes into real work is a
-                separate step, which you can offer as a one-tap handoff (below).
+                {te.rich('artifactExplainer', {
+                  b: chunks => <span className="font-medium text-foreground">{chunks}</span>,
+                  code: chunks => <code className="font-mono">{chunks}</code>,
+                })}
               </p>
             </div>
           )}
 
           <div>
-            <Label htmlFor="template-title">Title *</Label>
+            <Label htmlFor="template-title">{te('titleLabel')}</Label>
             <Input
               id="template-title"
-              placeholder="e.g. Plan a website"
+              placeholder={te('titlePlaceholder')}
               value={form.title}
               onChange={(e) => handleTitleChange(e.target.value)}
               disabled={readOnly}
               className="mt-1.5"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Name it by what it produces, like the built-ins: &quot;Understand a company&quot;, &quot;Plan a feature&quot;. Shown in the picker.
+              {te('titleHelp')}
             </p>
           </div>
 
           <div>
-            <Label htmlFor="template-description">Description</Label>
+            <Label htmlFor="template-description">{tc('labels.description')}</Label>
             <Input
               id="template-description"
-              placeholder="e.g. Turn an idea into a buildable plan for a site: its purpose, audience, pages, and the action it should drive."
+              placeholder={te('descPlaceholder')}
               value={form.description}
               onChange={(e) => setForm(prev => ({ ...prev, description: e.target.value }))}
               disabled={readOnly}
               className="mt-1.5"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              One sentence: what the interview gathers and what it is for.
+              {te('descHelp')}
             </p>
           </div>
 
           <div>
-            <Label htmlFor="template-artifact">Artifact path *</Label>
+            <Label htmlFor="template-artifact">{te('artifactLabel')}</Label>
             <Input
               id="template-artifact"
               placeholder="/.interviews/site-plan.md"
@@ -221,70 +219,68 @@ export function InterviewTemplateEditor({ template, onSaved, onCancel }: Intervi
               className="mt-1.5 font-mono text-sm"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              The artifact: the Markdown file this interview writes its findings into. Give it a meaningful name. Must live under /.interviews/ and end in .md.
+              {te('artifactHelp')}
             </p>
           </div>
 
           {/* Items */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <Label>Items *</Label>
+              <Label>{te('itemsLabel')}</Label>
               {!readOnly && (
                 <Button variant="outline" size="sm" onClick={addItem}>
                   <Plus className="w-4 h-4 mr-2" />
-                  Add item
+                  {te('addItem')}
                 </Button>
               )}
             </div>
             <p className="text-xs text-muted-foreground mb-3">
-              Each item is one thing to gather. The question is what to learn from the user; the
-              &quot;done when&quot; criteria is the checkable condition the completion check reads the artifact
-              against. Order the items the way the conversation should flow.
+              {te('itemsHelp')}
             </p>
             <div className="space-y-4">
               {form.items.map((item, i) => (
                 <div key={i} className="rounded-lg border border-border p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">Item {i + 1}</span>
+                    <span className="text-xs font-medium text-muted-foreground">{te('itemN', { n: i + 1 })}</span>
                     {!readOnly && (
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => removeItem(i)}
-                        title="Remove item"
+                        title={t('removeItem')}
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     )}
                   </div>
                   <div>
-                    <Label htmlFor={`item-question-${i}`} className="text-xs">Question</Label>
+                    <Label htmlFor={`item-question-${i}`} className="text-xs">{t('question')}</Label>
                     <Textarea
                       id={`item-question-${i}`}
-                      placeholder="e.g. The pages or main sections the site needs (home, about, services, contact)"
+                      placeholder={te('questionPlaceholder')}
                       value={item.question}
                       onChange={(e) => updateItem(i, { question: e.target.value })}
                       disabled={readOnly}
                       className="mt-1.5 min-h-[64px]"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
-                      What to gather, not a literal script. The agent asks it in its own words, and can inspect the project first (e.g. &quot;check what is already there with ls&quot;).
+                      {te('questionHelp')}
                     </p>
                   </div>
                   <div>
                     <Label htmlFor={`item-criteria-${i}`} className="text-xs">
-                      Done when (the artifact records...)
+                      {te('doneWhenLabel')}
                     </Label>
                     <Textarea
                       id={`item-criteria-${i}`}
-                      placeholder="e.g. The artifact lists the pages or main sections the site needs"
+                      placeholder={te('criteriaPlaceholder')}
                       value={item.criteria}
                       onChange={(e) => updateItem(i, { criteria: e.target.value })}
                       disabled={readOnly}
                       className="mt-1.5 min-h-[64px]"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
-                      A checkable statement about the artifact. Phrase it as &quot;The artifact records / lists / describes ...&quot;. A model reads the artifact and decides if this is met.
+                      {te('criteriaHelp')}
                     </p>
                   </div>
                   <label className="flex items-center gap-2 cursor-pointer w-fit">
@@ -293,13 +289,13 @@ export function InterviewTemplateEditor({ template, onSaved, onCancel }: Intervi
                       onCheckedChange={(checked) => updateItem(i, { required: checked === true })}
                       disabled={readOnly}
                     />
-                    <span className="text-sm">Required</span>
+                    <span className="text-sm">{t('required')}</span>
                   </label>
                 </div>
               ))}
               {form.items.length === 0 && (
                 <div className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
-                  No items yet. Add at least one item.
+                  {te('noItems')}
                 </div>
               )}
             </div>
@@ -313,47 +309,43 @@ export function InterviewTemplateEditor({ template, onSaved, onCancel }: Intervi
                 onCheckedChange={(checked) => setHandoffEnabled(checked === true)}
                 disabled={readOnly}
               />
-              <span className="text-sm font-medium">Handoff action</span>
+              <span className="text-sm font-medium">{t('handoffAction')}</span>
             </label>
             <p className="text-xs text-muted-foreground">
-              Optional. A convenient way to let the user act on the result right away. Enable it to show
-              the user a button, once the interview finishes, that starts a normal generation from what
-              was recorded, without retyping anything. For example, the built-in &quot;Plan a website&quot;
-              interview offers &quot;Build this site&quot;, which hands its site plan to the agent to build from.
-              Configure the button below.
+              {te('handoffHelp')}
             </p>
             {handoffEnabled && form.handoff && (
               <div className="space-y-3 pt-1">
                 <div>
-                  <Label htmlFor="handoff-label" className="text-xs">Button label</Label>
+                  <Label htmlFor="handoff-label" className="text-xs">{t('buttonLabel')}</Label>
                   <Input
                     id="handoff-label"
-                    placeholder="e.g. Build this site"
+                    placeholder={te('handoffLabelPlaceholder')}
                     value={form.handoff.label}
                     onChange={(e) => updateHandoff({ label: e.target.value })}
                     disabled={readOnly}
                     className="mt-1.5"
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    The text on the button shown when the interview finishes.
+                    {te('handoffLabelHelp')}
                   </p>
                 </div>
                 <div>
-                  <Label htmlFor="handoff-prompt" className="text-xs">Prompt</Label>
+                  <Label htmlFor="handoff-prompt" className="text-xs">{tg('prompt')}</Label>
                   <Textarea
                     id="handoff-prompt"
-                    placeholder="e.g. Build the website described in /.interviews/site-plan.md"
+                    placeholder={te('handoffPromptPlaceholder')}
                     value={form.handoff.prompt}
                     onChange={(e) => updateHandoff({ prompt: e.target.value })}
                     disabled={readOnly}
                     className="mt-1.5 min-h-[64px]"
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    The message sent to the agent when the user taps the button. Reference the artifact path so it reads what the interview recorded.
+                    {te('handoffPromptHelp')}
                   </p>
                 </div>
                 <div>
-                  <Label className="text-xs">Mode</Label>
+                  <Label className="text-xs">{tp('mode')}</Label>
                   <Select
                     value={form.handoff.mode}
                     onValueChange={(v) => updateHandoff({ mode: v as 'code' | 'chat' })}
@@ -363,12 +355,12 @@ export function InterviewTemplateEditor({ template, onSaved, onCancel }: Intervi
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="code">Code</SelectItem>
-                      <SelectItem value="chat">Chat</SelectItem>
+                      <SelectItem value="code">{tc('labels.code')}</SelectItem>
+                      <SelectItem value="chat">{tc('terms.chat')}</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Code lets the agent edit the project. Chat is read-only. Most handoffs that build something use Code.
+                    {te('modeHelp')}
                   </p>
                 </div>
               </div>

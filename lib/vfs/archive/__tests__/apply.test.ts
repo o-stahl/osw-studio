@@ -96,6 +96,11 @@ describe('applyImport', () => {
     );
 
     expect(result.checkpointId).toBeTruthy();
+    // The panel words the checkpoint from its label, in the viewer's language.
+    const listed = await checkpointManager.getCheckpoints(project.id);
+    expect(listed.find((cp) => cp.id === result.checkpointId)?.label).toEqual({
+      key: 'beforeImport', values: { name: 'Checkpoint' },
+    });
     const afterImport = await fileMap(project.id);
     expect(afterImport.get('/index.html')).toBe('REPLACEMENT');
     expect(afterImport.get('/new.css')).toBe('body{}');
@@ -181,6 +186,7 @@ describe('applyImport', () => {
       {
         path,
         message: 'Keeping both copies would make the path too long, so nothing was written.',
+        text: { key: 'keepBothTooLong' },
       },
     ]);
   });
@@ -277,6 +283,54 @@ describe('applyImport', () => {
     expect(result.applied.settings).toBe(0);
     expect(result.failed.some((f) => f.message.includes('wordpress'))).toBe(true);
     expect((await vfs.getProject(project.id)).settings.runtime).toBe('static');
+  });
+
+  it('refuses an unknown runtime on a project it creates, and says which', async () => {
+    const entries = entriesFrom({
+      '/project.json': JSON.stringify({ formatVersion: 1, name: 'NewBadRuntime', runtime: 'wordpress' }),
+    });
+    const target = { kind: 'new-project' as const };
+    const plan = await analyzeImport(vfs, entries, target);
+    const result = await applyImport(vfs, plan, resolutions(), entries, target);
+
+    expect(result.failed).toContainEqual({
+      path: 'project.json',
+      message: '"wordpress" is not a runtime this version of OSW Studio has, so the runtime was left unchanged.',
+      text: { key: 'unknownRuntime', values: { value: 'wordpress' } },
+    });
+    expect((await vfs.getProject(result.projectId)).settings.runtime).not.toBe('wordpress');
+  });
+
+  // An adapter that cannot hold a kind of record has to say so, not drop the record silently.
+  it('reports the kind of record a storage backend cannot hold', async () => {
+    const project = await vfs.createProject('NoServerFunctions', 'test');
+    const adapter = vfs.getStorageAdapter();
+    const limitedAdapter = new Proxy(adapter, {
+      get(target, prop) {
+        if (prop === 'createServerFunction') return undefined;
+        const value = Reflect.get(target, prop);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const limitedVfs = new Proxy(vfs, {
+      get(target, prop) {
+        if (prop === 'getStorageAdapter') return () => limitedAdapter;
+        const value = Reflect.get(target, prop);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+
+    const entries = entriesFrom({ '/.server/server-functions/helper.js': 'return 1;' });
+    const target = { kind: 'existing-project' as const, projectId: project.id };
+    const plan = await analyzeImport(vfs, entries, target);
+    const result = await applyImport(limitedVfs, plan, resolutions(), entries, target);
+
+    expect(result.applied.backend).toBe(0);
+    expect(result.failed).toEqual([{
+      path: '/.server/server-functions/helper.js',
+      message: 'This storage backend cannot store server functions.',
+      text: { key: 'cannotStore', values: { what: 'server' } },
+    }]);
   });
 
   it('creates a project from the manifest and takes no checkpoint', async () => {
@@ -571,6 +625,10 @@ describe('applyImport', () => {
 
     expect(result.applied.backend).toBe(0);
     expect(result.failed.some((f) => f.message.includes('Send Email (2)'))).toBe(true);
+    // The dialog words the failure from `text`, so the reason has to travel there too.
+    const rejected = result.failed.find((f) => f.text?.key === 'invalidRecord');
+    expect(rejected?.text?.values).toMatchObject({ kind: 'edge', name: 'Send Email (2)' });
+    expect(String(rejected?.text?.values?.detail ?? '')).not.toBe('');
     const stored = await adapter.listEdgeFunctions!(project.id);
     expect(stored.map((fn) => [fn.name, fn.code])).toEqual([['send-email', 'OLD;']]);
   });
@@ -601,6 +659,7 @@ describe('applyImport', () => {
       {
         path: '/.server/edge-functions/send-email.js',
         message: '"send-email" is no longer in this project, so there was nothing to replace.',
+        text: { key: 'nothingToReplace', values: { name: 'send-email' } },
       },
     ]);
     expect(await adapter.listEdgeFunctions!(project.id)).toEqual([]);

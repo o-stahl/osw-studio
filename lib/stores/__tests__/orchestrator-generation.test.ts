@@ -15,14 +15,12 @@ const mockExecute = vi.fn().mockResolvedValue({
   apiErrorCount: 0,
 });
 const mockStop = vi.fn();
-const mockContinue = vi.fn();
 const mockImportConversation = vi.fn();
 
 vi.mock('@/lib/llm/multi-agent-orchestrator', () => ({
   MultiAgentOrchestrator: vi.fn().mockImplementation(() => ({
     execute: mockExecute,
     stop: mockStop,
-    continue: mockContinue,
     importConversation: mockImportConversation,
   })),
 }));
@@ -47,7 +45,6 @@ function setActiveTask(
     startedAt: Date.now(),
     result: null,
     paused: false,
-    pausedMessage: null,
     orchestratorInstance: null,
     persistedInstance: null,
     ...overrides,
@@ -139,15 +136,6 @@ describe('orchestrator slice — generation lifecycle', () => {
     expect(typeof payload.duration_ms).toBe('number');
     expect(payload.duration_ms).toBeGreaterThanOrEqual(0);
 
-    await promise;
-  });
-
-  it('continueGeneration calls continue on orchestrator', async () => {
-    // Same microtask-flush requirement as stopGeneration above.
-    const promise = store.getState().startGeneration('task');
-    await Promise.resolve(); // flush: assignment resolves + orchestrator is stored
-    store.getState().continueGeneration();
-    expect(mockContinue).toHaveBeenCalled();
     await promise;
   });
 

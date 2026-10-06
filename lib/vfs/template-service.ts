@@ -4,6 +4,7 @@ import { CustomTemplate, BackendFeatures, EdgeFunction, ServerFunction, Secret }
 import { StorageAdapter } from './adapters/types';
 import { encodeTemplateFiles, decodeTemplateFiles } from './binary-encoding';
 import { logger } from '@/lib/utils';
+import { translator } from '@/lib/i18n/runtime';
 
 const MAX_TEMPLATE_SIZE = 25 * 1024 * 1024; // 25MB
 const MAX_THUMBNAIL_SIZE = 500 * 1024; // 500KB
@@ -151,7 +152,7 @@ export class TemplateService {
       return blob;
     } catch (error) {
       logger.error('[TemplateService] Failed to export template:', error);
-      throw new Error(`Failed to export template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`Failed to export template: ${error instanceof Error ? error.message : 'Unknown error'}`); // i18n-ignore: logged by every caller, never shown
     }
   }
 
@@ -238,7 +239,7 @@ export class TemplateService {
       return template;
     } catch (error) {
       logger.error('[TemplateService] Failed to save template:', error);
-      throw new Error(`Failed to save template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(translator()('templatesUi.errors.saveFailed', { error: error instanceof Error ? error.message : translator()('common.labels.unknown') }));
     }
   }
 
@@ -251,11 +252,11 @@ export class TemplateService {
 
       // Validate file
       if (!file.name.endsWith('.oswt')) {
-        throw new Error('Invalid file type. Expected .oswt file.');
+        throw new Error(translator()('templatesUi.errors.invalidFileType'));
       }
 
       if (file.size > MAX_TEMPLATE_SIZE) {
-        throw new Error(`File too large. Maximum size is ${Math.round(MAX_TEMPLATE_SIZE / 1024 / 1024)}MB.`);
+        throw new Error(translator()('templatesUi.errors.fileTooLarge', { mb: Math.round(MAX_TEMPLATE_SIZE / 1024 / 1024) }));
       }
 
       // Read ZIP file
@@ -264,7 +265,7 @@ export class TemplateService {
       const templateFile = zipData.file('template.json');
 
       if (!templateFile) {
-        throw new Error('Invalid template file format. Missing template.json.');
+        throw new Error(translator()('templatesUi.errors.missingManifest'));
       }
 
       // Parse template data
@@ -315,7 +316,7 @@ export class TemplateService {
       return template;
     } catch (error) {
       logger.error('[TemplateService] Failed to import template:', error);
-      throw new Error(`Failed to import template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(translator()('templatesUi.errors.importFailed', { error: error instanceof Error ? error.message : translator()('common.labels.unknown') }));
     }
   }
 
@@ -418,7 +419,7 @@ export class TemplateService {
       });
     } catch (error) {
       logger.error('[TemplateService] Failed to re-export template:', error);
-      throw new Error(`Failed to export template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`Failed to export template: ${error instanceof Error ? error.message : 'Unknown error'}`); // i18n-ignore: logged by every caller, never shown
     }
   }
 
@@ -427,45 +428,45 @@ export class TemplateService {
    */
   private validateMetadata(metadata: TemplateMetadata): void {
     if (!metadata.name || metadata.name.length < 1 || metadata.name.length > 50) {
-      throw new Error('Template name must be between 1 and 50 characters');
+      throw new Error(translator()('templatesUi.nameLength'));
     }
 
     if (!metadata.description || metadata.description.length < 10 || metadata.description.length > 500) {
-      throw new Error('Template description must be between 10 and 500 characters');
+      throw new Error(translator()('templatesUi.descLength'));
     }
 
     if (!metadata.version || !/^\d+\.\d+\.\d+$/.test(metadata.version)) {
-      throw new Error('Template version must be in semantic version format (e.g., 1.0.0)');
+      throw new Error(translator()('templatesUi.versionFormat'));
     }
 
     if (metadata.author && metadata.author.length > 50) {
-      throw new Error('Author name must be 50 characters or less');
+      throw new Error(translator()('templatesUi.errors.authorTooLong', { max: 50 }));
     }
 
     if (metadata.authorUrl && !this.isValidUrl(metadata.authorUrl)) {
-      throw new Error('Author URL must be a valid URL');
+      throw new Error(translator()('templatesUi.errors.authorUrlInvalid'));
     }
 
     if (!metadata.license) {
-      throw new Error('License is required');
+      throw new Error(translator()('templatesUi.errors.licenseRequired'));
     }
 
     if (metadata.tags && metadata.tags.length > 10) {
-      throw new Error('Maximum 10 tags allowed');
+      throw new Error(translator()('templatesUi.errors.tooManyTags', { max: 10 }));
     }
 
     if (metadata.thumbnail && metadata.thumbnail.length > MAX_THUMBNAIL_SIZE) {
-      throw new Error(`Thumbnail too large. Maximum size is ${Math.round(MAX_THUMBNAIL_SIZE / 1024)}KB`);
+      throw new Error(translator()('templatesUi.errors.thumbnailTooLarge', { kb: Math.round(MAX_THUMBNAIL_SIZE / 1024) }));
     }
 
     if (metadata.previewImages && metadata.previewImages.length > MAX_PREVIEW_IMAGES) {
-      throw new Error(`Maximum ${MAX_PREVIEW_IMAGES} preview images allowed`);
+      throw new Error(translator()('templatesUi.errors.tooManyPreviews', { max: MAX_PREVIEW_IMAGES }));
     }
 
     if (metadata.previewImages) {
       for (const img of metadata.previewImages) {
         if (img.length > MAX_PREVIEW_IMAGE_SIZE) {
-          throw new Error(`Preview image too large. Maximum size is ${Math.round(MAX_PREVIEW_IMAGE_SIZE / 1024)}KB per image`);
+          throw new Error(translator()('templatesUi.errors.previewTooLarge', { kb: Math.round(MAX_PREVIEW_IMAGE_SIZE / 1024) }));
         }
       }
     }
@@ -476,28 +477,28 @@ export class TemplateService {
    */
   private validateTemplateStructure(data: any): void {
     if (!data.name || typeof data.name !== 'string') {
-      throw new Error('Invalid template: missing or invalid name');
+      throw new Error(translator()('templatesUi.errors.invalidField', { field: 'name' }));
     }
 
     if (!data.description || typeof data.description !== 'string') {
-      throw new Error('Invalid template: missing or invalid description');
+      throw new Error(translator()('templatesUi.errors.invalidField', { field: 'description' }));
     }
 
     if (!data.files || !Array.isArray(data.files)) {
-      throw new Error('Invalid template: missing or invalid files array');
+      throw new Error(translator()('templatesUi.errors.invalidField', { field: 'files' }));
     }
 
     if (!data.directories || !Array.isArray(data.directories)) {
-      throw new Error('Invalid template: missing or invalid directories array');
+      throw new Error(translator()('templatesUi.errors.invalidField', { field: 'directories' }));
     }
 
     // Validate required fields in files
     for (const file of data.files) {
       if (!file.path || typeof file.path !== 'string') {
-        throw new Error('Invalid template: file missing path');
+        throw new Error(translator()('templatesUi.errors.invalidField', { field: 'files[].path' }));
       }
       if (file.content === undefined) {
-        throw new Error('Invalid template: file missing content');
+        throw new Error(translator()('templatesUi.errors.invalidField', { field: 'files[].content' }));
       }
     }
 
@@ -505,16 +506,16 @@ export class TemplateService {
     const bf = data.backendFeatures || data.serverFeatures;
     if (bf) {
       if (typeof bf !== 'object') {
-        throw new Error('Invalid template: backendFeatures must be an object');
+        throw new Error(translator()('templatesUi.errors.invalidField', { field: 'backendFeatures' }));
       }
       if (bf.edgeFunctions && !Array.isArray(bf.edgeFunctions)) {
-        throw new Error('Invalid template: backendFeatures.edgeFunctions must be an array');
+        throw new Error(translator()('templatesUi.errors.invalidField', { field: 'backendFeatures.edgeFunctions' }));
       }
       if (bf.serverFunctions && !Array.isArray(bf.serverFunctions)) {
-        throw new Error('Invalid template: backendFeatures.serverFunctions must be an array');
+        throw new Error(translator()('templatesUi.errors.invalidField', { field: 'backendFeatures.serverFunctions' }));
       }
       if (bf.secrets && !Array.isArray(bf.secrets)) {
-        throw new Error('Invalid template: backendFeatures.secrets must be an array');
+        throw new Error(translator()('templatesUi.errors.invalidField', { field: 'backendFeatures.secrets' }));
       }
     }
   }

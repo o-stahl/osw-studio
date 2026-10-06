@@ -3,6 +3,7 @@ import { vfs } from './index';
 import { ensureAncestorDirs } from './archive/read-folder';
 import { FILE_SIZE_LIMITS, getFileTypeFromPath, isTextExtension } from './types';
 import { logger } from '@/lib/utils';
+import { translator } from '@/lib/i18n/runtime';
 
 /** Puts a File from a browser file input or drop into a project. */
 
@@ -41,7 +42,7 @@ export async function uploadFileToProject(
   const fileType = getFileTypeFromPath(file.name);
   const sizeLimit = FILE_SIZE_LIMITS[fileType];
   if (file.size > sizeLimit) {
-    if (!quiet) toast.error(`File too large: ${file.name}. Maximum size is ${Math.round(sizeLimit / 1024 / 1024)}MB`);
+    if (!quiet) toast.error(translator()('upload.tooLarge', { name: file.name, mb: Math.round(sizeLimit / 1024 / 1024) }));
     return 'too-large';
   }
 
@@ -65,8 +66,8 @@ export async function uploadFileToProject(
     if (isLarge) {
       const sizeMB = (file.size / 1e6).toFixed(1);
       await toast.promise(doUpload(), {
-        loading: `Uploading ${file.name} (${sizeMB} MB)…`,
-        success: quiet ? null as unknown as string : `Uploaded ${file.name}`,
+        loading: translator()('upload.uploading', { name: file.name, mb: sizeMB }),
+        success: quiet ? null as unknown as string : translator()('upload.uploaded', { name: file.name }),
         error: () => {
           // Suppress toast — error is handled in the outer catch
           return null as unknown as string;
@@ -74,7 +75,7 @@ export async function uploadFileToProject(
       });
     } else {
       await doUpload();
-      if (!quiet) toast.success(`Uploaded ${file.name}`);
+      if (!quiet) toast.success(translator()('upload.uploaded', { name: file.name }));
     }
     return 'ok';
   } catch (error: any) {
@@ -83,20 +84,20 @@ export async function uploadFileToProject(
         // Folder upload: don't prompt, skip duplicates silently.
         return 'error';
       }
-      if (confirm(`File "${file.name}" already exists. Overwrite?`)) {
+      if (confirm(translator()('upload.confirmOverwrite', { name: file.name }))) {
         try {
           await vfs.deleteFile(projectId, filePath);
           return await uploadFileToProject(projectId, file, targetDir, options);
         } catch (deleteError) {
           logger.error('Failed to overwrite file:', deleteError);
-          if (!quiet) toast.error('Failed to overwrite file');
+          if (!quiet) toast.error(translator()('upload.overwriteFailed'));
           return 'error';
         }
       }
       return 'cancelled';
     }
     logger.error('Failed to upload file:', error);
-    if (!quiet) toast.error(`Failed to upload ${file.name}: ${error.message}`);
+    if (!quiet) toast.error(translator()('upload.failed', { name: file.name, error: error.message }));
     return 'error';
   }
 }

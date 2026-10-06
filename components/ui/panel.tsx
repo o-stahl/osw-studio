@@ -1,4 +1,5 @@
 import React, { createContext, useContext } from 'react';
+import { useTranslations } from 'next-intl';
 import { X, GripVertical } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -42,6 +43,7 @@ interface PanelHeaderProps {
 }
 
 export function PanelHeader({ icon: Icon, title, color, onClose, children, actions, panelKey }: PanelHeaderProps) {
+  const tt = useTranslations('tooltips');
   const dragCtx = useContext(PanelDragCtx);
   const isDragging = dragCtx && panelKey ? dragCtx.draggingPanel === panelKey : false;
   const canDrag = dragCtx && panelKey;
@@ -64,7 +66,7 @@ export function PanelHeader({ icon: Icon, title, color, onClose, children, actio
               variant="ghost"
               size="icon"
               className="h-5 w-5 cursor-grab active:cursor-grabbing"
-              title="Drag to reorder"
+              title={tt('dragToReorder')}
               onMouseDown={() => {
                 dragCtx.onDragStart(panelKey);
               }}
@@ -78,7 +80,7 @@ export function PanelHeader({ icon: Icon, title, color, onClose, children, actio
               size="icon"
               onClick={onClose}
               className="h-5 w-5"
-              title={`Close ${title.toLowerCase()} panel`}
+              title={tt('closePanel', { title })}
             >
               <X className="h-3 w-3" />
             </Button>

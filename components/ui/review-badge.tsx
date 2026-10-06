@@ -1,4 +1,5 @@
 import { MessageSquare } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { cn } from '@/lib/utils';
 
@@ -24,9 +25,10 @@ export function ReviewBadge({
   className?: string;
   onClick?: (event: React.MouseEvent) => void;
 }) {
+  const t = useTranslations('reviewBadge');
   if (!count) return null;
 
-  const label = `${count} unresolved review ${count === 1 ? 'comment' : 'comments'}`;
+  const label = t('label', { count });
   const shape = cn(
     'inline-flex shrink-0 items-center justify-center gap-0.5 rounded-full border',
     'h-4 px-1 text-[10px] font-medium leading-none',
@@ -47,7 +49,7 @@ export function ReviewBadge({
   }
 
   return (
-    <button type="button" onClick={onClick} title={`${label}. Opens the Review tab.`} className={shape}>
+    <button type="button" onClick={onClick} title={t('opensTab', { label })} className={shape}>
       {content}
     </button>
   );

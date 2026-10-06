@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { classifyProviderError, classifyGeminiError, type ProviderErrorClass } from '@/lib/llm/provider-errors';
+import { isFreeModels, FREE_MODELS_FALLBACK } from '@/lib/llm/suggestions/free-models';
 import { supportedCommandList } from '@/lib/vfs/shell-commands';
 import { ProviderId } from '@/lib/llm/providers/types';
 import { getProvider, getDefaultModel } from '@/lib/llm/providers/registry';
@@ -109,7 +111,10 @@ export async function POST(request: NextRequest) {
   // Set once the provider is known, for the network-error message in the catch below.
   let localTarget: { name: string; url: string; hint: string } | undefined;
   try {
-    const { prompt, apiKey: clientApiKey, model, tools, context, messages, tool_choice, provider, max_tokens, reasoning, stream: requestStream, baseUrl: requestBaseUrl, customHeaders: requestCustomHeaders, context_length: requestContextLength } = await request.json();
+    const { prompt, apiKey: clientApiKey, model: requestedModel, tools, context, messages, tool_choice, provider, max_tokens, reasoning, stream: requestStream, baseUrl: requestBaseUrl, customHeaders: requestCustomHeaders, context_length: requestContextLength } = await request.json();
+    // "Free models" is resolved by the client; one that arrives unresolved goes to OpenRouter's
+    // own free router rather than to an id no provider knows.
+    const model = isFreeModels(requestedModel) ? FREE_MODELS_FALLBACK : requestedModel;
 
     const selectedProvider: ProviderId = provider || 'openrouter';
     const providerConfig = getProvider(selectedProvider);
@@ -349,14 +354,17 @@ Habits:
       if (!response.ok) {
         const errorText = await response.text();
         let cleanError: string;
+        let geminiClass: ProviderErrorClass = {};
         try {
           const parsed = JSON.parse(errorText);
           cleanError = parsed.error?.message || `HTTP ${response.status}`;
+          geminiClass = classifyGeminiError(response.status, parsed.error?.details);
         } catch {
           cleanError = `HTTP ${response.status} — ${response.statusText || 'check your API key and try again'}`;
         }
+        if (!geminiClass.code) geminiClass = classifyProviderError({ status: response.status, provider: 'gemini', message: cleanError, headers: response.headers });
         return NextResponse.json(
-          { error: `Google Gemini API error: ${cleanError}` },
+          { ...geminiClass, error: `Google Gemini API error: ${cleanError}` },
           { status: response.status }
         );
       }
@@ -531,8 +539,10 @@ Habits:
 
       // Try to parse and extract clean error message from JSON response
       let cleanError = errorText;
+      let errorMetadata: Record<string, unknown> | undefined;
       try {
         const parsed = JSON.parse(errorText);
+        if (parsed.error?.metadata && typeof parsed.error.metadata === 'object') errorMetadata = parsed.error.metadata;
         // OpenRouter nested error structure: { error: { message: "...", metadata: { raw: "..." } } }
         if (parsed.error?.message) {
           cleanError = parsed.error.message;
@@ -579,6 +589,13 @@ Habits:
       }
       // --- Provider-specific error handling ---
       const lowerError = cleanError.toLowerCase();
+      const errorClass = classifyProviderError({
+        status: response.status,
+        provider: selectedProvider,
+        message: cleanError,
+        metadata: errorMetadata,
+        headers: response.headers,
+      });
 
       // Auth errors — actionable message for all providers
       if (response.status === 401 || response.status === 403) {
@@ -587,7 +604,7 @@ Habits:
           ? `Try reconnecting your ${providerName} account in Settings.`
           : `Check your ${providerName} API key in Settings.`;
         return NextResponse.json(
-          { error: `${providerName} authentication failed. ${authHint}` },
+          { ...errorClass, error: `${providerName} authentication failed. ${authHint}` },
           { status: response.status }
         );
       }
@@ -606,7 +623,7 @@ Habits:
         lowerError.includes('retry after')
       )) {
         return NextResponse.json(
-          { error: `${providerConfig.name} is temporarily rate-limited. Try again in a moment.` },
+          { ...errorClass, error: `${providerConfig.name} is temporarily rate-limited. Try again in a moment.` },
           { status: 429, headers: rateLimitHeaders }
         );
       }
@@ -620,18 +637,18 @@ Habits:
       ))) {
         if (selectedProvider === 'huggingface') {
           return NextResponse.json(
-            { error: 'HuggingFace free usage limit reached. You get $0.10/month in free inference. Upgrade at huggingface.co/pricing or wait for your credits to reset.' },
+            { ...errorClass, error: 'HuggingFace free usage limit reached. You get $0.10/month in free inference. Upgrade at huggingface.co/pricing or wait for your credits to reset.' },
             { status: 429 }
           );
         }
         if (selectedProvider === 'openrouter') {
           return NextResponse.json(
-            { error: 'OpenRouter credit limit reached. Add credits at openrouter.ai/credits or switch to a provider with your own API key.' },
+            { ...errorClass, error: 'OpenRouter credit limit reached. Add credits at openrouter.ai/credits or switch to a provider with your own API key.' },
             { status: 429 }
           );
         }
         return NextResponse.json(
-          { error: `${providerConfig.name} usage limit reached. Check your billing or plan at your provider's dashboard.` },
+          { ...errorClass, error: `${providerConfig.name} usage limit reached. Check your billing or plan at your provider's dashboard.` },
           { status: 429 }
         );
       }
@@ -642,7 +659,7 @@ Habits:
         lowerError.includes('no such model') || lowerError.includes('invalid model')
       )) {
         return NextResponse.json(
-          { error: `Model not available on ${providerConfig.name}. It may have been removed or renamed. Try selecting a different model in Settings.` },
+          { ...errorClass, error: `Model not available on ${providerConfig.name}. It may have been removed or renamed. Try selecting a different model in Settings.` },
           { status: 400 }
         );
       }
@@ -727,7 +744,7 @@ You can make multiple tool calls in a single response. Always include the tool_c
         }
         // Non-local providers: actionable error message
         return NextResponse.json(
-          { error: `This model does not support tool/function calling. Try a different model or switch to OpenRouter with MiniMax M2.7.` },
+          { ...errorClass, error: `This model does not support tool/function calling. Try a different model or switch to OpenRouter with MiniMax M2.7.` },
           { status: 400 }
         );
       }
@@ -735,7 +752,7 @@ You can make multiple tool calls in a single response. Always include the tool_c
       // Anthropic overloaded (529) — transient, will be retried by orchestrator
       if (response.status === 529) {
         return NextResponse.json(
-          { error: `${providerConfig.name} is temporarily overloaded. The request will be retried automatically.` },
+          { ...errorClass, error: `${providerConfig.name} is temporarily overloaded. The request will be retried automatically.` },
           { status: 529 }
         );
       }
@@ -743,13 +760,13 @@ You can make multiple tool calls in a single response. Always include the tool_c
       // OpenRouter 503 — no provider available for this model/routing config
       if (selectedProvider === 'openrouter' && response.status === 503) {
         return NextResponse.json(
-          { error: `No provider currently available for this model on OpenRouter. The model may be temporarily down. Try a different model or wait a few minutes.` },
+          { ...errorClass, error: `No provider currently available for this model on OpenRouter. The model may be temporarily down. Try a different model or wait a few minutes.` },
           { status: 503 }
         );
       }
 
       return NextResponse.json(
-        { error: `${providerConfig.name} API error: ${cleanError}` },
+        { ...errorClass, error: `${providerConfig.name} API error: ${cleanError}` },
         { status: response.status, headers: rateLimitHeaders }
       );
     }

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SchemaViewer } from './schema-viewer';
 import { SqlEditor } from './sql-editor';
@@ -17,6 +18,7 @@ interface DatabaseManagerProps {
 }
 
 export function DatabaseManager({ deploymentId, workspaceId }: DatabaseManagerProps) {
+  const t = useTranslations('deploymentDetail.nav');
   const [activeTab, setActiveTab] = useState('schema');
 
   return (
@@ -25,31 +27,31 @@ export function DatabaseManager({ deploymentId, workspaceId }: DatabaseManagerPr
         <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="schema" className="flex items-center gap-1.5">
             <Database className="h-3.5 w-3.5" />
-            Schema
+            {t('schema')}
           </TabsTrigger>
           <TabsTrigger value="query" className="flex items-center gap-1.5">
             <Terminal className="h-3.5 w-3.5" />
-            SQL
+            {t('sql')}
           </TabsTrigger>
           <TabsTrigger value="functions" className="flex items-center gap-1.5">
             <Code2 className="h-3.5 w-3.5" />
-            Functions
+            {t('functions')}
           </TabsTrigger>
           <TabsTrigger value="helpers" className="flex items-center gap-1.5">
             <Wrench className="h-3.5 w-3.5" />
-            Helpers
+            {t('helpers')}
           </TabsTrigger>
           <TabsTrigger value="secrets" className="flex items-center gap-1.5">
             <Key className="h-3.5 w-3.5" />
-            Secrets
+            {t('secrets')}
           </TabsTrigger>
           <TabsTrigger value="schedules" className="flex items-center gap-1.5">
             <Clock className="h-3.5 w-3.5" />
-            Schedules
+            {t('schedules')}
           </TabsTrigger>
           <TabsTrigger value="logs" className="flex items-center gap-1.5">
             <ScrollText className="h-3.5 w-3.5" />
-            Logs
+            {t('logs')}
           </TabsTrigger>
         </TabsList>
 

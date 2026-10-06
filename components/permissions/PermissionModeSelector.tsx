@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Zap, ShieldQuestion, SlidersHorizontal, Cog, ChevronDown, ChevronUp } from 'lucide-react';
 import { configManager } from '@/lib/config/storage';
 import type { PermissionMode } from '@/lib/llm/permissions';
@@ -9,13 +10,14 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { PermissionMatrixModal } from './PermissionMatrixModal';
 
-const MODE_CONFIG: Record<PermissionMode, { label: string; Icon: typeof Zap }> = {
-  auto: { label: 'Auto', Icon: Zap },
-  ask: { label: 'Ask', Icon: ShieldQuestion },
-  custom: { label: 'Custom', Icon: SlidersHorizontal },
+const MODE_CONFIG: Record<PermissionMode, { Icon: typeof Zap }> = {
+  auto: { Icon: Zap },
+  ask: { Icon: ShieldQuestion },
+  custom: { Icon: SlidersHorizontal },
 };
 
 export function PermissionModeSelector() {
+  const t = useTranslations('permissions');
   const [mode, setMode] = useState<PermissionMode>(() =>
     configManager.getPermissionMode()
   );
@@ -43,7 +45,7 @@ export function PermissionModeSelector() {
               >
                 <span className="flex items-center gap-1 h-full px-2">
                   <ActiveIcon className="h-3 w-3" />
-                  {MODE_CONFIG[mode].label}
+                  {t(mode)}
                 </span>
                 <span className="flex items-center h-full px-1.5 border-l border-border group/chev">
                   {open
@@ -54,18 +56,18 @@ export function PermissionModeSelector() {
             </PopoverTrigger>
           </TooltipTrigger>
           <TooltipContent side="top" className="max-w-[240px]">
-            <p className="font-semibold">Permission mode</p>
+            <p className="font-semibold">{t('mode')}</p>
             <p className="mt-1 opacity-90">
-              Determines what commands require explicit user permission to be run.
+              {t('tooltipIntro')}
             </p>
             <p className="mt-1">
-              <span className="font-semibold">(Server mode)</span>
-              <span className="opacity-90"> Background generation fails permission-gated commands immediately.</span>
+              <span className="font-semibold">{t('serverModeLabel')}</span>
+              <span className="opacity-90"> {t('serverModeNote')}</span>
             </p>
             <ul className="mt-1.5 space-y-0.5">
-              <li><span className="font-semibold">Auto</span><span className="opacity-90">: run everything without asking.</span></li>
-              <li><span className="font-semibold">Ask</span><span className="opacity-90">: confirm web access, image generation, and deletion.</span></li>
-              <li><span className="font-semibold">Custom</span><span className="opacity-90">: choose per command.</span></li>
+              <li><span className="font-semibold">{t('auto')}</span><span className="opacity-90">: {t('autoDesc')}</span></li>
+              <li><span className="font-semibold">{t('ask')}</span><span className="opacity-90">: {t('askDesc')}</span></li>
+              <li><span className="font-semibold">{t('custom')}</span><span className="opacity-90">: {t('customDesc')}</span></li>
             </ul>
           </TooltipContent>
         </Tooltip>
@@ -81,7 +83,7 @@ export function PermissionModeSelector() {
                 }`}
               >
                 <Icon className="h-3 w-3" />
-                {MODE_CONFIG[m].label}
+                {t(m)}
               </button>
             );
           })}
@@ -94,7 +96,7 @@ export function PermissionModeSelector() {
             className="flex items-center gap-2 w-full text-left text-xs px-2 py-1.5 rounded hover:bg-muted"
           >
             <Cog className="h-3 w-3" />
-            Customize...
+            {t('customize')}
           </button>
         </PopoverContent>
       </Popover>

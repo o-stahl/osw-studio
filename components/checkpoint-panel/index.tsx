@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { useTranslations } from 'next-intl';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
+import { useCheckpointLabel } from '@/lib/i18n/use-checkpoint-label';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { History, RotateCcw, ArrowRight, Inbox, Pin, PinOff, Loader2 } from 'lucide-react';
 import { PanelContainer, PanelHeader } from '@/components/ui/panel';
 import { checkpointManager, CheckpointMetadata } from '@/lib/vfs/checkpoint';
 import { useWorkspaceStore } from '@/lib/stores/workspace';
-import { formatDistanceToNow } from 'date-fns';
 import type { DebugEvent } from '@/lib/stores/types';
 import { toast } from 'sonner';
 
@@ -30,6 +32,10 @@ export function CheckpointPanel({
   onClose,
   refreshKey
 }: CheckpointPanelProps) {
+  const tw = useTranslations('workspace');
+  const when = useLocalFormat();
+  const tcp = useTranslations('checkpoints');
+  const checkpointLabel = useCheckpointLabel();
   const [checkpoints, setCheckpoints] = useState<CheckpointMetadata[]>([]);
   const [loading, setLoading] = useState(true);
   const workspaceReady = useWorkspaceStore(s => s.workspaceReady);
@@ -69,7 +75,7 @@ export function CheckpointPanel({
     if (success) {
       const updated = await checkpointManager.getCheckpoints(projectId);
       setCheckpoints(updated);
-      toast.success(cp.pinned ? 'Checkpoint unpinned' : 'Checkpoint pinned');
+      toast.success(cp.pinned ? tw('checkpointUnpinned') : tw('checkpointPinned'));
     }
   };
 
@@ -82,19 +88,19 @@ export function CheckpointPanel({
 
   return (
     <PanelContainer>
-      <PanelHeader icon={History} title="Checkpoints" color="var(--button-checkpoint-active)" onClose={onClose} panelKey="checkpoints" />
+      <PanelHeader icon={History} title={tw('tabs.checkpoints')} color="var(--button-checkpoint-active)" onClose={onClose} panelKey="checkpoints" />
 
       {/* Checkpoint list */}
       <div className="flex-1 overflow-y-auto">
         {loading || !workspaceReady ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2 p-4">
             <Loader2 className="h-5 w-5 animate-spin opacity-40" />
-            <span className="text-xs">Loading checkpoints…</span>
+            <span className="text-xs">{tw('loadingCheckpoints')}</span>
           </div>
         ) : sorted.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2 p-4">
             <Inbox className="h-8 w-8 opacity-40" />
-            <span className="text-xs text-center">No checkpoints yet. Checkpoints are created automatically when the AI makes changes.</span>
+            <span className="text-xs text-center">{tw('noCheckpoints')}</span>
           </div>
         ) : (
           <div className="p-2 space-y-1.5">
@@ -118,24 +124,24 @@ export function CheckpointPanel({
                     {cp.pinned ? (
                       <Badge className="text-[9px] px-1.5 py-0 h-4 leading-none bg-amber-500/20 text-amber-500 border-amber-500/30 hover:bg-amber-500/30">
                         <Pin className="h-2.5 w-2.5 mr-0.5" />
-                        pinned
+                        {tcp('pinned')}
                       </Badge>
                     ) : (
                       <Badge
                         variant={cp.kind === 'manual' ? 'default' : 'secondary'}
                         className="text-[9px] px-1.5 py-0 h-4 leading-none"
                       >
-                        {cp.kind === 'manual' ? 'save' : cp.kind}
+                        {cp.kind === 'manual' ? tcp('kindManual') : tcp('kindAuto')}
                       </Badge>
                     )}
                     <span className="text-[10px] text-muted-foreground ml-auto whitespace-nowrap">
-                      {formatDistanceToNow(new Date(cp.timestamp), { addSuffix: true })}
+                      {when.relativeTime(cp.timestamp)}
                     </span>
                   </div>
 
                   {/* Description */}
                   <p className="text-[11px] text-foreground/80 truncate leading-snug mb-1.5">
-                    {cp.description}
+                    {checkpointLabel(cp)}
                   </p>
 
                   {/* Actions */}
@@ -148,7 +154,7 @@ export function CheckpointPanel({
                         onClick={() => onScrollToTurn(cp.id)}
                       >
                         <ArrowRight className="h-3 w-3 mr-0.5" />
-                        Jump
+                        {tw('jump')}
                       </Button>
                     )}
                     <Button
@@ -156,22 +162,22 @@ export function CheckpointPanel({
                       size="sm"
                       className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
                       onClick={() => handleTogglePin(cp)}
-                      title={cp.pinned ? 'Unpin checkpoint' : 'Pin checkpoint'}
+                      title={cp.pinned ? tw('unpinCheckpoint') : tw('pinCheckpoint')}
                     >
                       {cp.pinned ? (
-                        <><PinOff className="h-3 w-3 mr-0.5" />Unpin</>
+                        <><PinOff className="h-3 w-3 mr-0.5" />{tw('unpin')}</>
                       ) : (
-                        <><Pin className="h-3 w-3 mr-0.5" />Pin</>
+                        <><Pin className="h-3 w-3 mr-0.5" />{tw('pin')}</>
                       )}
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
                       className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground ml-auto"
-                      onClick={() => onRestore(cp.id, cp.description)}
+                      onClick={() => onRestore(cp.id, checkpointLabel(cp))}
                     >
                       <RotateCcw className="h-3 w-3 mr-0.5" />
-                      Restore
+                      {tw('restore')}
                     </Button>
                   </div>
                 </div>
@@ -183,7 +189,7 @@ export function CheckpointPanel({
 
       {sorted.length > 0 && (
         <div className="px-3 py-2 border-t border-border">
-          <p className="text-[10px] text-muted-foreground/50 text-center">Stored in browser storage. Clearing site data will remove all checkpoints.</p>
+          <p className="text-[10px] text-muted-foreground/50 text-center">{tw('checkpointStorageNote')}</p>
         </div>
       )}
     </PanelContainer>

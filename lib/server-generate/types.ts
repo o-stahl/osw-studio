@@ -1,3 +1,4 @@
+import type { PendingImageRequest } from './image-requests';
 // lib/server-generate/types.ts
 import type { MultiAgentOrchestrator } from '@/lib/llm/multi-agent-orchestrator';
 import type { VirtualFileSystem } from '@/lib/vfs';
@@ -26,7 +27,14 @@ export interface ServerOrchestratorContext {
   onSearchRequested?: (args: string[]) => Promise<SearchDelegationResult>;
   /** Client has a web-search provider configured — drives whether `search` is advertised. */
   webSearchAvailable?: boolean;
+  /** Delegate an image generation to the connected browser (its image model and key run it). */
+  onImageRequested?: (prompt: string, opts: { aspectRatio?: string; imageSize?: string }) => Promise<ImageDelegationResult>;
+  /** Client has an image-capable model assigned — drives whether `generate-image` is advertised. */
+  imageGenAvailable?: boolean;
 }
+
+/** Result of a browser-delegated image generation: the image, or why there is none. */
+export type ImageDelegationResult = { base64: string; mimeType: string } | { error: string };
 
 /** Result of a browser-delegated search: the `search` command's own stdout/stderr/exit. */
 export interface SearchDelegationResult {
@@ -69,6 +77,8 @@ export interface ServerTask {
   pendingBuildResolve: ((result: BuildResult) => void) | null;
   /** Resolve function for a pending browser-delegated search */
   pendingSearchResolve?: ((result: SearchDelegationResult) => void) | null;
+  /** Browser-delegated image generations in flight, by request id (`lib/server-generate/image-requests.ts`). */
+  pendingImages?: Map<string, PendingImageRequest>;
   /** Set when the run paused on a gated command awaiting the user's Allow/Deny. Persisted so it
    *  survives the user leaving/returning and a process restart. Cleared on task restart. */
   pendingApproval?: { gateKey: string; command: string } | null;
@@ -96,7 +106,7 @@ export interface BuildResult {
 export interface SSEEvent {
   id: number;
   event: string;
-  data: Record<string, unknown> & { sourceProjectId: string };
+  data: Record<string, unknown> & { sourceProjectId: string; sourceTaskId?: string };
   buffered: boolean; // false for delta events (not stored in replay buffer)
 }
 
@@ -116,6 +126,8 @@ export interface StartGenerationRequest {
   webSearchAvailable?: boolean;
   /** Provider + key for the server-side search fallback (used only when no browser is connected). */
   webSearch?: ServerWebSearchConfig;
+  /** Whether the project has an image-capable model. Generation is delegated back to the browser. */
+  imageGenAvailable?: boolean;
   conversationHistory: unknown[];
   executeOptions?: {
     images?: Array<{ data: string; mediaType: string }>;

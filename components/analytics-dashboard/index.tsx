@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { Deployment } from '@/lib/vfs/types';
 import { getLoginUrl } from '@/lib/config/storage';
 import {
@@ -45,6 +47,12 @@ interface StorageInfo {
 }
 
 export function AnalyticsDashboard({ deployment, isOpen, onClose }: AnalyticsDashboardProps) {
+  const t = useTranslations('analytics');
+  const tc = useTranslations('common');
+  const th = useTranslations('heatmap');
+  const deviceLabel = (device: string) =>
+    device === 'mobile' || device === 'tablet' || device === 'desktop' ? th(device) : device;
+  const { number } = useLocalFormat();
   const [activeTab, setActiveTab] = useState('overview');
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
   const [storage, setStorage] = useState<StorageInfo | null>(null);
@@ -96,7 +104,7 @@ export function AnalyticsDashboard({ deployment, isOpen, onClose }: AnalyticsDas
       setPages(uniquePages);
     } catch (error) {
       console.error('Failed to fetch analytics overview:', error);
-      toast.error(`Failed to load overview: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(t('loadOverviewFailed', { error: error instanceof Error ? error.message : tc('labels.unknown') }));
     } finally {
       setLoading(false);
     }
@@ -122,7 +130,7 @@ export function AnalyticsDashboard({ deployment, isOpen, onClose }: AnalyticsDas
       setStorage(data);
     } catch (error) {
       console.error('Failed to fetch storage info:', error);
-      toast.error(`Failed to load storage: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(t('loadStorageFailed', { error: error instanceof Error ? error.message : tc('labels.unknown') }));
     }
   };
 
@@ -146,22 +154,22 @@ export function AnalyticsDashboard({ deployment, isOpen, onClose }: AnalyticsDas
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `analytics-${deployment.id}-${Date.now()}.csv`;
+      a.download = `analytics-${deployment.id}-${Date.now()}.csv`; // i18n-ignore: a filename
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
 
-      toast.success('Analytics data exported');
+      toast.success(t('exported'));
     } catch (error) {
       console.error('Failed to export analytics:', error);
-      toast.error('Failed to export analytics data');
+      toast.error(t('exportFailed'));
     }
   };
 
   const handleClearData = async () => {
     if (!deployment) return;
-    if (!confirm('Are you sure you want to clear all analytics data? This cannot be undone.')) {
+    if (!confirm(t('confirmClear'))) {
       return;
     }
 
@@ -177,22 +185,24 @@ export function AnalyticsDashboard({ deployment, isOpen, onClose }: AnalyticsDas
 
       if (!response.ok) throw new Error('Failed to clear data');
 
-      toast.success('Analytics data cleared');
+      toast.success(t('cleared'));
       fetchOverview();
       fetchStorage();
     } catch (error) {
       console.error('Failed to clear analytics:', error);
-      toast.error('Failed to clear analytics data');
+      toast.error(t('clearFailed'));
     }
   };
 
+  const unit = (value: number, name: 'minute' | 'second') =>
+    number(value, { style: 'unit', unit: name, unitDisplay: 'narrow' });
   const formatDuration = (ms: number) => {
     const seconds = Math.floor(ms / 1000);
-    if (seconds < 60) return `${seconds}s`;
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}m ${remainingSeconds}s`;
+    if (seconds < 60) return unit(seconds, 'second');
+    return `${unit(Math.floor(seconds / 60), 'minute')} ${unit(seconds % 60, 'second')}`;
   };
+  const percent = (fraction: number) =>
+    number(fraction, { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
   if (!deployment) return null;
 
@@ -201,34 +211,34 @@ export function AnalyticsDashboard({ deployment, isOpen, onClose }: AnalyticsDas
       <DialogContent className="max-w-[64rem] h-[90vh] p-0 flex flex-col">
         <div className="border-b px-6 py-4 flex items-center justify-between">
           <DialogHeader className="space-y-1">
-            <DialogTitle className="text-2xl">Analytics Dashboard</DialogTitle>
+            <DialogTitle className="text-2xl">{t('dashboard')}</DialogTitle>
             <DialogDescription>{deployment.name || deployment.id}</DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={handleExport} disabled={notPublished}>
               <Download className="h-4 w-4 mr-2" />
-              Export
+              {tc('actions.export')}
             </Button>
             <Button variant="outline" size="sm" onClick={handleClearData} disabled={notPublished}>
               <Trash2 className="h-4 w-4 mr-2" />
-              Clear Data
+              {t('clearData')}
             </Button>
           </div>
         </div>
 
         {storage && (
         <div className="border-b px-6 py-2 bg-muted/50 text-sm">
-          <span className="text-muted-foreground">Storage:</span>{' '}
-          <span className="font-medium">{storage.totalMB.toFixed(2)} MB</span>
+          <span className="text-muted-foreground">{t('storage')}</span>{' '}
+          <span className="font-medium">{number(storage.totalMB, { style: 'unit', unit: 'megabyte', minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           {' • '}
-          <span className="text-muted-foreground">Pageviews:</span>{' '}
-          <span className="font-medium">{storage.breakdown.pageviews.count.toLocaleString()}</span>
+          <span className="text-muted-foreground">{t('pageviews')}</span>{' '}
+          <span className="font-medium">{number(storage.breakdown.pageviews.count)}</span>
           {' • '}
-          <span className="text-muted-foreground">Interactions:</span>{' '}
-          <span className="font-medium">{storage.breakdown.interactions.count.toLocaleString()}</span>
+          <span className="text-muted-foreground">{t('interactions')}</span>{' '}
+          <span className="font-medium">{number(storage.breakdown.interactions.count)}</span>
           {' • '}
-          <span className="text-muted-foreground">Sessions:</span>{' '}
-          <span className="font-medium">{storage.breakdown.sessions.count.toLocaleString()}</span>
+          <span className="text-muted-foreground">{t('sessionsCount')}</span>{' '}
+          <span className="font-medium">{number(storage.breakdown.sessions.count)}</span>
         </div>
       )}
 
@@ -238,19 +248,19 @@ export function AnalyticsDashboard({ deployment, isOpen, onClose }: AnalyticsDas
             <TabsList>
               <TabsTrigger value="overview">
                 <BarChart3 className="h-4 w-4 mr-2" />
-                Overview
+                {t('overview')}
               </TabsTrigger>
               <TabsTrigger value="heatmaps">
                 <MousePointerClick className="h-4 w-4 mr-2" />
-                Heatmaps
+                {t('heatmaps')}
               </TabsTrigger>
               <TabsTrigger value="sessions">
                 <Users className="h-4 w-4 mr-2" />
-                Sessions
+                {t('sessions')}
               </TabsTrigger>
               <TabsTrigger value="engagement">
                 <Activity className="h-4 w-4 mr-2" />
-                Engagement
+                {t('engagement')}
               </TabsTrigger>
             </TabsList>
           </div>
@@ -259,17 +269,16 @@ export function AnalyticsDashboard({ deployment, isOpen, onClose }: AnalyticsDas
             <TabsContent value="overview" className="p-6 space-y-6">
               {loading && (
                 <div className="flex items-center justify-center h-96">
-                  <p className="text-muted-foreground">Loading analytics...</p>
+                  <p className="text-muted-foreground">{t('loading')}</p>
                 </div>
               )}
 
               {!loading && notPublished && (
                 <div className="flex flex-col items-center justify-center h-96 text-center">
                   <BarChart3 className="h-16 w-16 text-muted-foreground/50 mb-4" />
-                  <h3 className="text-lg font-medium mb-2">Analytics Not Available</h3>
+                  <h3 className="text-lg font-medium mb-2">{t('notAvailable')}</h3>
                   <p className="text-muted-foreground max-w-md">
-                    Analytics data will be available after you publish your deployment for the first time.
-                    The analytics database is created when the deployment is published.
+                    {t('notAvailableHint')}
                   </p>
                 </div>
               )}
@@ -278,51 +287,51 @@ export function AnalyticsDashboard({ deployment, isOpen, onClose }: AnalyticsDas
                 <>
                   <div className="grid grid-cols-4 gap-4">
                     <div className="border rounded-lg p-4">
-                      <div className="text-sm text-muted-foreground">Total Pageviews</div>
-                      <div className="text-2xl font-bold">{overview.totalPageviews.toLocaleString()}</div>
+                      <div className="text-sm text-muted-foreground">{t('totalPageviews')}</div>
+                      <div className="text-2xl font-bold">{number(overview.totalPageviews)}</div>
                     </div>
                     <div className="border rounded-lg p-4">
-                      <div className="text-sm text-muted-foreground">Unique Visitors</div>
-                      <div className="text-2xl font-bold">{overview.uniqueVisitors.toLocaleString()}</div>
+                      <div className="text-sm text-muted-foreground">{t('uniqueVisitors')}</div>
+                      <div className="text-2xl font-bold">{number(overview.uniqueVisitors)}</div>
                     </div>
                     <div className="border rounded-lg p-4">
-                      <div className="text-sm text-muted-foreground">Avg. Time on Site</div>
+                      <div className="text-sm text-muted-foreground">{t('avgTime')}</div>
                       <div className="text-2xl font-bold">{formatDuration(overview.averageTimeOnSite)}</div>
                     </div>
                     <div className="border rounded-lg p-4">
-                      <div className="text-sm text-muted-foreground">Bounce Rate</div>
-                      <div className="text-2xl font-bold">{(overview.bounceRate * 100).toFixed(1)}%</div>
+                      <div className="text-sm text-muted-foreground">{t('bounceRate')}</div>
+                      <div className="text-2xl font-bold">{percent(overview.bounceRate)}</div>
                     </div>
                   </div>
 
                   <div className="border rounded-lg p-4">
-                    <h3 className="font-medium mb-4">Top Pages</h3>
+                    <h3 className="font-medium mb-4">{t('topPages')}</h3>
                     <div className="space-y-2">
                       {overview.topPages.map((page) => (
                         <div key={page.page} className="flex justify-between items-center">
                           <span className="text-sm truncate flex-1">{page.page}</span>
-                          <span className="text-sm font-medium ml-4">{page.views.toLocaleString()}</span>
+                          <span className="text-sm font-medium ml-4">{number(page.views)}</span>
                         </div>
                       ))}
                     </div>
                   </div>
 
                   <div className="border rounded-lg p-4">
-                    <h3 className="font-medium mb-4">Top Referrers</h3>
+                    <h3 className="font-medium mb-4">{t('topReferrers')}</h3>
                     <div className="space-y-2">
                       {overview.topReferrers.map((referrer) => (
                         <div key={referrer.referrer} className="flex justify-between items-center">
                           <span className="text-sm truncate flex-1">
-                            {referrer.referrer || '(Direct)'}
+                            {referrer.referrer || t('directReferrer')}
                           </span>
-                          <span className="text-sm font-medium ml-4">{referrer.count.toLocaleString()}</span>
+                          <span className="text-sm font-medium ml-4">{number(referrer.count)}</span>
                         </div>
                       ))}
                     </div>
                   </div>
 
                   <div className="border rounded-lg p-4">
-                    <h3 className="font-medium mb-4">Device Breakdown</h3>
+                    <h3 className="font-medium mb-4">{t('deviceBreakdown')}</h3>
                     <div className="space-y-2">
                       {Object.entries(overview.deviceBreakdown).map(([device, count]) => {
                         const total = Object.values(overview.deviceBreakdown).reduce((sum, c) => sum + c, 0);
@@ -331,9 +340,9 @@ export function AnalyticsDashboard({ deployment, isOpen, onClose }: AnalyticsDas
                         return (
                           <div key={device}>
                             <div className="flex justify-between text-sm mb-1">
-                              <span className="capitalize">{device}</span>
+                              <span>{deviceLabel(device)}</span>
                               <span className="text-muted-foreground">
-                                {count.toLocaleString()} ({percentage.toFixed(1)}%)
+                                {number(count)} ({percent(percentage / 100)})
                               </span>
                             </div>
                             <div className="h-6 bg-muted rounded overflow-hidden">
@@ -352,9 +361,9 @@ export function AnalyticsDashboard({ deployment, isOpen, onClose }: AnalyticsDas
               {notPublished ? (
                 <div className="flex flex-col items-center justify-center h-96 text-center">
                   <MousePointerClick className="h-16 w-16 text-muted-foreground/50 mb-4" />
-                  <h3 className="text-lg font-medium mb-2">Heatmaps Not Available</h3>
+                  <h3 className="text-lg font-medium mb-2">{t('heatmapsUnavailable')}</h3>
                   <p className="text-muted-foreground max-w-md">
-                    Heatmap data will be collected after you publish your deployment.
+                    {t('collectedAfterPublish')}
                   </p>
                 </div>
               ) : (
@@ -366,9 +375,9 @@ export function AnalyticsDashboard({ deployment, isOpen, onClose }: AnalyticsDas
               {notPublished ? (
                 <div className="flex flex-col items-center justify-center h-96 text-center">
                   <Users className="h-16 w-16 text-muted-foreground/50 mb-4" />
-                  <h3 className="text-lg font-medium mb-2">Sessions Not Available</h3>
+                  <h3 className="text-lg font-medium mb-2">{t('sessionsUnavailable')}</h3>
                   <p className="text-muted-foreground max-w-md">
-                    Session data will be collected after you publish your deployment.
+                    {t('collectedAfterPublish')}
                   </p>
                 </div>
               ) : (
@@ -380,9 +389,9 @@ export function AnalyticsDashboard({ deployment, isOpen, onClose }: AnalyticsDas
               {notPublished ? (
                 <div className="flex flex-col items-center justify-center h-96 text-center">
                   <Activity className="h-16 w-16 text-muted-foreground/50 mb-4" />
-                  <h3 className="text-lg font-medium mb-2">Engagement Metrics Not Available</h3>
+                  <h3 className="text-lg font-medium mb-2">{t('engagementUnavailable')}</h3>
                   <p className="text-muted-foreground max-w-md">
-                    Engagement data will be collected after you publish your deployment.
+                    {t('collectedAfterPublish')}
                   </p>
                 </div>
               ) : (

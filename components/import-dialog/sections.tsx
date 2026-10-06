@@ -10,11 +10,12 @@
  */
 
 import * as React from 'react';
+import { useTranslations } from 'next-intl';
 import { Check, ChevronDown, ChevronRight, Info, Lock } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { backendResolutionKey, formatBytes } from '@/lib/vfs/archive';
+import { backendResolutionKey } from '@/lib/vfs/archive';
 import type {
   ApplyResult,
   ArchiveIssue,
@@ -29,33 +30,34 @@ import type {
 import {
   applyToAllBackend,
   applyToAllFiles,
-  appliedSummary,
-  backendKindLabel,
   backendResolutionOf,
   fileOptionsFor,
   fileResolutionOf,
   formatSettingValue,
-  formatWhen,
   planTallies,
   settingResolutionOf,
   sharedBackendResolution,
   sharedFileResolution,
   splitPath,
+  type BackendKind,
   type TallyTone,
 } from './logic';
+import { useImportCopy } from './copy';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
+import { useArchiveMessage } from '@/lib/i18n/use-archive-message';
 import {
   AddedRow,
   ALL_FILE_OPTIONS,
   ApplyToAll,
   Banner,
   BlockedList,
-  FILE_OPTION_LABELS,
   PathLabel,
   ResolutionRow,
   Section,
   Segmented,
-  SETTING_OPTION_LABELS,
   SETTING_OPTIONS,
+  useFileOptionLabels,
+  useSettingOptionLabels,
 } from './primitives';
 
 export { Banner, BlockedList } from './primitives';
@@ -75,6 +77,8 @@ export type ResolutionPatch = (previous: ImportResolutions) => ImportResolutions
 
 /** The at-a-glance answer. Sits above the scroll region, so it is never scrolled away from. */
 export function Tallies({ plan, target }: { plan: ImportPlan; target: ImportTarget }) {
+  const t = useTranslations('importDialog.tally');
+  const { number } = useLocalFormat();
   return (
     <div className="flex flex-wrap gap-1.5">
       {planTallies(plan, target).map((tally) => (
@@ -85,8 +89,8 @@ export function Tallies({ plan, target }: { plan: ImportPlan; target: ImportTarg
             TALLY_TONES[tally.tone]
           )}
         >
-          <span className="font-semibold tabular-nums">{tally.count}</span>
-          {tally.label}
+          <span className="font-semibold tabular-nums">{number(tally.count)}</span>
+          {t(tally.label, { count: tally.count })}
         </span>
       ))}
     </div>
@@ -105,6 +109,12 @@ export function Tallies({ plan, target }: { plan: ImportPlan; target: ImportTarg
  * read as one fact stated twice rather than as two different problems.
  */
 export function WarningBanners({ warnings }: { warnings: ArchiveIssue[] }) {
+  const archiveMessage = useArchiveMessage();
+  const t = useTranslations('importDialog');
+  const titles: Partial<Record<ArchiveIssue['code'], string>> = {
+    'server-mode-required': t('warnServerMode'),
+    'ai-instructions': t('warnAiInstructions'),
+  };
   return (
     <>
       {warnings.map((warning, index) => (
@@ -118,44 +128,37 @@ export function WarningBanners({ warnings }: { warnings: ArchiveIssue[] }) {
                 ? undefined
                 : Info
           }
-          title={WARNING_TITLES[warning.code] ?? 'Note'}
+          title={titles[warning.code] ?? t('note')}
         >
-          {warning.message}
+          {archiveMessage(warning)}
         </Banner>
       ))}
     </>
   );
 }
 
-/**
- * A heading per warning the dialog has something to add to. The message already states the fact,
- * so a title that restates it says the same thing twice in two sizes; these name the category
- * instead, which is what a heading is for when the body is a full sentence.
- */
-const WARNING_TITLES: Partial<Record<ArchiveIssue['code'], string>> = {
-  'server-mode-required': 'Backend features need Server Mode',
-  'ai-instructions': 'AI instructions',
-};
-
 /** A folder of HTML from somewhere else is a real thing to want; it just says what it cannot know. */
 export function LooseFilesBanner({ isNewProject }: { isNewProject: boolean }) {
+  const t = useTranslations('importDialog');
   return (
-    <Banner tone="neutral" title="These are files, not a project archive">
-      There is no <code className="font-mono text-xs">project.json</code>, so no runtime, entry
-      point or server functions to read. The files import exactly as they are
-      {isNewProject ? '.' : " and this project's settings stay untouched."}
+    <Banner tone="neutral" title={t('filesNotArchive')}>
+      {t.rich(isNewProject ? 'looseFilesNew' : 'looseFilesExisting', {
+        code: chunks => <code className="font-mono text-xs">{chunks}</code>,
+      })}
     </Banner>
   );
 }
 
 export function NewProjectSection({ manifest }: { manifest: ProjectManifest }) {
+  const t = useTranslations('importDialog');
+  const tc = useTranslations('common');
   return (
-    <Section title="Will be created">
-      <PlainRow label="Name" value={manifest.name} />
+    <Section title={t('willBeCreated')}>
+      <PlainRow label={tc('labels.name')} value={manifest.name} />
       {manifest.runtime && (
-        <PlainRow label="Runtime" value={formatSettingValue('runtime', manifest.runtime)} />
+        <PlainRow label={tc('labels.runtime')} value={formatSettingValue('runtime', manifest.runtime) ?? t('notSet')} />
       )}
-      {manifest.entryPoint && <PlainRow label="Entry point" value={manifest.entryPoint} />}
+      {manifest.entryPoint && <PlainRow label={tc('labels.entryPoint')} value={manifest.entryPoint} />}
     </Section>
   );
 }
@@ -179,13 +182,14 @@ export function FileConflictsSection({
   resolutions: ImportResolutions;
   onChange: (patch: ResolutionPatch) => void;
 }) {
+  const t = useTranslations('importDialog');
   return (
     <Section
-      title="Already exist"
+      title={t('alreadyExist')}
       count={`${plan.files.conflicts.length}`}
       control={
         <ApplyToAll
-          label="Resolution for all file conflicts"
+          label={t('allFileConflicts')}
           value={sharedFileResolution(plan, resolutions)}
           onChange={(next) =>
             onChange((prev) => ({ ...prev, files: applyToAllFiles(plan, next) }))
@@ -216,6 +220,11 @@ function FileConflictRow({
   value: FileResolution;
   onChange: (value: FileResolution) => void;
 }) {
+  const t = useTranslations('importDialog');
+  const fileOptionLabels = useFileOptionLabels();
+  const copy = useImportCopy();
+  const { recent } = useLocalFormat();
+  const when = (date: Date | undefined) => (date ? recent(date) : t('unknownTime'));
   const [open, setOpen] = React.useState(false);
   const renamed = value === 'keep-both' ? conflict.keepBothPath : undefined;
 
@@ -225,19 +234,19 @@ function FileConflictRow({
       chip={
         conflict.currentIsNewer ? (
           <span className="inline-flex items-center rounded-full bg-orange-500/10 px-2 py-px text-[11px] font-medium text-orange-600 dark:text-orange-400">
-            Yours is newer
+            {t('yoursIsNewer')}
           </span>
         ) : undefined
       }
       rename={renamed ? splitPath(renamed).name : undefined}
       control={
         <Segmented
-          ariaLabel={`Resolution for ${conflict.path}`}
+          ariaLabel={t('resolutionFor', { path: conflict.path })}
           value={value}
           // Two options when no renamed candidate fits the 200-character path limit. A third
           // option that cannot be carried out is worse than two that can.
           options={fileOptionsFor(conflict)}
-          labels={FILE_OPTION_LABELS}
+          labels={fileOptionLabels}
           onChange={onChange}
         />
       }
@@ -246,18 +255,36 @@ function FileConflictRow({
       detail={
         <>
           <span className={cn(conflict.currentIsNewer && 'font-medium text-foreground')}>
-            Yours · {formatBytes(conflict.currentSize)} · edited{' '}
-            {formatWhen(conflict.currentUpdatedAt)}
+            {t('yoursMeta', { size: copy.size(conflict.currentSize), when: when(conflict.currentUpdatedAt) })}
           </span>
-          <span className="text-muted-foreground/70">vs</span>
+          <span className="text-muted-foreground/70">{t('versus')}</span>
           <span className={cn(!conflict.currentIsNewer && 'font-medium text-foreground')}>
-            archive · {formatBytes(conflict.incomingSize)} · saved{' '}
-            {formatWhen(conflict.incomingUpdatedAt)}
+            {t('archiveMeta', { size: copy.size(conflict.incomingSize), when: when(conflict.incomingUpdatedAt) })}
           </span>
         </>
       }
     />
   );
+}
+
+/** A server function's kind, method or schedule, and whether it is disabled, as one line. */
+export function describeBackendRecord(
+  t: (key: `backendKind.${BackendKind}` | 'helper' | 'disabledTag') => string,
+  record: { kind: BackendKind; detail: string; disabled?: true },
+): string {
+  // `detail` is a method or a schedule; a helper has neither, and the archive does not word either.
+  return [t(`backendKind.${record.kind}`), record.detail || t('helper'), record.disabled && t('disabledTag')].filter(Boolean).join(' · ');
+}
+
+/** The server-functions section's count: how many are new and how many already exist. */
+export function backendCountLabel(
+  t: (key: 'countNew' | 'countExists', values: { count: number }) => string,
+  plan: ImportPlan,
+): string {
+  const parts: string[] = [];
+  if (plan.backend.added.length > 0) parts.push(t('countNew', { count: plan.backend.added.length }));
+  if (plan.backend.conflicts.length > 0) parts.push(t('countExists', { count: plan.backend.conflicts.length }));
+  return parts.join(' · ');
 }
 
 /**
@@ -276,18 +303,19 @@ export function BackendSection({
   resolutions: ImportResolutions;
   onChange: (patch: ResolutionPatch) => void;
 }) {
-  const parts: string[] = [];
-  if (plan.backend.added.length > 0) parts.push(`${plan.backend.added.length} new`);
-  if (plan.backend.conflicts.length > 0) parts.push(`${plan.backend.conflicts.length} exists`);
+  const t = useTranslations('importDialog');
+  const fileOptionLabels = useFileOptionLabels();
+  const kind = (k: BackendKind) => t(`backendKind.${k}`);
+  const describe = (record: { kind: BackendKind; detail: string; disabled?: true }) => describeBackendRecord(t, record);
 
   return (
     <Section
-      title="Server functions"
-      count={parts.join(' · ')}
+      title={t('serverFunctions')}
+      count={backendCountLabel(t, plan)}
       control={
         plan.backend.conflicts.length > 0 ? (
           <ApplyToAll
-            label="Resolution for all function conflicts"
+            label={t('allFunctionConflicts')}
             value={sharedBackendResolution(plan, resolutions)}
             onChange={(next) =>
               onChange((prev) => ({ ...prev, backend: applyToAllBackend(plan, next) }))
@@ -298,7 +326,7 @@ export function BackendSection({
     >
       {plan.backend.conflicts.length > 0 && (
         <p className="px-2 pb-1 text-xs text-muted-foreground">
-          Replacing a function cannot be undone. The previous code is not saved anywhere.
+          {t('replaceFunctionWarning')}
         </p>
       )}
       {plan.backend.added.map((record) => (
@@ -309,7 +337,7 @@ export function BackendSection({
               <span className="font-mono text-xs">{record.name}</span>
               <span className="flex-1" />
               <span className="text-xs text-muted-foreground">
-                {backendKindLabel(record.kind)} · {record.detail}
+                {describe(record)}
               </span>
             </>
           }
@@ -322,14 +350,14 @@ export function BackendSection({
           <ResolutionRow
             key={key}
             label={<span className="font-mono text-xs">{conflict.name}</span>}
-            meta={`${backendKindLabel(conflict.kind)} · ${conflict.detail}`}
+            meta={describe(conflict)}
             rename={value === 'keep-both' ? conflict.keepBothName : undefined}
             control={
               <Segmented
-                ariaLabel={`Resolution for ${conflict.kind} function ${conflict.name}`}
+                ariaLabel={t('resolutionForFunction', { kind: kind(conflict.kind), name: conflict.name })}
                 value={value}
                 options={ALL_FILE_OPTIONS}
-                labels={FILE_OPTION_LABELS}
+                labels={fileOptionLabels}
                 // Keyed by kind and name: an edge function and a schedule share one name grammar,
                 // so 'nightly' alone would have one decision quietly governing both.
                 onChange={(next) =>
@@ -352,6 +380,7 @@ export function BackendSection({
  * so the banner does not claim one was made.
  */
 export function SecretsBanner({ plan }: { plan: ImportPlan }) {
+  const t = useTranslations('importDialog');
   const added = plan.backend.secretsAdded;
   const changed = plan.backend.secretsMetadataChanged;
   return (
@@ -359,20 +388,16 @@ export function SecretsBanner({ plan }: { plan: ImportPlan }) {
       tone="neutral"
       title={
         added.length > 0
-          ? `${added.length} secret${added.length === 1 ? '' : 's'} will be created empty`
-          : 'Secrets already in this project are left alone'
+          ? t('secretsWillBeEmpty', { count: added.length })
+          : t('secretsLeftAlone')
       }
     >
       {added.length > 0 && (
-        <>
-          {added.join(', ')} {added.length === 1 ? 'is' : 'are'} named in the archive, but values
-          are never included in one. Add them in Project settings before publishing.
-        </>
+        <>{t('secretsNamed', { count: added.length, names: added.join(', ') })}</>
       )}
       {changed.length > 0 && (
         <span className="mt-1 block">
-          The archive describes {changed.join(', ')} differently. {changed.length === 1 ? 'It keeps its' : 'They keep their'}{' '}
-          current value and description.
+          {t('secretsChanged', { count: changed.length, names: changed.join(', ') })}
         </span>
       )}
     </Banner>
@@ -389,28 +414,28 @@ export function SettingsSection({
   resolutions: ImportResolutions;
   onChange: (patch: ResolutionPatch) => void;
 }) {
+  const t = useTranslations('importDialog');
+  const settingOptionLabels = useSettingOptionLabels();
+  const shown = (key: SettingChange['key'], value: string | undefined) => formatSettingValue(key, value) ?? t('notSet');
   const setSetting = (key: SettingChange['key'], next: SettingResolution) =>
     onChange((prev) => ({ ...prev, settings: { ...prev.settings, [key]: next } }));
 
   return (
-    <Section title="Project settings" count={`${plan.settingChanges.length} differ`}>
+    <Section title={t('projectSettings')} count={t('countDiffer', { count: plan.settingChanges.length })}>
       <p className="px-2 pb-1 text-xs text-muted-foreground">
-        Changing a setting cannot be undone. The checkpoint only covers files.
+        {t('changeSettingWarning')}
       </p>
       {plan.settingChanges.map((change) => (
         <ResolutionRow
           key={change.key}
-          label={<span className="text-sm font-medium">{change.label}</span>}
-          meta={`${formatSettingValue(change.key, change.from)} → ${formatSettingValue(
-            change.key,
-            change.to
-          )}`}
+          label={<span className="text-sm font-medium">{t(`settingLabels.${change.key}`)}</span>}
+          meta={`${shown(change.key, change.from)} → ${shown(change.key, change.to)}`}
           control={
             <Segmented
-              ariaLabel={`Resolution for ${change.label}`}
+              ariaLabel={t('resolutionFor', { path: t(`settingLabels.${change.key}`) })}
               value={settingResolutionOf(resolutions, change.key)}
               options={SETTING_OPTIONS}
-              labels={SETTING_OPTION_LABELS}
+              labels={settingOptionLabels}
               onChange={(next) => setSetting(change.key, next)}
             />
           }
@@ -421,8 +446,9 @@ export function SettingsSection({
 }
 
 export function BlockedSection({ issues }: { issues: ArchiveIssue[] }) {
+  const t = useTranslations('importDialog');
   return (
-    <Section title="Can't be imported" count={`${issues.length}`}>
+    <Section title={t('cantBeImported')} count={`${issues.length}`}>
       <BlockedList issues={issues} />
     </Section>
   );
@@ -460,18 +486,19 @@ export function AddedFilesFold({ paths, label }: { paths: string[]; label: strin
  * on is the wrong answer to "nothing to do".
  */
 export function UnchangedCounts({ plan }: { plan: ImportPlan }) {
+  const t = useTranslations('importDialog');
   const files = plan.files.unchanged.length;
   const backend = plan.backend.unchanged.length;
   return (
     <div className="flex flex-col gap-1 px-2 text-xs text-muted-foreground">
       {files > 0 && (
         <span>
-          {files} identical {files === 1 ? 'file' : 'files'}, nothing to do
+          {t('identicalFiles', { count: files })}
         </span>
       )}
       {backend > 0 && (
         <span>
-          {backend} identical {backend === 1 ? 'function' : 'functions'}, nothing to do
+          {t('identicalFunctions', { count: backend })}
         </span>
       )}
     </div>
@@ -487,17 +514,17 @@ export function UnchangedCounts({ plan }: { plan: ImportPlan }) {
  * (workspace/index.tsx), which would throw away everything since, import included.
  */
 export function DoneSummary({ result }: { result: ApplyResult }) {
+  const t = useTranslations('importDialog');
+  const copy = useImportCopy();
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-start gap-3">
         <Check className="mt-0.5 w-4 h-4 shrink-0 text-green-600 dark:text-green-400" />
         <div className="text-sm">
-          <p className="font-medium">{appliedSummary(result.applied)}</p>
+          <p className="font-medium">{copy.applied(result.applied)}</p>
           {result.checkpointId && (
             <p className="mt-1 text-muted-foreground">
-              Your files were saved to a checkpoint first. To put them back, open the Checkpoints
-              panel and restore the &ldquo;Before import&rdquo; entry. Server functions and settings
-              were not saved.
+              {t('checkpointNote')}
             </p>
           )}
         </div>
@@ -505,13 +532,14 @@ export function DoneSummary({ result }: { result: ApplyResult }) {
       {result.failed.length > 0 && (
         <div className="flex flex-col gap-1">
           <p className="text-[13px] font-medium text-muted-foreground">
-            {result.failed.length} could not be written
+            {t('couldNotWrite', { count: result.failed.length })}
           </p>
           <BlockedList
             issues={result.failed.map((failure) => ({
               path: failure.path,
               code: 'validation-failed' as const,
               message: failure.message,
+              text: failure.text,
             }))}
           />
         </div>

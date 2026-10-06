@@ -1,10 +1,9 @@
 /**
  * Turning a review URL's path segments into a file inside the review build.
  *
- * The public deployment route can join its segments onto a directory and read whatever comes out,
- * because that directory is a published web root and every file in it is already public. A review
- * build is not: it sits beside the per-deployment databases, outside `public/`, and is reached by a
- * caller who needed no account. So the join has to be contained.
+ * A review build sits beside the per-deployment databases, outside `public/`, and is reached by a
+ * caller who needed no account, so the join has to be contained. The public deployment route has
+ * the same problem and the same answer (`deploymentStaticFile`).
  *
  * Containment cannot be delegated upstream. Next percent-decodes each dynamic segment after it has
  * normalized the request path, so `%2e%2e%2f` arrives as one segment whose text is `../`, the

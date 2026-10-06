@@ -1,4 +1,17 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+// The executor resolves a host before fetching it, to refuse private addresses. These tests are about
+// the request, not where it goes, so every name resolves to one public address.
+vi.mock('node:dns', () => {
+  const lookup = async () => [{ address: '93.184.216.34', family: 4 }];
+  return { default: { promises: { lookup } }, promises: { lookup } };
+});
+
+// The executor fetches through undici; send its requests to the stubbed global `fetch`.
+vi.mock('undici', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('undici')>()),
+  fetch: (input: string, init?: RequestInit) => globalThis.fetch(input, init),
+}));
+
 import { executeFunction } from '@/lib/edge-functions/executor';
 
 /**

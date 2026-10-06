@@ -7,8 +7,13 @@ vi.mock('@/lib/llm/models/model-catalog', () => ({
   loadProviderModels: (p: string) => loadProviderModels(p),
 }));
 
+const fetchProviderStatus = vi.fn(async (_p: string, _k: string) => ({ quota: { kind: 'none' } }) as unknown);
+vi.mock('@/lib/llm/provider-status', () => ({
+  fetchProviderStatus: (p: string, k: string) => fetchProviderStatus(p, k),
+}));
+
 import { configManager } from '@/lib/config/storage';
-import { activateProviderAsGlobalDefault } from '@/lib/llm/models/global-auto-assign';
+import { activateProviderAsGlobalDefault, fitModelToAccount } from '@/lib/llm/models/global-auto-assign';
 
 function stubBrowserStorage() {
   const store = new Map<string, string>();
@@ -94,5 +99,89 @@ describe('activateProviderAsGlobalDefault', () => {
     expect(configManager.getModelTemplate('default')!.assignment.agent).toEqual(before);
     setDefault.mockRestore();
     save.mockRestore();
+  });
+});
+
+describe('fitModelToAccount', () => {
+  beforeEach(() => {
+    fetchProviderStatus.mockClear();
+    configManager.setProviderApiKey('openrouter', 'sk-or-test');
+    configManager.setActiveAssignment({ ...configManager.getActiveAssignment(), agent: { provider: 'openrouter', model: 'deepseek/deepseek-v4-flash' } });
+  });
+
+  it('gives a free-only OpenRouter account "Free models" instead of a paid model', async () => {
+    fetchProviderStatus.mockResolvedValueOnce({ quota: { kind: 'none' }, freeOnly: true });
+    await fitModelToAccount('openrouter');
+    expect(configManager.getActiveAssignment().agent).toEqual({ provider: 'openrouter', model: 'osw/free-models' });
+  });
+
+  it('leaves an account that has bought credit on its model', async () => {
+    fetchProviderStatus.mockResolvedValueOnce({ quota: { kind: 'none' }, freeOnly: false });
+    await fitModelToAccount('openrouter');
+    expect(configManager.getActiveAssignment().agent.model).toBe('deepseek/deepseek-v4-flash');
+  });
+
+  it('leaves a free model alone', async () => {
+    configManager.setActiveAssignment({ ...configManager.getActiveAssignment(), agent: { provider: 'openrouter', model: 'google/gemma-4-31b-it:free' } });
+    fetchProviderStatus.mockResolvedValueOnce({ quota: { kind: 'none' }, freeOnly: true });
+    await fitModelToAccount('openrouter');
+    expect(configManager.getActiveAssignment().agent.model).toBe('google/gemma-4-31b-it:free');
+  });
+
+  it('ignores a connect for a provider the working model is not on', async () => {
+    configManager.setActiveAssignment({ ...configManager.getActiveAssignment(), agent: { provider: 'groq', model: 'llama-x' } });
+    fetchProviderStatus.mockResolvedValue({ quota: { kind: 'none' }, freeOnly: true });
+    try {
+      await fitModelToAccount('openrouter');
+    } finally {
+      fetchProviderStatus.mockResolvedValue({ quota: { kind: 'none' } });
+    }
+    expect(fetchProviderStatus).not.toHaveBeenCalled();
+    expect(configManager.getActiveAssignment().agent).toEqual({ provider: 'groq', model: 'llama-x' });
+  });
+
+  it('leaves the model alone when OpenRouter does not say whether the account is free-only', async () => {
+    fetchProviderStatus.mockResolvedValueOnce({ quota: { kind: 'none' } });
+    await fitModelToAccount('openrouter');
+    expect(configManager.getActiveAssignment().agent.model).toBe('deepseek/deepseek-v4-flash');
+  });
+
+  it('keeps a picked model the list shows as free, whatever its id', async () => {
+    configManager.setActiveAssignment({ ...configManager.getActiveAssignment(), agent: { provider: 'openrouter', model: 'vendor/zero-priced' } });
+    fetchProviderStatus.mockResolvedValueOnce({ quota: { kind: 'none' }, freeOnly: true });
+    loadProviderModels.mockResolvedValueOnce([{ id: 'vendor/zero-priced', pricing: { input: 0, output: 0 } } as never]);
+    await fitModelToAccount('openrouter');
+    expect(configManager.getActiveAssignment().agent.model).toBe('vendor/zero-priced');
+  });
+
+  it('does not overwrite a selection that moved while the model list loaded', async () => {
+    fetchProviderStatus.mockResolvedValueOnce({ quota: { kind: 'none' }, freeOnly: true });
+    loadProviderModels.mockImplementationOnce(async () => {
+      configManager.setActiveAssignment({ ...configManager.getActiveAssignment(), agent: { provider: 'openrouter', model: 'picked/meanwhile' } });
+      return [{ id: 'deepseek/deepseek-v4-flash' }];
+    });
+    await fitModelToAccount('openrouter');
+    expect(configManager.getActiveAssignment().agent.model).toBe('picked/meanwhile');
+  });
+
+  it('changes only the agent model, keeping the rest of the selection', async () => {
+    const imageGen = { provider: 'openai', model: 'gpt-image-1' };
+    configManager.setActiveAssignment({ ...configManager.getActiveAssignment(), imageGen } as never);
+    fetchProviderStatus.mockResolvedValueOnce({ quota: { kind: 'none' }, freeOnly: true });
+    await fitModelToAccount('openrouter');
+    expect(configManager.getActiveAssignment()).toMatchObject({ agent: { provider: 'openrouter', model: 'osw/free-models' }, imageGen });
+  });
+
+  it('ignores a provider that has no "Free models" entry', async () => {
+    configManager.setProviderApiKey('groq', 'gsk_test');
+    configManager.setActiveAssignment({ ...configManager.getActiveAssignment(), agent: { provider: 'groq', model: 'llama-x' } });
+    fetchProviderStatus.mockResolvedValue({ quota: { kind: 'none' }, freeOnly: true });
+    try {
+      await fitModelToAccount('groq');
+    } finally {
+      fetchProviderStatus.mockResolvedValue({ quota: { kind: 'none' } });
+    }
+    expect(fetchProviderStatus).not.toHaveBeenCalled();
+    expect(configManager.getActiveAssignment().agent).toEqual({ provider: 'groq', model: 'llama-x' });
   });
 });

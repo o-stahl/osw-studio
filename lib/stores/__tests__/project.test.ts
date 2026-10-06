@@ -20,7 +20,6 @@ function setActiveTask(
     startedAt: Date.now(),
     result: null,
     paused: false,
-    pausedMessage: null,
     orchestratorInstance: null,
     persistedInstance: null,
     ...overrides,
@@ -314,7 +313,6 @@ describe('showing quick edit', () => {
       startedAt: Date.now(),
       result: 'completed',
       paused: false,
-      pausedMessage: null,
       orchestratorInstance: instance,
       persistedInstance: instance,
     });

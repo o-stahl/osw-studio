@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { vfs } from '@/lib/vfs';
 import { Project } from '@/lib/vfs/types';
 import { DialogFooter } from '@/components/ui/dialog';
@@ -18,12 +19,6 @@ import { configManager } from '@/lib/config/storage';
 type PublishMode = 'update' | 'new';
 type Status = 'idle' | 'needsScope' | 'staleAuth' | 'publishing' | 'done' | 'error';
 
-const PHASE_LABEL: Record<PublishProgress['phase'], string> = {
-  compiling: 'Compiling site...',
-  creating: 'Creating Space...',
-  uploading: 'Uploading files...',
-};
-
 /**
  * A valid HuggingFace username (repo namespace): alphanumeric + hyphens, no spaces.
  * A connection made before publishing was supported stored the display name (e.g.
@@ -39,6 +34,15 @@ function isValidHfUsername(username: string | undefined): username is string {
  * DeployDialog shell. Publishes the project as a static Space under the user's account.
  */
 export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  const t = useTranslations('deployDialog');
+  const tc = useTranslations('common');
+  const tdd = useTranslations('deploymentDetail');
+  // Typed over the phases, so a new phase without a label fails `tsc`.
+  const phaseLabel: Record<PublishProgress['phase'], string> = {
+    compiling: t('phaseCompiling'),
+    creating: t('phaseCreating'),
+    uploading: t('phaseUploading'),
+  };
   const [project, setProject] = useState<Project | null>(null);
   const [slug, setSlug] = useState('');
   const [description, setDescription] = useState('');
@@ -118,7 +122,7 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
     if (caps.oauthAvailable && caps.clientId) {
       await loginHF(caps.clientId, caps.scopes);
     } else {
-      setErrorMsg('Connect your HuggingFace account in Settings to publish.');
+      setErrorMsg(t('connectHfInSettings'));
       setStatus('error');
     }
   }
@@ -131,7 +135,7 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
 
     const auth = configManager.getHFAuth();
     if (!auth?.access_token) {
-      setErrorMsg('Not connected to HuggingFace. Reconnect and try again.');
+      setErrorMsg(t('hfNotConnected'));
       setStatus('error');
       return;
     }
@@ -182,12 +186,12 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
       setStatus('done');
     } catch (e) {
       if (e instanceof TerminalRuntimeError) {
-        setErrorMsg('This project type can’t be published as a static Space. Use ZIP export instead.');
+        setErrorMsg(t('terminalRuntimeRefused'));
         setStatus('error');
         return;
       }
       const statusCode = (e as { statusCode?: number })?.statusCode;
-      const raw = e instanceof Error ? e.message : 'Publish failed';
+      const raw = e instanceof Error ? e.message : t('publishFailed');
       // 401 = the token is invalid/expired → reconnecting is the fix, so prompt for it.
       if (statusCode === 401) {
         setStatus('needsScope');
@@ -201,7 +205,7 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
           setStatus('staleAuth');
           return;
         }
-        setErrorMsg(`HuggingFace refused the request (403). Check that your token has write access and that "${slug}" is a valid, available Space name under your account. (${raw})`);
+        setErrorMsg(t('hfRefused', { slug, detail: raw }));
         setStatus('error');
         return;
       }
@@ -214,10 +218,10 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
     <>
       {status === 'done' && resultUrl ? (
         <div className="grid gap-4 py-4">
-          <div className="text-sm text-muted-foreground">Your site is live at:</div>
+          <div className="text-sm text-muted-foreground">{t('liveAt')}</div>
           <div className="flex items-center gap-2 rounded border p-2 text-sm">
             <span className="flex-1 truncate">{resultUrl}</span>
-            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={handleCopyUrl} title="Copy URL">
+            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={handleCopyUrl} title={tc('actions.copyUrl')}>
               <Copy className="h-3 w-3" />
             </Button>
             <Button
@@ -225,40 +229,36 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
               size="sm"
               className="h-6 w-6 p-0"
               onClick={() => window.open(resultUrl, '_blank', 'noopener,noreferrer')}
-              title="Open in new tab"
+              title={t('openInNewTab')}
             >
               <ExternalLink className="h-3 w-3" />
             </Button>
           </div>
-          {copied && <p className="text-xs text-muted-foreground">Copied to clipboard</p>}
+          {copied && <p className="text-xs text-muted-foreground">{t('copiedToClipboard')}</p>}
         </div>
       ) : status === 'needsScope' ? (
         <div className="grid gap-3 py-4 text-sm">
           <p>
-            Publishing needs permission to create a Space on your HuggingFace account.
-            You&apos;ll be sent to HuggingFace to grant it, then returned here to publish.
+            {t('needsScopeExplain')}
           </p>
           <p className="text-xs text-muted-foreground">
-            If you grant it and this keeps asking, the deployment may not yet be configured
-            for publishing.
+            {t('needsScopeHint')}
           </p>
         </div>
       ) : status === 'staleAuth' ? (
         <div className="grid gap-3 py-4 text-sm">
           <p>
-            Your HuggingFace connection is out of date and can&apos;t publish a Space — it&apos;s
-            missing your account username. Reconnect to HuggingFace to refresh it, then publish.
+            {t('staleAuthExplain')}
           </p>
           <p className="text-xs text-muted-foreground">
-            This happens for connections made before publishing was added. Reconnecting only needs
-            to be done once.
+            {t('staleAuthHint')}
           </p>
         </div>
       ) : (
         <div className="grid gap-4 py-4">
           {hasExistingSpace && (
             <div className="grid gap-2">
-              <Label>Publish mode</Label>
+              <Label>{t('publishMode')}</Label>
               <div className="flex gap-2">
                 <Button
                   type="button"
@@ -276,7 +276,7 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
                     }
                   }}
                 >
-                  Update existing
+                  {tdd('updateExisting')}
                 </Button>
                 <Button
                   type="button"
@@ -289,14 +289,14 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
                     setIsPrivate(false);
                   }}
                 >
-                  Publish as new
+                  {t('publishAsNew')}
                 </Button>
               </div>
             </div>
           )}
 
           <div className="grid gap-2">
-            <Label htmlFor="hf-slug">Space name</Label>
+            <Label htmlFor="hf-slug">{t('spaceName')}</Label>
             <Input
               id="hf-slug"
               value={slug}
@@ -306,26 +306,26 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
             />
             {!slugValid && (
               <p className="text-xs text-destructive">
-                Use lowercase letters, numbers, and single hyphens (no leading/trailing hyphen).
+                {t('spaceNameRule')}
               </p>
             )}
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="hf-description">Description</Label>
+            <Label htmlFor="hf-description">{tc('labels.description')}</Label>
             <Input
               id="hf-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               disabled={isPublishing}
-              placeholder="A short description of your site"
+              placeholder={t('descriptionPlaceholder')}
             />
           </div>
 
           <div className="flex items-center justify-between">
             <div>
-              <Label htmlFor="hf-private">Private Space</Label>
-              <p className="text-xs text-muted-foreground">Only you can view this Space</p>
+              <Label htmlFor="hf-private">{t('privateSpace')}</Label>
+              <p className="text-xs text-muted-foreground">{t('onlyYouCanView')}</p>
             </div>
             <Switch
               id="hf-private"
@@ -337,8 +337,8 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
 
           <div className="flex items-center justify-between">
             <div>
-              <Label htmlFor="hf-footer">&quot;Built with OSW Studio&quot; footer</Label>
-              <p className="text-xs text-muted-foreground">Adds a small attribution footer to your site</p>
+              <Label htmlFor="hf-footer">{t('builtWithFooter')}</Label>
+              <p className="text-xs text-muted-foreground">{t('attributionFooter')}</p>
             </div>
             <Switch
               id="hf-footer"
@@ -351,7 +351,7 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
           {isPublishing && progressPhase && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              {PHASE_LABEL[progressPhase]}
+              {phaseLabel[progressPhase]}
             </div>
           )}
 
@@ -364,29 +364,29 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
       <DialogFooter>
         {status === 'done' ? (
           <Button variant="outline" onClick={handleClose}>
-            Close
+            {tc('actions.close')}
           </Button>
         ) : status === 'needsScope' ? (
           <>
             <Button variant="outline" onClick={handleClose}>
-              Cancel
+              {tc('actions.cancel')}
             </Button>
-            <Button onClick={handleGrantPermission}>Grant permission on HuggingFace</Button>
+            <Button onClick={handleGrantPermission}>{t('grantPermission')}</Button>
           </>
         ) : status === 'staleAuth' ? (
           <>
             <Button variant="outline" onClick={handleClose}>
-              Cancel
+              {tc('actions.cancel')}
             </Button>
-            <Button onClick={handleGrantPermission}>Reconnect HuggingFace</Button>
+            <Button onClick={handleGrantPermission}>{t('reconnect')}</Button>
           </>
         ) : (
           <>
             <Button variant="outline" onClick={handleClose} disabled={isPublishing}>
-              Cancel
+              {tc('actions.cancel')}
             </Button>
             <Button onClick={handlePublish} disabled={isPublishing || !slug || !slugValid}>
-              {isPublishing ? 'Publishing...' : 'Publish'}
+              {isPublishing ? tdd('publishing') : tc('actions.publish')}
             </Button>
           </>
         )}

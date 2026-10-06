@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { ChevronDown, Building2, Settings } from 'lucide-react';
@@ -25,6 +26,8 @@ interface WorkspaceSwitcherProps {
 }
 
 export function WorkspaceSwitcher({ workspaceId }: WorkspaceSwitcherProps) {
+  const tc = useTranslations('common');
+  const ta = useTranslations('admin');
   // Read cached name from localStorage after mount (avoids hydration mismatch)
   const [cachedName, setCachedName] = useState<string | null>(null);
   useEffect(() => {
@@ -96,7 +99,7 @@ export function WorkspaceSwitcher({ workspaceId }: WorkspaceSwitcherProps) {
           <Button variant="ghost" className="w-full justify-start gap-2 px-3 py-2.5 h-auto rounded-none hover:bg-accent/50">
             <Building2 className="h-4 w-4 text-foreground shrink-0" />
             <span className="truncate font-medium text-sm text-foreground">
-              {currentWorkspace?.name || cachedName || workspaces[0]?.name || 'Workspace'}
+              {currentWorkspace?.name || cachedName || workspaces[0]?.name || tc('labels.workspace')}
             </span>
             <ChevronDown className="h-3 w-3 ml-auto text-muted-foreground shrink-0" />
           </Button>
@@ -119,7 +122,7 @@ export function WorkspaceSwitcher({ workspaceId }: WorkspaceSwitcherProps) {
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => router.push('/admin/workspaces')}>
                 <Settings className="h-3.5 w-3.5 mr-2" />
-                Manage Workspaces
+                {ta('manageWorkspaces')}
               </DropdownMenuItem>
             </>
           )}

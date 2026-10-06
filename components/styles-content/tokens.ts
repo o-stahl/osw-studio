@@ -262,14 +262,17 @@ export function swatchAction(
 }
 
 /** Foot-of-panel note after a press superseded a token. Past tense: describes a write that already happened. */
-export function tokenSupersedeMessage(entry: SwatchEntry, token: ColorToken): string {
-  return `The ${entry.label.toLowerCase()} colour of this element came from ${token.name}, declared in `
-    + `${token.file}. Only this element changed — the token, and everything else using it, is as it was.`;
+export function tokenSupersedeMessage(
+  label: string,
+  token: ColorToken,
+  t: (key: 'tokenSuperseded', values: Record<string, string>) => string
+): string {
+  return t('tokenSuperseded', { label, token: token.name, file: token.file });
 }
 
 /** The instruction handed to the agent when the user takes that offer. */
 export function tokenAgentPrompt(entry: SwatchEntry, token: ColorToken, next: string): string {
-  return `Change the ${token.name} design token, declared in ${token.file}, from ${token.value} to ${next}. `
-    + `I picked this from the selected element's ${entry.label.toLowerCase()} colour, so update the token `
-    + 'itself rather than adding a per-element override.';
+  return `Change the ${token.name} design token, declared in ${token.file}, from ${token.value} to ${next}. ` // i18n-ignore: addressed to the agent
+    + `I picked this from the selected element's ${entry.label.toLowerCase()} colour, so update the token ` // i18n-ignore: addressed to the agent
+    + 'itself rather than adding a per-element override.'; // i18n-ignore: addressed to the agent
 }

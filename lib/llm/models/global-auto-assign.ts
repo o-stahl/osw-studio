@@ -5,6 +5,8 @@ import { isProviderConnected, getConnectedProviders } from '@/lib/llm/providers/
 import { BUILT_IN_MODEL_TEMPLATES } from './registry';
 import { loadProviderModels } from './model-catalog';
 import { pickModelForProvider, shouldAutoAssignAgent } from './project-assignment';
+import { fetchProviderStatus } from '@/lib/llm/provider-status';
+import { FREE_MODELS_ID, FREE_MODELS_PROVIDERS, isFreeModels } from '@/lib/llm/suggestions/free-models';
 
 /**
  * Make `provider` the GLOBAL active model. This is the onboarding auto-assign path:
@@ -67,4 +69,45 @@ export async function reconcileActiveProviderIfConnected(): Promise<void> {
   const target = isProviderConnected(selected) ? selected : getConnectedProviders()[0];
   if (!target) return; // genuine new user: leave onboarding as-is
   await activateProviderAsGlobalDefault(target);
+}
+
+/**
+ * After `provider` is connected, make sure the working model is one the account can use. An
+ * OpenRouter account that has never bought credit only gets answers from free models, while the
+ * Recommended template and the seeded default point at a paid one: its first request would fail.
+ * Such an account is given "Free models". OpenRouter publishes no balance for an ordinary key, so
+ * an account that has bought credit before keeps its model; if the credit has since run out, the
+ * stopped task suggests "Free models" then.
+ */
+export async function fitModelToAccount(provider: ProviderId): Promise<void> {
+  const active = configManager.getActiveAssignment();
+  if (active.agent.provider !== provider || !FREE_MODELS_PROVIDERS.has(provider)) return;
+  if (isFreeModels(active.agent.model)) return;
+  const key = configManager.getProviderApiKey(provider);
+  if (!key) return;
+  if ((await fetchProviderStatus(provider, key)).freeOnly !== true) return;
+
+  const { isFreeModel } = await import('@/lib/llm/suggestions/rank');
+  const current = (await loadProviderModels(provider)).find((m) => m.id === active.agent.model);
+  // A free model the user picked can stay; it is one the account can use.
+  if (current ? isFreeModel(current) : active.agent.model.endsWith(':free')) return;
+  // Re-read: another connect may have moved the selection while the list loaded.
+  const now = configManager.getActiveAssignment();
+  if (now.agent.provider !== provider || now.agent.model !== active.agent.model) return;
+  configManager.setActiveAssignment({ ...now, agent: { provider, model: FREE_MODELS_ID } });
+}
+
+let settling: Promise<void> = Promise.resolve();
+
+/** Record the connect handling in flight, so work that needs its outcome can wait for it. */
+export function trackConnectSettling(work: Promise<void>): void {
+  settling = Promise.all([settling, work.catch(() => {})]).then(() => {});
+}
+
+/**
+ * Resolves once every connect's model assignment in flight has finished. A message held until a model
+ * was connected waits for this, or it would go out on a model the account cannot use.
+ */
+export function connectSettled(): Promise<void> {
+  return settling;
 }

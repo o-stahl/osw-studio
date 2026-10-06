@@ -14,7 +14,7 @@ export interface ItemSummary {
 }
 
 /** Opening of the incomplete-feedback message — also used to skip rendering it twice in the UI. */
-export const INCOMPLETE_PREFIX = "Not done yet —";
+export const INCOMPLETE_PREFIX = "Not done yet —"; // i18n-ignore: opens feedback sent to the agent
 
 /**
  * Rolls per-assertion results up to one verdict per required item. A required

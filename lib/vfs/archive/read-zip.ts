@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import { formatBytes } from './format';
 import { validateArchivePath } from './paths';
+import { ArchiveError, said } from './text';
 import type { ArchiveEntry, ArchiveIssue } from './types';
 
 /**
@@ -58,9 +59,7 @@ export async function readZipArchive(file: File, options?: ReadZipOptions): Prom
   // First, and before the bytes are read: every other budget here runs after loadAsync has already
   // parsed the whole central directory, so this is the only guard that can precede a header flood.
   if (file.size > maxFileSize) {
-    throw new Error(
-      `This zip file is larger than the ${formatBytes(maxFileSize)} import limit.`
-    );
+    throw new ArchiveError('zipTooLarge', { limit: formatBytes(maxFileSize) });
   }
 
   const zip = await loadZip(file);
@@ -70,9 +69,7 @@ export async function readZipArchive(file: File, options?: ReadZipOptions): Prom
   const fileEntries = Object.values(zip.files).filter((entry) => !entry.dir);
 
   if (fileEntries.length > maxEntries) {
-    throw new Error(
-      `This archive holds ${fileEntries.length} entries, more than the ${maxEntries} an import accepts.`
-    );
+    throw new ArchiveError('zipTooManyEntries', { count: fileEntries.length, max: maxEntries });
   }
 
   if (trustDeclaredSizes) {
@@ -98,6 +95,7 @@ export async function readZipArchive(file: File, options?: ReadZipOptions): Prom
         path: entry.unsafeOriginalName ?? entry.name,
         code: result.code,
         message: result.message,
+        text: result.text,
       });
       continue;
     }
@@ -110,7 +108,7 @@ export async function readZipArchive(file: File, options?: ReadZipOptions): Prom
       issues.push({
         path: result.path,
         code: 'path-rejected',
-        message: 'The archive holds more than one file for this path.',
+        ...said('duplicateInArchive'),
       });
       continue;
     }
@@ -159,7 +157,7 @@ async function loadZip(file: File): Promise<JSZip> {
     // JSZip's own wording is the useful part — it names a corrupt central directory or an
     // encrypted archive, which is what the user has to act on.
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`This file could not be read as a zip archive. ${detail}`);
+    throw new ArchiveError('notZip', { detail });
   }
 }
 
@@ -235,7 +233,5 @@ function declaredSizeOf(entry: JSZip.JSZipObject): number | undefined {
 }
 
 function budgetExceeded(maxTotalBytes: number): Error {
-  return new Error(
-    `This archive is larger than the ${formatBytes(maxTotalBytes)} import limit once unpacked.`
-  );
+  return new ArchiveError('unpackedTooLarge', { limit: formatBytes(maxTotalBytes) });
 }

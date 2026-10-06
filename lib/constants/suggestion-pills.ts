@@ -1,6 +1,16 @@
 export interface SuggestionPill { id: string; label: string; prompt: string }
 
 /**
+ * The built-in starters' ids. Their labels are translated by id in the chat panel, which keys its
+ * labels by this type; the lists below only take these ids, so a new starter has to be added here.
+ */
+export type BuiltInPillId =
+  | 'portfolio' | 'multipage-site' | 'workspace-setup'
+  | 'quick-reword' | 'quick-colours' | 'quick-section' | 'quick-mobile';
+
+type BuiltInPill = SuggestionPill & { id: BuiltInPillId };
+
+/**
  * How many starters sit on the row above the composer. The rest go behind an overflow menu:
  * the row is directly above the input, so it must not grow enough to push it down.
  */
@@ -9,7 +19,7 @@ export const INLINE_SUGGESTION_COUNT = 3;
 // Fast first-task starters shown above the composer: a single-page build, a multi-page build,
 // and one that configures the workspace for a goal (custom runtime + CDN stack + .PROMPT.md),
 // which shows the project space is not limited to the built-in runtimes.
-export const SUGGESTION_PILLS: SuggestionPill[] = [
+export const SUGGESTION_PILLS: BuiltInPill[] = [
   {
     id: 'portfolio',
     label: 'Personal portfolio (one page)',
@@ -30,7 +40,7 @@ export const SUGGESTION_PILLS: SuggestionPill[] = [
 // Starters for quick edit, where the project already exists and a person is looking at a page of it.
 // The build starters above are wrong there: they describe making a site rather than changing one.
 // A project that defines its own suggestions overrides these.
-export const QUICK_EDIT_PILLS: SuggestionPill[] = [
+export const QUICK_EDIT_PILLS: BuiltInPill[] = [
   {
     id: 'quick-reword',
     label: 'Reword this page',

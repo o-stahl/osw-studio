@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useLayoutEffect, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect, useCallback, useMemo, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { Project } from '@/lib/vfs/types';
 import { vfs } from '@/lib/vfs';
@@ -17,8 +17,6 @@ import {
   Info,
   TestTube,
   Github,
-  ChevronLeft,
-  ChevronRight,
   BookOpen,
   ChevronDown,
   Cloud,
@@ -34,9 +32,15 @@ import {
   Database,
   Mail,
   Plug,
+  CircleHelp,
+  Languages,
+  MessagesSquare,
+  ExternalLink,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
-import { DiscordIcon } from '@/components/ui/discord-icon';
 import { DOCS_ITEMS } from '@/lib/constants/docs';
+import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { useProjectSyncState } from '@/lib/hooks/use-project-sync-state';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -44,6 +48,17 @@ import pkg from '@/package.json';
 import { WorkspaceSwitcher } from '@/components/workspace-switcher';
 import { getExternalAccountUrl } from '@/lib/config/deployment-mode';
 import { useStudioView } from '@/components/view-mode-provider';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { LanguageMenu } from '@/components/language-menu';
+import { MenuPill } from '@/components/ui/menu-pill';
+import { useViewNames } from '@/lib/i18n/use-view-names';
+import { DISCUSSIONS_URL, REPO_URL } from '@/lib/constants/links';
 
 // Collapsed sidebar width
 export const COLLAPSED_SIDEBAR_WIDTH = 56; // Width in pixels for icon-only buttons
@@ -113,11 +128,7 @@ const SIDEBAR_ITEMS: SidebarItem[] = [
       { id: 'users', label: 'Users', icon: Users, serverModeOnly: true, ownerOnly: true },
     ]
   },
-  { id: 'tour', label: 'Guided Tour', icon: Info, action: 'start-tour', studioOnly: true },
   { id: 'tester', label: 'Benchmark', icon: TestTube, path: '/test-generation', studioOnly: true },
-  { id: 'about', label: 'About', icon: Info, action: 'open-about' },
-  { id: 'discord', label: 'Discord', icon: DiscordIcon, href: 'https://discord.gg/mAJ8Ss4u' },
-  { id: 'github', label: 'GitHub', icon: Github, href: 'https://github.com/o-stahl/osw-studio' },
 ];
 
 const ACCOUNT_URL = getExternalAccountUrl();
@@ -127,6 +138,80 @@ const SYSTEM_ACTIONS: SidebarItem[] = [
   ...(ACCOUNT_URL ? [{ id: 'account', label: 'Account', icon: UserCircle, href: ACCOUNT_URL }] : []),
   { id: 'logout', label: 'Logout', icon: LogOut, action: 'logout' },
 ];
+
+/**
+ * The nav labels, translated.
+ *
+ * SIDEBAR_ITEMS and DOCS_ITEMS are module-level constants, so they cannot call a hook. Rather than
+ * translate at each of the ten places a label is rendered, the arrays are mapped once here and the
+ * render sites keep reading `item.label`.
+ *
+ * Every key is written out as a literal call because typed messages reject a computed key, and the
+ * English array stays the fallback: an id with no entry, such as a brand name, keeps its own label
+ * rather than rendering a key path. That is why MCP is absent below.
+ */
+function useNavLabels() {
+  const t = useTranslations();
+  const viewNames = useViewNames();
+
+  return useMemo(() => ({
+    items: {
+      ...viewNames,
+      tester: t('nav.items.tester'),
+      sync: t('nav.items.sync'),
+      account: t('common.labels.account'),
+      logout: t('nav.items.logout'),
+    } as Record<string, string>,
+    settings: {
+      connections: t('nav.settings.connections'),
+      models: t('common.terms.models'),
+      templates: t('common.terms.templates'),
+      appearance: t('nav.settings.appearance'),
+      costs: t('nav.settings.costs'),
+      permissions: t('nav.settings.permissions'),
+      data: t('nav.settings.data'),
+      mail: t('nav.settings.mail'),
+      users: t('nav.settings.users'),
+    } as Record<string, string>,
+    docs: {
+      'whats-new': t('nav.docs.whats-new'),
+      overview: t('nav.docs.overview'),
+      'getting-started': t('nav.docs.getting-started'),
+      projects: t('common.terms.projects'),
+      'working-with-ai': t('nav.docs.working-with-ai'),
+      templates: t('common.terms.templates'),
+      skills: t('common.terms.skills'),
+      'deploying-sites': t('nav.docs.deploying-sites'),
+      'server-mode': t('nav.docs.server-mode'),
+      'vps-deployment': t('nav.docs.vps-deployment'),
+      'site-publishing': t('nav.docs.site-publishing'),
+      'custom-domains': t('nav.docs.custom-domains'),
+      'backend-features': t('nav.docs.backend-features'),
+      'mcp-server': t('nav.docs.mcp-server'),
+      multitenancy: t('nav.docs.multitenancy'),
+      faq: t('nav.docs.faq'),
+      troubleshooting: t('nav.docs.troubleshooting'),
+    } as Record<string, string>,
+  }), [t, viewNames]);
+}
+
+function useTranslatedNav() {
+  const labels = useNavLabels();
+
+  return useMemo(() => {
+    const translate = (items: SidebarItem[]): SidebarItem[] =>
+      items.map((item) => ({
+        ...item,
+        label: labels.items[item.id] ?? item.label,
+        subItems: item.subItems?.map((sub) => ({
+          ...sub,
+          label: (item.id === 'docs' ? labels.docs[sub.id] : labels.settings[sub.id]) ?? sub.label,
+        })),
+      }));
+
+    return { items: translate(SIDEBAR_ITEMS), systemActions: translate(SYSTEM_ACTIONS) };
+  }, [labels]);
+}
 
 // ---------------------------------------------------------------------------
 // Flyout sub-menu (WP-style hover reveal for collapsed sections)
@@ -156,6 +241,7 @@ function SidebarFlyout({
   onMouseEnter: () => void;
   onMouseLeave: () => void;
 }) {
+  const t = useTranslations();
   const ref = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
   const [top, setTop] = useState(triggerRect.top);
@@ -186,7 +272,7 @@ function SidebarFlyout({
 
       {item.hasRecentProjects ? (
         loadingRecentProjects ? (
-          <div className="px-3 py-1.5 text-xs text-muted-foreground">Loading...</div>
+          <div className="px-3 py-1.5 text-xs text-muted-foreground">{t('common.loading')}</div>
         ) : recentProjects.length > 0 ? (
           recentProjects.map(project => (
             <button
@@ -200,7 +286,7 @@ function SidebarFlyout({
             </button>
           ))
         ) : (
-          <div className="px-3 py-1.5 text-xs text-muted-foreground">No recent projects</div>
+          <div className="px-3 py-1.5 text-xs text-muted-foreground">{t('sidebar.noRecentProjects')}</div>
         )
       ) : item.subItems ? (
         item.subItems
@@ -258,6 +344,8 @@ function SidebarContent({
   mobileOpen = false,
   onMobileOpenChange,
 }: SidebarProps) {
+  const t = useTranslations('sidebar');
+  const tn = useTranslations('nav');
   const router = useRouter();
   const searchParams = useSearchParams();
   const currentDocId = searchParams.get('doc');
@@ -277,7 +365,6 @@ function SidebarContent({
     if (currentView === 'settings') initial.add('settings');
     return initial;
   });
-  const [logoHover, setLogoHover] = useState(false);
 
   const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
   // Read-only: the gallery owns refreshing this, so the sidebar adds no extra request.
@@ -318,7 +405,17 @@ function SidebarContent({
 
   // Collapsed state is derived: collapsed when not pinned AND not hovering (desktop only)
   // On mobile, sidebar is never collapsed - it's either open or closed via mobileOpen
-  const collapsed = !isMobile && !pinned && !hovering;
+  // An open footer menu keeps an unpinned sidebar open, so the menu never loses its trigger. The
+  // menus are non-modal: a modal one stops pointer events on the page, so the sidebar never hears
+  // the pointer leave and stays open after the menu closes. On close, the pointer decides.
+  const [footerMenuOpen, setFooterMenuOpen] = useState(false);
+  const handleFooterMenuOpenChange = (open: boolean) => {
+    setFooterMenuOpen(open);
+    if (!open && !isMobile && !pinned && !sidebarRef.current?.matches(':hover')) setHovering(false);
+  };
+  const collapsed = !isMobile && !pinned && !hovering && !footerMenuOpen;
+
+  const ts = useTranslations('settings');
 
   // Auto-expand items when on their view
   useEffect(() => {
@@ -352,7 +449,6 @@ function SidebarContent({
     loadRecentProjects();
   }, []);
 
-
   // Load pinned state from localStorage
   useEffect(() => {
     const stored = localStorage.getItem('osw-admin-sidebar-pinned');
@@ -374,7 +470,6 @@ function SidebarContent({
     if (!isMobile && !pinned) {
       sidebarExpandingRef.current = true;
       setHovering(true);
-      onHoverChange?.(true);
     }
   };
 
@@ -382,9 +477,14 @@ function SidebarContent({
     if (!isMobile && !pinned) {
       pendingFlyoutRef.current = null;
       setHovering(false);
-      onHoverChange?.(false);
     }
   };
+
+  // The layout darkens the page while the unpinned sidebar is open over it. An open footer menu
+  // keeps it open (see `footerMenuOpen`), so it keeps the backdrop too.
+  useEffect(() => {
+    onHoverChange?.(!isMobile && !pinned && (hovering || footerMenuOpen));
+  }, [isMobile, pinned, hovering, footerMenuOpen, onHoverChange]);
 
   // Notify parent of initial pinned state
   useEffect(() => {
@@ -397,7 +497,8 @@ function SidebarContent({
   }, [collapsed, onCollapsedChange]);
 
   // Filter sidebar items based on Server Mode
-  const visibleSidebarItems = SIDEBAR_ITEMS.filter(
+  const { items: navItems, systemActions } = useTranslatedNav();
+  const visibleSidebarItems = navItems.filter(
     item =>
       (!item.serverModeOnly || isServerMode) &&
       (!item.adminOnly || isAdmin !== false) &&
@@ -499,6 +600,22 @@ function SidebarContent({
 
   const flyoutItem = flyoutItemId ? visibleSidebarItems.find(i => i.id === flyoutItemId) ?? null : null;
 
+  const brand = (
+    <>
+      <Logo width={24} height={24} className="flex-shrink-0" />
+      {!collapsed && (
+        <div className="flex flex-col">
+          <span className="text-sm font-semibold whitespace-nowrap leading-none">
+            Open{'\u00A0'}Source Web{'\u00A0'}Studio
+          </span>
+          <span className="text-[10px] leading-[10px] text-muted-foreground text-left mt-0.5">
+            {isServerMode ? t('serverBuild', { version: pkg.version }) : `v${pkg.version}`}
+          </span>
+        </div>
+      )}
+    </>
+  );
+
   const handleItemAction = async (item: SidebarItem) => {
     // Close mobile menu when action is triggered
     onMobileOpenChange?.(false);
@@ -525,10 +642,6 @@ function SidebarContent({
         router.push('/');
         onNavigate(item.id);
       }
-    } else if (item.action === 'start-tour' && onStartTour) {
-      onStartTour();
-    } else if (item.action === 'open-about' && onOpenAbout) {
-      onOpenAbout();
     } else if (item.action === 'open-settings' && onOpenSettings) {
       onOpenSettings();
     } else if (item.action === 'server-sync' && onServerSync) {
@@ -578,73 +691,20 @@ function SidebarContent({
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
-      {/* Logo/Brand */}
-      <button
-        onClick={() => {
-          // Mobile: close sidebar (if open), do nothing otherwise
-          // Desktop: toggle pinned state
-          if (isMobile) {
-            if (mobileOpen) {
-              onMobileOpenChange?.(false);
-            }
-            // On mobile, don't toggle pinned state
-          } else {
-            // Desktop: toggle pin/unpin
-            togglePinned();
-          }
-        }}
-        onMouseEnter={() => !isMobile && setLogoHover(true)}
-        onMouseLeave={() => !isMobile && setLogoHover(false)}
-        className={cn(
-          "p-3 border-b flex items-center gap-3 h-[54px] overflow-hidden w-full",
-          "hover:bg-accent/50 transition-colors cursor-pointer",
-          collapsed && "justify-center"
-        )}
-      >
-        {/* Icon container with position relative for chevron overlay */}
-        <div className="relative w-6 h-6 flex items-center justify-center flex-shrink-0">
-          {/* Logo - hidden on hover */}
-          <Logo
-            width={24}
-            height={24}
-            className={cn(
-              "transition-opacity absolute",
-              logoHover && "opacity-0"
-            )}
-          />
-
-          {/* Desktop chevron - visible on hover (desktop only) */}
-          {/* Left when pinned (collapse), Right when unpinned (expand) */}
-          {pinned ? (
-            <ChevronLeft
-              className={cn(
-                "hidden md:block h-6 w-6 transition-opacity absolute",
-                logoHover ? "opacity-100" : "opacity-0 pointer-events-none"
-              )}
-            />
-          ) : (
-            <ChevronRight
-              className={cn(
-                "hidden md:block h-6 w-6 transition-opacity absolute",
-                logoHover ? "opacity-100" : "opacity-0 pointer-events-none"
-              )}
-            />
-          )}
+      {/* Logo/Brand. On mobile it also closes the sidebar; pinning lives in the footer. */}
+      {isMobile ? (
+        <button
+          type="button"
+          onClick={() => onMobileOpenChange?.(false)}
+          className="p-3 border-b flex items-center gap-3 h-[54px] overflow-hidden w-full hover:bg-accent/50 transition-colors cursor-pointer"
+        >
+          {brand}
+        </button>
+      ) : (
+        <div className={cn('p-3 border-b flex items-center gap-3 h-[54px] overflow-hidden w-full', collapsed && 'justify-center')}>
+          {brand}
         </div>
-
-        {!collapsed && (
-          <div className="flex flex-col">
-            <span className="text-sm font-semibold whitespace-nowrap leading-none">
-              {logoHover && !pinned ? "Pin" : "Open\u00A0Source Web\u00A0Studio"}
-            </span>
-            {!(logoHover && !pinned) && (
-              <span className="text-[10px] leading-[10px] text-muted-foreground text-left mt-0.5">
-                {isServerMode ? `Server, v${pkg.version}` : `v${pkg.version}`}
-              </span>
-            )}
-          </div>
-        )}
-      </button>
+      )}
 
       {isServerMode && !collapsed && (
         <WorkspaceSwitcher workspaceId={workspaceId} />
@@ -772,7 +832,7 @@ function SidebarContent({
                   ) : (
                     !collapsed && (
                       <div className="px-2 py-1 text-xs text-muted-foreground">
-                        No recent projects
+                        {t('noRecentProjects')}
                       </div>
                     )
                   )}
@@ -854,7 +914,7 @@ function SidebarContent({
       {/* System Actions (Server Mode only) */}
       {isServerMode && (
         <div className="border-t p-2 space-y-1">
-          {SYSTEM_ACTIONS.filter(item => !(isDesktop && item.id === 'logout')).map((item) => {
+          {systemActions.filter(item => !(isDesktop && item.id === 'logout')).map((item) => {
             const Icon = item.icon;
             const isLogout = item.id === 'logout';
 
@@ -894,7 +954,7 @@ function SidebarContent({
                   isLogout && 'text-destructive hover:text-destructive hover:bg-destructive/10'
                 )}
                 onClick={() => handleItemAction(item)}
-                title={collapsed ? (pendingBadge ? `${item.label} (${pendingCount} not synced)` : item.label) : undefined}
+                title={collapsed ? (pendingBadge ? t('notSyncedTitle', { label: item.label, count: pendingCount }) : item.label) : undefined}
               >
                 <Icon className={cn('h-4 w-4', !collapsed && 'mr-2')} />
                 {!collapsed && item.label}
@@ -906,7 +966,7 @@ function SidebarContent({
                         ? 'absolute top-1 right-1 h-4 min-w-4 px-1'
                         : 'ml-auto h-4 min-w-4 px-1'
                     )}
-                    aria-label={`${pendingCount} project(s) not synced to the server`}
+                    aria-label={t('notSyncedAria', { count: pendingCount })}
                   >
                     {pendingCount}
                   </span>
@@ -917,30 +977,63 @@ function SidebarContent({
         </div>
       )}
 
-      {/* Pin/Unpin Toggle (desktop only) */}
-      <div className="hidden md:block border-t p-2">
+      {/* Pin, help and language. Collapsed, only the pin shows: hovering opens the sidebar. */}
+      <div className={cn('border-t p-2 flex items-center gap-1', collapsed && 'justify-center')}>
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
           className={cn(
-            'w-full',
-            collapsed ? 'justify-center px-2' : 'justify-start'
+            'hidden md:flex h-7 rounded-full gap-1.5 text-xs text-foreground',
+            collapsed ? 'w-7 p-0' : 'px-2.5'
           )}
           onClick={togglePinned}
-          title={collapsed ? (pinned ? "Unpin sidebar" : "Pin sidebar") : undefined}
+          aria-label={pinned ? tn('unpinSidebar') : tn('pinSidebar')}
+          title={pinned ? tn('unpinSidebar') : tn('pinSidebar')}
         >
-          {pinned ? (
-            <>
-              <ChevronLeft className={cn('h-4 w-4', !collapsed && 'mr-2')} />
-              {!collapsed && 'Unpin'}
-            </>
-          ) : (
-            <>
-              <ChevronRight className={cn('h-4 w-4', !collapsed && 'mr-2')} />
-              {!collapsed && 'Pin'}
-            </>
-          )}
+          {pinned ? <PanelLeftClose className="h-3.5 w-3.5" /> : <PanelLeftOpen className="h-3.5 w-3.5" />}
+          {!collapsed && (pinned ? tn('unpin') : tn('pin'))}
         </Button>
+        {!collapsed && (
+          <div className="ml-auto flex items-center gap-1">
+            <DropdownMenu modal={false} onOpenChange={handleFooterMenuOpenChange}>
+              <DropdownMenuTrigger asChild>
+                <MenuPill icon={CircleHelp} aria-label={tn('help')} title={tn('help')} />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" align="end" collisionPadding={8} className="min-w-48">
+                {studioView && onStartTour && (
+                  <DropdownMenuItem onSelect={() => { onMobileOpenChange?.(false); onStartTour(); }}>
+                    <Sparkles className="h-4 w-4" />
+                    {tn('items.tour')}
+                  </DropdownMenuItem>
+                )}
+                {onOpenAbout && (
+                  <DropdownMenuItem onSelect={() => { onMobileOpenChange?.(false); onOpenAbout(); }}>
+                    <Info className="h-4 w-4" />
+                    {tn('items.about')}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <a href={DISCUSSIONS_URL} target="_blank" rel="noopener noreferrer">
+                    <MessagesSquare className="h-4 w-4" />
+                    <span className="flex-1">{tn('discussions')}</span>
+                    <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                  </a>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
+                    <Github className="h-4 w-4" />
+                    <span className="flex-1">GitHub</span>
+                    <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                  </a>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <LanguageMenu modal={false} align="end" onOpenChange={handleFooterMenuOpenChange}>
+              <MenuPill icon={Languages} aria-label={ts('language.title')} title={ts('language.title')} />
+            </LanguageMenu>
+          </div>
+        )}
       </div>
     </div>
 

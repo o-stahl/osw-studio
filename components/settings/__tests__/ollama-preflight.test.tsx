@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
@@ -60,7 +61,7 @@ beforeEach(() => {
   mocks.apiFetch.mockResolvedValue({ json: async () => RESULT });
   mocks.agent = { provider: 'ollama', model: 'qwen3:4b' };
   mocks.providerModel = null;
-  act(() => { root.render(<OllamaPreflight />); });
+  act(() => { root.render(withMessages(<OllamaPreflight />)); });
 });
 
 afterEach(() => {

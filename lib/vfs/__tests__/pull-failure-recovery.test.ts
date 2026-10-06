@@ -303,3 +303,15 @@ describe('pulling a project that does not exist locally', () => {
   });
 });
 
+
+describe('the snapshot a pull takes first', () => {
+  it('is labelled, so the checkpoint panel can word it in the viewer\'s language', async () => {
+    serverIsAhead();
+    expect(await pullServerUpdates(projectId, false)).toBe(true);
+
+    const { checkpointManager } = await import('../checkpoint');
+    const listed = await checkpointManager.getCheckpoints(projectId);
+    const snapshot = listed.find((cp) => cp.description === 'Pre-sync backup (before pull)');
+    expect(snapshot?.label).toEqual({ key: 'preSyncPull' });
+  });
+});

@@ -14,6 +14,27 @@
 import { QUIET_PERIOD_MINUTES } from '@/lib/review/digest';
 import type { QueueStats } from '@/lib/mail/queue-stats';
 
+/**
+ * The caller's translator, narrowed to the keys this module reads.
+ *
+ * Plain functions cannot call a hook, so the copy comes in from the component. Naming the keys
+ * rather than taking `string` is what makes the component's own `useTranslations('mail')` assignable
+ * here, and it means a renamed key fails tsc at the call site rather than at render.
+ */
+export type MailMessageKey =
+  | 'accepted' | 'sentDetail' | 'yourOwnAddress'
+  | 'nothingToSend' | 'noServerConfigured'
+  | 'hostNotAllowed' | 'blockedDetail'
+  | 'refused' | 'nothingSentReason' | 'noReason'
+  | 'sessionExpired' | 'signInAgain'
+  | 'notYours' | 'noPermission'
+  | 'testFailed' | 'wentWrong';
+
+export type MailTranslator = (
+  key: MailMessageKey,
+  values?: Record<string, string | number>,
+) => string;
+
 // ---------------------------------------------------------------------------
 // Test sends
 // ---------------------------------------------------------------------------
@@ -54,7 +75,7 @@ export function classifyTestResponse(status: number, error: string | null): Test
   return 'error';
 }
 
-export function presentTestResult(input: {
+export function presentTestResult(t: MailTranslator, input: {
   status: number;
   /** The `error` field of the response body, if there was one. */
   error: string | null;
@@ -62,66 +83,66 @@ export function presentTestResult(input: {
   recipient: string | null;
 }): TestPresentation {
   const outcome = classifyTestResponse(input.status, input.error);
-  const to = input.recipient ?? 'your own address';
+  const to = input.recipient ?? t('yourOwnAddress');
 
   switch (outcome) {
     case 'sent':
       return {
         outcome,
         tone: 'success',
-        title: 'The mail server accepted it',
-        detail: `A test message addressed to ${to} was handed over and accepted. Check that mailbox — a server accepting a message is not the same as it arriving.`,
+        title: t('accepted'),
+        detail: t('sentDetail', { to }),
         serverError: null,
       };
     case 'unconfigured':
       return {
         outcome,
         tone: 'holding',
-        title: 'Nothing to send with',
+        title: t('nothingToSend'),
         detail:
           input.error ??
-          'No mail server is configured, so there was nothing to send the test with.',
+          t('noServerConfigured'),
         serverError: null,
       };
     case 'blocked':
       return {
         outcome,
         tone: 'blocked',
-        title: 'That host is not allowed',
+        title: t('hostNotAllowed'),
         detail:
-          'A workspace mail server has to be reachable at a public address. Nothing was dialled, so this is not a connection failure — the address was refused before any connection was attempted.',
+          t('blockedDetail'),
         serverError: null,
       };
     case 'refused':
       return {
         outcome,
         tone: 'failure',
-        title: 'The mail server refused it',
-        detail: 'Nothing was sent. The server gave its own reason:',
-        serverError: input.error ?? 'The mail server gave no reason.',
+        title: t('refused'),
+        detail: t('nothingSentReason'),
+        serverError: input.error ?? t('noReason'),
       };
     case 'unauthorized':
       return {
         outcome,
         tone: 'failure',
-        title: 'Your session has expired',
-        detail: 'Sign in again, then send the test.',
+        title: t('sessionExpired'),
+        detail: t('signInAgain'),
         serverError: null,
       };
     case 'forbidden':
       return {
         outcome,
         tone: 'failure',
-        title: 'Not yours to send',
-        detail: input.error ?? 'You do not have permission to send a test from here.',
+        title: t('notYours'),
+        detail: input.error ?? t('noPermission'),
         serverError: null,
       };
     default:
       return {
         outcome,
         tone: 'failure',
-        title: 'The test could not run',
-        detail: input.error ?? 'Something went wrong before the message reached a mail server.',
+        title: t('testFailed'),
+        detail: input.error ?? t('wentWrong'),
         serverError: null,
       };
   }
@@ -148,15 +169,23 @@ export interface QueuePresentation {
   lines: string[];
 }
 
-export function formatAge(seconds: number | null): string {
-  if (seconds === null) return 'a moment';
-  if (seconds < 60) return 'less than a minute';
+/** The `mail.queueSummary` keys the queue is worded with, so a translator passed in is checked. */
+export type QueueKey =
+  | 'headlineEmpty' | 'headline' | 'partWaiting' | 'partFailing' | 'partAbandoned' | 'acrossInstance'
+  | 'oldestWaiting' | 'failingHint' | 'abandonedHint' | 'nothingWaiting' | 'closing'
+  | 'ageMoment' | 'ageUnderMinute' | 'ageMinutes' | 'ageHours' | 'ageDays';
+
+export type QueueTranslator = (key: QueueKey, values?: Record<string, string | number>) => string;
+
+/** How long the oldest message has waited, in the largest unit that reads naturally. */
+export function formatAge(seconds: number | null, t: QueueTranslator): string {
+  if (seconds === null) return t('ageMoment');
+  if (seconds < 60) return t('ageUnderMinute');
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  if (minutes < 60) return t('ageMinutes', { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 48) return `${hours} hour${hours === 1 ? '' : 's'}`;
-  const days = Math.floor(hours / 24);
-  return `${days} days`;
+  if (hours < 48) return t('ageHours', { count: hours });
+  return t('ageDays', { count: Math.floor(hours / 24) });
 }
 
 /**
@@ -168,49 +197,29 @@ export function formatAge(seconds: number | null): string {
  * send (`instanceCanSend`, `workspaceCanSend`), and unsendable mail is never composed.
  */
 export function presentQueue(
+  t: QueueTranslator,
   stats: QueueStats,
   opts: { scope: 'workspace' | 'instance' }
 ): QueuePresentation {
   const parts: string[] = [];
   // "of them" because `failing` counts a subset of `pending`, reading the two as separate piles
   // would overstate the backlog.
-  if (stats.pending > 0) parts.push(`${stats.pending} waiting`);
-  if (stats.failing > 0) parts.push(`${stats.failing} of them failing`);
-  if (stats.abandoned > 0) parts.push(`${stats.abandoned} given up`);
+  if (stats.pending > 0) parts.push(t('partWaiting', { count: stats.pending }));
+  if (stats.failing > 0) parts.push(t('partFailing', { count: stats.failing }));
+  if (stats.abandoned > 0) parts.push(t('partAbandoned', { count: stats.abandoned }));
 
-  const headline = parts.length === 0 ? 'Queue — empty' : `Queue — ${parts.join(', ')}`;
+  const headline = parts.length === 0 ? t('headlineEmpty') : t('headline', { parts: parts.join(', ') });
 
   const lines: string[] = [];
 
-  if (opts.scope === 'instance') {
-    lines.push('Across every workspace on this instance.');
-  }
-
-  if (stats.pending > 0) {
-    lines.push(`The oldest has been waiting ${formatAge(stats.oldestPendingAgeSeconds)}.`);
-  }
-
-  if (stats.failing > 0) {
-    lines.push(
-      'A failing message is retried on a growing delay. Send a test to see the mail server’s own reason.'
-    );
-  }
-
-  if (stats.abandoned > 0) {
-    lines.push(
-      `${stats.abandoned} ran out of attempts and will not be retried. They are kept as the record of what failed.`
-    );
-  }
-
+  if (opts.scope === 'instance') lines.push(t('acrossInstance'));
+  if (stats.pending > 0) lines.push(t('oldestWaiting', { age: formatAge(stats.oldestPendingAgeSeconds, t) }));
+  if (stats.failing > 0) lines.push(t('failingHint'));
+  if (stats.abandoned > 0) lines.push(t('abandonedHint', { count: stats.abandoned }));
   if (stats.pending === 0 && stats.abandoned === 0) {
-    lines.push(
-      `Nothing is waiting. Comments are held for ${QUIET_PERIOD_MINUTES} minutes of quiet before a digest is queued.`
-    );
+    lines.push(t('nothingWaiting', { minutes: QUIET_PERIOD_MINUTES }));
   }
-
-  lines.push(
-    'These are messages waiting to be handed to a mail server. Leaving the queue means a mail server accepted it, which is not the same as it reaching a person.'
-  );
+  lines.push(t('closing'));
 
   return { headline, lines };
 }
@@ -330,7 +339,14 @@ export interface SendingDescription {
   sentence: string;
 }
 
-export function describeWorkspaceSending(input: {
+/** The `mail` keys the sending sentence is made of, so a translator passed in is checked against them. */
+export type MailSendingKey =
+  | 'sendingOff' | 'sendsAsThrough' | 'ownServerNeeds' | 'missingHostAndFrom' | 'missingHost' | 'missingFrom'
+  | 'noMailServer' | 'sendsAsThroughInstance' | 'instanceAsName' | 'instanceOwnName';
+
+export type MailSendingTranslator = (key: MailSendingKey, values?: Record<string, string>) => string;
+
+export function describeWorkspaceSending(t: MailSendingTranslator, input: {
   /** The workspace's own switch. Off outranks everything below it. */
   enabled: boolean;
   mode: 'instance' | 'own';
@@ -345,8 +361,7 @@ export function describeWorkspaceSending(input: {
   if (!input.enabled) {
     return {
       state: 'not-sending',
-      sentence:
-        'Sending is off. Comments still land in the review. Nothing is emailed until you turn this on.',
+      sentence: t('sendingOff'),
     };
   }
 
@@ -354,28 +369,27 @@ export function describeWorkspaceSending(input: {
     if (input.host && input.from) {
       return {
         state: 'sending',
-        sentence: `Mail from this workspace goes out as ${formatSender(input.from, input.displayName)}, through ${input.host}.`,
+        sentence: t('sendsAsThrough', { sender: formatSender(input.from, input.displayName) ?? '', host: input.host }),
       };
     }
-    const missing = !input.host && !input.from ? 'a host and a From address' : !input.host ? 'a host' : 'a From address';
+    const missing = t(!input.host && !input.from ? 'missingHostAndFrom' : !input.host ? 'missingHost' : 'missingFrom');
     return {
       state: 'not-sending',
-      sentence: `This workspace is set to use its own mail server but still needs ${missing}. Comments are still collected in the review itself.`,
+      sentence: t('ownServerNeeds', { missing }),
     };
   }
 
   if (input.instance.state === 'unavailable') {
     return {
       state: 'not-sending',
-      sentence:
-        'No mail is going out. This instance has no mail server to relay through, and this workspace has not set up its own.',
+      sentence: t('noMailServer'),
     };
   }
 
   if (input.instance.state === 'available' && input.instance.from) {
     return {
       state: 'sending',
-      sentence: `Mail from this workspace goes out as ${formatSender(input.instance.from, input.displayName)}, through the instance mail server.`,
+      sentence: t('sendsAsThroughInstance', { sender: formatSender(input.instance.from, input.displayName) ?? '' }),
     };
   }
 
@@ -386,8 +400,8 @@ export function describeWorkspaceSending(input: {
   return {
     state: input.instance.state === 'available' ? 'sending' : 'unknown',
     sentence: input.displayName
-      ? `Mail from this workspace goes out through the instance mail server, as ${input.displayName} on the instance’s own address.`
-      : 'Mail from this workspace goes out through the instance mail server, on the instance’s own address and under its own name.',
+      ? t('instanceAsName', { name: input.displayName })
+      : t('instanceOwnName'),
   };
 }
 
@@ -416,12 +430,15 @@ export function emptyToNull(value: string): string | null {
   return trimmed === '' ? null : trimmed;
 }
 
-export function parsePortInput(value: string): { port: number | null } | { error: string } {
+/** Why a port field was refused, as the `mail` message key that words it. */
+export type PortInputError = 'invalidPort';
+
+export function parsePortInput(value: string): { port: number | null } | { error: PortInputError } {
   const trimmed = value.trim();
   if (trimmed === '') return { port: null };
   const port = Number(trimmed);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    return { error: 'Port must be a whole number between 1 and 65535.' };
+    return { error: 'invalidPort' };
   }
   return { port };
 }
@@ -436,7 +453,7 @@ export function parsePortInput(value: string): { port: number | null } | { error
 export function buildSmtpBody(
   form: SmtpForm,
   password: PasswordIntent
-): { body: Record<string, unknown> } | { error: string } {
+): { body: Record<string, unknown> } | { error: PortInputError } {
   const port = parsePortInput(form.port);
   if ('error' in port) return { error: port.error };
 

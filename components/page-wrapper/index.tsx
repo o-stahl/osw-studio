@@ -2,12 +2,13 @@
 
 import React, { useState, useCallback, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Project } from '@/lib/vfs/types';
 import { useWorkspaceStore } from '@/lib/stores/workspace';
 import { PageLayout } from '@/components/page-layout';
 import { ContentArea } from '@/components/views/content-area';
 import { Workspace } from '@/components/workspace';
-import { GuidedTourProvider } from '@/components/guided-tour/context';
+import { GuidedTourProvider, useGuidedTour } from '@/components/guided-tour/context';
 import { GuidedTourOverlay } from '@/components/guided-tour/overlay';
 import { AboutModal } from '@/components/about-modal';
 import { GenerationShelf } from '@/components/generation-shelf';
@@ -16,9 +17,16 @@ import { toast } from 'sonner';
 import { track } from '@/lib/telemetry';
 import { TelemetryBootstrap } from '@/components/telemetry-bootstrap';
 import { useProviderAutoAssign } from '@/lib/hooks/use-provider-auto-assign';
+import { useProviderSignInReturn } from '@/lib/hooks/use-provider-sign-in-return';
+import { useTourOffer } from '@/lib/hooks/use-tour-offer';
 import { useModelConfigSignal } from '@/lib/hooks/use-model-config-signal';
 import { Spinner } from '@/components/ui/spinner';
 import { useStudioView } from '@/components/view-mode-provider';
+import { signInReturnProject } from '@/lib/auth/provider-sign-in';
+import { shouldAutoCreateFirstProject, opensFirstProject, createFirstProject } from '@/lib/first-run';
+import { detectDeploymentType } from '@/lib/telemetry/config';
+import { fetchSyncStatus } from '@/lib/vfs/auto-sync';
+import { logger } from '@/lib/utils';
 
 type View = 'dashboard' | 'projects' | 'templates' | 'skills' | 'interviews' | 'deployments' | 'users' | 'workspaces' | 'mail' | 'docs' | 'settings';
 
@@ -30,26 +38,6 @@ interface PageWrapperProps {
   /** Set by the quick-edit route: open this project straight into the fullscreen dock. */
   quickEditProjectId?: string;
 }
-
-/**
- * What Back says, and it has to name the page the workspace will actually return to.
- *
- * `?project=` works on any of these routes, so the shell it opened over is the one the parameter was
- * added to: from Deployments the URL stays on Deployments and Back lands there, and a label reading
- * "Back to projects" would be describing somewhere else.
- */
-const VIEW_LABELS: Record<string, string> = {
-  dashboard: 'dashboard',
-  projects: 'projects',
-  deployments: 'deployments',
-  templates: 'templates',
-  skills: 'skills',
-  interviews: 'interviews',
-  docs: 'docs',
-  settings: 'settings',
-  users: 'users',
-  workspaces: 'workspaces',
-};
 
 function getViewRoute(view: string, workspaceId?: string): string {
   const base = workspaceId ? `/w/${workspaceId}` : '/admin';
@@ -70,14 +58,20 @@ function getViewRoute(view: string, workspaceId?: string): string {
   return routes[view] || `${base}/projects`;
 }
 
+// A first visit is checked once per page load, like StudioApp's.
+let firstRunCheckDone = false;
+
 function PageWrapperInner({ view, workspaceId, settingsTab, autoCreateProject, quickEditProjectId }: PageWrapperProps) {
+  const twx = useTranslations('workspace');
   const router = useRouter();
   const searchParams = useSearchParams();
   // Quick edit names its project in the path rather than a search param, but everything downstream,
   // the restore, the spinner, the sidebar suppression, is the same, so it joins here.
   const quickEdit = !!quickEditProjectId;
   const studioView = useStudioView();
-  const projectParam = quickEditProjectId ?? searchParams.get('project');
+  // A sign-in's return opens the project it started from; closing it lets that go.
+  const [signInProject, setSignInProject] = useState(signInReturnProject);
+  const projectParam = quickEditProjectId ?? searchParams.get('project') ?? signInProject;
 
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   /**
@@ -96,6 +90,7 @@ function PageWrapperInner({ view, workspaceId, settingsTab, autoCreateProject, q
   // Global model auto-assign on provider connect. Mounted here (always-present root) so the
   // Connections UI works both inside and outside a workspace (dashboard -> Settings -> Connections).
   useProviderAutoAssign();
+  useProviderSignInReturn();
 
   // Reactive model-config signal + one-time model migration. Mounted here (always-present root)
   // so ANY ChatPanel (workspace, describe-mode, project-manager) reacts to model picks.
@@ -124,6 +119,24 @@ function PageWrapperInner({ view, workspaceId, settingsTab, autoCreateProject, q
   }, [router, workspaceId]);
 
   /**
+   * The tour runs on the projects page. Every route mounts its own tour provider, so from anywhere
+   * else it travels as `?tour=start` and the projects page starts it on arrival.
+   */
+  const { state: tourState, start: startTour } = useGuidedTour();
+  const handleStartTour = useCallback(() => {
+    if (view === 'projects') startTour();
+    else router.push(`${getViewRoute('projects', workspaceId)}?tour=start`);
+  }, [view, startTour, router, workspaceId]);
+
+  useEffect(() => {
+    if (view !== 'projects' || searchParams.get('tour') !== 'start') return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('tour');
+    window.history.replaceState({}, '', url.toString());
+    startTour();
+  }, [view, searchParams, startTour]);
+
+  /**
    * The open project lives in `?project=<id>`, so a reload or a shared link returns to it and Back
    * leaves it. pushState rather than router.push: this is the same route either way, and a Next
    * navigation would remount the whole shell to change one search param.
@@ -138,6 +151,7 @@ function PageWrapperInner({ view, workspaceId, settingsTab, autoCreateProject, q
   }, [quickEdit]);
 
   const clearProjectParam = useCallback(() => {
+    setSignInProject(null);
     if (quickEdit) return;
     const url = new URL(window.location.href);
     url.searchParams.delete('project');
@@ -209,24 +223,91 @@ function PageWrapperInner({ view, workspaceId, settingsTab, autoCreateProject, q
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectParam]);
 
+  /**
+   * The tour's workspace steps run inside its demo project, and its earlier steps on the projects
+   * page: open and close the project as the steps move, as the browser-mode app does.
+   */
+  const tourLocation = tourState.status === 'running' ? tourState.currentStep?.location : undefined;
+  useEffect(() => {
+    if (!tourLocation) return;
+    if (tourLocation !== 'workspace') {
+      if (selectedProject) handleProjectClose();
+      return;
+    }
+    if (selectedProject) return;
+    const tourProject = tourState.tourDemoProjectId
+      ? tourState.projectList.find(p => p.id === tourState.tourDemoProjectId)
+      : tourState.projectList[0];
+    if (tourProject) handleProjectOpen(tourProject);
+  }, [tourLocation, selectedProject, tourState.projectList, tourState.tourDemoProjectId, handleProjectOpen, handleProjectClose]);
+
+  /**
+   * First visit on hosted and desktop: with no project on the server or in this browser, open a new
+   * starter project. A self-hosted server shows the projects page instead (`opensFirstProject`).
+   */
+  const tp = useTranslations('projects');
+  useEffect(() => {
+    if (firstRunCheckDone || quickEdit || !workspaceId || !opensFirstProject(detectDeploymentType())) return;
+    if (!shouldAutoCreateFirstProject({ search: window.location.search, projectCount: 0 })) return;
+    firstRunCheckDone = true;
+    (async () => {
+      try {
+        const status = await fetchSyncStatus();
+        if (!status || (status.projects?.length ?? 0) > 0) return;
+        await vfs.init();
+        if ((await vfs.listProjects()).length > 0) return;
+        const project = await createFirstProject(tp('firstSiteName'));
+        vfs.scheduleAutoSync(project.id);
+        track('project_create', { method: 'first_run_auto', runtime: 'static', template: 'blank' });
+        handleProjectOpen(project);
+      } catch (err) {
+        logger.warn('[FirstRun] auto-create failed:', err);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per page load
+  }, []);
+
+  // "Create a project" on the first-visit offer: a new starter project, opened at once.
+  const handleCreateFromOffer = useCallback(async () => {
+    try {
+      const project = await createFirstProject(tp('firstSiteName'));
+      vfs.scheduleAutoSync(project.id);
+      track('project_create', { method: 'tour_offer', runtime: 'static', template: 'blank' });
+      handleProjectOpen(project);
+    } catch (err) {
+      logger.warn('[TourOffer] create failed:', err);
+      toast.error(tp('createFailed'));
+    }
+  }, [tp, handleProjectOpen]);
+  useTourOffer(handleStartTour, studioView && !quickEdit, selectedProject ? undefined : handleCreateFromOffer);
+
+  // The tour sends this after removing its demo project, which may be the one open here.
+  useEffect(() => {
+    const onTourHome = () => handleProjectClose();
+    window.addEventListener('tour-navigate-home', onTourHome);
+    return () => window.removeEventListener('tour-navigate-home', onTourHome);
+  }, [handleProjectClose]);
+
   const handleShelfNavigate = useCallback(async (info: { id: string; name: string }) => {
     try {
       const project = await vfs.getProject(info.id);
       if (project) handleProjectOpen(project);
     } catch {
-      toast.error('Could not open project');
+      toast.error(twx('openProjectFailed'));
     }
-  }, [handleProjectOpen]);
+  }, [handleProjectOpen, twx]);
 
   const content = restoringProject && !selectedProject ? (
     <div className="h-full flex items-center justify-center">
       <Spinner size={48} color="#f97316" className="mx-auto" />
     </div>
   ) : selectedProject ? (
+    // Back names the page the workspace returns to: `?project=` works on any of these routes, so
+    // from Deployments, Back lands on Deployments (`workspace.backToView` selects by view).
     <Workspace
       project={selectedProject}
       onBack={handleProjectClose}
-      backLabel={quickEdit ? 'Back to projects' : `Back to ${VIEW_LABELS[view] ?? 'projects'}`}
+      backLabel={quickEdit ? twx('backToProjects') : twx('backToView', { view })}
       workspaceId={workspaceId}
       initialPreviewPath={initialPreviewPath}
     />
@@ -237,6 +318,7 @@ function PageWrapperInner({ view, workspaceId, settingsTab, autoCreateProject, q
       onProjectSelect={handleProjectOpen}
       settingsTab={settingsTab}
       onNavigate={handleNavigate}
+      onStartTour={handleStartTour}
       autoCreateProject={autoCreateProject}
     />
   );
@@ -248,6 +330,7 @@ function PageWrapperInner({ view, workspaceId, settingsTab, autoCreateProject, q
         workspaceId={workspaceId}
         onNavigate={handleNavigate}
         onProjectSelect={handleProjectOpen}
+        onStartTour={handleStartTour}
         onOpenAbout={() => setShowAboutModal(true)}
         showSidebar={!selectedProject && !restoringProject}
       >

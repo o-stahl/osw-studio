@@ -12,14 +12,15 @@ export interface ToolCall {
   id: string;
   name: string;
   parameters?: any;
-  status?: 'pending' | 'executing' | 'completed' | 'failed';
+  /** `stopped`: still in flight when the run ended, so it never reported back. */
+  status?: 'pending' | 'executing' | 'completed' | 'failed' | 'stopped';
   result?: any;
   error?: string;
 }
 
 export interface TurnItem {
   id: string;
-  type: 'waiting' | 'reasoning' | 'plan' | 'agent' | 'progress' | 'tool' | 'text' | 'error' | 'error_paused' | 'user' | 'synthetic_error' | 'project_context' | 'compaction' | 'ask' | 'approval' | 'interview_gate';
+  type: 'waiting' | 'reasoning' | 'plan' | 'agent' | 'progress' | 'tool' | 'text' | 'error' | 'error_paused' | 'user' | 'synthetic_error' | 'project_context' | 'compaction' | 'ask' | 'approval' | 'interview_gate' | 'notice' | 'api_stopped';
   timestamp: number;
   data: any;
   eventId?: string;
@@ -169,7 +170,35 @@ export class EventProcessor {
     ];
 
     for (const event of eventsToProcess) {
+      // "Trying again" only describes the wait it is in. Whatever comes next ends that wait.
+      if (event.event !== 'retry' && event.event !== 'waiting') {
+        state.currentTurn.items = state.currentTurn.items.filter(item => !(item.type === 'notice' && item.data?.kind === 'retrying'));
+      }
       switch (event.event) {
+        case 'retry': {
+          const last = state.currentTurn.items[state.currentTurn.items.length - 1];
+          const data = { kind: 'retrying', provider: event.data?.provider ?? '', status: event.data?.status ?? 0 };
+          if (last?.type === 'notice' && last.data?.kind === 'retrying') last.data = data;
+          else state.currentTurn.items.push({ id: `item-${state.itemIdCounter++}`, type: 'notice', timestamp: event.timestamp, data });
+          break;
+        }
+
+        case 'model_switched':
+          state.currentTurn.items.push({
+            id: `item-${state.itemIdCounter++}`,
+            type: 'notice',
+            timestamp: event.timestamp,
+            data: {
+              kind: 'switched',
+              provider: event.data?.provider ?? '',
+              fromModel: event.data?.fromModel ?? '',
+              toModel: event.data?.toModel ?? '',
+              reason: event.data?.reason ?? 'busy',
+            },
+          });
+          state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
+          break;
+
         case 'waiting':
           state.currentTurn.items.push({
             id: `item-${state.itemIdCounter++}`,
@@ -573,6 +602,18 @@ export class EventProcessor {
           state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
           break;
 
+        case 'api_stopped':
+          state.currentTurn.items.push({
+            id: `item-${state.itemIdCounter++}`,
+            type: 'api_stopped',
+            timestamp: event.timestamp,
+            data: event.data,
+          });
+          state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
+          break;
+
+        // Earlier versions paused on a provider error instead of stopping. Kept so those threads
+        // still render.
         case 'error_paused':
           state.currentTurn.items.push({
             id: `item-${state.itemIdCounter++}`,
@@ -648,9 +689,18 @@ export class EventProcessor {
         }
 
         case 'stopped':
-        case 'task_complete':
+        case 'task_complete': {
           state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
+          // A tool still in flight when the run ends never reports back; without this it spins
+          // for good.
+          for (const turn of [...state.result, state.currentTurn]) {
+            for (const item of turn.items) {
+              const tool = item.type === 'tool' ? (item.data as ToolCall) : null;
+              if (tool && (tool.status === 'pending' || tool.status === 'executing')) tool.status = 'stopped';
+            }
+          }
           break;
+        }
       }
     }
 

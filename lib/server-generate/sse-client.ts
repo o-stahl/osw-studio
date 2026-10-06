@@ -44,10 +44,10 @@ export class SSEClient {
       'assistant_delta', 'reasoning_delta', 'reasoning_start', 'reasoning_complete',
       'toolCalls', 'tool_status', 'tool_param_delta', 'tool_result', 'tool_healed',
       'conversation_message', 'conversation_replaced', 'waiting', 'iteration', 'progress',
-      'error', 'error_paused', 'stopped', 'compaction', 'agent_progress',
+      'error', 'stopped', 'compaction', 'agent_progress', 'retry', 'api_stopped',
       'usage', 'skill_evaluation', 'checkpoint_created', 'exit_reason',
       // Server generation lifecycle
-      'files_changed', 'build_requested', 'search_requested', 'usage_update', 'approval_required',
+      'files_changed', 'build_requested', 'search_requested', 'image_requested', 'usage_update', 'approval_required',
       'task_complete', 'sync_gap', 'notification', 'runtimeChanged',
       // Requests from an MCP client, which this tab answers because it holds the provider key
       // and the local copy of the project.

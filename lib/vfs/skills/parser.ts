@@ -3,6 +3,7 @@
  * Follows Anthropic conventions for skill file format
  */
 
+import { translator } from '@/lib/i18n/runtime';
 import { SkillFrontmatter } from './types';
 
 const FRONTMATTER_REGEX = /^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/;
@@ -17,7 +18,7 @@ export function parseSkillFile(content: string): {
   const match = content.match(FRONTMATTER_REGEX);
 
   if (!match) {
-    throw new Error('Invalid SKILL.md format: Missing YAML frontmatter');
+    throw new Error(translator()('skills.errors.noFrontmatter'));
   }
 
   const [, yamlContent, markdown] = match;
@@ -30,7 +31,7 @@ export function parseSkillFile(content: string): {
       markdown: markdown.trim()
     };
   } catch (error) {
-    throw new Error(`Failed to parse SKILL.md: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(translator()('skills.parseFailed', { error: error instanceof Error ? error.message : '' }));
   }
 }
 
@@ -74,21 +75,21 @@ function parseYAML(yamlContent: string): SkillFrontmatter {
  */
 function validateFrontmatter(frontmatter: SkillFrontmatter): void {
   if (!frontmatter.name || typeof frontmatter.name !== 'string') {
-    throw new Error('Missing or invalid "name" field in frontmatter');
+    throw new Error(translator()('skills.errors.badName'));
   }
 
   if (!frontmatter.description || typeof frontmatter.description !== 'string') {
-    throw new Error('Missing or invalid "description" field in frontmatter');
+    throw new Error(translator()('skills.errors.badDescription'));
   }
 
   // Validate name format (lowercase, hyphens, no spaces)
   if (!/^[a-z0-9-]+$/.test(frontmatter.name)) {
-    throw new Error('Skill name must be lowercase with hyphens only (e.g., "my-skill-name")');
+    throw new Error(translator()('skills.errors.nameFormat'));
   }
 
   // Validate description length
   if (frontmatter.description.length > 500) {
-    throw new Error('Description must be 500 characters or less');
+    throw new Error(translator()('skills.errors.descriptionTooLong', { max: 500 }));
   }
 }
 

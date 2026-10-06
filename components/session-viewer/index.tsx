@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { useTranslations } from 'next-intl';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 
 interface SessionPage {
   path: string;
@@ -55,6 +57,9 @@ interface SessionViewerProps {
 }
 
 export function SessionViewer({ deploymentId }: SessionViewerProps) {
+  const t = useTranslations('analytics.sessionViewer');
+  const ta = useTranslations('analytics');
+  const format = useLocalFormat();
   const [data, setData] = useState<SessionData | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedSession, setSelectedSession] = useState<SessionJourney | null>(null);
@@ -70,7 +75,7 @@ export function SessionViewer({ deploymentId }: SessionViewerProps) {
       setData(sessionData);
     } catch (error) {
       console.error('Failed to fetch session data:', error);
-      toast.error('Failed to load session data');
+      toast.error(t('loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -82,13 +87,16 @@ export function SessionViewer({ deploymentId }: SessionViewerProps) {
   }, [deploymentId]);
 
   // Format duration
+  // Unit abbreviations are the locale's, not English: Finnish writes "min" (an "m" is metres) and
+  // Korean "분"/"초".
+  const unit = (value: number, name: 'minute' | 'second') =>
+    format.number(value, { style: 'unit', unit: name, unitDisplay: 'narrow' });
   const formatDuration = (ms: number) => {
     const seconds = Math.floor(ms / 1000);
-    if (seconds < 60) return `${seconds}s`;
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}m ${remainingSeconds}s`;
+    if (seconds < 60) return unit(seconds, 'second');
+    return `${unit(Math.floor(seconds / 60), 'minute')} ${unit(seconds % 60, 'second')}`;
   };
+  const formatDate = (value: string) => format.dateTime(new Date(value), { dateStyle: 'short', timeStyle: 'medium' });
 
   return (
     <div className="space-y-6">
@@ -96,20 +104,20 @@ export function SessionViewer({ deploymentId }: SessionViewerProps) {
       {data && data.summary && (
         <div className="grid grid-cols-4 gap-4">
           <div className="border rounded-lg p-4">
-            <div className="text-sm text-muted-foreground">Total Sessions</div>
-            <div className="text-2xl font-bold">{(data.summary.totalSessions || 0).toLocaleString()}</div>
+            <div className="text-sm text-muted-foreground">{t('totalSessions')}</div>
+            <div className="text-2xl font-bold">{format.number(data.summary.totalSessions || 0)}</div>
           </div>
           <div className="border rounded-lg p-4">
-            <div className="text-sm text-muted-foreground">Bounce Rate</div>
-            <div className="text-2xl font-bold">{((data.summary.bounceRate || 0) * 100).toFixed(1)}%</div>
+            <div className="text-sm text-muted-foreground">{ta('bounceRate')}</div>
+            <div className="text-2xl font-bold">{format.number(data.summary.bounceRate || 0, { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 })}</div>
           </div>
           <div className="border rounded-lg p-4">
-            <div className="text-sm text-muted-foreground">Avg. Duration</div>
+            <div className="text-sm text-muted-foreground">{t('avgDuration')}</div>
             <div className="text-2xl font-bold">{formatDuration(data.summary.averageDuration || 0)}</div>
           </div>
           <div className="border rounded-lg p-4">
-            <div className="text-sm text-muted-foreground">Avg. Pages/Session</div>
-            <div className="text-2xl font-bold">{(data.summary.averagePageCount || 0).toFixed(1)}</div>
+            <div className="text-sm text-muted-foreground">{t('avgPagesPerSession')}</div>
+            <div className="text-2xl font-bold">{format.number(data.summary.averagePageCount || 0, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</div>
           </div>
         </div>
       )}
@@ -117,7 +125,7 @@ export function SessionViewer({ deploymentId }: SessionViewerProps) {
       {/* Flow Visualization */}
       {data && data.flowData && (
         <div className="border rounded-lg p-4">
-          <h3 className="font-medium mb-4">Page Flow</h3>
+          <h3 className="font-medium mb-4">{t('pageFlow')}</h3>
           <div className="space-y-2">
             {/* Simple flow visualization */}
             {data.flowData.nodes.slice(0, 10).map((node, index) => {
@@ -128,22 +136,26 @@ export function SessionViewer({ deploymentId }: SessionViewerProps) {
                 <div key={node.id} className="border rounded p-3">
                   <div className="flex justify-between items-center mb-2">
                     <span className="font-medium">{node.label}</span>
-                    <span className="text-sm text-muted-foreground">{node.value} visits</span>
+                    <span className="text-sm text-muted-foreground">{t('visits', { count: node.value })}</span>
                   </div>
 
                   {/* Incoming links */}
                   {incomingLinks.length > 0 && (
                     <div className="text-xs text-muted-foreground mb-1">
-                      ← From: {incomingLinks.slice(0, 3).map((l) => l.source).join(', ')}
-                      {incomingLinks.length > 3 && ` (+${incomingLinks.length - 3} more)`}
+                      {t('linksFrom', {
+                        pages: incomingLinks.slice(0, 3).map((l) => l.source).join(', '),
+                        more: Math.max(incomingLinks.length - 3, 0),
+                      })}
                     </div>
                   )}
 
                   {/* Outgoing links */}
                   {outgoingLinks.length > 0 && (
                     <div className="text-xs text-muted-foreground">
-                      → To: {outgoingLinks.slice(0, 3).map((l) => l.target).join(', ')}
-                      {outgoingLinks.length > 3 && ` (+${outgoingLinks.length - 3} more)`}
+                      {t('linksTo', {
+                        pages: outgoingLinks.slice(0, 3).map((l) => l.target).join(', '),
+                        more: Math.max(outgoingLinks.length - 3, 0),
+                      })}
                     </div>
                   )}
                 </div>
@@ -157,7 +169,7 @@ export function SessionViewer({ deploymentId }: SessionViewerProps) {
       {data && data.sessions.length > 0 && (
         <div className="border rounded-lg">
           <div className="p-4 border-b">
-            <h3 className="font-medium">Recent Sessions</h3>
+            <h3 className="font-medium">{t('recentSessions')}</h3>
           </div>
           <div className="divide-y max-h-96 overflow-y-auto">
             {data.sessions.slice(0, 50).map((session) => (
@@ -172,11 +184,11 @@ export function SessionViewer({ deploymentId }: SessionViewerProps) {
                       {session.entryPage} → {session.exitPage}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {new Date(session.createdAt).toLocaleString()}
+                      {formatDate(session.createdAt)}
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm">{session.pageCount} pages</div>
+                    <div className="text-sm">{t('pageCount', { count: session.pageCount })}</div>
                     <div className="text-xs text-muted-foreground">
                       {formatDuration(session.totalDuration)}
                     </div>
@@ -185,7 +197,7 @@ export function SessionViewer({ deploymentId }: SessionViewerProps) {
 
                 {session.isBounce && (
                   <div className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-red-100 text-red-800">
-                    Bounce
+                    {t('bounce')}
                   </div>
                 )}
               </div>
@@ -205,8 +217,8 @@ export function SessionViewer({ deploymentId }: SessionViewerProps) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-start mb-4">
-              <h3 className="text-lg font-medium">Session Journey</h3>
-              <Button variant="ghost" size="sm" onClick={() => setSelectedSession(null)}>
+              <h3 className="text-lg font-medium">{t('sessionJourney')}</h3>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedSession(null)} aria-label={t('close')}>
                 ✕
               </Button>
             </div>
@@ -215,26 +227,26 @@ export function SessionViewer({ deploymentId }: SessionViewerProps) {
               {/* Session metadata */}
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="text-muted-foreground">Started:</span>{' '}
-                  {new Date(selectedSession.createdAt).toLocaleString()}
+                  <span className="text-muted-foreground">{t('started')}</span>{' '}
+                  {formatDate(selectedSession.createdAt)}
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Ended:</span>{' '}
-                  {new Date(selectedSession.endedAt).toLocaleString()}
+                  <span className="text-muted-foreground">{t('ended')}</span>{' '}
+                  {formatDate(selectedSession.endedAt)}
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Total Duration:</span>{' '}
+                  <span className="text-muted-foreground">{t('totalDuration')}</span>{' '}
                   {formatDuration(selectedSession.totalDuration)}
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Pages Visited:</span>{' '}
-                  {selectedSession.pageCount}
+                  <span className="text-muted-foreground">{t('pagesVisited')}</span>{' '}
+                  {format.number(selectedSession.pageCount)}
                 </div>
               </div>
 
               {/* Journey timeline */}
               <div className="border-t pt-4">
-                <h4 className="font-medium mb-3">Page Journey</h4>
+                <h4 className="font-medium mb-3">{t('pageJourney')}</h4>
                 <div className="space-y-3">
                   {selectedSession.pages.map((page, index) => (
                     <div key={index} className="flex items-start gap-3">
@@ -249,7 +261,7 @@ export function SessionViewer({ deploymentId }: SessionViewerProps) {
                       <div className="flex-1">
                         <div className="font-medium">{page.path}</div>
                         <div className="text-xs text-muted-foreground">
-                          {new Date(page.timestamp).toLocaleTimeString()}
+                          {format.dateTime(page.timestamp, { timeStyle: 'medium' })}
                           {page.duration && ` • ${formatDuration(page.duration)}`}
                         </div>
                       </div>
@@ -264,13 +276,13 @@ export function SessionViewer({ deploymentId }: SessionViewerProps) {
 
       {loading && (
         <div className="flex items-center justify-center h-96 border rounded-lg">
-          <p className="text-muted-foreground">Loading session data...</p>
+          <p className="text-muted-foreground">{t('loading')}</p>
         </div>
       )}
 
       {!loading && !data && (
         <div className="flex items-center justify-center h-96 border rounded-lg">
-          <p className="text-muted-foreground">No session data available</p>
+          <p className="text-muted-foreground">{t('noData')}</p>
         </div>
       )}
     </div>

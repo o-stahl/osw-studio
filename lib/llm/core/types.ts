@@ -110,7 +110,11 @@ export interface AgentLoopConfig {
   agentType: string;
   isReadOnly: boolean;
   completionGate?: () => Promise<string | null>;
-  onPausableError?: (error: Error) => Promise<'continue' | 'stop'>;
+  /**
+   * `retry` resends the same request: the provider failed, not the model's approach, so there is
+   * nothing to tell the model.
+   */
+  onProviderError?: (error: Error) => Promise<'retry' | 'stop'>;
 }
 
 export interface AgentLoopResult {

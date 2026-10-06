@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Camera, ImageUp, X, Loader2 } from 'lucide-react';
 import { compressImage } from '@/lib/utils/image-compress';
 import { cn } from '@/lib/utils';
@@ -20,6 +21,8 @@ export function ThumbnailArea({
   size = 'md',
   className,
 }: ThumbnailAreaProps) {
+  const tt = useTranslations('tooltips');
+  const tc = useTranslations('common');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isCapturing, setIsCapturing] = useState(false);
 
@@ -78,11 +81,11 @@ export function ThumbnailArea({
       <div className={cn('relative group shrink-0', className)} onClick={stopProp}>
         {compact ? (
           <div className={cn(boxCls, 'overflow-hidden bg-muted shrink-0', isXs && 'border border-border')}>
-            <img src={image} alt="Thumbnail" className="w-full h-full object-cover" />
+            <img src={image} alt={tc('labels.thumbnail')} className="w-full h-full object-cover" />
           </div>
         ) : (
           <div className="w-full aspect-video bg-muted">
-            <img src={image} alt="Thumbnail" className="w-full h-full object-cover" />
+            <img src={image} alt={tc('labels.thumbnail')} className="w-full h-full object-cover" />
           </div>
         )}
         <button
@@ -93,7 +96,7 @@ export function ThumbnailArea({
             compact ? removeBtn : 'h-7 w-7 rounded-md',
             compact ? 'top-0 right-0 -translate-y-1/3 translate-x-1/3' : 'top-1.5 right-1.5'
           )}
-          title="Remove thumbnail"
+          title={tt('removeThumbnail')}
         >
           <X className={compact ? removeIcon : 'h-3.5 w-3.5'} />
         </button>
@@ -112,7 +115,7 @@ export function ThumbnailArea({
               onClick={handleCapture}
               disabled={isCapturing}
               className={cn('flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted-foreground/15 transition-colors', actionBtn)}
-              title="Capture"
+              title={tt('capture')}
             >
               {isCapturing ? <Loader2 className={cn(actionIcon, 'animate-spin')} /> : <Camera className={actionIcon} />}
             </button>
@@ -121,7 +124,7 @@ export function ThumbnailArea({
             type="button"
             onClick={handleUploadClick}
             className={cn('flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted-foreground/15 transition-colors', actionBtn)}
-            title="Upload image"
+            title={tt('uploadImage')}
           >
             <ImageUp className={actionIcon} />
           </button>
@@ -134,7 +137,7 @@ export function ThumbnailArea({
               onClick={handleCapture}
               disabled={isCapturing}
               className="h-9 w-9 rounded-lg flex items-center justify-center border border-border/60 bg-background/50 text-muted-foreground hover:text-foreground hover:bg-background/80 transition-colors shadow-sm"
-              title="Capture screenshot"
+              title={tt('captureScreenshot')}
             >
               {isCapturing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
             </button>
@@ -143,7 +146,7 @@ export function ThumbnailArea({
             type="button"
             onClick={handleUploadClick}
             className="h-9 w-9 rounded-lg flex items-center justify-center border border-border/60 bg-background/50 text-muted-foreground hover:text-foreground hover:bg-background/80 transition-colors shadow-sm"
-            title="Upload image"
+            title={tt('uploadImage')}
           >
             <ImageUp className="h-4 w-4" />
           </button>

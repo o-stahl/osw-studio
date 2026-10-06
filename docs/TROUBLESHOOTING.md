@@ -100,14 +100,19 @@ npm install --force
 - 429 Too Many Requests
 - Slow responses
 
+**What happens automatically**:
+- A short rate limit is retried; the chat says it is trying again.
+- If it does not clear, the task stops and the chat shows a card. **Continue** carries on from that point on the same model. The card may also suggest another model or another connected provider; the model only changes if you pick one.
+- When a daily or monthly allowance is used up, the card shows the provider's own count and reset time when it publishes them.
+- With **Free models** selected (OpenRouter), a busy free model is passed over for the next suggested free model, and the chat names both. This is the only case where the model changes without you choosing it.
+
 **Solutions**:
 1. **Wait before retrying**:
    - Wait 1 minute before next request
-   - AI will auto-retry with backoff
 
 2. **Switch models**:
    - Use different model with separate limits
-   - Or switch provider temporarily
+   - Or connect another provider from the card and continue there
 
 3. **Upgrade plan**:
    - Check provider's pricing page

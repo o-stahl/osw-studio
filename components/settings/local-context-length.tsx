@@ -1,11 +1,20 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { configManager } from '@/lib/config/storage';
-import { DEFAULT_LOCAL_CONTEXT_LENGTH, LOCAL_CONTEXT_APPLIED, LOCAL_CONTEXT_HELP } from '@/lib/llm/local-context';
+import { DEFAULT_LOCAL_CONTEXT_LENGTH, LOCAL_CONTEXT_APPLIED } from '@/lib/llm/local-context';
 import type { ProviderId } from '@/lib/llm/providers/types';
+
+/** Each local server's own way of setting its window, worded under `settings.localContext`. */
+const HELP_KEY: Partial<Record<ProviderId, 'ollama' | 'lmstudio' | 'llamacpp' | 'meshllm'>> = {
+  ollama: 'ollama',
+  lmstudio: 'lmstudio',
+  llamacpp: 'llamacpp',
+  meshllm: 'meshllm',
+};
 
 interface LocalContextLengthProps {
   providerId: ProviderId;
@@ -18,6 +27,7 @@ interface LocalContextLengthProps {
  * window. Empty means the default.
  */
 export function LocalContextLength({ providerId }: LocalContextLengthProps) {
+  const t = useTranslations('settings.localContext');
   const [value, setValue] = useState(() => {
     const stored = configManager.getLocalContextLength(providerId);
     return stored ? String(stored) : '';
@@ -35,8 +45,8 @@ export function LocalContextLength({ providerId }: LocalContextLengthProps) {
   return (
     <div data-testid="local-context-length">
       <Label htmlFor={`context-length-${providerId}`}>
-        Context length
-        <span className="text-muted-foreground text-xs ml-1">(tokens)</span>
+        {t('label')}
+        <span className="text-muted-foreground text-xs ml-1">{t('unit')}</span>
       </Label>
       <Input
         id={`context-length-${providerId}`}
@@ -48,8 +58,8 @@ export function LocalContextLength({ providerId }: LocalContextLengthProps) {
         className="mt-2 font-mono w-full sm:w-[180px]"
       />
       <p className="text-xs text-muted-foreground mt-2">
-        {LOCAL_CONTEXT_HELP[providerId] ?? 'Set to the context length the server runs with.'}
-        {applied ? '' : ' OSW Studio compacts the conversation to stay inside it.'}
+        {HELP_KEY[providerId] ? t(HELP_KEY[providerId]) : t('default')}
+        {applied ? '' : ` ${t('compacts')}`}
       </p>
     </div>
   );

@@ -163,7 +163,7 @@ function decodeBase64Strict(value: string): ArrayBuffer | null {
  */
 const REPORTED_EVENTS = new Set([
   'iteration', 'toolCalls', 'tool_status', 'tool_result', 'conversation_message',
-  'task_complete', 'error_paused', 'exit_reason', 'stopped', 'usage', 'waiting',
+  'task_complete', 'api_stopped', 'exit_reason', 'stopped', 'usage', 'waiting',
 ]);
 
 /** Trim an event's payload to what reads usefully in a transcript. */

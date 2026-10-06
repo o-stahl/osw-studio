@@ -20,6 +20,7 @@ import {
 } from './backend-files';
 import { parseManifest } from './manifest';
 import { keepBothPath, normalizeKey, validateArchivePath } from './paths';
+import { ArchiveError, said } from './text';
 import type {
   ArchiveEntry,
   ArchiveIssue,
@@ -61,20 +62,6 @@ const MANIFEST_PATHS = ['/osw-project.json', '/project.json'] as const;
  * project's copy is newer.
  */
 const TIMESTAMP_SLACK_MS = 2000;
-
-const SETTING_LABELS: Record<SettingChange['key'], string> = {
-  name: 'Project name',
-  description: 'Description',
-  runtime: 'Runtime',
-  entryPoint: 'Entry point',
-  globalStyles: 'Global styles',
-  databaseSchema: 'Database schema',
-};
-
-const BROWSER_MODE_WARNING =
-  'This archive includes backend features. They will be imported and kept with the project, but ' +
-  'backend features require Server Mode — edge functions, secrets and schedules will not run ' +
-  'until the project is on a self-hosted instance.';
 
 const decoder = new TextDecoder();
 const encoder = new TextEncoder();
@@ -134,7 +121,7 @@ export async function analyzeImport(
   const wrongFormat = detectWrongFormat(entries);
   if (wrongFormat) {
     plan.format = wrongFormat.format;
-    errors.push({ path: wrongFormat.path, code: 'validation-failed', message: wrongFormat.message });
+    errors.push({ path: wrongFormat.path, code: 'validation-failed', ...said(wrongFormat.key) });
     return plan;
   }
 
@@ -157,6 +144,7 @@ export async function analyzeImport(
         path: found.path,
         code: 'invalid-json',
         message: error instanceof Error ? error.message : String(error),
+        text: error instanceof ArchiveError ? error.text : undefined,
       });
     }
   }
@@ -191,9 +179,7 @@ export async function analyzeImport(
       warnings.push({
         path: entry.path,
         code: 'path-rejected',
-        message:
-          `${entry.path} is in a folder OSW Studio manages itself, and a project archive does ` +
-          'not carry it, so it was not imported.',
+        ...said('managedFolder', { path: entry.path }),
       });
       continue;
     }
@@ -209,10 +195,7 @@ export async function analyzeImport(
     warnings.push({
       path: aiInstructions.path,
       code: 'ai-instructions',
-      message:
-        `This archive contains ${AI_INSTRUCTIONS_PATH}, which the AI assistant reads as standing ` +
-        'instructions for this project. Importing it replaces the project\'s own instructions and ' +
-        'changes how the assistant works here. Open the file before you accept it.',
+      ...said('aiInstructions', { path: AI_INSTRUCTIONS_PATH }),
     });
   }
 
@@ -259,7 +242,7 @@ export async function analyzeImport(
       errors.push({
         path: entry.path,
         code: 'path-rejected',
-        message: 'The archive holds more than one file for this path.',
+        ...said('duplicateInArchive'),
       });
       continue;
     }
@@ -307,10 +290,7 @@ export async function analyzeImport(
     warnings.push({
       path: entry.path,
       code: 'path-rejected',
-      message:
-        `${entry.path} is not part of the backend layout an archive stores, so it was not ` +
-        'imported. Backend files are a .js and .json pair under edge-functions/ or ' +
-        'server-functions/, plus secrets.json and scheduled.json.',
+      ...said('notBackendLayout', { path: entry.path }),
     });
   }
   await classifyBackend(vfs, project, features, plan);
@@ -318,7 +298,7 @@ export async function analyzeImport(
   // 7. Browser mode. A warning rather than an error: the records live in IndexedDB in both modes,
   //    so they import and travel with the project — they just have nothing to run them yet.
   if (hasBackendFeatures(features) && process.env.NEXT_PUBLIC_SERVER_MODE !== 'true') {
-    warnings.push({ code: 'server-mode-required', message: BROWSER_MODE_WARNING });
+    warnings.push({ code: 'server-mode-required', ...said('browserModeBackend') });
   }
 
   return plan;
@@ -384,24 +364,20 @@ function claimsToBeAManifest(text: string): boolean {
  */
 function detectWrongFormat(
   entries: ArchiveEntry[]
-): { format: 'osws-backup' | 'oswt-template'; path: string; message: string } | undefined {
+): { format: 'osws-backup' | 'oswt-template'; path: string; key: 'isBackup' | 'isTemplate' } | undefined {
   if (entries.length !== 1) return undefined;
   if (entries[0].path === '/backup.json') {
     return {
       format: 'osws-backup',
       path: '/backup.json',
-      message:
-        'This is a full OSW Studio backup (.osws), not a project archive. Restore it from the ' +
-        'backup importer instead.',
+      key: 'isBackup',
     };
   }
   if (entries[0].path === '/template.json') {
     return {
       format: 'oswt-template',
       path: '/template.json',
-      message:
-        'This is an OSW Studio template (.oswt), not a project archive. Import it from the ' +
-        'template manager instead.',
+      key: 'isTemplate',
     };
   }
   return undefined;
@@ -463,7 +439,7 @@ function diffSettings(project: Project, manifest: ProjectManifest): SettingChang
   const add = (key: SettingChange['key'], from: string | undefined, to: string | undefined) => {
     // An absent manifest field states nothing, so it changes nothing.
     if (to === undefined || from === to) return;
-    changes.push({ key, label: SETTING_LABELS[key], from, to });
+    changes.push({ key, from, to });
   };
 
   add('name', project.name, manifest.name);
@@ -543,7 +519,8 @@ async function classifyBackend(
     reservedNames: Set<string>,
     name: string,
     detail: string,
-    identical: boolean
+    identical: boolean,
+    disabled = false
   ) => {
     if (existing.has(name)) {
       if (identical) {
@@ -554,11 +531,12 @@ async function classifyBackend(
         kind,
         name,
         detail,
+        ...(disabled ? { disabled: true as const } : {}),
         keepBothName: keepBothBackendName(kind, name, reservedNames),
       });
       return;
     }
-    plan.backend.added.push({ kind, name, detail });
+    plan.backend.added.push({ kind, name, detail, ...(disabled ? { disabled: true as const } : {}) });
   };
 
   const projectEdge = new Set(existingEdge.keys());
@@ -566,18 +544,18 @@ async function classifyBackend(
   const projectScheduled = new Set(existingScheduled.keys());
 
   for (const fn of features.edgeFunctions ?? []) {
-    const detail = fn.enabled === false ? `${fn.method} · disabled` : fn.method;
-    sort('edge', projectEdge, reservedEdge, fn.name, detail, sameEdge(existingEdge.get(fn.name), fn));
+    sort('edge', projectEdge, reservedEdge, fn.name, fn.method, sameEdge(existingEdge.get(fn.name), fn), fn.enabled === false);
   }
   for (const fn of features.serverFunctions ?? []) {
-    const detail = fn.enabled === false ? 'Helper · disabled' : 'Helper';
+    // No method or schedule to show, so `detail` is empty and the dialog names it a helper.
     sort(
       'server',
       projectServer,
       reservedServer,
       fn.name,
-      detail,
-      sameServer(existingServer.get(fn.name), fn)
+      '',
+      sameServer(existingServer.get(fn.name), fn),
+      fn.enabled === false
     );
   }
   for (const job of features.scheduledFunctions ?? []) {
@@ -674,9 +652,7 @@ function tooLarge(path: string, size: number, limit: number): ArchiveIssue {
   return {
     path,
     code: 'too-large',
-    message:
-      `${path} is ${Math.round(size / 1024 / 1024)}MB, over the ` +
-      `${Math.round(limit / 1024 / 1024)}MB limit for this kind of file.`,
+    ...said('fileTooLarge', { path, size: Math.round(size / 1024 / 1024), limit: Math.round(limit / 1024 / 1024) }),
   };
 }
 

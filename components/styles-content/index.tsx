@@ -1,6 +1,8 @@
 'use client';
 
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { useStylePropLabels } from '@/lib/i18n/use-style-prop-labels';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Crosshair } from 'lucide-react';
@@ -10,6 +12,7 @@ import type { ApplyResult } from '@/lib/direct-edit/types';
 import type { TextReadResult } from '@/lib/direct-edit/apply-text';
 import {
   textConfirmationMessage,
+  textRefusalAgentPrompt,
   textRefusalMessage,
   textRefusalOffersAgent,
   textRefusalTitle,
@@ -270,6 +273,12 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
   props,
   ref,
 ) {
+  const tt = useTranslations('tooltips');
+  const sp = useStylePropLabels();
+  const ts = useTranslations('styles');
+  const tc = useTranslations('common');
+  const twx = useTranslations('workspace');
+  const ttp = useTranslations('textPopover');
   const { selection, tokens } = props;
   const [state, setState] = useState<StylesState>(emptyStylesState);
   /** Optimistic overlay so fast repeated presses step incrementally. */
@@ -634,9 +643,9 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
   if (!selection) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-2 px-6 text-center">
-        <p className="text-sm font-medium">No element selected</p>
+        <p className="text-sm font-medium">{ts('noSelection')}</p>
         <p className="text-xs text-muted-foreground">
-          Pick one in the tree, or click it in the preview, to adjust its style.
+          {ts('noSelectionHint')}
         </p>
         {props.onSelectElement ? (
           <Button
@@ -655,11 +664,11 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
             aria-pressed={!!props.focusToolArmed}
             // Both are worth changing. The label is what the user reads without hovering, and the
             // title matches the header crosshair's wording word for word, since it is the same tool.
-            title={props.focusToolArmed ? 'Cancel element selection' : 'Select element'}
+            title={props.focusToolArmed ? ts('cancelSelectionLong') : twx('selectElement')}
             data-osw-select-element
           >
             <Crosshair className="h-3 w-3" />
-            {props.focusToolArmed ? 'Cancel selection' : 'Select element'}
+            {props.focusToolArmed ? ts('cancelSelection') : twx('selectElement')}
           </Button>
         ) : null}
       </div>
@@ -681,7 +690,7 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
     <div className="flex flex-col gap-1" data-osw-content-section={kind}>
       {/* Written as the other group headings are — `Spacing`, `Type` — and uppercased by the same
           class, so a restyle changes one rule rather than five labels and one outlier. */}
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Content</span>
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{ts('contentHeading')}</span>
 
       {kind === 'image' ? (
         <div className="flex items-center gap-2">
@@ -705,7 +714,7 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
             className="h-6 text-xs shrink-0"
             onClick={props.onReplaceImage}
           >
-            Replace
+            {twx('replace')}
           </Button>
         </div>
       ) : null}
@@ -713,32 +722,32 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
       {kind === 'text' ? (
         <>
           {textState.loading ? (
-            <p className="text-xs text-muted-foreground py-1">Reading what this says…</p>
+            <p className="text-xs text-muted-foreground py-1">{ts('reading')}</p>
           ) : null}
 
           {textRefused ? (
             <Alert
               // `generating` is the system being honest about what it cannot do yet, not a failure.
               tone={textRefused.reason === 'generating' ? 'quiet' : 'danger'}
-              title={textRefusalTitle(textRefused)}
+              title={textRefusalTitle(textRefused, ttp)}
               actions={textRefusalOffersAgent(textRefused) ? (
                 <Button
                   size="sm"
                   className="h-6 text-xs"
-                  onClick={() => props.onAskAgent(textRefusalMessage(textRefused))}
+                  onClick={() => props.onAskAgent(textRefusalAgentPrompt(textRefused))}
                 >
-                  Ask the agent
+                  {ts('askAgent')}
                 </Button>
               ) : undefined}
             >
-              {textRefusalMessage(textRefused)}
+              {textRefusalMessage(textRefused, ttp)}
             </Alert>
           ) : null}
 
           {textState.pending ? (
             <Alert
               tone="amber"
-              title="This is used more than once"
+              title={tt('usedMoreThanOnce')}
               actions={
                 <>
                   <Button
@@ -749,8 +758,8 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
                     onClick={() => dispatchText({ type: 'confirm' })}
                   >
                     {textState.pending.instances > 1
-                      ? `Change all ${textState.pending.instances}`
-                      : 'Change it'}
+                      ? ts('changeAll', { count: textState.pending.instances })
+                      : ts('changeIt')}
                   </Button>
                   <Button
                     size="sm"
@@ -759,12 +768,12 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
                     disabled={textState.busy}
                     onClick={() => dispatchText({ type: 'cancel' })}
                   >
-                    Cancel
+                    {tc('actions.cancel')}
                   </Button>
                 </>
               }
             >
-              {textConfirmationMessage(textState.pending.instances, textState.pending.file)}
+              {textConfirmationMessage(textState.pending.instances, ttp, textState.pending.file)}
             </Alert>
           ) : null}
 
@@ -786,7 +795,7 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
                   disabled={!saveEnabled}
                   onClick={() => dispatchText({ type: 'save' })}
                 >
-                  Save
+                  {tc('actions.save')}
                 </Button>
               </div>
             </>
@@ -806,9 +815,9 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
           {summary.instances > 1 ? (
             <span
               className="px-1 rounded-sm bg-amber-500/15 text-amber-700 dark:text-amber-400 font-semibold shrink-0"
-              title={`This element renders ${summary.instances} times from one source tag`}
+              title={ts('rendersTimes', { count: summary.instances })}
             >
-              ×{summary.instances} shared
+              {ts('sharedInstances', { count: summary.instances })}
             </span>
           ) : null}
           {summary.source ? (
@@ -821,19 +830,19 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
         {state.pending ? (
           <Alert
             tone="amber"
-            title={state.pending.instances > 1 ? `Changes all ${state.pending.instances}` : 'Changes every instance'}
+            title={state.pending.instances > 1 ? ts('changesAll', { count: state.pending.instances }) : ts('changesEveryInstance')}
             actions={
               <>
                 <Button size="sm" className="h-6 text-xs" onClick={() => dispatch({ type: 'confirm' })}>
-                  {state.pending.instances > 1 ? `Change all ${state.pending.instances}` : 'Change them all'}
+                  {state.pending.instances > 1 ? ts('changeAll', { count: state.pending.instances }) : ts('changeThemAll')}
                 </Button>
                 <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => dispatch({ type: 'cancel' })}>
-                  Cancel
+                  {tc('actions.cancel')}
                 </Button>
               </>
             }
           >
-            {confirmationMessage(state.pending)}
+            {confirmationMessage(state.pending, ts)}
           </Alert>
         ) : null}
 
@@ -841,12 +850,12 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
           <Alert
             // Three of the five are the system being honest about what it cannot know, not failures.
             tone={generating || state.refusal.reason === 'ambiguous-stylesheet' ? 'quiet' : 'danger'}
-            title={refusalTitle(state.refusal)}
+            title={refusalTitle(state.refusal, ts)}
             actions={
               <>
                 {offer ? (
                   <Button size="sm" className="h-6 text-xs" onClick={() => dispatch({ type: 'act-on-refusal' })}>
-                    {offer.label}
+                    {offer.kind === 'ask-agent' ? ts('askAgent') : offer.kind === 'refresh' ? ts('offerRefresh') : ts('offerOpenFile', { path: offer.path })}
                   </Button>
                 ) : null}
                 <Button
@@ -855,12 +864,12 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
                   className="h-6 text-xs"
                   onClick={() => dispatch({ type: 'dismiss-refusal' })}
                 >
-                  Dismiss
+                  {ts('dismiss')}
                 </Button>
               </>
             }
           >
-            {refusalMessage(state.refusal)}
+            {refusalMessage(state.refusal, ts)}
           </Alert>
         ) : null}
 
@@ -868,7 +877,7 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
 
         {GROUPS.map(({ group, entries }) => (
           <div key={group} className="flex flex-col gap-0.5 border-t border-border/50 pt-2 mt-1 first:mt-0">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{group}</span>
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{sp.group(group)}</span>
             {entries.map(entry => {
               const loss = lossFor(state, entry.property);
               return (
@@ -877,12 +886,12 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
                   // A marker, not a message: the message is the one banner at the foot of the panel,
                   // and this is only what lets the user find the row it is talking about.
                   className={cn(loss && '-ml-1.5 pl-1 border-l-2 border-destructive/70')}
-                  title={loss ? 'This override is not in force — see the note at the foot of the panel' : undefined}
+                  title={loss ? ts('overrideNotInForce') : undefined}
                 >
                   {entry.control === 'stepper' ? (
                     <>
                       <Stepper
-                        label={entry.label}
+                        label={sp.label(entry)}
                         value={formatNumber(entry, values, unitContext, unitOf(entry))}
                         unit={unitOf(entry)}
                         units={entry.units}
@@ -909,7 +918,7 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
                             <Stepper
                               key={sub.id}
                               isPart
-                              label={sub.label}
+                              label={sp.label(sub)}
                               value={formatNumber(sub, values, unitContext, unitOf(sub))}
                               unit={unitOf(sub)}
                               units={sub.units}
@@ -928,8 +937,8 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
                   ) : null}
                   {entry.control === 'segmented' ? (
                     <SegmentedControl
-                      label={entry.label}
-                      options={entry.options}
+                      label={sp.label(entry)}
+                      options={entry.options.map(o => ({ ...o, label: sp.option(entry.property, o.value, o.label) }))}
                       active={activeOptionValue(entry, values)}
                       disabled={disabled}
                       onSelect={value => onSelectOption(entry, value)}
@@ -937,7 +946,7 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
                   ) : null}
                   {entry.control === 'swatch' ? (
                     <SwatchRow
-                      label={entry.label}
+                      label={sp.label(entry)}
                       pickerValue={hexColor(readValue(entry, values))}
                       swatches={swatches}
                       selected={selectedSwatch(readValue(entry, values))}
@@ -961,18 +970,18 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
           {lost.length > 0 ? (
             <Alert
               tone="danger"
-              title={lost.length > 1 ? `${lost.length} changes are not applied` : 'This change is not applied'}
+              title={ts('changesNotApplied', { count: lost.length })}
               actions={
                 <Button
                   size="sm"
                   className="h-6 text-xs"
                   onClick={() => props.onAskAgent(lossAgentPrompt(lost, state.declarations))}
                 >
-                  Ask the agent
+                  {ts('askAgent')}
                 </Button>
               }
             >
-              {lossMessage(lost)}
+              {lossMessage(lost, ts)}
             </Alert>
           ) : null}
 
@@ -981,7 +990,7 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
               // Quiet: the change was applied and applied correctly. This is the panel volunteering
               // the reach of what it did, not reporting a problem.
               tone="quiet"
-              title={`${tokenNote.token.name} was not changed`}
+              title={ts('tokenNotChanged', { token: tokenNote.token.name })}
               actions={
                 <>
                   <Button
@@ -993,15 +1002,15 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
                       setTokenNote(null);
                     }}
                   >
-                    Change the token instead
+                    {ts('changeTokenInstead')}
                   </Button>
                   <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setTokenNote(null)}>
-                    Dismiss
+                    {ts('dismiss')}
                   </Button>
                 </>
               }
             >
-              {tokenSupersedeMessage(tokenNote.entry, tokenNote.token)}
+              {tokenSupersedeMessage(sp.label(tokenNote.entry), tokenNote.token, ts)}
             </Alert>
           ) : null}
         </div>

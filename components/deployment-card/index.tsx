@@ -1,6 +1,8 @@
 'use client';
 
 import React from 'react';
+import { useTranslations } from 'next-intl';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { Deployment, Project } from '@/lib/vfs/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,7 +30,6 @@ import {
   Loader2,
   FileBox,
 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
 import { ThumbnailArea } from '@/components/ui/thumbnail-area';
 import { captureDeploymentScreenshot } from '@/lib/utils/deployment-thumbnail';
 import { ReviewBadge } from '@/components/ui/review-badge';
@@ -60,6 +61,10 @@ export function DeploymentCard({
   onExportAsTemplate,
   onThumbnailChange,
 }: DeploymentCardProps) {
+  const td = useTranslations('deployments');
+  const when = useLocalFormat();
+  const tc = useTranslations('common');
+  const tdd = useTranslations('deploymentDetail');
   // Determine status
   const isPublished = deployment.lastPublishedVersion !== null && deployment.lastPublishedVersion !== undefined;
   const hasPendingChanges = isPublished && Number(deployment.settingsVersion) > Number(deployment.lastPublishedVersion);
@@ -101,13 +106,13 @@ export function DeploymentCard({
           {deployment.underConstruction && isPublished && (
             <Badge variant="outline" className="bg-orange-100 dark:bg-orange-950 border-orange-300 dark:border-orange-800">
               <Construction className="h-3 w-3 mr-1" />
-              Under Construction
+              {tdd('underConstruction')}
             </Badge>
           )}
           {hasPendingChanges && (
             <Badge variant="outline" className="bg-yellow-100 dark:bg-yellow-950 border-yellow-300 dark:border-yellow-800">
               <AlertCircle className="h-3 w-3 mr-1" />
-              Pending Changes
+              {tdd('pendingChanges')}
             </Badge>
           )}
           <ReviewBadge
@@ -141,7 +146,7 @@ export function DeploymentCard({
               size="sm"
               className="h-6 w-6 p-0"
               onClick={handleCopyUrl}
-              title="Copy URL"
+              title={tc('actions.copyUrl')}
             >
               <Copy className="h-3 w-3" />
             </Button>
@@ -150,7 +155,7 @@ export function DeploymentCard({
               size="sm"
               className="h-6 w-6 p-0"
               onClick={handleViewLive}
-              title="View Live"
+              title={td('viewLive')}
             >
               <ExternalLink className="h-3 w-3" />
             </Button>
@@ -160,14 +165,14 @@ export function DeploymentCard({
         {/* Metadata */}
         <div className="flex items-center gap-4 mb-3 text-xs text-muted-foreground">
           <div>
-            Version: {deployment.settingsVersion}
+            {td('versionLabel', { version: deployment.settingsVersion })}
             {deployment.lastPublishedVersion && (
               <> / {deployment.lastPublishedVersion}</>
             )}
           </div>
           {deployment.publishedAt && (
             <div>
-              Published {formatDistanceToNow(new Date(deployment.publishedAt), { addSuffix: true })}
+              {td('publishedAgo', { when: when.relativeTime(deployment.publishedAt) })}
             </div>
           )}
         </div>
@@ -194,17 +199,17 @@ export function DeploymentCard({
           )}
           {deployment.analytics.enabled && (
             <Badge variant="secondary" className="text-xs">
-              Analytics
+              {tdd('nav.analytics')}
             </Badge>
           )}
           {(deployment.seo.title || deployment.seo.description) && (
             <Badge variant="secondary" className="text-xs">
-              SEO Configured
+              {td('seoConfigured')}
             </Badge>
           )}
           {deployment.compliance.enabled && (
             <Badge variant="secondary" className="text-xs">
-              Compliance
+              {tdd('nav.compliance')}
             </Badge>
           )}
         </div>
@@ -218,7 +223,7 @@ export function DeploymentCard({
             onClick={() => onClick?.(deployment)}
           >
             <Settings className="h-4 w-4 mr-2" />
-            Edit Deployment
+            {td('editDeployment')}
           </Button>
 
           <Button
@@ -231,12 +236,12 @@ export function DeploymentCard({
             <RefreshCw className={`h-4 w-4 mr-2 shrink-0 ${isPublishing ? 'animate-spin' : ''}`} />
             <span className="truncate">
               {isPublishing
-                ? 'Publishing...'
+                ? tdd('publishing')
                 : hasPendingChanges
-                  ? 'Publish Changes'
+                  ? tdd('publishChanges')
                   : isPublished
-                    ? 'Republish'
-                    : 'Publish'}
+                    ? tc('actions.republish')
+                    : tc('actions.publish')}
             </span>
           </Button>
 
@@ -249,32 +254,32 @@ export function DeploymentCard({
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => onEditProject(deployment)}>
                 <Pencil className="h-4 w-4 mr-2" />
-                Edit Project
+                {td('editProject')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {deployment.analytics.enabled && deployment.analytics.provider === 'builtin' && (
                 <DropdownMenuItem onClick={() => onViewAnalytics(deployment)}>
                   <BarChart3 className="h-4 w-4 mr-2" />
-                  View Analytics
+                  {td('viewAnalytics')}
                 </DropdownMenuItem>
               )}
               {isPublished && (
                 <DropdownMenuItem onClick={handleCopyUrl}>
                   <Copy className="h-4 w-4 mr-2" />
-                  Copy URL
+                  {tc('actions.copyUrl')}
                 </DropdownMenuItem>
               )}
               {onExportAsTemplate && (
                 <DropdownMenuItem onClick={() => onExportAsTemplate(deployment)}>
                   <FileBox className="h-4 w-4 mr-2" />
-                  Export as Deployment Template
+                  {td('exportAsTemplate')}
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
               {isPublished && (
                 <DropdownMenuItem onClick={() => onUnpublish(deployment.id)}>
                   <EyeOff className="h-4 w-4 mr-2" />
-                  Unpublish
+                  {tc('actions.unpublish')}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem
@@ -282,7 +287,7 @@ export function DeploymentCard({
                 className="text-destructive focus:text-destructive"
               >
                 <Trash2 className="h-4 w-4 mr-2" />
-                Delete Deployment
+                {td('deleteDeployment')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

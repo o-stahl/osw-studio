@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DetailedSyncStatus, SyncableItem } from '@/lib/vfs/sync-types';
 import { ProjectsTab } from './projects-tab';
@@ -36,6 +37,8 @@ export function SyncTabs({
   onSyncComplete,
   onBulkActionStateChange,
 }: SyncTabsProps) {
+  const tc = useTranslations('common');
+  const tn = useTranslations('nav');
   const [activeTab, setActiveTab] = useState<TabType>('projects');
 
   // Selection state per tab
@@ -170,27 +173,27 @@ export function SyncTabs({
       <TabsList className="grid w-full grid-cols-5">
         <TabsTrigger value="projects" className="flex items-center gap-1.5">
           <FolderGit2 className="h-3.5 w-3.5" />
-          <span>Projects</span>
+          <span>{tc('terms.projects')}</span>
           <span className="text-xs text-muted-foreground">({projectCount})</span>
         </TabsTrigger>
         <TabsTrigger value="skills" className="flex items-center gap-1.5">
           <BookOpen className="h-3.5 w-3.5" />
-          <span>Skills</span>
+          <span>{tc('terms.skills')}</span>
           <span className="text-xs text-muted-foreground">({skillCount})</span>
         </TabsTrigger>
         <TabsTrigger value="templates" className="flex items-center gap-1.5">
           <Layout className="h-3.5 w-3.5" />
-          <span>Templates</span>
+          <span>{tc('terms.templates')}</span>
           <span className="text-xs text-muted-foreground">({templateCount})</span>
         </TabsTrigger>
         <TabsTrigger value="modelTemplates" className="flex items-center gap-1.5">
           <Cpu className="h-3.5 w-3.5" />
-          <span>Models</span>
+          <span>{tc('terms.models')}</span>
           <span className="text-xs text-muted-foreground">({modelTemplateCount})</span>
         </TabsTrigger>
         <TabsTrigger value="interviewTemplates" className="flex items-center gap-1.5">
           <ClipboardList className="h-3.5 w-3.5" />
-          <span>Interviews</span>
+          <span>{tn('items.interviews')}</span>
           <span className="text-xs text-muted-foreground">({interviewTemplateCount})</span>
         </TabsTrigger>
       </TabsList>

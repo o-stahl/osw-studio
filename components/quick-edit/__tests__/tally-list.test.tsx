@@ -4,6 +4,10 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { TallyList } from '../tally-list';
 import type { Tally, TallyStep } from '@/lib/quick-edit/tally';
+import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
+import { createTranslator } from 'next-intl';
+import en from '@/messages/en.json';
+import { collate, phraseCollated } from '@/lib/quick-edit/collate';
 
 /**
  * What a stretch of tool activity looks like at rest, and what it takes to open.
@@ -19,7 +23,7 @@ let container: HTMLDivElement;
 let root: Root;
 
 function step(over: Partial<TallyStep> = {}): TallyStep {
-  return { label: 'Read index.html', kind: 'read', path: '/index.html', steps: 1, done: true, failed: false, ...over };
+  return { kind: 'read', path: '/index.html', steps: 1, done: true, failed: false, ...over };
 }
 
 function tally(steps: TallyStep[], over: Partial<Tally> = {}): Tally {
@@ -34,7 +38,7 @@ function tally(steps: TallyStep[], over: Partial<Tally> = {}): Tally {
 }
 
 function mount(t: Tally, live = false) {
-  act(() => { root.render(<TallyList tally={t} live={live} />); });
+  act(() => { root.render(withMessages(<TallyList tally={t} live={live} />)); });
 }
 
 /** The caret is the only control this component renders, so its presence is the disclosure. */
@@ -69,29 +73,40 @@ afterEach(() => {
 
 describe('a stretch of tool activity', () => {
   it('shows a single step as itself, with nothing to open', () => {
-    mount(tally([step({ label: 'Read index.html' })]));
+    mount(tally([step()]));
 
     expect(disclosure()).toBeNull();
     expect(container.textContent).toContain('Read index.html');
   });
 
   it('does not restate a single step in more general words', () => {
-    // `collate` would call one read of a named file "Read a file"; the step says which file.
-    mount(tally([step({ label: 'Read index.html' })]));
+    // `collate` files a write under the changes it groups ("Edited index.html"); the step says what
+    // happened ("Wrote index.html"). A read would not tell the two apart: both name the file.
+    mount(tally([step({ kind: 'write' })]));
 
-    expect(container.textContent).not.toContain('Read a file');
+    expect(container.textContent).toContain('Wrote index.html');
+    expect(container.textContent).not.toContain('Edited');
   });
 
   it('folds a longer stretch behind a disclosure', () => {
-    mount(tally([step({ label: 'Read index.html' }), step({ label: 'Edited styles.css', kind: 'edit', path: '/styles.css' })]));
+    mount(tally([step(), step({ kind: 'edit', path: '/styles.css' })]));
 
     expect(disclosure()).not.toBeNull();
     // The sentence is showing; the individual rows are not, until it is opened.
     expect(rowLabels()).not.toContain('Edited styles.css');
   });
 
+  it('heads the folded stretch with the collated sentence', () => {
+    const t = tally([step(), step({ kind: 'edit', path: '/styles.css' })]);
+    mount(t);
+
+    const sentence = phraseCollated(collate(t)!, createTranslator({ locale: 'en', messages: en, namespace: 'quickEdit.collate' }));
+    expect(sentence).not.toBe('');
+    expect(disclosure()!.textContent).toContain(sentence);
+  });
+
   it('opens onto every step', () => {
-    mount(tally([step({ label: 'Read index.html' }), step({ label: 'Edited styles.css', kind: 'edit', path: '/styles.css' })]));
+    mount(tally([step(), step({ kind: 'edit', path: '/styles.css' })]));
 
     act(() => { disclosure()!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
 
@@ -100,7 +115,7 @@ describe('a stretch of tool activity', () => {
   });
 
   it('shows the step in flight under the sentence while the stretch is live', () => {
-    const running = step({ label: 'Edited styles.css', kind: 'edit', path: '/styles.css', done: false });
+    const running = step({ kind: 'edit', path: '/styles.css', done: false });
     mount(tally([step(), running], { status: 'working' }), true);
 
     // Closed, so the only row on screen is the one still running.
@@ -108,7 +123,7 @@ describe('a stretch of tool activity', () => {
   });
 
   it('shows no step in flight once the stretch is finished', () => {
-    mount(tally([step(), step({ label: 'Edited styles.css', kind: 'edit', path: '/styles.css' })]), false);
+    mount(tally([step(), step({ kind: 'edit', path: '/styles.css' })]), false);
 
     expect(rowLabels()).toEqual([]);
   });
@@ -120,7 +135,7 @@ describe('a stretch of tool activity', () => {
   });
 
   it('counts a repeated step rather than listing it twice', () => {
-    mount(tally([step({ label: 'Read a file', path: null, steps: 3 })]));
+    mount(tally([step({ path: null, steps: 3 })]));
 
     expect(container.textContent).toContain('x3');
   });

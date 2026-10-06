@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { StudioApp } from '@/components/studio-app';
+import { REPO_URL } from '@/lib/constants/links';
 
 /**
  * Root page
@@ -12,8 +14,11 @@ import { StudioApp } from '@/components/studio-app';
  * Server mode (web): Redirects to /admin/projects (middleware handles workspace routing)
  */
 export default function Home() {
+  const tc = useTranslations('common');
+  const tb = useTranslations('boot');
   const router = useRouter();
-  const [bootError, setBootError] = useState<string | null>(null);
+  // The server's own words when it sent some, else the status: worded at render, in the UI's language.
+  const [bootError, setBootError] = useState<{ message?: string; status?: number } | null>(null);
   const [bootDetail, setBootDetail] = useState<string | null>(null);
   const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
   const isDesktop = process.env.NEXT_PUBLIC_DESKTOP === 'true';
@@ -31,17 +36,19 @@ export default function Home() {
           const data = await r.json().catch(() => ({}));
           if (r.ok && data.workspaceId) {
             document.cookie = `osw_workspace=${data.workspaceId}; path=/; max-age=${365 * 24 * 60 * 60}`;
-            router.push(`/w/${data.workspaceId}/projects`);
+            // The query carries a provider sign-in's return, which the workspace page finishes.
+            router.replace(`/w/${data.workspaceId}/projects${window.location.search}`);
           } else {
-            setBootError(data.error || `Workspace initialization failed (HTTP ${r.status})`);
+            setBootError({ message: data.error, status: r.status });
             if (data.detail) setBootDetail(data.detail);
           }
         })
         .catch((err) => {
-          setBootError(err instanceof Error ? err.message : 'Workspace initialization request failed');
+          setBootError({});
+          if (err instanceof Error) setBootDetail(err.message);
         });
     } else {
-      router.push('/admin/projects');
+      router.replace(`/admin/projects${window.location.search}`);
     }
   }, [isServerMode, isDesktop, router]);
 
@@ -50,23 +57,28 @@ export default function Home() {
       <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
         {bootError ? (
           <div className="max-w-lg px-8 text-zinc-400 space-y-3">
-            <p className="text-zinc-200 font-semibold">OSW Studio could not initialize its workspace.</p>
-            <p className="text-sm">{bootError}</p>
+            <p className="text-zinc-200 font-semibold">{tb('couldNotInit')}</p>
+            <p className="text-sm">
+              {bootError.message
+                ?? (bootError.status !== undefined ? tb('initFailed', { status: bootError.status }) : tb('requestFailed'))}
+            </p>
             {bootDetail && (
               <pre className="text-xs bg-zinc-900 text-zinc-400 p-3 rounded overflow-auto max-h-48 whitespace-pre-wrap">
                 {bootDetail}
               </pre>
             )}
             <p className="text-sm">
-              Restarting the app may help. If the problem persists, please report it at{' '}
-              <a className="underline" href="https://github.com/o-stahl/osw-studio/issues" target="_blank" rel="noreferrer">
-                github.com/o-stahl/osw-studio/issues
-              </a>{' '}
-              including this message.
+              {tb.rich('reportHint', {
+                link: (chunks) => (
+                  <a className="underline" href={`${REPO_URL}/issues`} target="_blank" rel="noreferrer">
+                    {chunks}
+                  </a>
+                ),
+              })}
             </p>
           </div>
         ) : (
-          <p className="text-zinc-400">Loading...</p>
+          <p className="text-zinc-400">{tc('loading')}</p>
         )}
       </div>
     );

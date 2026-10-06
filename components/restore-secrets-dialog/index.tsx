@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useTranslations } from 'next-intl';
 import {
   Dialog,
   DialogContent,
@@ -35,40 +36,43 @@ export function RestoreSecretsDialog({
   onConfirm,
   onCancel,
 }: RestoreSecretsDialogProps) {
+  const tc = useTranslations('common');
+  const tt = useTranslations('tooltips');
+  const trs = useTranslations('restoreSecrets');
   if (!preview) return null;
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) onCancel(); }}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Restoring will affect stored secrets</DialogTitle>
+          <DialogTitle>{trs('title')}</DialogTitle>
           <DialogDescription>
             {description
-              ? <>Going back to &ldquo;{description}&rdquo; changes which secrets this project holds. Checkpoints store a secret&apos;s name, never its value.</>
-              : <>This restore changes which secrets the project holds. Checkpoints store a secret&apos;s name, never its value.</>}
+              ? trs('descNamed', { description })
+              : trs('desc')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           {preview.secretsDropped.length > 0 && (
             <SecretList
-              title="Removed, along with their values"
-              hint="Added after this checkpoint, so restoring takes them out of the project. Their stored values cannot be recovered."
+              title={tt('secretsRemoved')}
+              hint={trs('removedHint')}
               names={preview.secretsDropped}
             />
           )}
           {preview.secretsCleared.length > 0 && (
             <SecretList
-              title="Restored without their values"
-              hint="Deleted since this checkpoint. They come back as empty placeholders and need their values entered again before anything can use them."
+              title={tt('secretsRestored')}
+              hint={trs('clearedHint')}
               names={preview.secretsCleared}
             />
           )}
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onCancel}>Cancel</Button>
-          <Button onClick={onConfirm}>Restore anyway</Button>
+          <Button variant="outline" onClick={onCancel}>{tc('actions.cancel')}</Button>
+          <Button onClick={onConfirm}>{trs('restoreAnyway')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

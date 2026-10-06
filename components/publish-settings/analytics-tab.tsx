@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useTranslations } from 'next-intl';
 import { PublishSettings, AnalyticsConfig } from '@/lib/vfs/types';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -23,6 +24,8 @@ interface AnalyticsTabProps {
 }
 
 export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
+  const t = useTranslations('publishSettings');
+  const ts = useTranslations('settings');
   const handleAnalyticsChange = (
     field: keyof AnalyticsConfig,
     value: any
@@ -39,11 +42,11 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
   return (
     <div className="flex flex-col gap-4">
       <Section>
-        <SectionHeader icon={BarChart3} title="Analytics" />
+        <SectionHeader icon={BarChart3} title={t('analytics')} />
         <SectionBody className="px-4 py-1">
           <SettingRow
-            title="Enable analytics"
-            description="Track page views and visitor statistics"
+            title={t('enableAnalytics')}
+            description={t('trackPageViews')}
           >
             <Switch
               id="analytics-enabled"
@@ -60,11 +63,11 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
         <>
           {/* Provider Selection */}
           <Section>
-            <SectionHeader title="Analytics provider" />
+            <SectionHeader title={t('analyticsProvider')} />
             <SectionBody className="space-y-4">
 
             <div className="space-y-2">
-              <Label htmlFor="analytics-provider">Provider</Label>
+              <Label htmlFor="analytics-provider">{ts('provider')}</Label>
               <Select
                 value={settings.analytics.provider}
                 onValueChange={(value) =>
@@ -76,12 +79,12 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="builtin">
-                    Built-in (Privacy-focused)
+                    {t('builtInPrivacy')}
                   </SelectItem>
                   <SelectItem value="gtm">Google Tag Manager</SelectItem>
                   <SelectItem value="ga4">Google Analytics 4</SelectItem>
                   <SelectItem value="plausible">Plausible Analytics</SelectItem>
-                  <SelectItem value="custom">Custom Script</SelectItem>
+                  <SelectItem value="custom">{t('customScript')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -91,9 +94,9 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
               <>
                 <div className="space-y-4">
                   <div>
-                    <h4 className="font-semibold mb-2">Analytics Features</h4>
+                    <h4 className="font-semibold mb-2">{t('analyticsFeatures')}</h4>
                     <p className="text-sm text-muted-foreground mb-4">
-                      Choose which analytics features to enable. Note: Heatmaps and session recording generate more data.
+                      {t('chooseFeatures')}
                     </p>
                   </div>
 
@@ -101,8 +104,8 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between p-3 border rounded-lg">
                       <div className="space-y-1">
-                        <Label htmlFor="feature-basic" className="font-medium">Basic Tracking</Label>
-                        <p className="text-xs text-muted-foreground">Pageviews, referrers, device type</p>
+                        <Label htmlFor="feature-basic" className="font-medium">{t('basicTracking')}</Label>
+                        <p className="text-xs text-muted-foreground">{t('basicTrackingDesc')}</p>
                       </div>
                       <Switch
                         id="feature-basic"
@@ -118,8 +121,8 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
 
                     <div className="flex items-center justify-between p-3 border rounded-lg">
                       <div className="space-y-1">
-                        <Label htmlFor="feature-heatmaps" className="font-medium">Heatmaps</Label>
-                        <p className="text-xs text-muted-foreground">Click coordinates and scroll tracking</p>
+                        <Label htmlFor="feature-heatmaps" className="font-medium">{t('heatmaps')}</Label>
+                        <p className="text-xs text-muted-foreground">{t('heatmapsDesc')}</p>
                       </div>
                       <Switch
                         id="feature-heatmaps"
@@ -135,8 +138,8 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
 
                     <div className="flex items-center justify-between p-3 border rounded-lg">
                       <div className="space-y-1">
-                        <Label htmlFor="feature-sessions" className="font-medium">Session Recording</Label>
-                        <p className="text-xs text-muted-foreground">Journey paths and page flows</p>
+                        <Label htmlFor="feature-sessions" className="font-medium">{t('sessionRecording')}</Label>
+                        <p className="text-xs text-muted-foreground">{t('sessionRecordingDesc')}</p>
                       </div>
                       <Switch
                         id="feature-sessions"
@@ -152,8 +155,8 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
 
                     <div className="flex items-center justify-between p-3 border rounded-lg">
                       <div className="space-y-1">
-                        <Label htmlFor="feature-performance" className="font-medium">Performance Metrics</Label>
-                        <p className="text-xs text-muted-foreground">Core Web Vitals monitoring</p>
+                        <Label htmlFor="feature-performance" className="font-medium">{t('performanceMetrics')}</Label>
+                        <p className="text-xs text-muted-foreground">{t('performanceMetricsDesc')}</p>
                       </div>
                       <Switch
                         id="feature-performance"
@@ -169,8 +172,8 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
 
                     <div className="flex items-center justify-between p-3 border rounded-lg">
                       <div className="space-y-1">
-                        <Label htmlFor="feature-engagement" className="font-medium">Engagement Tracking</Label>
-                        <p className="text-xs text-muted-foreground">Time on page, scroll depth</p>
+                        <Label htmlFor="feature-engagement" className="font-medium">{t('engagementTracking')}</Label>
+                        <p className="text-xs text-muted-foreground">{t('engagementTrackingDesc')}</p>
                       </div>
                       <Switch
                         id="feature-engagement"
@@ -186,8 +189,8 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
 
                     <div className="flex items-center justify-between p-3 border rounded-lg">
                       <div className="space-y-1">
-                        <Label htmlFor="feature-custom" className="font-medium">Custom Events</Label>
-                        <p className="text-xs text-muted-foreground">Goal and conversion tracking</p>
+                        <Label htmlFor="feature-custom" className="font-medium">{t('customEvents')}</Label>
+                        <p className="text-xs text-muted-foreground">{t('customEventsDesc')}</p>
                       </div>
                       <Switch
                         id="feature-custom"
@@ -209,10 +212,10 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
                         <Info className="h-5 w-5 text-orange-600 dark:text-orange-400 flex-shrink-0 mt-0.5" />
                         <div className="space-y-1">
                           <h4 className="font-semibold text-orange-900 dark:text-orange-100">
-                            High Data Volume Features Enabled
+                            {t('highVolumeEnabled')}
                           </h4>
                           <p className="text-sm text-orange-800 dark:text-orange-200">
-                            Heatmaps and session recording generate significantly more data. Consider using shorter retention periods to manage storage costs.
+                            {t('highVolumeHint')}
                           </p>
                         </div>
                       </div>
@@ -223,15 +226,15 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
                 {/* Data Retention */}
                 <div className="space-y-4">
                   <div>
-                    <h4 className="font-semibold mb-2">Data Retention</h4>
+                    <h4 className="font-semibold mb-2">{t('dataRetention')}</h4>
                     <p className="text-sm text-muted-foreground mb-4">
-                      How long to keep analytics data (in days)
+                      {t('retentionDays')}
                     </p>
                   </div>
 
                   <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="retention-pageviews">Pageviews</Label>
+                      <Label htmlFor="retention-pageviews">{t('pageviews')}</Label>
                       <Input
                         id="retention-pageviews"
                         type="number"
@@ -246,11 +249,11 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
                           })
                         }
                       />
-                      <p className="text-xs text-muted-foreground">Default: 90 days</p>
+                      <p className="text-xs text-muted-foreground">{t('defaultDays', { days: 90 })}</p>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="retention-interactions">Interactions</Label>
+                      <Label htmlFor="retention-interactions">{t('interactions')}</Label>
                       <Input
                         id="retention-interactions"
                         type="number"
@@ -265,11 +268,11 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
                           })
                         }
                       />
-                      <p className="text-xs text-muted-foreground">Default: 30 days</p>
+                      <p className="text-xs text-muted-foreground">{t('defaultDays', { days: 30 })}</p>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="retention-sessions">Sessions</Label>
+                      <Label htmlFor="retention-sessions">{t('sessions')}</Label>
                       <Input
                         id="retention-sessions"
                         type="number"
@@ -284,7 +287,7 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
                           })
                         }
                       />
-                      <p className="text-xs text-muted-foreground">Default: 60 days</p>
+                      <p className="text-xs text-muted-foreground">{t('defaultDays', { days: 60 })}</p>
                     </div>
                   </div>
                 </div>
@@ -297,9 +300,9 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
               settings.analytics.provider === 'plausible') && (
               <div className="space-y-2">
                 <Label htmlFor="tracking-id">
-                  {settings.analytics.provider === 'gtm' && 'Container ID'}
-                  {settings.analytics.provider === 'ga4' && 'Measurement ID'}
-                  {settings.analytics.provider === 'plausible' && 'Domain'}
+                  {settings.analytics.provider === 'gtm' && t('analyticsContainerId')}
+                  {settings.analytics.provider === 'ga4' && t('analyticsMeasurementId')}
+                  {settings.analytics.provider === 'plausible' && t('analyticsDomain')}
                 </Label>
                 <Input
                   id="tracking-id"
@@ -317,11 +320,11 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
                 />
                 <p className="text-xs text-muted-foreground">
                   {settings.analytics.provider === 'gtm' &&
-                    'Your Google Tag Manager container ID'}
+                    t('analyticsContainerIdHelp')}
                   {settings.analytics.provider === 'ga4' &&
-                    'Your Google Analytics 4 measurement ID'}
+                    t('analyticsMeasurementIdHelp')}
                   {settings.analytics.provider === 'plausible' &&
-                    'Your website domain registered in Plausible'}
+                    t('analyticsDomainHelp')}
                 </p>
               </div>
             )}
@@ -329,7 +332,7 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
             {/* Custom Script */}
             {settings.analytics.provider === 'custom' && (
               <div className="space-y-2">
-                <Label htmlFor="custom-script">Custom Analytics Script</Label>
+                <Label htmlFor="custom-script">{t('customAnalyticsScript')}</Label>
                 <Textarea
                   id="custom-script"
                   placeholder="<script>...</script>"
@@ -341,7 +344,7 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
                   className="font-mono text-sm"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Paste your custom analytics tracking code
+                  {t('pasteCustomScript')}
                 </p>
               </div>
             )}
@@ -350,19 +353,19 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
 
           {/* Privacy Mode */}
           <Section>
-            <SectionHeader title="Privacy settings" />
+            <SectionHeader title={t('privacySettings')} />
             <SectionBody className="space-y-4">
 
             <div className="flex items-center justify-between p-4 border rounded-lg">
               <div className="space-y-1 flex-1">
                 <div className="flex items-center gap-2">
                   <Label htmlFor="privacy-mode" className="text-base">
-                    Privacy Mode
+                    {t('privacyMode')}
                   </Label>
                   <Shield className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Anonymize IPs and disable cookies for GDPR compliance
+                  {t('anonymizeIps')}
                 </p>
               </div>
               <Switch
@@ -380,11 +383,10 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
                   <Info className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
                   <div className="space-y-1">
                     <h4 className="font-semibold text-green-900 dark:text-green-100">
-                      Privacy Mode Enabled
+                      {t('privacyModeEnabled')}
                     </h4>
                     <p className="text-sm text-green-800 dark:text-green-200">
-                      Analytics will respect user privacy by anonymizing IP addresses and
-                      avoiding cookies where possible. This helps with GDPR compliance.
+                      {t('privacyModeHint')}
                     </p>
                   </div>
                 </div>
@@ -396,7 +398,7 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
           {/* Preview */}
           {settings.analytics.provider !== 'builtin' && (
             <Section>
-              <SectionHeader title="Script preview" />
+              <SectionHeader title={t('scriptPreview')} />
               <SectionBody className="space-y-4">
 
               <div className="p-4 bg-muted rounded-lg">
@@ -437,11 +439,11 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
                     </>
                   )}
                   {settings.analytics.provider === 'custom' &&
-                    (settings.analytics.customScript || 'No custom script provided')}
+                    (settings.analytics.customScript || t('noCustomScript'))}
                 </code>
               </div>
               <p className="text-xs text-muted-foreground">
-                This script will be injected into the &lt;head&gt; section of your deployment
+                {t('injectedIntoHead')}
               </p>
               </SectionBody>
             </Section>

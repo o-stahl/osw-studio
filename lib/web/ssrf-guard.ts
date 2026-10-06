@@ -37,6 +37,9 @@ export function isPrivateIp(ip: string): boolean {
     if (a === 192 && b === 168) return true;            // 192.168/16
     if (a === 169 && b === 254) return true;            // link-local + metadata
     if (a === 100 && b >= 64 && b <= 127) return true;  // CGNAT 100.64/10
+    if (a === 192 && b === 0 && ip.split('.')[2] === '0') return true; // IETF protocol 192.0.0/24
+    if (a === 198 && (b === 18 || b === 19)) return true; // benchmarking 198.18/15
+    if (a >= 224) return true;                          // multicast 224/4, reserved 240/4, broadcast
     return false;
   }
   if (net.isIPv6(ip)) {
@@ -50,8 +53,22 @@ export function isPrivateIp(ip: string): boolean {
       return h7 === 0 || h7 === 1;
     }
 
-    // Link-local fe80::/10.
-    if (h0 >= 0xfe80 && h0 <= 0xfebf) return true;
+    // Link-local fe80::/10 and the deprecated site-local fec0::/10.
+    if (h0 >= 0xfe80 && h0 <= 0xfeff) return true;
+
+    // Multicast ff00::/8.
+    if (h0 >> 8 === 0xff) return true;
+
+    // Local-use NAT64 64:ff9b:1::/48 (RFC 8215) only ever translates inside a private network.
+    if (h0 === 0x64 && h1 === 0xff9b && h2 === 1) return true;
+
+    // NAT64 64:ff9b::/96 and 6to4 2002::/16 carry an IPv4 address that the packet reaches.
+    if (h0 === 0x64 && h1 === 0xff9b && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0) {
+      return isPrivateIp(`${h6 >> 8}.${h6 & 0xff}.${h7 >> 8}.${h7 & 0xff}`);
+    }
+    if (h0 === 0x2002) {
+      return isPrivateIp(`${h1 >> 8}.${h1 & 0xff}.${h2 >> 8}.${h2 & 0xff}`);
+    }
 
     // ULA fc00::/7 (high byte 0xfc or 0xfd).
     const highByte = h0 >> 8;

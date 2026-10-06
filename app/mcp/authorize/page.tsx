@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/auth/session';
 import { getUserById, listUserWorkspaces } from '@/lib/auth/system-database';
 import { clientRedirectUris, getMcpClient } from '@/lib/mcp/store';
@@ -40,8 +41,10 @@ function Problem({ title, detail }: { title: string; detail: string }) {
 }
 
 export default async function AuthorizePage({ searchParams }: PageProps) {
+  const tt = await getTranslations('tooltips');
+  const tc = await getTranslations('common');
   if (!mcpEnabled()) {
-    return <Problem title="Not available" detail="This instance does not have the MCP connector enabled." />;
+    return <Problem title={tc('labels.notAvailable')} detail={tt('mcpDisabledDetail')} />;
   }
 
   const params = await searchParams;
@@ -56,11 +59,11 @@ export default async function AuthorizePage({ searchParams }: PageProps) {
 
   const client = clientId ? getMcpClient(clientId) : undefined;
   if (!client) {
-    return <Problem title="Unknown application" detail="This connector is not registered with this instance. Ask it to register again, then retry." />;
+    return <Problem title={tt('unknownApplication')} detail={tt('unknownClientDetail')} />;
   }
   const registered = clientRedirectUris(client);
   if (!redirectUri || !registered.includes(redirectUri)) {
-    return <Problem title="Redirect address does not match" detail={`${client.client_name} asked to be sent back to an address it did not register. Nothing was approved.`} />;
+    return <Problem title={tt('redirectMismatch')} detail={tt('redirectMismatchDetail', { client: client.client_name })} />;
   }
 
   // From here a fault can be reported to the client, because the redirect URI is one it registered.
@@ -102,7 +105,7 @@ export default async function AuthorizePage({ searchParams }: PageProps) {
   }
 
   if (options.length === 0) {
-    return <Problem title="No workspace to connect" detail="This account does not have access to a workspace yet. Ask an owner to add you, then retry." />;
+    return <Problem title={tt('noWorkspaceToConnect')} detail={tt('noWorkspaceDetail')} />;
   }
 
   const asked = requestedScope

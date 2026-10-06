@@ -3,6 +3,7 @@
 /** Text editing dialog. Neither reads nor writes; onRead and onApply are injected by the workspace. */
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   Dialog,
   DialogContent,
@@ -20,6 +21,7 @@ import {
   textConfirmationMessage,
   textIsChanged,
   textRefusal,
+  textRefusalAgentPrompt,
   textRefusalMessage,
   textRefusalOffersAgent,
   textRefusalTitle,
@@ -49,6 +51,10 @@ interface PendingEdit {
 }
 
 export function TextPopover({ open, onOpenChange, onRead, onApply, onAskAgent }: TextPopoverProps) {
+  const tc = useTranslations('common');
+  const ts = useTranslations('styles');
+  const tt = useTranslations('tooltips');
+  const ttp = useTranslations('textPopover');
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   /** The text as it was read. Save is inert until the field differs from it. */
@@ -105,7 +111,7 @@ export function TextPopover({ open, onOpenChange, onRead, onApply, onAskAgent }:
 
   const askAgent = () => {
     if (!refusal || !onAskAgent) return;
-    onAskAgent(textRefusalMessage(refusal));
+    onAskAgent(textRefusalAgentPrompt(refusal));
     onOpenChange(false);
   };
 
@@ -115,20 +121,20 @@ export function TextPopover({ open, onOpenChange, onRead, onApply, onAskAgent }:
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Edit text</DialogTitle>
-          <DialogDescription>Change what this element says.</DialogDescription>
+          <DialogTitle>{ts('editText')}</DialogTitle>
+          <DialogDescription>{ts('editTextDesc')}</DialogDescription>
         </DialogHeader>
 
         {refusal && (
           <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
             <div className="flex items-center gap-2 font-medium">
               <AlertTriangle className="h-4 w-4" />
-              {textRefusalTitle(refusal)}
+              {textRefusalTitle(refusal, ttp)}
             </div>
-            <p className="mt-1 text-muted-foreground">{textRefusalMessage(refusal)}</p>
+            <p className="mt-1 text-muted-foreground">{textRefusalMessage(refusal, ttp)}</p>
             {onAskAgent && textRefusalOffersAgent(refusal) && (
               <Button className="mt-2" size="sm" variant="outline" onClick={askAgent}>
-                Ask the agent
+                {ts('askAgent')}
               </Button>
             )}
           </div>
@@ -138,17 +144,17 @@ export function TextPopover({ open, onOpenChange, onRead, onApply, onAskAgent }:
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
             <div className="flex items-center gap-2 font-medium">
               <AlertTriangle className="h-4 w-4" />
-              This is used more than once
+              {tt('usedMoreThanOnce')}
             </div>
             <p className="mt-1 text-muted-foreground">
-              {textConfirmationMessage(pending.instances, pending.file)}
+              {textConfirmationMessage(pending.instances, ttp, pending.file)}
             </p>
             <div className="mt-2 flex gap-2">
               <Button size="sm" disabled={busy} onClick={() => void apply(true)}>
-                {pending.instances > 1 ? `Change all ${pending.instances}` : 'Change it'}
+                {pending.instances > 1 ? ts('changeAll', { count: pending.instances }) : ts('changeIt')}
               </Button>
               <Button size="sm" variant="outline" disabled={busy} onClick={() => setPending(null)}>
-                Cancel
+                {tc('actions.cancel')}
               </Button>
             </div>
           </div>
@@ -156,7 +162,7 @@ export function TextPopover({ open, onOpenChange, onRead, onApply, onAskAgent }:
 
         {loading ? (
           <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Reading what this says…
+            <Loader2 className="h-4 w-4 animate-spin" /> {ts('reading')}
           </div>
         ) : original !== null && (
           <Textarea
@@ -170,10 +176,10 @@ export function TextPopover({ open, onOpenChange, onRead, onApply, onAskAgent }:
         )}
 
         <DialogFooter>
-          <Button variant="ghost" disabled={busy} onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="ghost" disabled={busy} onClick={() => onOpenChange(false)}>{tc('actions.cancel')}</Button>
           {original !== null && (
             <Button data-osw-text-save disabled={busy || !changed} onClick={() => void apply(false)}>
-              Save
+              {tc('actions.save')}
             </Button>
           )}
         </DialogFooter>

@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect, useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 import { createPortal } from 'react-dom';
 import {
   LayoutGrid, FileText, Layers, Palette, DollarSign,
@@ -126,6 +127,30 @@ function PaneContent({ pane, workspaceId }: { pane: SettingsPane; workspaceId?: 
 // Sidebar nav (shared between modal and inline modes)
 // ---------------------------------------------------------------------------
 
+/**
+ * The pane labels, translated.
+ *
+ * PANES is a module constant, so it cannot call a hook; the labels are looked up by id where they
+ * render and the constant's own label stays as the fallback. MCP is absent on purpose, being an
+ * acronym rather than a word to translate.
+ */
+function usePaneLabels(): Record<string, string> {
+  const t = useTranslations('nav.settings');
+  const tc = useTranslations('common');
+
+  return useMemo(() => ({
+    connections: t('connections'),
+    models: tc('terms.models'),
+    templates: tc('terms.templates'),
+    appearance: t('appearance'),
+    costs: t('costs'),
+    permissions: t('permissions'),
+    data: t('data'),
+    mail: t('mail'),
+    users: t('users'),
+  }), [t, tc]);
+}
+
 function SettingsNav({
   activePane,
   onChange,
@@ -137,6 +162,7 @@ function SettingsNav({
   workspaceId?: string;
   isOwner?: boolean | null;
 }) {
+  const paneLabels = usePaneLabels();
   const studioView = useStudioView();
   const panes = visiblePanes(workspaceId, isOwner ?? null, studioView);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -169,7 +195,7 @@ function SettingsNav({
         {panes.map((item) => (
           <span key={item.id} className="flex items-center gap-2.5 px-3 py-2 text-[13px]">
             {item.icon}
-            {item.label}
+            {paneLabels[item.id] ?? item.label}
           </span>
         ))}
       </div>
@@ -181,7 +207,7 @@ function SettingsNav({
             <SelectTrigger className="w-full">
               <span className="flex items-center gap-2 text-sm">
                 {active.icon}
-                {active.label}
+                {paneLabels[active.id] ?? active.label}
               </span>
             </SelectTrigger>
             <SelectContent>
@@ -189,7 +215,7 @@ function SettingsNav({
                 <SelectItem key={item.id} value={item.id}>
                   <span className="flex items-center gap-2">
                     {item.icon}
-                    {item.label}
+                    {paneLabels[item.id] ?? item.label}
                   </span>
                 </SelectItem>
               ))}
@@ -211,7 +237,7 @@ function SettingsNav({
                 )}
               >
                 {item.icon}
-                <span>{item.label}</span>
+                <span>{paneLabels[item.id] ?? item.label}</span>
               </button>
             ))}
           </div>
@@ -234,7 +260,7 @@ function SettingsNav({
             )}
           >
             {item.icon}
-            <span>{item.label}</span>
+            <span>{paneLabels[item.id] ?? item.label}</span>
           </button>
         ))}
       </div>
@@ -263,6 +289,8 @@ export function UnifiedSettings({
   activePane: controlledPane,
   workspaceId,
 }: UnifiedSettingsProps) {
+  const paneLabels = usePaneLabels();
+  const tc = useTranslations('common');
   // Owners administer their own members; an instance admin does so in every workspace.
   const [isOwner, setIsOwner] = useState<boolean | null>(null);
 
@@ -304,11 +332,11 @@ export function UnifiedSettings({
     );
   }
 
-  const activeLabel = PANES.find((p) => p.id === currentPane)?.label ?? '';
+  const activeLabel = paneLabels[currentPane] ?? PANES.find((p) => p.id === currentPane)?.label ?? '';
 
   return (
     <PageShell>
-      <PageHeader title="Settings" maxWidth="max-w-4xl">
+      <PageHeader title={tc('terms.settings')} maxWidth="max-w-4xl">
         <span className="text-lg font-normal text-muted-foreground">· {activeLabel}</span>
       </PageHeader>
       <PageBody maxWidth="max-w-4xl">
@@ -333,6 +361,7 @@ export function UnifiedSettingsModal({
   onOpenChange,
   initialPane = 'connections',
 }: UnifiedSettingsModalProps) {
+  const tc = useTranslations('common');
   const handleOpenChange = useCallback((v: boolean) => onOpenChange(v), [onOpenChange]);
 
   return (
@@ -364,10 +393,10 @@ export function UnifiedSettingsModal({
           if (target?.closest?.('[data-models-drawer]')) e.preventDefault();
         }}
       >
-        <DialogTitle className="sr-only">Settings</DialogTitle>
+        <DialogTitle className="sr-only">{tc('terms.settings')}</DialogTitle>
         <div className="flex items-center gap-2 px-6 py-4 border-b shrink-0">
           <SettingsIcon className="h-4 w-4" />
-          <h2 className="font-semibold text-base">Settings</h2>
+          <h2 className="font-semibold text-base">{tc('terms.settings')}</h2>
         </div>
         <div className="flex-1 min-h-0 overflow-hidden">
           <UnifiedSettings initialPane={initialPane} showSidebar />

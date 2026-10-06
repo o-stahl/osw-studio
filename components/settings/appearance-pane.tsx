@@ -12,9 +12,15 @@ import { emitViewChanged, writeLocalStudioView } from '@/lib/view-mode-event';
 import { useStudioView } from '@/components/view-mode-provider';
 import { Section, SectionHeader, SectionBody } from '@/components/ui/section';
 import { SettingRow } from '@/components/ui/setting-row';
+import { useTranslations } from 'next-intl';
+import { useLocaleSwitch } from '@/lib/i18n/use-locale-switch';
+import { locales, localeNames, type Locale } from '@/lib/i18n/config';
 
 export function AppearancePane() {
+  const tn = useTranslations('nav');
   const { theme, setTheme } = useTheme();
+  const t = useTranslations('settings');
+  const locale = useLocaleSwitch();
   const [mounted, setMounted] = useState(false);
   // Where the choice is kept differs: server mode holds it on the account so it follows the person
   // between devices, browser mode on the device because there is no account to hold it.
@@ -65,7 +71,7 @@ export function AppearancePane() {
       emitViewChanged();
     } catch {
       setPendingView(null);
-      toast.error('Could not change the view');
+      toast.error(t('viewChangeFailed'));
     } finally {
       setSavingView(false);
     }
@@ -73,11 +79,11 @@ export function AppearancePane() {
 
   return (
     <Section>
-      <SectionHeader icon={Palette} title="Appearance" />
+      <SectionHeader icon={Palette} title={tn('settings.appearance')} />
       <SectionBody className="px-4 py-1">
         <SettingRow
-          title="Interface"
-          description="The studio is the full editor. The simple view is projects and deployments, and a project opens straight into quick edit."
+          title={t('interface')}
+          description={t('interfaceHint')}
         >
           <ToggleGroup
             type="single"
@@ -85,12 +91,12 @@ export function AppearancePane() {
             onValueChange={(v) => { if (v && !savingView) changeView(v === 'studio'); }}
             disabled={savingView}
           >
-            <ToggleGroupItem value="studio">Studio</ToggleGroupItem>
-            <ToggleGroupItem value="simple">Simple</ToggleGroupItem>
+            <ToggleGroupItem value="studio">{t('studio')}</ToggleGroupItem>
+            <ToggleGroupItem value="simple">{t('simple')}</ToggleGroupItem>
           </ToggleGroup>
         </SettingRow>
 
-        <SettingRow title="Theme" description="Interface color scheme">
+        <SettingRow title={t('theme')} description={t('themeHint')}>
           <ToggleGroup
             type="single"
             value={mounted ? (theme || 'dark') : 'dark'}
@@ -101,15 +107,34 @@ export function AppearancePane() {
               }
             }}
           >
-            <ToggleGroupItem value="dark">Dark</ToggleGroupItem>
-            <ToggleGroupItem value="light">Light</ToggleGroupItem>
-            <ToggleGroupItem value="system">System</ToggleGroupItem>
+            <ToggleGroupItem value="dark">{t('dark')}</ToggleGroupItem>
+            <ToggleGroupItem value="light">{t('light')}</ToggleGroupItem>
+            <ToggleGroupItem value="system">{t('system')}</ToggleGroupItem>
+          </ToggleGroup>
+        </SettingRow>
+
+        <SettingRow title={t('language.title')} description={t('language.description')}>
+          <ToggleGroup
+            type="single"
+            value={locale.current}
+            onValueChange={(value: string) => {
+              if (value && value !== locale.current) void locale.change(value as Locale);
+            }}
+            disabled={locale.pending}
+          >
+            {locales.map((locale) => (
+              // Each language is named in itself: its English name is no help to someone looking
+              // for it.
+              <ToggleGroupItem key={locale} value={locale}>
+                {localeNames[locale]}
+              </ToggleGroupItem>
+            ))}
           </ToggleGroup>
         </SettingRow>
 
         <SettingRow
-          title="Anonymous usage analytics"
-          description="Share anonymous usage data to help improve OSW Studio"
+          title={t('analytics')}
+          description={t('analyticsHint')}
         >
           <Switch
             id="telemetry"

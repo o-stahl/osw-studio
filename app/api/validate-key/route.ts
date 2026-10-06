@@ -4,15 +4,15 @@ import { getProvider } from '@/lib/llm/providers/registry';
 import { logger } from '@/lib/utils';
 
 export async function POST(request: NextRequest) {
+  const { apiKey, provider } = await request.json().catch(() => ({}));
+  if (!apiKey || !provider) {
+    return NextResponse.json(
+      { error: 'API key and provider are required' },
+      { status: 400 }
+    );
+  }
+
   try {
-    const { apiKey, provider } = await request.json();
-    
-    if (!apiKey || !provider) {
-      return NextResponse.json(
-        { error: 'API key and provider are required' },
-        { status: 400 }
-      );
-    }
 
     const providerConfig = getProvider(provider as ProviderId);
     let isValid = false;
@@ -73,6 +73,23 @@ export async function POST(request: NextRequest) {
         isValid = hfResp.ok;
         break;
 
+      // Both model catalogs are public, so listing models says nothing about the key.
+      case 'pollinations': {
+        const polResp = await fetch('https://gen.pollinations.ai/account/key', {
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        isValid = polResp.ok && (await polResp.json().catch(() => null))?.valid === true;
+        break;
+      }
+
+      case 'vercel': {
+        const vercelResp = await fetch('https://ai-gateway.vercel.sh/v1/credits', {
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        isValid = vercelResp.ok;
+        break;
+      }
+
       default:
         // For other OpenAI-compatible providers (including custom ones)
         if (providerConfig.baseUrl) {
@@ -91,7 +108,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ valid: isValid });
 
   } catch (error) {
+    // The provider could not be asked, which says nothing about the key.
     logger.error('Validation error:', error);
-    return NextResponse.json({ valid: false });
+    return NextResponse.json({ error: 'Could not reach the provider' }, { status: 502 });
   }
 }

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import React, { act, createRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { StylesContent, type StylesContentHandle } from '..';
@@ -39,7 +40,7 @@ beforeEach(() => {
   document.body.appendChild(container);
   root = createRoot(container);
   act(() => {
-    root.render(
+    root.render(withMessages(
       <StylesContent
         ref={ref}
         selection={payload()}
@@ -50,7 +51,7 @@ beforeEach(() => {
         onAskAgent={vi.fn()}
         onRefreshPreview={vi.fn()}
       />,
-    );
+    ));
   });
 });
 

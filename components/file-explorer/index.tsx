@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
+import { useArchiveMessage } from '@/lib/i18n/use-archive-message';
 import { VirtualFile, Project, FILE_SIZE_LIMITS, getFileTypeFromPath } from '@/lib/vfs/types';
 import { vfs } from '@/lib/vfs';
 import { collectEntryFiles } from '@/lib/vfs/archive/read-folder';
@@ -66,6 +68,11 @@ interface FileTreeItem {
 }
 
 export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onSetEntryPoint, onAddPromptFile, onProjectUpdate }: FileExplorerProps) {
+  const t = useTranslations('fileExplorer');
+  const tc = useTranslations('common');
+  const archiveMessage = useArchiveMessage();
+  const tw = useTranslations('workspace');
+  const tp = useTranslations('projects');
   const [files, setFiles] = useState<VirtualFile[]>([]);
   const [fileTree, setFileTree] = useState<FileTreeItem[]>([]);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['/']));
@@ -375,7 +382,7 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
   };
 
   const handleDownloadProject = async () => {
-    const toastId = toast.loading('Preparing download…');
+    const toastId = toast.loading(t('preparingDownload'));
 
     try {
       const { exportProjectArchive } = await import('@/lib/vfs/archive/export');
@@ -399,26 +406,24 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
         // Each warning names what was left out and why. Held longer because there is something to read.
         logger.warn('Archive export warnings:', warnings);
         toast.warning(
-          warnings.length === 1
-            ? 'Downloaded, with one thing left out'
-            : `Downloaded, with ${warnings.length} things left out`,
+          t('downloadedWithOmissions', { count: warnings.length }),
           {
             id: toastId,
-            description: warnings.map((warning) => warning.message).join('\n\n'),
+            description: warnings.map((warning) => archiveMessage(warning)).join('\n\n'),
             duration: 15000,
           }
         );
       } else {
-        toast.success('Project downloaded', { id: toastId });
+        toast.success(t('downloaded'), { id: toastId });
       }
     } catch (error) {
       logger.error('Failed to download project:', error);
-      toast.error('Could not prepare the download', { id: toastId });
+      toast.error(t('downloadFailed'), { id: toastId });
     }
   };
 
   const handleDelete = async (path: string, type: 'file' | 'directory') => {
-    if (!confirm(`Delete ${type} "${path}"?`)) return;
+    if (!confirm(t('confirmDelete', { type, path }))) return;
 
     try {
       if (type === 'file') {
@@ -540,16 +545,16 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
         await loadFiles();
 
         const parts: string[] = [];
-        if (uploaded) parts.push(`${uploaded} file${uploaded === 1 ? '' : 's'}`);
-        if (totalDirs) parts.push(`${totalDirs} folder${totalDirs === 1 ? '' : 's'}`);
-        if (skipped) parts.push(`${skipped} skipped`);
-        if (failed) parts.push(`${failed} failed`);
+        if (uploaded) parts.push(t('uploadedFiles', { count: uploaded }));
+        if (totalDirs) parts.push(t('uploadedFolders', { count: totalDirs }));
+        if (skipped) parts.push(t('uploadSkipped', { count: skipped }));
+        if (failed) parts.push(t('uploadFailedCount', { count: failed }));
         if (uploaded === 0 && failed === 0 && skipped === 0) {
-          toast.error('No supported files found in folder', { id: toastId });
+          toast.error(t('noSupportedFiles'), { id: toastId });
         } else if (failed > 0) {
-          toast.error(`Uploaded ${parts.join(' · ')}`, { id: toastId });
+          toast.error(t('uploadedSummary', { parts: parts.join(' · ') }), { id: toastId });
         } else {
-          toast.success(`Uploaded ${parts.join(' · ')}`, { id: toastId });
+          toast.success(t('uploadedSummary', { parts: parts.join(' · ') }), { id: toastId });
         }
       } else {
         for (const { file, path } of collected) {
@@ -588,14 +593,12 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
     if (outcome === 'ok') return;
     if (outcome === 'too-large') {
       const limitMb = Math.round(FILE_SIZE_LIMITS[getFileTypeFromPath(file.name)] / 1024 / 1024);
-      throw new Error(
-        `${file.name} is too large to add as a file — the limit is ${limitMb}MB. It can still be imported as a project.`
-      );
+      throw new Error(t('tooLargeAsFile', { name: file.name, limit: limitMb }));
     }
     if (outcome === 'cancelled') {
-      throw new Error(`A file called ${file.name} is already in this project, and it was kept.`);
+      throw new Error(t('alreadyExistsKept', { name: file.name }));
     }
-    throw new Error(`${file.name} could not be added to this project as a file.`);
+    throw new Error(t('couldNotAddAsFile', { name: file.name }));
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -663,7 +666,7 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
       const targetDirPath = targetDir.endsWith('/') ? targetDir : targetDir + '/';
       
       if (targetDirPath.startsWith(draggedDirPath)) {
-        toast.error('Cannot move a folder into itself');
+        toast.error(t('cannotMoveIntoItself'));
         setDropTarget(null);
         return;
       }
@@ -679,10 +682,10 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
         await vfs.moveFile(projectId, draggedItem.path, newPath);
       }
       await loadFiles();
-      toast.success(`Moved ${draggedItem.name} to ${targetDir === '/' ? 'root' : targetDir}`);
+      toast.success(t('movedTo', { name: draggedItem.name, target: targetDir === '/' ? t('rootFolder') : targetDir }));
     } catch (error: any) {
       logger.error('Failed to move item:', error);
-      toast.error(`Failed to move: ${error.message}`);
+      toast.error(t('moveFailed', { message: error.message }));
     }
     
     setDropTarget(null);
@@ -787,10 +790,10 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
             ) : (
               <span className={cn("text-sm flex-1", (isTransient || isGenerated || isHiddenDotFile) && "italic text-muted-foreground")}>
                 {item.name}
-                {isTransient && <span className="text-xs text-muted-foreground ml-1">(read-only)</span>}
-                {isGenerated && <span className="text-xs text-muted-foreground ml-1">(generated)</span>}
-                {item.path === (entryPoint || '/index.html') && <span className="text-xs text-emerald-500 ml-1">(entry)</span>}
-                {item.name === '.PROMPT.md' && <span className="text-xs text-amber-500 ml-1">(AI prompt)</span>}
+                {isTransient && <span className="text-xs text-muted-foreground ml-1">{t('readOnly')}</span>}
+                {isGenerated && <span className="text-xs text-muted-foreground ml-1">{t('generated')}</span>}
+                {item.path === (entryPoint || '/index.html') && <span className="text-xs text-emerald-500 ml-1">{t('entry')}</span>}
+                {item.name === '.PROMPT.md' && <span className="text-xs text-amber-500 ml-1">{t('aiPrompt')}</span>}
               </span>
             )}
             </div>
@@ -803,22 +806,22 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
                 <>
                   <ContextMenuItem onClick={() => handleCreateFile(item.path)}>
                     <File className="mr-2 h-4 w-4" />
-                    New File
+                    {t('newFile')}
                   </ContextMenuItem>
                   <ContextMenuItem onClick={() => handleCreateDirectory(item.path)}>
                     <Folder className="mr-2 h-4 w-4" />
-                    New Folder
+                    {t('newFolder')}
                   </ContextMenuItem>
                   <ContextMenuItem onClick={() => fileInputRef.current?.click()}>
                     <Upload className="mr-2 h-4 w-4" />
-                    Upload Files
+                    {t('uploadFiles')}
                   </ContextMenuItem>
                 </>
               )}
               {item.type === 'file' && onSetEntryPoint && item.path !== (entryPoint || '/index.html') && (
                 <ContextMenuItem onClick={() => onSetEntryPoint(item.path)}>
                   <Home className="mr-2 h-4 w-4" />
-                  Set as Entry Point
+                  {t('setAsEntryPoint')}
                 </ContextMenuItem>
               )}
               {item.type === 'file' && (item.path.endsWith('.py') || item.path.endsWith('.lua')) && (
@@ -826,20 +829,20 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
                   window.dispatchEvent(new CustomEvent('runInConsole', { detail: { path: item.path } }));
                 }}>
                   <Play className="mr-2 h-4 w-4" />
-                  Run in Console
+                  {t('runInConsole')}
                 </ContextMenuItem>
               )}
               <ContextMenuItem onClick={() => {
                 setRenamingPath(item.path);
                 setNewName(item.name);
               }}>
-                Rename
+                {t('rename')}
               </ContextMenuItem>
               <ContextMenuItem
                 onClick={() => handleDelete(item.path, item.type)}
                 className="text-destructive"
               >
-                Delete
+                {tc('actions.delete')}
               </ContextMenuItem>
             </>
           )}
@@ -847,14 +850,14 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
           {isTransient && (
             <ContextMenuItem disabled>
               <Eye className="mr-2 h-4 w-4" />
-              Read-only {isServerContext ? 'server context' : 'skill'}
+              {t('readOnlyKind', { kind: isServerContext ? 'server' : 'skill' })}
             </ContextMenuItem>
           )}
           {/* For generated files, show a generated indicator */}
           {isGenerated && (
             <ContextMenuItem disabled>
               <Eye className="mr-2 h-4 w-4" />
-              Generated build output
+              {t('generatedOutput')}
             </ContextMenuItem>
           )}
           </ContextMenuContent>
@@ -906,7 +909,7 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
       />
       <PanelHeader
         icon={FolderTree}
-        title="File Explorer"
+        title={tw('tabs.fileExplorer')}
         color="var(--button-files-active)"
         onClose={onClose}
         panelKey="files"
@@ -917,40 +920,40 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
               variant="ghost"
               className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 md:h-5 md:w-5 md:px-0 md:border-0 md:bg-transparent md:rounded-md"
               onClick={() => fileInputRef.current?.click()}
-              title="Upload files"
+              title={t('uploadFiles')}
             >
               <Upload className="h-2.5 w-2.5 md:h-3 md:w-3" />
-              <span className="text-xs md:hidden">Upload</span>
+              <span className="text-xs md:hidden">{t('upload')}</span>
             </Button>
             <Button
               size="sm"
               variant="ghost"
               className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 md:h-5 md:w-5 md:px-0 md:border-0 md:bg-transparent md:rounded-md"
               onClick={() => handleCreateFile('/')}
-              title="New file"
+              title={t('newFile')}
             >
               <File className="h-2.5 w-2.5 md:h-3 md:w-3" />
-              <span className="text-xs md:hidden">New file</span>
+              <span className="text-xs md:hidden">{t('newFile')}</span>
             </Button>
             <Button
               size="sm"
               variant="ghost"
               className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 md:h-5 md:w-5 md:px-0 md:border-0 md:bg-transparent md:rounded-md"
               onClick={() => handleCreateDirectory('/')}
-              title="New folder"
+              title={t('newFolder')}
             >
               <Folder className="h-2.5 w-2.5 md:h-3 md:w-3" />
-              <span className="text-xs md:hidden">New folder</span>
+              <span className="text-xs md:hidden">{t('newFolder')}</span>
             </Button>
             <Button
               size="sm"
               variant="ghost"
               className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 md:h-5 md:w-5 md:px-0 md:border-0 md:bg-transparent md:rounded-md"
               onClick={handleDownloadProject}
-              title="Download project"
+              title={t('downloadProject')}
             >
               <Download className="h-2.5 w-2.5 md:h-3 md:w-3" />
-              <span className="text-xs md:hidden">Download</span>
+              <span className="text-xs md:hidden">{tc('actions.download')}</span>
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -958,20 +961,20 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
                   size="sm"
                   variant="ghost"
                   className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 md:h-5 md:w-5 md:px-0 md:border-0 md:bg-transparent md:rounded-md"
-                  title="Import into this project"
+                  title={t('importIntoProject')}
                 >
                   <Import className="h-2.5 w-2.5 md:h-3 md:w-3" />
-                  <span className="text-xs md:hidden">Import</span>
+                  <span className="text-xs md:hidden">{tc('actions.import')}</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => importInputRef.current?.click()}>
                   <FileArchive className="h-4 w-4 mr-2" />
-                  From a file
+                  {tp('fromFile')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => pickFolderSource(openImport)}>
                   <FolderOpen className="h-4 w-4 mr-2" />
-                  From a folder
+                  {tp('fromFolder')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1002,7 +1005,7 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="bg-blue-500/20 border-2 border-dashed border-blue-500 rounded-lg p-8">
                   <Upload className="h-12 w-12 text-blue-500 mx-auto mb-2" />
-                  <p className="text-sm text-blue-600">Drop files here to upload</p>
+                  <p className="text-sm text-blue-600">{t('dropFiles')}</p>
                 </div>
               </div>
             )}
@@ -1011,8 +1014,8 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
                 <div className="text-center space-y-3">
                   <Folder className="h-12 w-12 mx-auto opacity-50 text-muted-foreground" />
                   <div className="space-y-1">
-                    <p className="text-base font-medium text-foreground">No files yet</p>
-                    <p className="text-sm text-muted-foreground">Create your first file to get started</p>
+                    <p className="text-base font-medium text-foreground">{t('noFiles')}</p>
+                    <p className="text-sm text-muted-foreground">{t('createFirstFile')}</p>
                   </div>
                 </div>
               </div>
@@ -1026,39 +1029,39 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
         <ContextMenuContent>
           <ContextMenuItem onClick={() => handleCreateFile('/')}>
             <File className="mr-2 h-4 w-4" />
-            New File
+            {t('newFile')}
           </ContextMenuItem>
           <ContextMenuItem onClick={() => handleCreateDirectory('/')}>
             <Folder className="mr-2 h-4 w-4" />
-            New Folder
+            {t('newFolder')}
           </ContextMenuItem>
           <ContextMenuItem onClick={() => fileInputRef.current?.click()}>
             <Upload className="mr-2 h-4 w-4" />
-            Upload Files
+            {t('uploadFiles')}
           </ContextMenuItem>
           <ContextMenuItem onClick={handleDownloadProject}>
             <Download className="mr-2 h-4 w-4" />
-            Download Project
+            {t('downloadProject')}
           </ContextMenuItem>
           <ContextMenuItem onClick={() => importInputRef.current?.click()}>
             <Import className="mr-2 h-4 w-4" />
-            Import from File
+            {t('importFromFile')}
           </ContextMenuItem>
           <ContextMenuItem onClick={() => pickFolderSource(openImport)}>
             <Import className="mr-2 h-4 w-4" />
-            Import from Folder
+            {t('importFromFolder')}
           </ContextMenuItem>
           <ContextMenuItem onClick={() => setShowHidden(!showHidden)}>
             {showHidden ? <EyeOff className="mr-2 h-4 w-4" /> : <Eye className="mr-2 h-4 w-4" />}
-            {showHidden ? 'Hide Hidden Files' : 'Show Hidden Files'}
+            {showHidden ? t('hideHiddenFiles') : t('showHiddenFiles')}
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
       {/* Missing .PROMPT.md notification */}
       {onAddPromptFile && !promptDismissed && files.length > 0 && !files.some(f => f.path === '/.PROMPT.md') && (
         <div className="mx-2 mb-2 p-2 rounded-md border border-amber-500/30 bg-amber-500/5 text-xs">
-          <p className="text-amber-600 dark:text-amber-400 mb-1.5">No .PROMPT.md found</p>
-          <p className="text-muted-foreground mb-2">Add the default website prompt?</p>
+          <p className="text-amber-600 dark:text-amber-400 mb-1.5">{t('noPromptFound')}</p>
+          <p className="text-muted-foreground mb-2">{t('addDefaultPrompt')}</p>
           <div className="flex gap-2">
             <Button
               size="sm"
@@ -1066,7 +1069,7 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
               className="h-6 text-xs px-2"
               onClick={onAddPromptFile}
             >
-              Add
+              {tc('actions.add')}
             </Button>
             <Button
               size="sm"
@@ -1077,7 +1080,7 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
                 localStorage.setItem(`osw-prompt-dismissed-${projectId}`, 'true');
               }}
             >
-              Dismiss
+              {tc('actions.dismiss')}
             </Button>
           </div>
         </div>
@@ -1093,19 +1096,19 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
               className="shrink-0 w-full flex items-center gap-1.5 px-3 py-1.5 border-t border-border text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
             >
               {showHidden ? (
-                <><EyeOff className="h-3 w-3 shrink-0" />Hide hidden files</>
+                <><EyeOff className="h-3 w-3 shrink-0" />{t('hideHidden')}</>
               ) : (
                 <><Eye className="h-3 w-3 shrink-0" />{(() => {
                   const parts: string[] = [];
-                  if (hiddenFileCount > 0) parts.push(`${hiddenFileCount} ${hiddenFileCount === 1 ? 'file' : 'files'}`);
-                  if (hiddenFolderCount > 0) parts.push(`${hiddenFolderCount} ${hiddenFolderCount === 1 ? 'folder' : 'folders'}`);
-                  return parts.join(', ') + ' hidden';
+                  if (hiddenFileCount > 0) parts.push(t('hiddenFiles', { count: hiddenFileCount }));
+                  if (hiddenFolderCount > 0) parts.push(t('hiddenFolders', { count: hiddenFolderCount }));
+                  return t('hiddenSummary', { parts: parts.join(', ') });
                 })()}</>
               )}
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" className="max-w-[240px] text-xs">
-            Files starting with . are excluded from deployments and ZIP exports, but included in backups and templates.
+            {t('dotFilesNote')}
           </TooltipContent>
         </Tooltip>
       )}

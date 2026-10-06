@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
 import { ChatPanel } from '@/components/chat-panel';
 import { MultiAgentOrchestrator } from '@/lib/llm/multi-agent-orchestrator';
+import { continueAfterStop } from '@/lib/llm/continue-prompt';
 import type { BriefState, ProjectBrief } from '@/lib/describe/types';
 import { createEmptyBriefState, isBriefReady } from '@/lib/describe/types';
 import { createProjectFromBrief } from '@/lib/describe/create-from-brief';
@@ -15,7 +17,22 @@ import type { Project } from '@/lib/vfs/types';
 import { toast } from 'sonner';
 import { BriefSidebar } from './brief-sidebar';
 import { CreateConfirmation } from './create-confirmation';
+import { WELCOME_TEXT } from './welcome';
 import { track } from '@/lib/telemetry';
+
+const WELCOME_ID = 'describe-welcome';
+
+/**
+ * The events with the welcome's text swapped for `welcome`. Later deltas can coalesce into its
+ * event, so only its first chunk is swapped.
+ */
+export function withLocalWelcome(events: DebugEvent[], welcome: string): DebugEvent[] {
+  return events.map((evt) => {
+    if (evt.id !== WELCOME_ID) return evt;
+    const text = { text: welcome };
+    return { ...evt, data: evt.data?.all ? { all: [text, ...evt.data.all.slice(1)] } : text };
+  });
+}
 
 interface DescribeModeProps {
   onProjectCreated: (project: Project) => void;
@@ -23,12 +40,14 @@ interface DescribeModeProps {
 }
 
 export function DescribeMode({ onProjectCreated, onDirtyChange }: DescribeModeProps) {
+  const t = useTranslations('describe');
+  const locale = useLocale();
   const [events, setEvents] = useState<DebugEvent[]>([
     {
-      id: 'describe-welcome',
+      id: WELCOME_ID,
       timestamp: Date.now(),
       event: 'assistant_delta',
-      data: { text: 'What are you making?\n\nTell me what you have in mind — I\'ll ask a few things and set up the project for you.' },
+      data: { text: WELCOME_TEXT },
       count: 1,
       version: 1,
     },
@@ -62,14 +81,14 @@ export function DescribeMode({ onProjectCreated, onDirtyChange }: DescribeModePr
 
   // ---- Model display name ----
   const getModelDisplayName = useCallback((modelId: string): string => {
-    if (!modelId) return 'Select Model';
+    if (!modelId) return t('selectModel');
     const provConfig = getProvider(activeAgent.provider);
     const found = provConfig?.models?.find(m => m.id === modelId);
     if (found) return found.name;
     const parts = modelId.split('/');
     const name = parts[parts.length - 1];
     return name.split('-').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
-  }, [activeAgent.provider]);
+  }, [activeAgent.provider, t]);
 
   // ---- Event coalescing (matches workspace pattern) ----
   const addEvent = useCallback((event: string, data: any) => {
@@ -167,7 +186,7 @@ export function DescribeMode({ onProjectCreated, onDirtyChange }: DescribeModePr
       // spec --append "Section" << 'EOF' content EOF
       const specMatch = trimmed.match(/^spec\s+--append\s+(?:"([^"]+)"|'([^']+)')\s*<<-?\s*['"]?\w+['"]?\n([\s\S]*?)\n\w+\s*$/);
       if (specMatch) {
-        const section = specMatch[1] ?? specMatch[2] ?? 'Spec';
+        const section = specMatch[1] ?? specMatch[2] ?? 'Spec'; // i18n-ignore: written into .DESIGN-CONVERSATION.md, which the agent reads
         const body = (specMatch[3] || '').trim();
         return `(spec: ${section})\n\n${body}`;
       }
@@ -225,6 +244,9 @@ export function DescribeMode({ onProjectCreated, onDirtyChange }: DescribeModePr
     return messages;
   }, [events]);
 
+  // The welcome is kept in English for the transcript above and worded in the app's language here.
+  const displayEvents = useMemo(() => withLocalWelcome(events, t('welcome')), [events, t]);
+
   // ---- Project ready (agent ran propose-create — show confirmation) ----
   // The bash-based propose-create command emits an empty payload; the brief
   // is already accumulated client-side from prior brief_update events.
@@ -250,14 +272,14 @@ export function DescribeMode({ onProjectCreated, onDirtyChange }: DescribeModePr
         runtime: brief.runtime ?? 'static',
         template: brief.template ?? 'blank',
       });
-      toast.success(`Project "${project.name}" created`);
+      toast.success(t('projectCreated', { name: project.name }));
       onProjectCreated(project);
     } catch (err: any) {
-      toast.error(`Failed to create project: ${err.message ?? err}`);
+      toast.error(t('createFailed', { error: String(err.message ?? err) }));
     } finally {
       setCreating(false);
     }
-  }, [briefState.spec, getConversation, onProjectCreated]);
+  }, [briefState.spec, getConversation, onProjectCreated, t]);
 
   // ---- Confirmation handlers ----
   const handleConfirmCreate = useCallback(() => {
@@ -318,12 +340,12 @@ export function DescribeMode({ onProjectCreated, onDirtyChange }: DescribeModePr
       });
     } catch (err: any) {
       if (err.name !== 'AbortError') {
-        toast.error(`Generation failed: ${err.message ?? err}`);
+        toast.error(t('generationFailed', { error: String(err.message ?? err) }));
       }
     } finally {
       setGenerating(false);
     }
-  }, [addEvent, applyBriefUpdate, applySpecUpdate, applyProjectReady, systemNote, onDirtyChange]);
+  }, [addEvent, applyBriefUpdate, applySpecUpdate, applyProjectReady, systemNote, onDirtyChange, t]);
 
   // ---- Stop handler ----
   const handleStop = useCallback(() => {
@@ -341,7 +363,7 @@ export function DescribeMode({ onProjectCreated, onDirtyChange }: DescribeModePr
   // Composer overlay — replaces the input area when creation is pending
   const composerOverlay = pendingCreateBrief ? (
     <CreateConfirmation
-      name={pendingCreateBrief.name || briefState.brief.name || 'Untitled Project'}
+      name={pendingCreateBrief.name || briefState.brief.name || t('untitledProject')}
       onConfirm={handleConfirmCreate}
       onDecline={handleDeclineCreate}
       creating={creating}
@@ -352,12 +374,15 @@ export function DescribeMode({ onProjectCreated, onDirtyChange }: DescribeModePr
     <div className="flex h-full w-full">
       {/* Chat panel — no header, no border radius on the right side (sidebar is adjacent) */}
       <div className="flex-1 min-w-0">
+        {/* Keyed by language: the panel keeps text it has already processed, so the welcome's new
+            wording would not show until a remount. */}
         <ChatPanel
-          events={events}
+          key={locale}
+          events={displayEvents}
           generating={generating}
           onGenerate={handleGenerate}
           onStop={handleStop}
-          onContinue={() => orchestratorRef.current?.continue()}
+          onContinue={(withModel) => continueAfterStop(withModel, handleGenerate)}
           focusContext={null}
           onClearFocus={() => {}}
           mode="code"

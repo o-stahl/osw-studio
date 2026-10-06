@@ -358,3 +358,38 @@ describe('archiveFilesToBackend duplicate names', () => {
   });
 });
 
+
+// The dialog words each issue from `text`; the kind decides whether it says "Edge function",
+// "Server function", "Secret" or "Scheduled function", so the right one has to reach it.
+describe('backend issue text', () => {
+  const textOf = (issues: ArchiveIssue[], key: string) => issues.find(i => i.text?.key === key)?.text;
+
+  it('names the kind and record an export leaves out or leaves empty', () => {
+    const warnings: ArchiveIssue[] = [];
+    backendToArchiveFiles({
+      edgeFunctions: [{ ...edge, name: 'blank', code: '' }],
+      serverFunctions: [{ id: 's1', projectId: 'p1', name: 'a/b', code: 'return 1;', enabled: true, createdAt: new Date(), updatedAt: new Date() }],
+    } as any, warnings);
+    expect(textOf(warnings, 'emptyCode')).toEqual({ key: 'emptyCode', values: { kind: 'edge', name: 'blank' } });
+    expect(textOf(warnings, 'unusableName')).toEqual({ key: 'unusableName', values: { kind: 'server', name: 'a/b' } });
+  });
+
+  it('names the kind and place of what an import refuses', () => {
+    const { issues } = archiveFilesToBackend(new Map([
+      ['/.server/server-functions/deep/x.js', 'return 1;'],
+      ['/.server/edge-functions/a.js', 'Response.json({});'],
+      ['/.server/edge-functions/a.json', '{oops'],
+      ['/.server/secrets.json', JSON.stringify([{ name: 'KEY' }, 5, { name: 'KEY' }])],
+      ['/.server/scheduled.json', JSON.stringify([{ name: 'nightly', functionName: 'x', cronExpression: 'nope', timezone: 'UTC' }])],
+    ]));
+
+    expect(textOf(issues, 'nestedBackendFile')).toEqual({
+      key: 'nestedBackendFile',
+      values: { kind: 'server', dir: '/.server/server-functions/', path: '/.server/server-functions/deep/x.js' },
+    });
+    expect(textOf(issues, 'sidecarNotJson')).toEqual({ key: 'sidecarNotJson', values: { path: '/.server/edge-functions/a.json', name: 'a' } });
+    expect(textOf(issues, 'entryNotObject')).toEqual({ key: 'entryNotObject', values: { index: 2, path: '/.server/secrets.json' } });
+    expect(textOf(issues, 'duplicateName')).toEqual({ key: 'duplicateName', values: { kind: 'secret', name: 'KEY' } });
+    expect(textOf(issues, 'invalidRecord')?.values).toMatchObject({ kind: 'scheduled', name: 'nightly' });
+  });
+});

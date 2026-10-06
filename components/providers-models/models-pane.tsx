@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useTranslations } from 'next-intl';
+import { useModelTemplateCopy } from '@/lib/i18n/use-model-template-copy';
 import { Image as ImageIcon, Mic, Brain, Eye, Wrench, BookmarkPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { configManager } from '@/lib/config/storage';
@@ -9,9 +11,8 @@ import { getActiveTemplate, saveAsTemplate } from '@/lib/llm/models/template-sto
 import { loadProviderModels } from '@/lib/llm/models/model-catalog';
 import { Drawer } from './drawer';
 import { ModelPicker } from './model-picker';
-import { fmtCtx, modelRefLabel } from './format';
+import { fmtCtx, fmtPrice, fmtRatePerMillion, modelRefLabel } from './format';
 import type { ModelTemplate, ModelRef, ModelAssignment } from '@/lib/llm/models/assignment';
-import type { ProviderModel } from '@/lib/llm/providers/types';
 import {
   Select,
   SelectContent,
@@ -31,32 +32,6 @@ interface DrawerState {
   open: boolean;
   mode: DrawerMode;
   slot: DrawerSlot | null;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function fmtPrice(model: ProviderModel): string | null {
-  const pricing = model.pricing;
-  // Image models are billed per image, not per token — OpenRouter reports 0 token
-  // rates for them, so don't show "free" (it's misleading).
-  const isImageOut = !!model.outputModalities?.includes('image');
-  if (!pricing) return isImageOut ? 'per-image' : null;
-  if (pricing.input === 0 && pricing.output === 0) return isImageOut ? 'per-image' : 'free';
-  const fmt = (n: number) => {
-    if (n === 0) return '$0';
-    if (n < 0.01) return `$${(n).toFixed(4)}`;
-    return `$${n.toFixed(2)}`;
-  };
-  return `${fmt(pricing.input)} / ${fmt(pricing.output)}`;
-}
-
-function autoLimitHint(ctxLength: number | undefined): string {
-  if (!ctxLength) return 'auto';
-  const auto = Math.round(ctxLength * 0.6);
-  if (auto >= 1_000_000) return `auto (${(auto / 1_000_000).toFixed(1)}M)`;
-  return `auto (${Math.round(auto / 1_000)}K)`;
 }
 
 // ---------------------------------------------------------------------------
@@ -131,6 +106,7 @@ interface SectionHeadProps {
 }
 
 function SectionHead({ label, required, note }: SectionHeadProps) {
+  const t = useTranslations('models');
   return (
     <div className="mb-3">
       <div className="flex items-center gap-2 mb-0.5">
@@ -139,7 +115,7 @@ function SectionHead({ label, required, note }: SectionHeadProps) {
         </span>
         {required && (
           <span className="text-[10px] font-semibold text-primary bg-primary/15 border border-primary/40 px-[7px] py-[1px] rounded-sm">
-            required
+            {t('required')}
           </span>
         )}
       </div>
@@ -192,6 +168,7 @@ interface EnrichedModelInfo {
 }
 
 function useEnrichedModel(ref: ModelRef | null): EnrichedModelInfo | null {
+  const t = useTranslations('models');
   const [info, setInfo] = useState<EnrichedModelInfo | null>(null);
 
   useEffect(() => {
@@ -204,7 +181,7 @@ function useEnrichedModel(ref: ModelRef | null): EnrichedModelInfo | null {
         setInfo({
           name: found.name,
           ctx: fmtCtx(found.contextLength),
-          price: fmtPrice(found),
+          price: fmtPrice(t, found, fmtRatePerMillion),
           supportsVision: found.supportsVision,
           supportsTools: found.supportsFunctions,
           supportsReasoning: found.supportsReasoning,
@@ -233,6 +210,8 @@ interface SaveTemplateBodyProps {
 }
 
 function SaveTemplateBody({ template, onSaved, onCancel }: SaveTemplateBodyProps) {
+  const t = useTranslations('models');
+  const tc = useTranslations('common');
   const [name, setName] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -248,21 +227,21 @@ function SaveTemplateBody({ template, onSaved, onCancel }: SaveTemplateBodyProps
   }
 
   function imageGenSummary(): string {
-    if (!assignment.imageGen) return 'off';
-    if (assignment.imageGen === 'agent') return 'reuse agent';
+    if (!assignment.imageGen) return t('off');
+    if (assignment.imageGen === 'agent') return t('summaryReuseAgent');
     return modelRefLabel(assignment.imageGen);
   }
 
   function voiceInputSummary(): string {
-    if (!assignment.voiceInput) return 'off';
-    if (assignment.voiceInput === 'agent') return 'reuse agent';
-    if (assignment.voiceInput === 'browser') return 'browser / on-device';
+    if (!assignment.voiceInput) return t('off');
+    if (assignment.voiceInput === 'agent') return t('summaryReuseAgent');
+    if (assignment.voiceInput === 'browser') return t('browserOnDevice');
     return modelRefLabel(assignment.voiceInput);
   }
 
   function compactionSummary(): string {
-    if (!assignment.autoCompact) return 'off';
-    return assignment.compactLimit ? `${assignment.compactLimit} tok` : 'auto';
+    if (!assignment.autoCompact) return t('off');
+    return assignment.compactLimit ? t('summaryTokens', { count: assignment.compactLimit }) : t('summaryAuto');
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -281,7 +260,7 @@ function SaveTemplateBody({ template, onSaved, onCancel }: SaveTemplateBodyProps
           htmlFor="tpl-name-input"
           className="block text-xs font-medium text-muted-foreground mb-[7px]"
         >
-          Name
+          {tc('labels.name')}
         </label>
         <input
           ref={inputRef}
@@ -289,7 +268,7 @@ function SaveTemplateBody({ template, onSaved, onCancel }: SaveTemplateBodyProps
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Client work"
+          placeholder={t('templateNamePlaceholder')}
           className={cn(
             'w-full px-[11px] py-2 rounded-sm text-[13px] font-[Inter,system-ui,sans-serif]',
             'bg-background border border-border text-foreground placeholder:text-muted-foreground',
@@ -301,15 +280,15 @@ function SaveTemplateBody({ template, onSaved, onCancel }: SaveTemplateBodyProps
       {/* Summary */}
       <div>
         <label className="block text-xs font-medium text-muted-foreground mb-[7px]">
-          Saving
+          {t('saving')}
         </label>
         <div className="bg-card border border-border rounded-md px-[14px] py-[12px] flex flex-col gap-1">
           {(
             [
-              ['Agent', agentSummary()],
-              ['Image gen', imageGenSummary()],
-              ['Voice in', voiceInputSummary()],
-              ['Compaction', compactionSummary()],
+              [t('agent'), agentSummary()],
+              [tc('labels.imageGen'), imageGenSummary()],
+              [tc('labels.voiceIn'), voiceInputSummary()],
+              [t('compaction'), compactionSummary()],
             ] as [string, string][]
           ).map(([k, v]) => (
             <div key={k} className="flex justify-between text-xs py-[3px]">
@@ -330,7 +309,7 @@ function SaveTemplateBody({ template, onSaved, onCancel }: SaveTemplateBodyProps
             'bg-transparent border border-border text-muted-foreground hover:bg-muted hover:text-foreground',
           )}
         >
-          Cancel
+          {tc('actions.cancel')}
         </button>
         <button
           type="submit"
@@ -342,7 +321,7 @@ function SaveTemplateBody({ template, onSaved, onCancel }: SaveTemplateBodyProps
             'disabled:opacity-45 disabled:cursor-not-allowed',
           )}
         >
-          Save as template
+          {t('saveAsTemplate')}
         </button>
       </div>
     </form>
@@ -360,6 +339,8 @@ interface AgentCardProps {
 }
 
 function AgentCard({ template, onOpenPicker, onAssignmentChange }: AgentCardProps) {
+  const t = useTranslations('models');
+  const ts = useTranslations('settings');
   const { assignment } = template;
   const agentRef = assignment.agent;
   const enriched = useEnrichedModel(agentRef);
@@ -394,8 +375,8 @@ function AgentCard({ template, onOpenPicker, onAssignmentChange }: AgentCardProp
   }
 
   const autoHint = enriched?.ctx
-    ? `auto (60% of ${enriched.ctx})`
-    : autoLimitHint(undefined);
+    ? t('autoOf', { pct: 60, ctx: enriched.ctx })
+    : t('summaryAuto');
 
   return (
     <Card>
@@ -425,7 +406,7 @@ function AgentCard({ template, onOpenPicker, onAssignmentChange }: AgentCardProp
             'hover:bg-muted hover:border-muted-foreground/30',
           )}
         >
-          Change
+          {t('change')}
         </button>
       </div>
 
@@ -433,19 +414,19 @@ function AgentCard({ template, onOpenPicker, onAssignmentChange }: AgentCardProp
       <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t border-border">
         <CapPill
           icon={<Eye size={12} strokeWidth={2} />}
-          label="Image uploads"
+          label={t('imageUploads')}
           enabled={enriched?.supportsVision ?? false}
         />
         <span className="text-muted-foreground/50 text-xs">·</span>
         <CapPill
           icon={<Wrench size={12} strokeWidth={2} />}
-          label="Tool use"
+          label={t('toolUse')}
           enabled={enriched?.supportsTools ?? false}
         />
         <span className="text-muted-foreground/50 text-xs">·</span>
         <CapPill
           icon={<Brain size={12} strokeWidth={2} />}
-          label="Reasoning"
+          label={t('reasoning')}
           enabled={enriched?.supportsReasoning ?? false}
         />
         {enriched?.ctx && (
@@ -460,9 +441,9 @@ function AgentCard({ template, onOpenPicker, onAssignmentChange }: AgentCardProp
       {enriched?.supportsReasoning && (
         <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border">
           <div className="flex-1 min-w-0">
-            <p className="text-[13px] text-foreground font-medium">Enable reasoning</p>
+            <p className="text-[13px] text-foreground font-medium">{t('enableReasoning')}</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Extended thinking before responding — uses more tokens
+              {t('extendedThinking')}
             </p>
           </div>
           <MiniToggle checked={reasoningEnabled} onChange={handleReasoningToggle} />
@@ -474,9 +455,9 @@ function AgentCard({ template, onOpenPicker, onAssignmentChange }: AgentCardProp
         {/* Toggle row */}
         <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0">
-            <p className="text-[13px] text-foreground font-medium">Auto-compact</p>
+            <p className="text-[13px] text-foreground font-medium">{ts('autoCompact')}</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Summarize the conversation at 60% of the model&apos;s context limit
+              {t('summarizeAt60')}
             </p>
           </div>
           <MiniToggle
@@ -491,7 +472,7 @@ function AgentCard({ template, onOpenPicker, onAssignmentChange }: AgentCardProp
             htmlFor="compact-limit-input"
             className="text-xs text-muted-foreground min-w-[150px]"
           >
-            Compaction limit (tokens)
+            {t('compactionLimit')}
           </label>
           <input
             id="compact-limit-input"
@@ -509,7 +490,7 @@ function AgentCard({ template, onOpenPicker, onAssignmentChange }: AgentCardProp
               'disabled:opacity-40 disabled:cursor-not-allowed',
             )}
           />
-          <span className="text-xs text-muted-foreground whitespace-nowrap">empty = auto-detect</span>
+          <span className="text-xs text-muted-foreground whitespace-nowrap">{t('emptyAutoDetect')}</span>
         </div>
       </div>
     </Card>
@@ -526,6 +507,8 @@ interface ImageGenCardProps {
 }
 
 function ImageGenCard({ template, onOpenPicker }: ImageGenCardProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('models');
   const { assignment } = template;
   const val = assignment.imageGen;
   const modelRef = val !== null && val !== 'agent' ? val : null;
@@ -533,12 +516,12 @@ function ImageGenCard({ template, onOpenPicker }: ImageGenCardProps) {
 
   return (
     <Card>
-      <p className="font-semibold text-[13px] text-foreground mb-2.5">Image generation</p>
+      <p className="font-semibold text-[13px] text-foreground mb-2.5">{tc('labels.imageGeneration')}</p>
 
       {val === null ? (
         /* Off state */
         <div className="flex items-center justify-between">
-          <OffLine label="No model set — off" />
+          <OffLine label={t('noModelSet')} />
           <button
             type="button"
             onClick={onOpenPicker}
@@ -548,7 +531,7 @@ function ImageGenCard({ template, onOpenPicker }: ImageGenCardProps) {
               'hover:bg-muted hover:border-muted-foreground/30',
             )}
           >
-            Set a model
+            {t('setAModel')}
           </button>
         </div>
       ) : (
@@ -589,11 +572,11 @@ function ImageGenCard({ template, onOpenPicker }: ImageGenCardProps) {
                 'hover:bg-muted hover:border-muted-foreground/30',
               )}
             >
-              Change
+              {t('change')}
             </button>
           </div>
           <p className="text-xs text-muted-foreground mt-2.5">
-            Enabled — the agent can generate images during a build.
+            {t('imagesEnabled')}
           </p>
         </>
       )}
@@ -611,6 +594,8 @@ interface VoiceInputCardProps {
 }
 
 function VoiceInputCard({ template, onOpenPicker }: VoiceInputCardProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('models');
   const { assignment } = template;
   const val = assignment.voiceInput;
   const modelRef = val !== null && val !== 'browser' && val !== 'agent' ? val : null;
@@ -618,12 +603,12 @@ function VoiceInputCard({ template, onOpenPicker }: VoiceInputCardProps) {
 
   return (
     <Card>
-      <p className="font-semibold text-[13px] text-foreground mb-2.5">Voice input</p>
+      <p className="font-semibold text-[13px] text-foreground mb-2.5">{tc('labels.voiceInput')}</p>
 
       {val === null ? (
         /* Off state */
         <div className="flex items-center justify-between">
-          <OffLine label="Off — no mic" />
+          <OffLine label={t('offNoMic')} />
           <button
             type="button"
             onClick={onOpenPicker}
@@ -633,7 +618,7 @@ function VoiceInputCard({ template, onOpenPicker }: VoiceInputCardProps) {
               'hover:bg-muted hover:border-muted-foreground/30',
             )}
           >
-            Set a model
+            {t('setAModel')}
           </button>
         </div>
       ) : (
@@ -643,7 +628,7 @@ function VoiceInputCard({ template, onOpenPicker }: VoiceInputCardProps) {
               {val === 'browser' ? (
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold text-sm tracking-[-0.01em] text-foreground">
-                    Browser / on-device
+                    {t('browserOnDevice')}
                   </span>
                 </div>
               ) : val === 'agent' ? (
@@ -680,13 +665,13 @@ function VoiceInputCard({ template, onOpenPicker }: VoiceInputCardProps) {
                 'hover:bg-muted hover:border-muted-foreground/30',
               )}
             >
-              Change
+              {t('change')}
             </button>
           </div>
           <p className="text-xs text-muted-foreground mt-2.5">
             {val === 'browser'
-              ? 'Click mic, talk, send. Runs in your browser — nothing to set up.'
-              : 'Click mic, talk, send. Audio is sent to the provider.'}
+              ? t('browserVoiceNote')
+              : t('providerVoiceNote')}
           </p>
         </>
       )}
@@ -699,6 +684,9 @@ function VoiceInputCard({ template, onOpenPicker }: VoiceInputCardProps) {
 // ---------------------------------------------------------------------------
 
 export function ModelsPane() {
+  const tc = useTranslations('common');
+  const t = useTranslations('models');
+  const copy = useModelTemplateCopy();
   // `saved` is what's persisted; `template` is the working draft. Slot/compaction
   // edits mutate the draft only — nothing is written until "Save" commits it.
   const [saved, setSaved] = useState<ModelTemplate>(() => getActiveTemplate());
@@ -786,24 +774,24 @@ export function ModelsPane() {
   // ---- Derive drawer props ----
 
   function drawerLabel(): string {
-    if (drawer.mode === 'save-template') return 'Save as template';
+    if (drawer.mode === 'save-template') return t('saveAsTemplate');
     if (!drawer.slot) return '';
-    return 'Model for';
+    return t('modelFor');
   }
 
   function drawerTitle(): string {
-    if (drawer.mode === 'save-template') return 'Name this setup';
-    if (drawer.slot === 'agent') return 'Agent model';
-    if (drawer.slot === 'imageGen') return 'Image generation';
-    if (drawer.slot === 'voiceInput') return 'Voice input';
+    if (drawer.mode === 'save-template') return t('nameThisSetup');
+    if (drawer.slot === 'agent') return t('agentModel');
+    if (drawer.slot === 'imageGen') return tc('labels.imageGeneration');
+    if (drawer.slot === 'voiceInput') return tc('labels.voiceInput');
     return '';
   }
 
   function drawerScope(): string {
-    if (drawer.mode === 'save-template') return 'Captures your current assignments as a reusable snapshot.';
-    if (drawer.slot === 'agent') return 'Any text model — this is the model that reads, plans and writes.';
-    if (drawer.slot === 'imageGen') return 'Models that produce images.';
-    if (drawer.slot === 'voiceInput') return 'Any model that turns speech into text. Browser is free and needs no setup.';
+    if (drawer.mode === 'save-template') return t('capturesAssignments');
+    if (drawer.slot === 'agent') return t('anyTextModel');
+    if (drawer.slot === 'imageGen') return t('modelsThatProduceImages');
+    if (drawer.slot === 'voiceInput') return t('anySpeechModel');
     return '';
   }
 
@@ -827,7 +815,7 @@ export function ModelsPane() {
       {/* ---- Active-template bar ---- */}
       <div className="flex flex-wrap items-center gap-3 bg-card border border-border rounded-lg px-[18px] py-[13px] mb-6">
         <span className="text-xs font-semibold tracking-[0.08em] uppercase text-muted-foreground flex-shrink-0">
-          Active template
+          {t('activeTemplate')}
         </span>
         <Select value={activeId} onValueChange={handleTemplateSelect}>
           <SelectTrigger size="sm" className="rounded-full gap-1.5 text-[13px] font-medium text-foreground min-w-0 max-w-[220px]">
@@ -836,7 +824,7 @@ export function ModelsPane() {
           <SelectContent>
             {sortedTemplates.map((t) => (
               <SelectItem key={t.id} value={t.id}>
-                {t.name}
+                {copy(t).name}
               </SelectItem>
             ))}
           </SelectContent>
@@ -857,7 +845,7 @@ export function ModelsPane() {
                 : 'bg-transparent border border-border text-muted-foreground/50 cursor-not-allowed',
             )}
           >
-            Save to &ldquo;{saved.name}&rdquo;
+            {t('saveTo', { name: saved.name })}
           </button>
         )}
 
@@ -871,17 +859,17 @@ export function ModelsPane() {
           )}
         >
           <BookmarkPlus size={13} strokeWidth={2} />
-          Save as template
+          {t('saveAsTemplate')}
         </button>
       </div>
 
       {/* Built-in description / read-only hint */}
-      {(template.description || isBuiltin) && (
+      {(copy(template).description || isBuiltin) && (
         <p className="text-xs text-muted-foreground -mt-3 mb-6 px-1">
-          {template.description}
+          {copy(template).description}
           {isBuiltin && (
             <span className="text-muted-foreground/70">
-              {template.description ? ' ' : ''}Built-in — use &ldquo;Save as template&rdquo; to make an editable copy.
+              {copy(template).description ? ' ' : ''}{t('builtInHint')}
             </span>
           )}
         </p>
@@ -890,9 +878,9 @@ export function ModelsPane() {
       {/* ---- Agent model section ---- */}
       <div className="mb-[30px]">
         <SectionHead
-          label="Agent model"
+          label={t('agentModel')}
           required
-          note="The model that reads, plans and writes. Its capabilities decide which features turn on."
+          note={t('agentModelNote')}
         />
         <AgentCard
           template={template}
@@ -904,15 +892,15 @@ export function ModelsPane() {
       {/* ---- Modalities section ---- */}
       <div className="mb-[30px]">
         <SectionHead
-          label="Modalities"
-          note="Optional capabilities layered on the text agent. Add more as you need them."
+          label={t('modalities')}
+          note={t('modalitiesNote')}
         />
         <div className="flex flex-col gap-3">
           <div>
             <div className="flex items-center gap-1.5 mb-2">
               <ImageIcon size={13} strokeWidth={2} className="text-muted-foreground" />
               <span className="text-xs font-semibold tracking-[0.07em] uppercase text-muted-foreground">
-                Image generation
+                {tc('labels.imageGeneration')}
               </span>
             </div>
             <ImageGenCard
@@ -924,7 +912,7 @@ export function ModelsPane() {
             <div className="flex items-center gap-1.5 mb-2">
               <Mic size={13} strokeWidth={2} className="text-muted-foreground" />
               <span className="text-xs font-semibold tracking-[0.07em] uppercase text-muted-foreground">
-                Voice input
+                {tc('labels.voiceInput')}
               </span>
             </div>
             <VoiceInputCard
@@ -934,7 +922,7 @@ export function ModelsPane() {
           </div>
         </div>
         <p className="text-xs text-muted-foreground mt-3.5">
-          More modalities — video input, read-aloud — slot in here later.
+          {t('moreModalities')}
         </p>
       </div>
 

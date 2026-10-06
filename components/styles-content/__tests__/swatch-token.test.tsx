@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import React, { act, createRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { StylesContent, type StylesContentHandle, type StylesContentProps } from '..';
 import { COMMIT_DEBOUNCE_MS } from '../commit';
 import { discoverColorTokens } from '../tokens';
 import type { FocusContextPayload } from '@/lib/preview/types';
+import { createTranslator } from 'next-intl';
+import en from '@/messages/en.json';
 
 /**
  * Pressing a colour swatch on an element whose colour comes from a design token.
@@ -129,7 +132,7 @@ beforeEach(() => {
   document.body.appendChild(container);
   root = createRoot(container);
   act(() => {
-    root.render(<StylesContent ref={ref} {...props()} />);
+    root.render(withMessages(<StylesContent ref={ref} {...props()} />));
   });
 });
 
@@ -218,7 +221,7 @@ describe('the swatch the element is wearing', () => {
         + ' --c1:#010101; --c2:#020202; --c3:#030303; --c4:#040404;'
         + ' --c5:#050505; --c6:#060606; --c7:#070707; --c8:#080808; }',
     }]);
-    await act(async () => { root.render(<StylesContent ref={ref} {...props({ tokens: many })} />); });
+    await act(async () => { root.render(withMessages(<StylesContent ref={ref} {...props({ tokens: many })} />)); });
 
     // Capped at six, the last two were unreachable except by typing a literal into the picker — the
     // one route that writes a plain colour instead of a `var()` reference.
@@ -246,6 +249,8 @@ describe('the superseded-token note', () => {
     const text = notes()[0].textContent || '';
     expect(text).toContain('--accent');
     expect(text).toContain('/styles.css');
+    // It says which of the element's colours it was, in the row's own label.
+    expect(text.startsWith('Background')).toBe(true);
     // The note is about the colour that was there, not the one that was picked.
     expect(text).not.toContain('--ink');
     // The headline answers the question the user is about to ask, in the same words.
@@ -258,9 +263,9 @@ describe('the superseded-token note', () => {
     expect(notes()).toHaveLength(1);
 
     act(() => {
-      root.render(
+      root.render(withMessages(
         <StylesContent ref={ref} {...props({ selection: { ...selection, nodeId: 'n2' } })} />,
-      );
+      ));
     });
 
     // It described one element's colour. Left standing, it describes the wrong one.
@@ -355,5 +360,23 @@ describe('the superseded-token note', () => {
 
     expect(notes()).toHaveLength(0);
     expect(onAskAgent).not.toHaveBeenCalled();
+  });
+});
+
+describe('a press the source refuses or asks about', () => {
+  const ts = createTranslator({ locale: 'en', messages: en, namespace: 'styles' });
+
+  it('shows the refusal in the panel\'s words, naming the file', async () => {
+    applyStyle.mockResolvedValue({ ok: false, reason: 'stale-index', file: '/about.html', filesWritten: [] });
+    computed({ 'background-color': 'rgb(255, 0, 0)' });
+    await press('Background', INK);
+    expect(container.textContent).toContain(ts('msgStaleFile', { file: '/about.html' }));
+  });
+
+  it('asks before writing to a tag rendered several times, saying how many and from where', async () => {
+    applyStyle.mockResolvedValue({ ok: false, reason: 'needs-confirmation', instances: 3, file: '/partials/nav.hbs', filesWritten: [] });
+    computed({ 'background-color': 'rgb(255, 0, 0)' });
+    await press('Background', INK);
+    expect(container.textContent).toContain(ts('confirmManyFrom', { count: 3, file: '/partials/nav.hbs' }));
   });
 });

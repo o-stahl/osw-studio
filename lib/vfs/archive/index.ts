@@ -12,7 +12,6 @@ export { folderToArchiveEntries, collectEntryFiles, ensureAncestorDirs } from '.
 export type { FolderEntriesOptions, FolderEntriesResult } from './read-folder';
 export { analyzeImport } from './analyze';
 export { applyImport, backendResolutionKey, type BackendResolutionKind } from './apply';
-export { formatBytes } from './format';
 export { validateArchivePath, type PathResult } from './paths';
 export type {
   ApplyResult,

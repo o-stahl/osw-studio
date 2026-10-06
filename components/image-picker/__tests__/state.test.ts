@@ -1,7 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
+import { createTranslator } from 'next-intl';
+
+import en from '@/messages/en.json';
+import fi from '@/messages/fi.json';
+import { setRuntimeTranslator, type RuntimeTranslator } from '@/lib/i18n/runtime';
 import {
   imageConfirmationMessage,
   imageRefusal,
+  imageRefusalAgentPrompt,
   imageRefusalMessage,
   imageRefusalOffersAgent,
   imageRefusalTitle,
@@ -9,6 +15,9 @@ import {
   projectImages,
   uploadDirectory,
 } from '../state';
+
+// The English catalogue, so these read as the sentences a user sees.
+const t = createTranslator({ locale: 'en', messages: en, namespace: 'imagePicker' });
 
 describe('isImagePath', () => {
   it('accepts the formats a browser renders in an <img>', () => {
@@ -95,8 +104,8 @@ describe('the refusal copy', () => {
   const reasons = ['unresolvable', 'generating', 'stale-index', 'missing-file', 'no-src', 'expression-src'] as const;
 
   it('says something specific for every reason', () => {
-    const titles = reasons.map(reason => imageRefusalTitle({ reason }));
-    const messages = reasons.map(reason => imageRefusalMessage({ reason }));
+    const titles = reasons.map(reason => imageRefusalTitle({ reason }, t));
+    const messages = reasons.map(reason => imageRefusalMessage({ reason }, t));
     expect(new Set(titles).size).toBe(reasons.length);
     expect(new Set(messages).size).toBe(reasons.length);
     // Not a length threshold: a 41-character stub passes that and says nothing. The claim is that
@@ -108,11 +117,13 @@ describe('the refusal copy', () => {
   });
 
   it('names the file where it has one', () => {
-    expect(imageRefusalMessage({ reason: 'stale-index', file: '/index.html' })).toContain('/index.html');
-    expect(imageRefusalMessage({ reason: 'missing-file', file: '/gone.hbs' })).toContain('/gone.hbs');
+    expect(imageRefusalMessage({ reason: 'stale-index', file: '/index.html' }, t)).toContain('/index.html');
+    expect(imageRefusalMessage({ reason: 'missing-file', file: '/gone.hbs' }, t)).toContain('/gone.hbs');
+    expect(imageRefusalMessage({ reason: 'no-src', file: '/about.html' }, t)).toContain('/about.html');
+    expect(imageRefusalMessage({ reason: 'no-src' }, t)).not.toContain('undefined');
     // And reads as a sentence without one.
-    expect(imageRefusalMessage({ reason: 'stale-index' })).not.toContain('undefined');
-    expect(imageRefusalMessage({ reason: 'missing-file' })).not.toContain('undefined');
+    expect(imageRefusalMessage({ reason: 'stale-index' }, t)).not.toContain('undefined');
+    expect(imageRefusalMessage({ reason: 'missing-file' }, t)).not.toContain('undefined');
   });
 
   it('does not offer the agent where waiting or refreshing is the answer', () => {
@@ -125,15 +136,57 @@ describe('the refusal copy', () => {
   });
 });
 
+describe('imageRefusalAgentPrompt', () => {
+  afterEach(() => setRuntimeTranslator(null));
+
+  // Sent to the agent as the person's message, so it stays English whatever the interface reads.
+  it('is English and names the file, with a Finnish interface registered', () => {
+    setRuntimeTranslator(createTranslator({ locale: 'fi', messages: fi }) as unknown as RuntimeTranslator);
+
+    const stale = imageRefusalAgentPrompt({ reason: 'stale-index', file: '/index.html' });
+    expect(stale).toContain('/index.html');
+    expect(stale).toContain('The preview is out of date');
+
+    const missing = imageRefusalAgentPrompt({ reason: 'missing-file', file: '/gone.hbs' });
+    expect(missing).toContain('/gone.hbs');
+    expect(missing).toContain('no longer exists');
+
+    const noSrc = imageRefusalAgentPrompt({ reason: 'no-src', file: '/about.html' });
+    expect(noSrc).toContain('/about.html');
+    expect(noSrc).toContain('Ask the agent');
+  });
+
+  // Every reason, including those the test above does not read, with the Finnish interface
+  // registered: a prompt worded through the runtime translator would come out as the panel's copy.
+  it('differs from the interface copy for every reason, with a Finnish interface registered', () => {
+    setRuntimeTranslator(createTranslator({ locale: 'fi', messages: fi }) as unknown as RuntimeTranslator);
+    const tFi = createTranslator({ locale: 'fi', messages: fi, namespace: 'imagePicker' });
+    const reasons = ['unresolvable', 'generating', 'stale-index', 'missing-file', 'no-src', 'expression-src'] as const;
+    for (const reason of reasons) {
+      const refusal = { reason, file: '/index.html' };
+      expect(imageRefusalAgentPrompt(refusal), reason).not.toBe(imageRefusalMessage(refusal, tFi));
+    }
+  });
+});
+
 describe('imageConfirmationMessage', () => {
   it('says how many it will change', () => {
-    expect(imageConfirmationMessage(3, '/index.html'))
+    expect(imageConfirmationMessage(3, t, '/index.html'))
       .toBe('This image from /index.html is rendered 3 times. Replacing it replaces all 3.');
+  });
+
+  it('counts from two, and without a file still says how many', () => {
+    expect(imageConfirmationMessage(2, t)).toBe('This image is rendered 2 times. Replacing it replaces all 2.');
+  });
+
+  it('names the file for a shared image', () => {
+    expect(imageConfirmationMessage(1, t, '/index.html'))
+      .toBe('This image from /index.html is shared. Replacing it replaces every place it renders.');
   });
 
   it('does not claim a count it does not have', () => {
     // `instances` can arrive as 0 from a result that named no number; 'rendered 0 times' would be
     // both false and alarming.
-    expect(imageConfirmationMessage(0)).toBe('This image is shared. Replacing it replaces every place it renders.');
+    expect(imageConfirmationMessage(0, t)).toBe('This image is shared. Replacing it replaces every place it renders.');
   });
 });

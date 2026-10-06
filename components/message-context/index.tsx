@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { ChevronDown, X, Crosshair, LayoutGrid, Image as ImageIcon, Info, FileText, Mic } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { PlacedBlock } from '@/lib/semantic-blocks/types';
@@ -93,6 +94,7 @@ function Section({
   defaultOpen?: boolean;
   readOnly?: boolean;
 }) {
+  const tc = useTranslations('common');
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="border-t border-primary/10 first:border-t-0">
@@ -110,7 +112,7 @@ function Section({
             className="ml-auto text-[10px] text-muted-foreground/50 hover:text-foreground/70 flex-shrink-0"
             onClick={(e) => { e.stopPropagation(); onClear(); }}
           >
-            Clear
+            {tc('actions.clear')}
           </span>
         )}
       </button>
@@ -157,6 +159,8 @@ export function MessageContext({
   defaultOpen,
   readOnly = false,
 }: MessageContextProps) {
+  const tt = useTranslations('tooltips');
+  const tm = useTranslations('messageContext');
   const hasBlocks = semanticBlocks && semanticBlocks.length > 0;
   const hasImages = images && images.length > 0;
   const hasImageBlocks = imageBlocks && imageBlocks.some(b => b.type === 'image_url');
@@ -171,18 +175,18 @@ export function MessageContext({
 
   // Build summary for collapsed readOnly view
   const summaryParts: string[] = [];
-  if (hasNote) summaryParts.push('note');
-  if (hasFocus) summaryParts.push('focus');
-  if (hasBlocks) summaryParts.push(`${semanticBlocks!.length} block${semanticBlocks!.length !== 1 ? 's' : ''}`);
-  if (hasImages) summaryParts.push(`${images!.length} image${images!.length !== 1 ? 's' : ''}`);
+  if (hasNote) summaryParts.push(tm('summaryNote'));
+  if (hasFocus) summaryParts.push(tm('summaryFocus'));
+  if (hasBlocks) summaryParts.push(tm('summaryBlocks', { count: semanticBlocks!.length }));
+  if (hasImages) summaryParts.push(tm('summaryImages', { count: images!.length }));
   if (!hasImages && hasImageBlocks) {
     const count = imageBlocks!.filter(b => b.type === 'image_url').length;
-    summaryParts.push(`${count} image${count !== 1 ? 's' : ''}`);
+    summaryParts.push(tm('summaryImages', { count }));
   }
   const fileCount = (files?.length ?? 0) || (fileNames?.length ?? 0);
-  if (fileCount > 0) summaryParts.push(`${fileCount} file${fileCount !== 1 ? 's' : ''}`);
+  if (fileCount > 0) summaryParts.push(tm('summaryFiles', { count: fileCount }));
   const audioCount = (audioClips?.length ?? 0) || (audioBlocks?.filter(b => b.type === 'input_audio').length ?? 0);
-  if (audioCount > 0) summaryParts.push(`${audioCount} recording${audioCount !== 1 ? 's' : ''}`);
+  if (audioCount > 0) summaryParts.push(tm('summaryRecordings', { count: audioCount }));
 
   if (readOnly) {
     return <ReadOnlyContext
@@ -200,13 +204,13 @@ export function MessageContext({
     <div className="rounded-md border border-dashed border-primary/30 bg-primary/5 overflow-hidden">
       {/* Header */}
       <div className="px-3 py-1.5 flex items-center gap-2">
-        <span className="font-medium text-[10px] uppercase tracking-wider text-primary/80">Included in next message</span>
+        <span className="font-medium text-[10px] uppercase tracking-wider text-primary/80">{tm('includedNext')}</span>
       </div>
       {/* Sections */}
       {hasNote && (
         <Section
           icon={Info}
-          label="Context"
+          label={tm('context')}
           summary={systemNote!.length > 40 ? systemNote!.slice(0, 37) + '...' : systemNote!}
           readOnly={true}
         >
@@ -216,7 +220,7 @@ export function MessageContext({
       {hasFocus && (
         <Section
           icon={Crosshair}
-          label="Focus"
+          label={tm('focus')}
           summary={focusContext!.domPath.split(' > ').slice(-1)[0]}
           onClear={onClearFocus}
           readOnly={readOnly}
@@ -232,7 +236,7 @@ export function MessageContext({
       {hasBlocks && (
         <Section
           icon={LayoutGrid}
-          label={`Blocks (${semanticBlocks!.length})`}
+          label={tm('blocksCount', { count: semanticBlocks!.length })}
           onClear={onClearBlocks}
           readOnly={readOnly}
         >
@@ -245,7 +249,7 @@ export function MessageContext({
                     <button
                       onClick={() => onRemoveBlock(block.placementId)}
                       className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 text-muted-foreground/50 hover:text-foreground/70"
-                      title="Remove block"
+                      title={tt('removeBlock')}
                     >
                       <X className="h-2.5 w-2.5" />
                     </button>
@@ -265,7 +269,7 @@ export function MessageContext({
       {hasImages && (
         <Section
           icon={ImageIcon}
-          label={`Images (${images!.length})`}
+          label={tm('imagesCount', { count: images!.length })}
           onClear={onClearImages}
           defaultOpen={true}
           readOnly={readOnly}
@@ -275,14 +279,14 @@ export function MessageContext({
               <div key={img.id} className="relative group">
                 <img
                   src={img.preview}
-                  alt="Attached"
+                  alt={tm('attached')}
                   className="h-10 w-10 object-cover rounded border border-border/50"
                 />
                 {!readOnly && onRemoveImage && (
                   <button
                     onClick={() => onRemoveImage(img.id)}
                     className="absolute -top-1 -right-1 h-3.5 w-3.5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="Remove image"
+                    title={tt('removeImage')}
                   >
                     <X className="h-2 w-2" />
                   </button>
@@ -295,7 +299,7 @@ export function MessageContext({
       {hasFiles && (
         <Section
           icon={FileText}
-          label={`Files (${files!.length})`}
+          label={tm('filesCount', { count: files!.length })}
           onClear={onClearFiles}
           defaultOpen={true}
           readOnly={readOnly}
@@ -309,7 +313,7 @@ export function MessageContext({
                   <button
                     onClick={() => onRemoveFile(f.id)}
                     className="shrink-0 text-muted-foreground/50 hover:text-foreground/70"
-                    title="Remove file"
+                    title={tt('removeFile')}
                   >
                     <X className="h-2.5 w-2.5" />
                   </button>
@@ -322,7 +326,7 @@ export function MessageContext({
       {hasAudio && (
         <Section
           icon={Mic}
-          label={`Voice (${audioClips!.length})`}
+          label={tm('voiceCount', { count: audioClips!.length })}
           onClear={onClearAudio}
           defaultOpen={true}
           readOnly={readOnly}
@@ -339,14 +343,14 @@ export function MessageContext({
                 ) : (
                   <span className="flex-1 min-w-0 flex items-center gap-1.5 text-[11px] text-foreground/80">
                     <Mic className="h-3 w-3 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{clip.transcript || 'Voice note'}</span>
+                    <span className="truncate">{clip.transcript || tm('voiceNote')}</span>
                   </span>
                 )}
                 {!readOnly && onRemoveAudio && (
                   <button
                     onClick={() => onRemoveAudio(clip.id)}
                     className="shrink-0 text-muted-foreground/50 hover:text-foreground/70"
-                    title="Remove recording"
+                    title={tt('removeRecording')}
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -378,6 +382,7 @@ function ReadOnlyContext({
   summary: string;
   defaultOpen?: boolean;
 }) {
+  const tm = useTranslations('messageContext');
   const [open, setOpen] = useState(defaultOpen ?? false);
   const hasBlocks = semanticBlocks && semanticBlocks.length > 0;
   const hasFocus = !!focusContext;
@@ -395,7 +400,7 @@ function ReadOnlyContext({
         onClick={() => setOpen(prev => !prev)}
       >
         <ChevronDown className={cn("h-2.5 w-2.5 flex-shrink-0 transition-transform", !open && "-rotate-90")} />
-        <span>Context</span>
+        <span>{tm('context')}</span>
         <span className="text-[10px]">({summary})</span>
       </button>
       {open && (
@@ -404,7 +409,7 @@ function ReadOnlyContext({
             <div className="px-2.5 py-2 border-b border-border/30 last:border-b-0">
               <div className="flex items-center gap-1.5 mb-1">
                 <Crosshair className="h-2.5 w-2.5 text-primary/60" />
-                <span className="font-medium text-foreground/80">Focus</span>
+                <span className="font-medium text-foreground/80">{tm('focus')}</span>
                 <span className="font-mono text-muted-foreground/50 truncate">{focusContext!.domPath.split(' > ').slice(-1)[0]}</span>
               </div>
               {focusContext!.snippet && (
@@ -416,7 +421,7 @@ function ReadOnlyContext({
             <div className="px-2.5 py-2 border-b border-border/30 last:border-b-0">
               <div className="flex items-center gap-1.5 mb-1">
                 <LayoutGrid className="h-2.5 w-2.5 text-primary/60" />
-                <span className="font-medium text-foreground/80">Blocks</span>
+                <span className="font-medium text-foreground/80">{tm('blocks')}</span>
               </div>
               <div className="space-y-1.5">
                 {semanticBlocks!.map((block, i) => (
@@ -437,7 +442,7 @@ function ReadOnlyContext({
             <div className="px-2.5 py-2">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <ImageIcon className="h-2.5 w-2.5 text-primary/60" />
-                <span className="font-medium text-foreground/80">Images ({actualImageBlocks.length})</span>
+                <span className="font-medium text-foreground/80">{tm('imagesCount', { count: actualImageBlocks.length })}</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {actualImageBlocks.map((block, i) => (
@@ -445,7 +450,7 @@ function ReadOnlyContext({
                     <img
                       key={`img-${i}`}
                       src={block.image_url.url}
-                      alt="Attached"
+                      alt={tm('attached')}
                       className="h-10 w-auto rounded border border-border/50 object-cover"
                     />
                   )
@@ -457,7 +462,7 @@ function ReadOnlyContext({
             <div className="px-2.5 py-2 border-t border-border/30">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <FileText className="h-2.5 w-2.5 text-primary/60" />
-                <span className="font-medium text-foreground/80">Files ({fileNames!.length})</span>
+                <span className="font-medium text-foreground/80">{tm('filesCount', { count: fileNames!.length })}</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {fileNames!.map((f, i) => (
@@ -473,7 +478,7 @@ function ReadOnlyContext({
             <div className="px-2.5 py-2 border-t border-border/30">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <Mic className="h-2.5 w-2.5 text-primary/60" />
-                <span className="font-medium text-foreground/80">Voice ({actualAudioBlocks.length})</span>
+                <span className="font-medium text-foreground/80">{tm('voiceCount', { count: actualAudioBlocks.length })}</span>
               </div>
               <div className="flex flex-col gap-1.5">
                 {actualAudioBlocks.map((block, i) => (

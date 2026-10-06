@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -34,6 +35,7 @@ export interface DrawerProps {
  * Footer is intentionally left to children so each mode can own its actions.
  */
 export function Drawer({ open, label, onLabelClick, title, scope, onClose, children }: DrawerProps) {
+  const t = useTranslations('connections');
   const panelRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -83,7 +85,7 @@ export function Drawer({ open, label, onLabelClick, title, scope, onClose, child
         data-models-drawer=""
         role="dialog"
         aria-modal="true"
-        aria-label={title ?? 'Drawer'}
+        aria-label={title ?? t('drawer')}
         className={cn(
           // Layout
           'fixed top-5 right-5 bottom-5 z-[70]',
@@ -134,7 +136,7 @@ export function Drawer({ open, label, onLabelClick, title, scope, onClose, child
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close"
+              aria-label={t('close')}
               className={cn(
                 'flex-shrink-0 w-[30px] h-[30px] rounded-lg grid place-items-center',
                 'bg-transparent border-none text-muted-foreground',

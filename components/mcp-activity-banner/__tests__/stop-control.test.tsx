@@ -20,6 +20,7 @@ vi.mock('@/lib/api/backend-status', () => ({
 
 import { markMcpActivity, clearMcpActivity } from '@/lib/api/mcp-activity';
 import { McpActivityBanner } from '..';
+import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -28,7 +29,7 @@ function mount() {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
-  act(() => { root.render(<McpActivityBanner />); });
+  act(() => { root.render(withMessages(<McpActivityBanner />)); });
 }
 
 function buttonLabelled(label: string): HTMLButtonElement | undefined {
@@ -60,5 +61,31 @@ describe('the MCP activity banner', () => {
 
     expect(container.textContent).toContain('edited files');
     expect(buttonLabelled('stop')).toBeUndefined();
+  });
+});
+
+describe('what the MCP activity banner says', () => {
+  it('says a run is running, naming the client and project', () => {
+    markMcpActivity({ kind: 'run', projectId: 'p1', projectName: 'Site', clientLabel: 'Claude' });
+    mount();
+    expect(container.textContent).toContain('Claude is running an agent task on Site through the MCP connector.');
+  });
+
+  it('names a deployment change by what happened to it', () => {
+    markMcpActivity({ kind: 'deploy', projectId: 'd1', projectName: 'Blog', clientLabel: 'Claude', action: 'published' });
+    mount();
+    expect(container.textContent).toContain('Claude published the deployment Blog through the MCP connector.');
+  });
+
+  it('says a deployment without a name, rather than a placeholder', () => {
+    markMcpActivity({ kind: 'deploy', projectId: 'd1', projectName: '', clientLabel: 'Claude' });
+    mount();
+    expect(container.textContent).toContain('Claude changed a deployment through the MCP connector.');
+  });
+
+  it('falls back to a generic client and an untitled project', () => {
+    markMcpActivity({ kind: 'edit', projectId: 'p1', projectName: '', clientLabel: '' });
+    mount();
+    expect(container.textContent).toContain('An MCP client edited files in Untitled through the MCP connector.');
   });
 });

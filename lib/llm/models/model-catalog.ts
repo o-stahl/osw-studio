@@ -20,6 +20,7 @@ import {
 } from '@/lib/llm/pricing-cache';
 import { enrichModelsFromModelsDev, loadModelsFromModelsDev } from '@/lib/llm/models-dev';
 import { logger } from '@/lib/utils';
+import { FREE_MODELS_ID, FREE_MODELS_PROVIDERS, freeModelsEntry } from '@/lib/llm/suggestions/free-models';
 
 // ---------------------------------------------------------------------------
 // loadProviderModels
@@ -36,6 +37,14 @@ import { logger } from '@/lib/utils';
  * - Does NOT throw; returns [] on unrecoverable errors.
  */
 export async function loadProviderModels(provider: ProviderId): Promise<ProviderModel[]> {
+  const models = await loadProviderModelsFromSource(provider);
+  // "Free models" heads the list where it is offered. Added here rather than cached, so the cache
+  // only ever holds what the provider listed.
+  if (!FREE_MODELS_PROVIDERS.has(provider) || models.length === 0 || models.some((m) => m.id === FREE_MODELS_ID)) return models;
+  return [freeModelsEntry(), ...models];
+}
+
+async function loadProviderModelsFromSource(provider: ProviderId): Promise<ProviderModel[]> {
   const providerConfig = getProvider(provider);
   const apiKey = configManager.getProviderApiKey(provider);
 

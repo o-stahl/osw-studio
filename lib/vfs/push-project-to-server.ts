@@ -2,6 +2,7 @@ import { vfs } from '@/lib/vfs';
 import { getSyncManager, type PushProgress } from '@/lib/vfs/sync-manager';
 import { createSyncProgressToast, silentProgressToast } from '@/lib/vfs/sync-progress-toast';
 import { logger } from '@/lib/utils';
+import { translator } from '@/lib/i18n/runtime';
 
 /**
  * Push a project to the server so it becomes deployable.
@@ -32,7 +33,7 @@ export async function pushProjectToServer(
   // request. A background reconcile stays silent either way.
   const progress = options?.silent
     ? silentProgressToast
-    : createSyncProgressToast(`Syncing "${project.name}" to the server`);
+    : createSyncProgressToast(translator()('sync.syncingToServer', { name: project.name }));
 
   try {
     const files = await vfs.listFiles(projectId);

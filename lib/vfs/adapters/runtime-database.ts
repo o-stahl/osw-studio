@@ -914,6 +914,8 @@ export class RuntimeDatabase {
     columns: string[];
     rows: unknown[][];
     rowsAffected: number;
+    /** The rowid of the last row a write inserted. */
+    lastInsertRowid?: number;
     truncated?: boolean;
   } {
     if (RuntimeDatabase.BLOCKED_PATTERNS.test(sql)) {
@@ -960,6 +962,7 @@ export class RuntimeDatabase {
         columns: [],
         rows: [],
         rowsAffected: result.changes,
+        lastInsertRowid: Number(result.lastInsertRowid),
       };
     }
   }

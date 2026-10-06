@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { Info } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
@@ -16,12 +17,13 @@ export function InfoTip({
   className?: string;
   side?: 'top' | 'right' | 'bottom' | 'left';
 }) {
+  const tc = useTranslations('common');
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type="button"
-          aria-label="More information"
+          aria-label={tc('labels.moreInformation')}
           className={cn(
             'inline-flex items-center justify-center text-muted-foreground/70 hover:text-foreground transition-colors shrink-0',
             className,

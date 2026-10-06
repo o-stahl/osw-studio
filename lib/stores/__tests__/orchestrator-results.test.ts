@@ -5,14 +5,12 @@ import { track } from '@/lib/telemetry';
 
 const mockExecute = vi.fn();
 const mockStop = vi.fn();
-const mockContinue = vi.fn();
 const mockImportConversation = vi.fn();
 
 vi.mock('@/lib/llm/multi-agent-orchestrator', () => ({
   MultiAgentOrchestrator: vi.fn().mockImplementation(() => ({
     execute: mockExecute,
     stop: mockStop,
-    continue: mockContinue,
     importConversation: mockImportConversation,
   })),
 }));
@@ -70,6 +68,76 @@ describe('orchestrator slice — generation results and conversation rebuild', (
     expect(toast.error).toHaveBeenCalled();
     const failCalls = (track as ReturnType<typeof vi.fn>).mock.calls.filter(c => c[0] === 'task_fail');
     expect(failCalls).toHaveLength(1);
+  });
+
+  it('tracks a provider-error stop as task_fail (api_error) without an error toast', async () => {
+    mockExecute.mockResolvedValue({
+      success: false,
+      summary: 'Stopped on a provider error',
+      exitReason: 'error_stop',
+      totalCost: 0,
+      toolCount: 1,
+      turnCount: 1,
+      apiErrorCount: 1,
+    });
+
+    await store.getState().startGeneration('build something');
+
+    expect(toast.error).not.toHaveBeenCalled();
+    const failCalls = (track as ReturnType<typeof vi.fn>).mock.calls.filter(c => c[0] === 'task_fail');
+    expect(failCalls).toHaveLength(1);
+    expect(failCalls[0][1]).toMatchObject({ reason: 'api_error', api_error_count: 1 });
+  });
+
+  it('tracks only the Stop when the user stops while a provider error is being handled', async () => {
+    let finish!: (value: unknown) => void;
+    mockExecute.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+
+    const run = store.getState().startGeneration('build something');
+    await vi.waitFor(() => expect(mockExecute).toHaveBeenCalled());
+    await store.getState().stopGeneration();
+    finish({
+      success: false,
+      summary: 'Stopped on a provider error',
+      exitReason: 'error_stop',
+      totalCost: 0,
+      toolCount: 0,
+      turnCount: 1,
+      apiErrorCount: 1,
+    });
+    await run;
+
+    expect(toast.error).not.toHaveBeenCalled();
+    const failCalls = (track as ReturnType<typeof vi.fn>).mock.calls.filter(c => c[0] === 'task_fail');
+    expect(failCalls).toHaveLength(1);
+    expect(failCalls[0][1]).toMatchObject({ reason: 'stopped' });
+  });
+
+  it('leaves a run started after a Stop alone when the stopped run returns late', async () => {
+    let finishFirst!: (value: unknown) => void;
+    mockExecute.mockReturnValueOnce(new Promise((resolve) => { finishFirst = resolve; }));
+    mockExecute.mockReturnValueOnce(new Promise(() => {}));
+    const projectId = store.getState().projectId;
+
+    const first = store.getState().startGeneration('first');
+    await vi.waitFor(() => expect(mockExecute).toHaveBeenCalledTimes(1));
+    await store.getState().stopGeneration();
+    await new Promise((r) => setTimeout(r, 2));
+    void store.getState().startGeneration('second');
+    await vi.waitFor(() => expect(mockExecute).toHaveBeenCalledTimes(2));
+    const second = store.getState().generationTasks.get(projectId);
+
+    finishFirst({
+      success: false, summary: 'Stopped on a provider error', exitReason: 'error_stop',
+      totalCost: 0, toolCount: 0, turnCount: 1, apiErrorCount: 1,
+    });
+    await first;
+
+    const apiFails = (track as ReturnType<typeof vi.fn>).mock.calls.filter((c) => c[0] === 'task_fail' && c[1]?.reason === 'api_error');
+    expect(apiFails).toHaveLength(0);
+    const current = store.getState().generationTasks.get(projectId);
+    expect(current?.startedAt).toBe(second?.startedAt);
+    expect(current?.result).toBeNull();
   });
 
   it('rebuilds imported conversation from the last conversation_replaced event', async () => {

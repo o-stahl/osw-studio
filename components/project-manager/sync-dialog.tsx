@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { getLoginUrl } from '@/lib/config/storage';
 import {
   Dialog,
@@ -24,6 +25,8 @@ interface SyncDialogProps {
 }
 
 export function SyncDialog({ open, onOpenChange, onSyncComplete }: SyncDialogProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('sync');
   const [authenticated, setAuthenticated] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const { status, refresh, loading, refreshing, error } = useSyncStatus();
@@ -70,9 +73,9 @@ export function SyncDialog({ open, onOpenChange, onSyncComplete }: SyncDialogPro
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className={dialogContentClass}>
           <DialogHeader>
-            <DialogTitle>Server Sync</DialogTitle>
+            <DialogTitle>{t('serverSyncTitle')}</DialogTitle>
             <DialogDescription>
-              Checking authentication status...
+              {t('checkingAuth')}
             </DialogDescription>
           </DialogHeader>
         </DialogContent>
@@ -88,18 +91,18 @@ export function SyncDialog({ open, onOpenChange, onSyncComplete }: SyncDialogPro
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CloudOff className="w-5 h-5" />
-              Not Authenticated
+              {t('notAuthenticated')}
             </DialogTitle>
             <DialogDescription>
-              You need to login to sync projects, skills, and templates with the server.
+              {t('needLoginToSync')}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {tc('actions.cancel')}
             </Button>
             <Button onClick={() => (window.location.href = getLoginUrl())}>
-              Go to Login
+              {t('goToLogin')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -113,10 +116,10 @@ export function SyncDialog({ open, onOpenChange, onSyncComplete }: SyncDialogPro
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Cloud className="w-5 h-5" />
-            Server Sync
+            {t('serverSyncTitle')}
           </DialogTitle>
           <DialogDescription>
-            Synchronize projects, skills, and templates between your browser and the server.
+            {t('syncDesc')}
           </DialogDescription>
         </DialogHeader>
 
@@ -127,7 +130,7 @@ export function SyncDialog({ open, onOpenChange, onSyncComplete }: SyncDialogPro
               <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
               <div className="text-sm">
                 <p className="font-medium text-red-600 dark:text-red-400">
-                  Error loading sync status
+                  {t('errorLoadingStatus')}
                 </p>
                 <p className="text-muted-foreground mt-1">{error}</p>
               </div>
@@ -138,7 +141,7 @@ export function SyncDialog({ open, onOpenChange, onSyncComplete }: SyncDialogPro
           {loading && (
             <div className="flex items-center justify-center py-8">
               <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-muted-foreground">Loading sync status...</span>
+              <span className="ml-2 text-muted-foreground">{t('loadingStatus')}</span>
             </div>
           )}
 
@@ -171,7 +174,7 @@ export function SyncDialog({ open, onOpenChange, onSyncComplete }: SyncDialogPro
                 disabled={bulkState.isSyncing}
               >
                 <CheckSquare className="h-3.5 w-3.5 mr-1.5" />
-                {bulkState.selectedCount === bulkState.selectableCount ? 'Deselect' : 'Select All'}
+                {bulkState.selectedCount === bulkState.selectableCount ? t('deselect') : t('selectAll')}
               </Button>
             )}
 
@@ -183,7 +186,7 @@ export function SyncDialog({ open, onOpenChange, onSyncComplete }: SyncDialogPro
                 disabled={bulkState.isSyncing}
               >
                 <ArrowUp className="h-3.5 w-3.5 mr-1.5" />
-                Push ({bulkState.pushableCount})
+                {t('pushCount', { count: bulkState.pushableCount })}
               </Button>
             )}
 
@@ -195,7 +198,7 @@ export function SyncDialog({ open, onOpenChange, onSyncComplete }: SyncDialogPro
                 disabled={bulkState.isSyncing}
               >
                 <ArrowDown className="h-3.5 w-3.5 mr-1.5" />
-                Pull ({bulkState.pullableCount})
+                {t('pullCount', { count: bulkState.pullableCount })}
               </Button>
             )}
           </div>
@@ -209,10 +212,10 @@ export function SyncDialog({ open, onOpenChange, onSyncComplete }: SyncDialogPro
               disabled={loading || refreshing}
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${loading || refreshing ? 'animate-spin' : ''}`} />
-              Refresh
+              {tc('actions.refresh')}
             </Button>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Close
+              {tc('actions.close')}
             </Button>
           </div>
         </DialogFooter>

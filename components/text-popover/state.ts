@@ -37,45 +37,73 @@ export function textRefusal(
   return { reason, file: result.file };
 }
 
+/** The popover's own message keys, so a translator passed in is checked against them. */
+export type TextPopoverMessageKey =
+  | 'titleGenerating' | 'titleStale' | 'titleMissing' | 'titleChildren' | 'titleExpression' | 'titleUnclosed'
+  | 'titleVoid' | 'titleUnresolvable'
+  | 'msgGenerating' | 'msgStale' | 'msgStaleFile' | 'msgMissing' | 'msgMissingFile' | 'msgChildren' | 'msgExpression'
+  | 'msgUnclosed' | 'msgUnclosedFile' | 'msgVoid' | 'msgUnresolvable'
+  | 'confirmMany' | 'confirmManyFrom' | 'confirmShared' | 'confirmSharedFrom';
+
+export type TextPopoverTranslator = (key: TextPopoverMessageKey, values?: Record<string, string | number>) => string;
+
 /** Separate from message so the headline does not contradict the detail. */
-export function textRefusalTitle(refusal: TextRefusal): string {
+export function textRefusalTitle(refusal: TextRefusal, t: TextPopoverTranslator): string {
   switch (refusal.reason) {
-    case 'generating':      return 'The agent is working';
-    case 'stale-index':     return 'The preview is out of date';
-    case 'missing-file':    return 'The source file is gone';
-    case 'has-children':    return 'This text is mixed with other things';
-    case 'has-expression':  return 'This text comes from the template';
-    case 'unclosed':        return 'This element is not closed';
-    case 'void-element':    return 'This element holds no text';
-    case 'unresolvable':    return 'Nothing to edit here';
+    case 'generating':      return t('titleGenerating');
+    case 'stale-index':     return t('titleStale');
+    case 'missing-file':    return t('titleMissing');
+    case 'has-children':    return t('titleChildren');
+    case 'has-expression':  return t('titleExpression');
+    case 'unclosed':        return t('titleUnclosed');
+    case 'void-element':    return t('titleVoid');
+    case 'unresolvable':    return t('titleUnresolvable');
   }
 }
 
-export function textRefusalMessage(refusal: TextRefusal): string {
+export function textRefusalMessage(refusal: TextRefusal, t: TextPopoverTranslator): string {
+  const file = refusal.file;
+  switch (refusal.reason) {
+    case 'generating':      return t('msgGenerating');
+    case 'stale-index':     return file ? t('msgStaleFile', { file }) : t('msgStale');
+    case 'missing-file':    return file ? t('msgMissingFile', { file }) : t('msgMissing');
+    case 'has-children':    return t('msgChildren');
+    case 'has-expression':  return t('msgExpression');
+    case 'unclosed':        return file ? t('msgUnclosedFile', { file }) : t('msgUnclosed');
+    case 'void-element':    return t('msgVoid');
+    case 'unresolvable':    return t('msgUnresolvable');
+  }
+}
+
+/**
+ * The refusal as a request to the agent, in English like everything the agent is sent. The popover
+ * shows {@link textRefusalMessage} instead.
+ */
+export function textRefusalAgentPrompt(refusal: TextRefusal): string {
   switch (refusal.reason) {
     case 'generating':
-      return 'The agent is editing this project. Text changes wait until it finishes.';
+      return 'The agent is editing this project. Text changes wait until it finishes.'; // i18n-ignore: part of a request to the agent
     case 'stale-index':
-      return `The preview is out of date${refusal.file ? `: ${refusal.file} has changed since it was compiled` : ''}. `
-        + 'Refresh the preview and select the text again.';
+      return `The preview is out of date${refusal.file ? `: ${refusal.file} has changed since it was compiled` : ''}. ` // i18n-ignore: part of a request to the agent
+        + 'Refresh the preview and select the text again.'; // i18n-ignore: part of a request to the agent
     case 'missing-file':
-      return `${refusal.file ?? 'The source file'} no longer exists, so there is nothing to edit. `
-        + 'Refreshing will not help — ask the agent to rebuild it.';
+      return `${refusal.file ?? 'The source file'} no longer exists, so there is nothing to edit. ` // i18n-ignore: part of a request to the agent
+        + 'Refreshing will not help — ask the agent to rebuild it.'; // i18n-ignore: part of a request to the agent
     case 'has-children':
-      return 'This element holds more than plain text — there is other markup inside it, and '
-        + 'replacing the words here would delete it. Select the part you want to change on its own, '
-        + 'or ask the agent to reword the whole thing.';
+      return 'This element holds more than plain text — there is other markup inside it, and ' // i18n-ignore: part of a request to the agent
+        + 'replacing the words here would delete it. Select the part you want to change on its own, ' // i18n-ignore: part of a request to the agent
+        + 'or ask the agent to reword the whole thing.'; // i18n-ignore: part of a request to the agent
     case 'has-expression':
-      return 'These words come from the template rather than from the page, so what is written in '
-        + 'the file is not what you are reading. Ask the agent to change what the template says.';
+      return 'These words come from the template rather than from the page, so what is written in ' // i18n-ignore: part of a request to the agent
+        + 'the file is not what you are reading. Ask the agent to change what the template says.'; // i18n-ignore: part of a request to the agent
     case 'unclosed':
-      return `This element is never closed${refusal.file ? ` in ${refusal.file}` : ''}, so there is no `
-        + 'text to replace. Ask the agent to fix the markup first.';
+      return `This element is never closed${refusal.file ? ` in ${refusal.file}` : ''}, so there is no ` // i18n-ignore: part of a request to the agent
+        + 'text to replace. Ask the agent to fix the markup first.'; // i18n-ignore: part of a request to the agent
     case 'void-element':
-      return 'This element cannot hold text, so there is nothing to retype.';
+      return 'This element cannot hold text, so there is nothing to retype.'; // i18n-ignore: part of a request to the agent
     case 'unresolvable':
-      return 'This text is built at runtime, so there is no source to edit. '
-        + 'Ask the agent to change it instead.';
+      return 'This text is built at runtime, so there is no source to edit. ' // i18n-ignore: part of a request to the agent
+        + 'Ask the agent to change it instead.'; // i18n-ignore: part of a request to the agent
   }
 }
 
@@ -87,11 +115,9 @@ export function textRefusalOffersAgent(refusal: TextRefusal): boolean {
 }
 
 /** What the popover says before writing to a source tag that renders more than once. */
-export function textConfirmationMessage(instances: number, file?: string): string {
-  const where = file ? ` from ${file}` : '';
-  return instances > 1
-    ? `This text${where} is rendered ${instances} times. Changing it changes all ${instances}.`
-    : `This text${where} is shared. Changing it changes every place it renders.`;
+export function textConfirmationMessage(instances: number, t: TextPopoverTranslator, file?: string): string {
+  if (instances > 1) return file ? t('confirmManyFrom', { file, count: instances }) : t('confirmMany', { count: instances });
+  return file ? t('confirmSharedFrom', { file }) : t('confirmShared');
 }
 
 /** Unchanged text is not a write. Compared against the text as read, entities included. */

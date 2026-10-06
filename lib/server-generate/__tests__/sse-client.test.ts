@@ -36,7 +36,7 @@ describe('SSEClient event subscriptions', () => {
     // Core lifecycle events
     expect(types).toContain('task_complete');
     expect(types).toContain('tool_status');
-    expect(types).toContain('error_paused');
+    expect(types).toContain('api_stopped');
     expect(types).toContain('compaction');
 
     client.disconnect();

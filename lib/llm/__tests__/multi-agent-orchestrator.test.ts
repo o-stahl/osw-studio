@@ -58,7 +58,7 @@ vi.mock('../provider-adapter', () => ({
   OswsProviderAdapter: class {
     constructor(cfg: unknown) { h.adapterConfigs.push(cfg); }
   },
-  PausableApiError: class extends Error {
+  ProviderApiError: class extends Error {
     constructor(
       message: string,
       public readonly status = 0,
@@ -166,6 +166,15 @@ vi.mock('@/lib/telemetry/tool-analytics', () => ({
   bucketInterviewTemplateId: (id: string) => id,
 }));
 
+const suggest = vi.hoisted(() => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  rankProviderModels: vi.fn(async (..._args: any[]): Promise<any[]> => []),
+  nextModelAfter: vi.fn(async () => undefined),
+  alternativesTo: vi.fn(async () => []),
+}));
+vi.mock('../suggestions/suggest', () => suggest);
+vi.mock('../suggestions/observed', () => ({ recordModelOutcome: vi.fn() }));
+
 import { MultiAgentOrchestrator, AgentMessage } from '../multi-agent-orchestrator';
 import { runStructuredJudge } from '@/lib/testing/judge';
 import { getInterviewTemplate } from '@/lib/interview/templates';
@@ -176,9 +185,10 @@ beforeEach(() => {
   h.coordinatorConfigs.length = 0;
   h.agent = h.orchestratorAgent;
   h.loopBehavior.run = async () => ({ ...h.okResult });
+  suggest.rankProviderModels.mockClear();
+  suggest.nextModelAfter.mockClear();
+  suggest.alternativesTo.mockClear();
 });
-
-const tick = () => new Promise<void>(resolve => setTimeout(resolve, 0));
 
 describe('MultiAgentOrchestrator result propagation and lifecycle', () => {
   it('propagates loop failure (success, summary, exitReason) instead of hardcoding success', async () => {
@@ -215,69 +225,65 @@ describe('MultiAgentOrchestrator result propagation and lifecycle', () => {
     expect(result.conversation[0].metadata.cost).toBe(0.25);
   });
 
-  it('stops rather than pausing when an OAuth sign-in has expired', async () => {
-    // A pause offers Continue, which re-sends the request. The adapter has just dropped the
-    // expired credential, so a resend can only fail again: this is the loop users were in.
+  it('stops on a provider error and offers no plain Continue when a resend cannot help', async () => {
+    // The adapter has just dropped the expired OAuth credential, so resending can only fail again.
     registryMock.usesOAuth = true;
-    const { PausableApiError } = await import('../provider-adapter');
+    const { ProviderApiError } = await import('../provider-adapter');
+    const events: Array<{ event: string; data?: Record<string, unknown> }> = [];
     let action: string | undefined;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     h.loopBehavior.run = async (deps: any): Promise<AgentLoopResult> => {
-      action = await deps.config.onPausableError(new PausableApiError('expired', 401, 'auth', 'auth_expired', 'huggingface', 'm'));
+      action = await deps.config.onProviderError(new ProviderApiError('expired', 401, 'auth', 'auth_expired', 'huggingface', 'm'));
       return { success: false, summary: 's', exitReason: 'error_stop', totalCost: 0, totalUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, toolCount: 0, turnCount: 0 };
     };
     try {
-      // No continue() call: if this pauses, the promise never settles and the test times out.
-      await new MultiAgentOrchestrator('test-p1').execute('build');
+      await new MultiAgentOrchestrator('test-p1', 'orchestrator', (event, data) => events.push({ event, data: data as Record<string, unknown> })).execute('build');
     } finally {
       registryMock.usesOAuth = false;
     }
     expect(action).toBe('stop');
+    expect(events.find((e) => e.event === 'api_stopped')?.data).toMatchObject({ errorCategory: 'auth_expired', canRetrySame: false });
   });
 
-  it('still pauses for an expired credential on a provider that uses a pasted key', async () => {
-    // Only OAuth sign-ins can be re-run in place. A pasted key needs the user to fix it in
-    // Settings, and Continue after that is the right offer.
-    const { PausableApiError } = await import('../provider-adapter');
+  it('stops rather than waiting on a rate limit, offering to continue', async () => {
+    // A waiting task would hold a server-side run open; the thread offers Continue instead.
+    const { ProviderApiError } = await import('../provider-adapter');
+    const events: Array<{ event: string; data?: Record<string, unknown> }> = [];
     let action: string | undefined;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     h.loopBehavior.run = async (deps: any): Promise<AgentLoopResult> => {
-      action = await deps.config.onPausableError(new PausableApiError('bad key', 401, 'auth', 'auth_expired', 'openai', 'm'));
-      return { success: false, summary: 's', exitReason: 'other', totalCost: 0, totalUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, toolCount: 0, turnCount: 0 };
+      action = await deps.config.onProviderError(new ProviderApiError('slow down', 429, 'rate_limit', 'rate_limited', 'openai', 'm'));
+      return { success: false, summary: 's', exitReason: 'error_stop', totalCost: 0, totalUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, toolCount: 0, turnCount: 0 };
     };
-    const orchestrator = new MultiAgentOrchestrator('test-p1');
-    const pending = orchestrator.execute('build');
-    await tick(); await tick();
-    orchestrator.continue();
-    await pending;
-    expect(action).toBe('continue');
+    await new MultiAgentOrchestrator('test-p1', 'orchestrator', (event, data) => events.push({ event, data: data as Record<string, unknown> })).execute('build');
+    expect(action).toBe('stop');
+    expect(events.find((e) => e.event === 'api_stopped')?.data).toMatchObject({ errorCategory: 'rate_limited', canRetrySame: true });
   });
 
-  it('keeps the tool-executor abort signal connected to stop() across pause/resume', async () => {
+  it('never moves a model the user picked, even when it is busy', async () => {
+    // A browser run with another free model on offer, so only the "Free models" check keeps the pick.
+    vi.stubGlobal('window', {});
+    suggest.rankProviderModels.mockResolvedValue([{ provider: 'openrouter', model: { id: 'a/other:free' }, coolingDown: false }]);
+    const { ProviderApiError } = await import('../provider-adapter');
+    const events: string[] = [];
+    let action: string | undefined;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     h.loopBehavior.run = async (deps: any): Promise<AgentLoopResult> => {
-      const action = await deps.config.onPausableError(new Error('rate limited'));
-      return {
-        success: false,
-        summary: action === 'stop' ? 'Stopped due to error' : 'continued',
-        exitReason: action === 'stop' ? 'error_stop' : 'other',
-        totalCost: 0,
-        totalUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
-        toolCount: 0,
-        turnCount: 0,
-      };
+      action = await deps.config.onProviderError(new ProviderApiError('busy', 429, 'rate_limit', 'model_busy', 'openrouter', 'x/picked:free'));
+      return { success: false, summary: 's', exitReason: 'error_stop', totalCost: 0, totalUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, toolCount: 0, turnCount: 0 };
     };
-    const orchestrator = new MultiAgentOrchestrator('test-p1');
-    const pending = orchestrator.execute('build');
-    await tick();
-    await tick();
-
-    orchestrator.continue(); // resume after pause
-    await pending;
-    orchestrator.stop();
-
-    expect(h.executorConfigs.length).toBe(1);
-    expect((h.executorConfigs[0].abortSignal as AbortSignal).aborted).toBe(true);
+    const assignment = { agent: { provider: 'openrouter', model: 'x/picked:free' }, imageGen: null, voiceInput: null, autoCompact: true, compactLimit: null };
+    const o = new MultiAgentOrchestrator('test-p1', 'orchestrator', (event) => events.push(event), { assignment });
+    try {
+      await o.execute('build');
+    } finally {
+      vi.unstubAllGlobals();
+      suggest.rankProviderModels.mockResolvedValue([]);
+    }
+    expect(action).toBe('stop');
+    expect(events).not.toContain('model_switched');
+    // @ts-expect-error private
+    expect(o.getProviderConfig()).toMatchObject({ model: 'x/picked:free' });
   });
 
   it('emits conversation_replaced when compaction rewrites the history', async () => {
@@ -449,12 +455,70 @@ describe('MultiAgentOrchestrator result propagation and lifecycle', () => {
     expect(fresh.projectContext).toBe('PROJECT CTX');
   });
 
+  it('moves "Free models" off OpenRouter\'s free router to a free model, even for a paid account', async () => {
+    vi.stubGlobal('window', {});
+    const { ProviderApiError } = await import('../provider-adapter');
+    const ranked = [{ provider: 'openrouter', model: { id: 'a/model:free' }, coolingDown: false }];
+    // No pick when the run starts, so requests went to the free router.
+    suggest.rankProviderModels.mockResolvedValueOnce([]).mockResolvedValueOnce(ranked);
+    const events: Array<{ event: string; data?: Record<string, unknown> }> = [];
+    let action: string | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    h.loopBehavior.run = async (deps: any): Promise<AgentLoopResult> => {
+      action = await deps.config.onProviderError(new ProviderApiError('busy', 429, 'rate_limit', 'model_busy', 'openrouter', 'openrouter/free'));
+      return { ...h.okResult };
+    };
+    const assignment = { agent: { provider: 'openrouter', model: 'osw/free-models' }, imageGen: null, voiceInput: null, autoCompact: true, compactLimit: null };
+    const o = new MultiAgentOrchestrator('test-p1', 'orchestrator', (event, data) => events.push({ event, data: data as Record<string, unknown> }), { assignment });
+    try {
+      await o.execute('build');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(suggest.rankProviderModels).toHaveBeenLastCalledWith('openrouter', { freeOnly: true });
+    expect(suggest.nextModelAfter).not.toHaveBeenCalled();
+    expect(action).toBe('retry');
+    expect(events.find((e) => e.event === 'model_switched')?.data).toMatchObject({ fromModel: 'openrouter/free', toModel: 'a/model:free' });
+    // @ts-expect-error private
+    expect(o.getProviderConfig()).toMatchObject({ model: 'a/model:free' });
+  });
+
+  it('adds no stopped card when the user stops while a provider error is being handled', async () => {
+    const { ProviderApiError } = await import('../provider-adapter');
+    const events: string[] = [];
+    let action: string | undefined;
+    const o = new MultiAgentOrchestrator('test-p1', 'orchestrator', (event) => events.push(event));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    h.loopBehavior.run = async (deps: any): Promise<AgentLoopResult> => {
+      const handling = deps.config.onProviderError(new ProviderApiError('slow down', 429, 'rate_limit', 'rate_limited', 'openai', 'm'));
+      o.stop();
+      action = await handling;
+      return { success: false, summary: 's', exitReason: 'error_stop', totalCost: 0, totalUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, toolCount: 0, turnCount: 0 };
+    };
+    await o.execute('build');
+    expect(action).toBe('stop');
+    expect(events).not.toContain('api_stopped');
+  });
+
   it('resolves the agent call from the assignment, not the global provider', () => {
     const o = new MultiAgentOrchestrator('p1', 'orchestrator', () => {}, {
       assignment: { agent: { provider: 'openai', model: 'gpt-x' }, imageGen: null, voiceInput: null, autoCompact: false, compactLimit: null },
     } as any);
     // @ts-expect-error private — exercised via the seam other tests in this file use
     expect(o.getProviderConfig()).toMatchObject({ provider: 'openai', model: 'gpt-x' });
+  });
+
+  it('never sends "Free models" as a model id: it resolves to a free model, or OpenRouter\'s free router', () => {
+    const o = new MultiAgentOrchestrator('p1', 'orchestrator', () => {}, {
+      assignment: { agent: { provider: 'openrouter', model: 'osw/free-models' }, imageGen: null, voiceInput: null, autoCompact: false, compactLimit: null },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    // @ts-expect-error private
+    expect(o.getProviderConfig()).toMatchObject({ provider: 'openrouter', model: 'openrouter/free' });
+    // @ts-expect-error private
+    o.freeModelPick = 'qwen/qwen3.8-27b:free';
+    // @ts-expect-error private
+    expect(o.getProviderConfig()).toMatchObject({ model: 'qwen/qwen3.8-27b:free' });
   });
 
   it('setAssignment updates the resolved agent on an already-constructed instance', () => {

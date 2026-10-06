@@ -1,11 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { AlertTriangle, LogIn, RotateCw, X } from 'lucide-react';
 import { getBackendStatus, subscribeBackendStatus, markBackendUp, type BackendStatus } from '@/lib/api/backend-status';
 import { getLoginUrl } from '@/lib/config/storage';
 
 export function BackendStatusBanner() {
+  const tc = useTranslations('common');
+  const tsb = useTranslations('statusBanner');
   const [status, setStatus] = useState<BackendStatus>({ backendDown: false, authExpired: false });
   const [dismissed, setDismissed] = useState<'backend' | 'auth' | null>(null);
   const [checking, setChecking] = useState(false);
@@ -42,8 +45,7 @@ export function BackendStatusBanner() {
       >
         <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
         <span>
-          Backend unreachable. AI generation, project syncing, and publishing are unavailable.
-          Your work is saved locally. When the server is back, refresh the page and re-save your project(s).
+          {tsb('backendDown')}
         </span>
         <button
           type="button"
@@ -52,13 +54,13 @@ export function BackendStatusBanner() {
           className="inline-flex items-center gap-1 rounded border border-neutral-500 px-2 py-0.5 hover:bg-neutral-700 transition-colors disabled:opacity-50"
         >
           <RotateCw className={`h-3 w-3 ${checking ? 'animate-spin' : ''}`} />
-          Refresh
+          {tc('actions.refresh')}
         </button>
         <button
           type="button"
           onClick={() => setDismissed('backend')}
           className="ml-1 p-0.5 rounded hover:bg-neutral-700 transition-colors"
-          aria-label="Dismiss"
+          aria-label={tc('actions.dismiss')}
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -74,20 +76,20 @@ export function BackendStatusBanner() {
       >
         <AlertTriangle className="h-4 w-4 shrink-0" />
         <span>
-          Your session expired. Auto-sync and server-backed features are paused until you sign in again.
+          {tsb('sessionExpired')}
         </span>
         <a
           href={getLoginUrl()}
           className="inline-flex items-center gap-1 rounded border border-white/40 px-2 py-0.5 hover:bg-white/10 transition-colors"
         >
           <LogIn className="h-3 w-3" />
-          Log in
+          {tsb('logIn')}
         </a>
         <button
           type="button"
           onClick={() => setDismissed('auth')}
           className="ml-1 p-0.5 rounded hover:bg-white/10 transition-colors"
-          aria-label="Dismiss"
+          aria-label={tc('actions.dismiss')}
         >
           <X className="h-3.5 w-3.5" />
         </button>

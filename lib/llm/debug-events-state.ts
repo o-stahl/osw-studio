@@ -58,7 +58,7 @@ export class DebugEventsStateManager {
    * Get debug events ID for a project
    */
   private getDebugEventsId(projectId: string): string {
-    return `debug_events_${projectId}`;
+    return `debug_events_${projectId}`; // i18n-ignore: a storage key
   }
 
   /**

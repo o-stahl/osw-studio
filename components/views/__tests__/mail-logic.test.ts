@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { createTranslator } from 'next-intl';
+import en from '@/messages/en.json';
 import type { QueueStats } from '@/lib/mail/queue-stats';
+import { QUIET_PERIOD_MINUTES } from '@/lib/review/digest';
 import {
   buildSmtpBody,
   classifyTestResponse,
@@ -15,6 +18,16 @@ import {
   workspaceCanSend,
   type SmtpForm,
 } from '../mail-logic';
+
+/**
+ * The English the app actually ships, not a copy of it.
+ *
+ * `presentTestResult` takes its copy from the caller, so the assertions below read en.json. That
+ * keeps the rules this module exists to enforce — never claim a message was delivered, never
+ * describe a blocked host as a connection failure — checked against the words a reader sees.
+ */
+const mailT = createTranslator({ locale: 'en', messages: en, namespace: 'mail' });
+const queueT = createTranslator({ locale: 'en', messages: en, namespace: 'mail.queueSummary' });
 
 /**
  * The Mail page's logic, tested where it lives: as plain functions.
@@ -69,7 +82,7 @@ describe('classifyTestResponse', () => {
 
 describe('presentTestResult', () => {
   it('says a sent test was accepted, not that it arrived', () => {
-    const result = presentTestResult({ status: 200, error: null, recipient: 'otto@acme.studio' });
+    const result = presentTestResult(mailT, { status: 200, error: null, recipient: 'otto@acme.studio' });
 
     expect(result.tone).toBe('success');
     expect(result.detail).toContain('otto@acme.studio');
@@ -78,7 +91,7 @@ describe('presentTestResult', () => {
   });
 
   it('presents a blocked host as a refusal, with nothing said about connecting', () => {
-    const result = presentTestResult({ status: 400, error: BLOCKED_ERROR, recipient: null });
+    const result = presentTestResult(mailT, { status: 400, error: BLOCKED_ERROR, recipient: null });
 
     expect(result.outcome).toBe('blocked');
     expect(result.tone).toBe('blocked');
@@ -91,10 +104,10 @@ describe('presentTestResult', () => {
 
   it('gives the four outcomes four different presentations', () => {
     const outcomes = [
-      presentTestResult({ status: 200, error: null, recipient: null }),
-      presentTestResult({ status: 400, error: 'No mail server is configured.', recipient: null }),
-      presentTestResult({ status: 400, error: BLOCKED_ERROR, recipient: null }),
-      presentTestResult({ status: 502, error: '535 bad credentials', recipient: null }),
+      presentTestResult(mailT, { status: 200, error: null, recipient: null }),
+      presentTestResult(mailT, { status: 400, error: 'No mail server is configured.', recipient: null }),
+      presentTestResult(mailT, { status: 400, error: BLOCKED_ERROR, recipient: null }),
+      presentTestResult(mailT, { status: 502, error: '535 bad credentials', recipient: null }),
     ];
 
     expect(new Set(outcomes.map((o) => o.tone)).size).toBe(4);
@@ -102,7 +115,7 @@ describe('presentTestResult', () => {
   });
 
   it('carries a refusal back in the mail server’s own words', () => {
-    const result = presentTestResult({
+    const result = presentTestResult(mailT, {
       status: 502,
       error: '535 5.7.8 Authentication credentials invalid',
       recipient: 'otto@acme.studio',
@@ -113,7 +126,7 @@ describe('presentTestResult', () => {
   });
 
   it('uses the route’s own wording for an unconfigured tier', () => {
-    const result = presentTestResult({
+    const result = presentTestResult(mailT, {
       status: 400,
       error: 'Instance mail is not configured. Set an SMTP server and a From address first.',
       recipient: null,
@@ -129,9 +142,9 @@ describe('presentTestResult', () => {
 describe('presentQueue', () => {
   it('never calls anything delivered, in any state', () => {
     const cases = [
-      presentQueue(stats(), { scope: 'workspace' }),
-      presentQueue(stats({ pending: 2, oldestPendingAgeSeconds: 200 }), { scope: 'workspace' }),
-      presentQueue(stats({ pending: 6, failing: 2, abandoned: 1 }), { scope: 'instance' }),
+      presentQueue(queueT, stats(), { scope: 'workspace' }),
+      presentQueue(queueT, stats({ pending: 2, oldestPendingAgeSeconds: 200 }), { scope: 'workspace' }),
+      presentQueue(queueT, stats({ pending: 6, failing: 2, abandoned: 1 }), { scope: 'instance' }),
     ];
 
     for (const queue of cases) {
@@ -142,7 +155,7 @@ describe('presentQueue', () => {
   });
 
   it('always closes by saying what leaving the queue actually means', () => {
-    const queue = presentQueue(stats({ pending: 3 }), { scope: 'workspace' });
+    const queue = presentQueue(queueT, stats({ pending: 3 }), { scope: 'workspace' });
 
     expect(queue.lines[queue.lines.length - 1]).toMatch(/accepted/i);
     expect(queue.lines[queue.lines.length - 1]).toMatch(/not the same as it reaching a person/i);
@@ -152,7 +165,7 @@ describe('presentQueue', () => {
     // The queue is only shown where a server can send, and a tier that cannot send composes
     // nothing. Neither half of the old reassurance — that digests keep being collected, and that
     // they go out once a server appears — describes anything that still happens.
-    const queue = presentQueue(stats({ pending: 2, oldestPendingAgeSeconds: 400 }), {
+    const queue = presentQueue(queueT, stats({ pending: 2, oldestPendingAgeSeconds: 400 }), {
       scope: 'workspace',
     });
 
@@ -163,7 +176,7 @@ describe('presentQueue', () => {
   });
 
   it('counts waiting, failing and abandoned separately', () => {
-    const queue = presentQueue(stats({ pending: 6, failing: 2, abandoned: 3 }), {
+    const queue = presentQueue(queueT, stats({ pending: 6, failing: 2, abandoned: 3 }), {
       scope: 'instance',
     });
 
@@ -174,7 +187,7 @@ describe('presentQueue', () => {
   });
 
   it('reports an empty queue as empty', () => {
-    const queue = presentQueue(stats(), { scope: 'workspace' });
+    const queue = presentQueue(queueT, stats(), { scope: 'workspace' });
 
     expect(queue.headline).toBe('Queue — empty');
     expect(queue.lines.join(' ')).toMatch(/Nothing is waiting/);
@@ -183,13 +196,13 @@ describe('presentQueue', () => {
 
 describe('formatAge', () => {
   it('rounds down to a unit a person reads', () => {
-    expect(formatAge(null)).toBe('a moment');
-    expect(formatAge(30)).toBe('less than a minute');
-    expect(formatAge(60)).toBe('1 minute');
-    expect(formatAge(200)).toBe('3 minutes');
-    expect(formatAge(3600)).toBe('1 hour');
-    expect(formatAge(7200)).toBe('2 hours');
-    expect(formatAge(60 * 60 * 72)).toBe('3 days');
+    expect(formatAge(null, queueT)).toBe('a moment');
+    expect(formatAge(30, queueT)).toBe('less than a minute');
+    expect(formatAge(60, queueT)).toBe('1 minute');
+    expect(formatAge(200, queueT)).toBe('3 minutes');
+    expect(formatAge(3600, queueT)).toBe('1 hour');
+    expect(formatAge(7200, queueT)).toBe('2 hours');
+    expect(formatAge(60 * 60 * 72, queueT)).toBe('3 days');
   });
 });
 
@@ -310,7 +323,7 @@ describe('describeWorkspaceSending', () => {
     // The three states in which nothing is going out. None of them accumulates mail any more, so
     // none of them may offer a backlog: turning a tier on starts from that moment.
     const notSending = [
-      describeWorkspaceSending({
+      describeWorkspaceSending(mailT, {
         enabled: false,
         mode: 'own',
         displayName: null,
@@ -318,7 +331,7 @@ describe('describeWorkspaceSending', () => {
         from: 'review@acmestudio.com',
         instance: instance('available'),
       }),
-      describeWorkspaceSending({
+      describeWorkspaceSending(mailT, {
         enabled: true,
         mode: 'own',
         displayName: null,
@@ -326,7 +339,7 @@ describe('describeWorkspaceSending', () => {
         from: null,
         instance: instance('unknown'),
       }),
-      describeWorkspaceSending({
+      describeWorkspaceSending(mailT, {
         enabled: true,
         mode: 'instance',
         displayName: null,
@@ -348,7 +361,7 @@ describe('describeWorkspaceSending', () => {
   it('says a switched-off workspace is not sending, and names no server', () => {
     // A complete own-server configuration that is switched off is not a sending arrangement, and
     // naming the server it would have used would describe one that is not in effect.
-    const result = describeWorkspaceSending({
+    const result = describeWorkspaceSending(mailT, {
       enabled: false,
       mode: 'own',
       displayName: null,
@@ -369,7 +382,7 @@ describe('describeWorkspaceSending', () => {
   });
 
   it('names the sender when the workspace runs its own server', () => {
-    const result = describeWorkspaceSending({
+    const result = describeWorkspaceSending(mailT, {
       enabled: true,
       mode: 'own',
       displayName: null,
@@ -384,7 +397,7 @@ describe('describeWorkspaceSending', () => {
   });
 
   it('says what an own server is still missing rather than claiming it sends', () => {
-    const result = describeWorkspaceSending({
+    const result = describeWorkspaceSending(mailT, {
       enabled: true,
       mode: 'own',
       displayName: null,
@@ -401,7 +414,7 @@ describe('describeWorkspaceSending', () => {
   });
 
   it('is explicit that nothing sends when the instance has no server', () => {
-    const result = describeWorkspaceSending({
+    const result = describeWorkspaceSending(mailT, {
       enabled: true,
       mode: 'instance',
       displayName: 'Acme Studio',
@@ -419,7 +432,7 @@ describe('describeWorkspaceSending', () => {
   });
 
   it('uses the instance address, with the workspace’s name in front of it', () => {
-    const result = describeWorkspaceSending({
+    const result = describeWorkspaceSending(mailT, {
       enabled: true,
       mode: 'instance',
       displayName: 'Acme Studio',
@@ -436,7 +449,7 @@ describe('describeWorkspaceSending', () => {
     // A non-admin owner is never given the instance's From, so there is no sender to name — but the
     // workspace response carries whether the instance will relay, and that settles the state. Saying
     // `unknown` here withheld a fact the page had been told.
-    const result = describeWorkspaceSending({
+    const result = describeWorkspaceSending(mailT, {
       enabled: true,
       mode: 'instance',
       displayName: 'Acme Studio',
@@ -453,7 +466,7 @@ describe('describeWorkspaceSending', () => {
   });
 
   it('claims neither way for an owner who cannot read the instance tier', () => {
-    const result = describeWorkspaceSending({
+    const result = describeWorkspaceSending(mailT, {
       enabled: true,
       mode: 'instance',
       displayName: 'Acme Studio',
@@ -512,5 +525,38 @@ describe('parsePortInput / buildSmtpBody', () => {
 
   it('refuses to build a body around an impossible port', () => {
     expect(buildSmtpBody(form({ port: '-1' }), undefined)).toHaveProperty('error');
+  });
+});
+
+describe('mail wording edges', () => {
+  it('counts up to two days in hours', () => {
+    expect(formatAge(30 * 3600, queueT)).toBe(queueT('ageHours', { count: 30 }));
+    expect(formatAge(48 * 3600, queueT)).toBe(queueT('ageDays', { count: 2 }));
+  });
+
+  it('does not say nothing is waiting while given-up mail is on record', () => {
+    const { lines } = presentQueue(queueT, stats({ abandoned: 2 }), { scope: 'workspace' });
+    expect(lines).not.toContain(queueT('nothingWaiting', { minutes: QUIET_PERIOD_MINUTES }));
+    // The empty case does say it, so the line compared against is the real one.
+    expect(presentQueue(queueT, stats(), { scope: 'workspace' }).lines).toContain(queueT('nothingWaiting', { minutes: QUIET_PERIOD_MINUTES }));
+  });
+
+  it('explains failing mail when some is failing', () => {
+    const { lines } = presentQueue(queueT, stats({ pending: 3, failing: 1, oldestPendingAgeSeconds: 120 }), { scope: 'workspace' });
+    expect(lines).toContain(queueT('failingHint'));
+  });
+
+  it('names an own server\'s sender with its display name', () => {
+    const result = describeWorkspaceSending(mailT, {
+      enabled: true, mode: 'own', displayName: 'Acme Studio',
+      host: 'smtp.acme.studio', from: 'review@acme.studio', instance: { state: 'unknown', from: null },
+    });
+    expect(result.sentence).toContain(formatSender('review@acme.studio', 'Acme Studio')!);
+    expect(result.sentence).toContain('Acme Studio');
+  });
+
+  it('keeps the route\'s own words for a forbidden or failed test', () => {
+    expect(presentTestResult(mailT, { status: 403, error: 'Only owners can test.', recipient: null }).detail).toBe('Only owners can test.');
+    expect(presentTestResult(mailT, { status: 500, error: 'Database locked', recipient: null }).detail).toBe('Database locked');
   });
 });

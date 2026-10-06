@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { translator } from '@/lib/i18n/runtime';
 import { vfs } from '@/lib/vfs';
 import { skillsService } from '@/lib/vfs/skills/service';
 import { configManager } from '@/lib/config/storage';
@@ -56,7 +57,7 @@ export function useSyncStatus() {
         setStatus((prev) => ({
           ...prev,
           loading: false,
-          error: serverResult.error || 'Failed to fetch server status',
+          error: serverResult.error || translator()('sync.fetchStatusFailed'),
         }));
         setRefreshing(false);
         return;
@@ -315,7 +316,7 @@ export function useSyncStatus() {
       setStatus((prev) => ({
         ...prev,
         loading: false,
-        error: error instanceof Error ? error.message : 'Failed to fetch sync status',
+        error: error instanceof Error ? error.message : translator()('sync.fetchSyncStatusFailed'),
       }));
     } finally {
       setRefreshing(false);

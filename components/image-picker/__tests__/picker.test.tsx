@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import React, { act } from 'react';
+import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import { createRoot, type Root } from 'react-dom/client';
+import { NextIntlClientProvider } from 'next-intl';
+import en from '@/messages/en.json';
+import fi from '@/messages/fi.json';
+import { deepMerge } from '@/lib/i18n/merge';
 
 /**
  * The dialog's own wiring, which the pure module cannot reach.
@@ -23,6 +28,7 @@ vi.mock('@/lib/vfs/upload-file', () => ({
 
 import { ImagePicker } from '..';
 import type { ApplyResult } from '@/lib/direct-edit/types';
+import { imageRefusalAgentPrompt } from '../state';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -56,7 +62,7 @@ afterEach(() => {
 
 async function mount() {
   await act(async () => {
-    root.render(
+    root.render(withMessages(
       <ImagePicker
         open
         projectId="p1"
@@ -64,7 +70,7 @@ async function mount() {
         onOpenChange={onOpenChange}
         onApply={onApply}
       />,
-    );
+    ));
   });
 }
 
@@ -125,6 +131,31 @@ describe('ImagePicker', () => {
 
     expect(onOpenChange).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain('This image is set by the template');
+  });
+
+  it('asks the agent in English while the panel speaks Finnish', async () => {
+    const onAskAgent = vi.fn();
+    onApply.mockResolvedValueOnce({ ok: false, reason: 'expression-src', file: '/index.html' });
+    await act(async () => {
+      root.render(
+        <NextIntlClientProvider locale="fi" messages={deepMerge(en, fi)}>
+          <ImagePicker
+            open
+            projectId="p1"
+            currentSrc="/images/a.jpg"
+            onOpenChange={onOpenChange}
+            onApply={onApply}
+            onAskAgent={onAskAgent}
+          />
+        </NextIntlClientProvider>,
+      );
+    });
+    await click(options()[0]);
+    await click(buttonSaying(fi.styles.askAgent)!);
+
+    expect(onAskAgent).toHaveBeenCalledWith(imageRefusalAgentPrompt({ reason: 'expression-src', file: '/index.html' }));
+    expect(onAskAgent.mock.calls[0][0]).toContain('comes from the template');
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it('does not apply an upload that was declined', async () => {

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Eye, EyeOff, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,6 +70,8 @@ export function CustomHeadersEditor({
   disabled?: boolean;
   idPrefix: string;
 }) {
+  const t = useTranslations('connections');
+  const tc = useTranslations('common');
   const [showValues, setShowValues] = useState(false);
   const duplicates = new Set(duplicateHeaderNames(rows).map((n) => n.toLowerCase()));
 
@@ -79,14 +82,14 @@ export function CustomHeadersEditor({
     <div>
       <div className="flex items-center justify-between">
         <Label>
-          Extra headers
-          <span className="text-muted-foreground text-xs ml-1">(optional)</span>
+          {t('extraHeaders')}
+          <span className="text-muted-foreground text-xs ml-1">{tc('labels.optionalParen')}</span>
         </Label>
         {rows.length > 0 && (
           <Button
             size="icon" variant="ghost" className="h-7 w-7"
             onClick={() => setShowValues(!showValues)}
-            aria-label={showValues ? 'Hide header values' : 'Show header values'}
+            aria-label={showValues ? t('hideHeaderValues') : t('showHeaderValues')}
             disabled={disabled}
           >
             {showValues ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -94,8 +97,7 @@ export function CustomHeadersEditor({
         )}
       </div>
       <p className="text-xs text-muted-foreground mt-1">
-        Sent with every request to this endpoint, for gateways that need a tenant or routing header.
-        Treated as secret. Authorization is set by the API token above and can&apos;t be added here.
+        {t('extraHeadersHint')}
       </p>
 
       <div className="space-y-2 mt-2">
@@ -107,8 +109,8 @@ export function CustomHeadersEditor({
                 id={`${idPrefix}-header-name-${index}`}
                 value={row.name}
                 onChange={(e) => edit(row.id, { name: e.target.value })}
-                placeholder="X-Tenant"
-                aria-label="Header name"
+                placeholder="X-Tenant" // i18n-ignore: an example header name
+                aria-label={t('headerName')}
                 aria-invalid={bad || undefined}
                 className={bad ? 'flex-1 border-destructive' : 'flex-1'}
                 disabled={disabled}
@@ -118,15 +120,15 @@ export function CustomHeadersEditor({
                 type={showValues ? 'text' : 'password'}
                 value={row.value}
                 onChange={(e) => edit(row.id, { value: e.target.value })}
-                placeholder="acme"
-                aria-label="Header value"
+                placeholder="acme" // i18n-ignore: an example header value
+                aria-label={t('headerValue')}
                 className="flex-1"
                 disabled={disabled}
               />
               <Button
                 size="icon" variant="ghost" className="h-8 w-8 shrink-0"
                 onClick={() => onChange(rows.filter((r) => r.id !== row.id))}
-                aria-label="Remove header"
+                aria-label={t('removeHeader')}
                 disabled={disabled}
               >
                 <X className="h-4 w-4" />
@@ -137,8 +139,7 @@ export function CustomHeadersEditor({
 
         {rows.some((r) => isForbiddenHeaderName(r.name) || duplicates.has(r.name.trim().toLowerCase())) && (
           <p className="text-xs text-destructive">
-            A name in red is reserved, repeated, or not a valid header name. Remove the row to
-            continue.
+            {t('invalidHeaderNames')}
           </p>
         )}
 
@@ -148,7 +149,7 @@ export function CustomHeadersEditor({
           disabled={disabled}
         >
           <Plus className="h-3 w-3 mr-1" />
-          Add header
+          {t('addHeader')}
         </Button>
       </div>
     </div>

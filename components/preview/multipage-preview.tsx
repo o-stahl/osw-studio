@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
+import { useTranslations } from 'next-intl';
 import { VirtualServer } from '@/lib/preview/virtual-server';
 import {
   CompiledProject,
@@ -193,7 +194,7 @@ const DEVICE_SIZES: Record<DeviceSize, { width?: string; height?: string; maxHei
 const COMPILE_TIMEOUT_MS = 30000;
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms); // i18n-ignore: a compile error's detail
     p.then(
       (v) => { clearTimeout(t); resolve(v); },
       (e) => { clearTimeout(t); reject(e); },
@@ -1282,6 +1283,14 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
   onToolbarHover,
   onFrameReady
 }, ref) => {
+  const t = useTranslations('preview');
+  // The compile path reads the translator through a ref: as a dependency, switching language would
+  // recompile the preview and send it back to the entry page.
+  const previewTextRef = useRef(t);
+  previewTextRef.current = t;
+  const tc = useTranslations('common');
+  const tw = useTranslations('workspace');
+  const tsx = useTranslations('styles');
   // Only the selection toolbar reads this: its chrome lives inside the frame, where the app's
   // stylesheet does not reach, so the colours have to be resolved out here and posted in.
   const { resolvedTheme } = useTheme();
@@ -1500,7 +1509,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
   const rootObserverRef = useRef<ResizeObserver | null>(null);
 
   const Header = () => (
-    isFullscreen ? null : <PanelHeader icon={Eye} title="Live Preview" color="var(--button-preview-active)" onClose={onClose} panelKey="preview" />
+    isFullscreen ? null : <PanelHeader icon={Eye} title={t('livePreview')} color="var(--button-preview-active)" onClose={onClose} panelKey="preview" />
   );
 
   useEffect(() => {
@@ -1691,7 +1700,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
 
       loadPage(pathToLoad, compiled);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to compile project');
+      setError(err instanceof Error ? err.message : previewTextRef.current('compileFailed'));
       logger.error('Compilation error:', err);
     } finally {
       if (showLoading) {
@@ -1894,7 +1903,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     }
 
     if (!htmlFile) {
-      setError(`Page not found: ${path}`);
+      setError(t('pageNotFound', { path }));
       const indexFile = projectToUse.files.find(f => f.path === '/index.html' || f.path === 'index.html');
       if (indexFile && path !== '/') {
         loadPage('/', compiled);
@@ -2081,10 +2090,10 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
         try { url = new URL(data.href, window.location.href); } catch { return; }
         if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
         const href = url.href;
-        toast('Open external link?', {
+        toast(t('openExternalLink'), {
           description: url.host,
           action: {
-            label: 'Open in new tab',
+            label: tc('actions.openInNewTab'),
             onClick: () => { window.open(href, '_blank', 'noopener,noreferrer'); },
           },
         });
@@ -2169,7 +2178,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
       window.removeEventListener('message', handleMessage);
     };
   }, [handleNavigation, onFocusSelection, onPlacementComplete, onTreeLevel, onTreeLevels, onTreeStale,
-      onStyleComputed, onStyleProbeResult, onSelectionResolved, onToolbarAction, onToolbarHover]);
+      onStyleComputed, onStyleProbeResult, onSelectionResolved, onToolbarAction, onToolbarHover, t, tc]);
 
 
   useEffect(() => {
@@ -2206,7 +2215,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-2">
             <RefreshCw className="w-8 h-8 animate-spin mx-auto text-primary" />
-            <p className="text-muted-foreground">Compiling project...</p>
+            <p className="text-muted-foreground">{t('compiling')}</p>
           </div>
         </div>
       </div>
@@ -2219,10 +2228,10 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
         <Header />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-destructive space-y-2">
-            <p className="font-medium">Error</p>
+            <p className="font-medium">{tc('labels.error')}</p>
             <p className="text-sm mt-2">{error}</p>
             <Button onClick={handleRefresh} className="mt-4">
-              Try Again
+              {tc('actions.tryAgain')}
             </Button>
           </div>
         </div>
@@ -2286,7 +2295,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
             }}
             disabled={!iframeReady}
             style={crosshairButtonStyle}
-            title={selectorActive ? 'Cancel element selection' : hasFocusTarget ? 'Replace focused element' : 'Select element'}
+            title={selectorActive ? tsx('cancelSelectionLong') : hasFocusTarget ? t('replaceFocused') : tw('selectElement')}
             data-tour-id="focus-crosshair-button"
           >
             <Crosshair className="h-3 w-3" />
@@ -2301,7 +2310,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
               setTimeout(() => onPlacementToggle?.(), 0);
             }}
             disabled={!iframeReady}
-            title="Semantic blocks"
+            title={t('semanticBlocks')}
             style={localPaletteOpen ? { backgroundColor: 'var(--button-preview-active)', color: 'white' } : {}}
           >
             <LayoutGrid className="h-3 w-3" />
@@ -2377,7 +2386,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
             }}
             disabled={!iframeReady}
             style={crosshairButtonStyle}
-            title={selectorActive ? 'Cancel element selection' : hasFocusTarget ? 'Replace focused element' : 'Select element'}
+            title={selectorActive ? tsx('cancelSelectionLong') : hasFocusTarget ? t('replaceFocused') : tw('selectElement')}
             data-tour-id="focus-crosshair-button"
           >
             <Crosshair className="h-3 w-3" />
@@ -2392,7 +2401,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
               setTimeout(() => onPlacementToggle?.(), 0);
             }}
             disabled={!iframeReady}
-            title="Semantic blocks"
+            title={t('semanticBlocks')}
             style={localPaletteOpen ? { backgroundColor: 'var(--button-preview-active)', color: 'white' } : {}}
           >
             <LayoutGrid className="h-3 w-3" />
@@ -2462,7 +2471,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
               variant="ghost"
               className="h-5 w-5 rounded-sm"
               onClick={onClose}
-              title="Exit full size preview"
+              title={t('exitFullSize')}
             >
               <Minimize className="h-3 w-3" />
             </Button>
@@ -2472,7 +2481,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
               variant="ghost"
               className="h-5 w-5 rounded-sm"
               onClick={onFullscreen}
-              title="Full size preview"
+              title={t('fullSize')}
             >
               <Maximize className="h-3 w-3" />
             </Button>
@@ -2498,16 +2507,16 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
         {escaped && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/80 backdrop-blur-sm">
             <div className="max-w-xs rounded-lg border border-border bg-card p-4 text-center shadow-lg">
-              <p className="text-sm font-medium">Preview navigated away</p>
+              <p className="text-sm font-medium">{t('navigatedAway')}</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                A link, form, or script sent the preview to another page.
+                {t('navigatedAwayHint')}
               </p>
               <Button
                 size="sm"
                 className="mt-3"
                 onClick={() => loadPageRef.current?.(activePathRef.current || '/', undefined, false)}
               >
-                Reload preview
+                {t('reload')}
               </Button>
             </div>
           </div>
@@ -2533,7 +2542,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
             ref={setIframeEl}
             className={cn("w-full h-full", !isFullscreen && "rounded-lg")}
             sandbox="allow-scripts allow-same-origin allow-forms"
-            title="Preview"
+            title={tw('tabs.preview')}
             style={draggingBlock ? { pointerEvents: 'none' } : undefined}
           />
         </div>

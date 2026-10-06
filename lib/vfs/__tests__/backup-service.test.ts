@@ -167,6 +167,42 @@ describe('.osws import', () => {
     expect(await readStore(adapter.getDatabase(), 'skills')).toEqual([]);
   });
 
+  // The import dialog words each stage itself, so the stages are the contract, in order.
+  it('reports its stages in order, clearing only in replace mode', async () => {
+    const file = await makeBackupFile({ projects: [project('p1', 'Restored')], files: [], fileTree: [] });
+    const replace: Array<[number, string]> = [];
+    await BackupService.importAllData(file, { mode: 'replace', onProgress: (p, stage) => replace.push([p, stage]) });
+    expect(replace).toEqual([[10, 'reading'], [30, 'validating'], [40, 'clearing'], [50, 'importing'], [100, 'done']]);
+
+    const merge: string[] = [];
+    await BackupService.importAllData(file, { mode: 'merge', onProgress: (_p, stage) => merge.push(stage) });
+    expect(merge).toEqual(['reading', 'validating', 'importing', 'done']);
+  });
+
+  it('refuses a backup from a newer major version and writes nothing', async () => {
+    const zip = new JSZip();
+    zip.file('backup.json', JSON.stringify({
+      version: '99.0.0',
+      exportDate: new Date().toISOString(),
+      databases: { vfs: { projects: [project('p1', 'Future')] }, conversations: [], checkpoints: [] },
+      metadata: { projectCount: 1, totalSize: 0, exportedFrom: 'oswstudio' },
+    }));
+    const file = new File([await zip.generateAsync({ type: 'blob' })], 'backup.osws');
+
+    await expect(BackupService.importAllData(file, { mode: 'merge' })).rejects.toThrow();
+    expect(await readStore(adapter.getDatabase(), 'projects')).toEqual([]);
+  });
+
+  it('turns away a file that is not a backup before reading it in', async () => {
+    const good = await makeBackupFile({ projects: [], files: [], fileTree: [] });
+    expect((await BackupService.validateBackupFile(new File([good], 'backup.zip'))).valid).toBe(false);
+    const zip = new JSZip();
+    zip.file('other.json', '{}');
+    const noManifest = new File([await zip.generateAsync({ type: 'blob' })], 'backup.osws');
+    expect((await BackupService.validateBackupFile(noManifest)).valid).toBe(false);
+    expect((await BackupService.validateBackupFile(good)).valid).toBe(true);
+  });
+
   it('restores stores beyond the original five', async () => {
     const file = await makeBackupFile({
       projects: [project('p1', 'Restored')],

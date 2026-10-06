@@ -1,6 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslations } from 'next-intl';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
+import { useTemplateCatalog } from '@/lib/i18n/use-template-catalog';
 import { CustomTemplate, BackendFeatures, ProjectRuntime } from '@/lib/vfs/types';
 import { vfs } from '@/lib/vfs';
 import { templateService } from '@/lib/vfs/template-service';
@@ -16,7 +19,7 @@ import { Input } from '@/components/ui/input';
 import { TemplateCard } from './template-card';
 import { TemplatePreviewDialog } from '@/components/template-browser/template-preview-dialog';
 import { templatePreviewUnavailableReason } from '@/lib/vfs/templates/preview-project';
-import { logger, formatCompactAge } from '@/lib/utils';
+import { logger } from '@/lib/utils';
 import { toast } from 'sonner';
 import { provisionBackendFeatures } from '@/lib/vfs/provision-backend-features';
 import { usePagination } from '@/lib/hooks/use-pagination';
@@ -66,6 +69,11 @@ type SortOption = 'updated' | 'name' | 'author' | 'files';
 type TypeFilter = 'all' | 'standard' | 'server';
 
 export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
+  const when = useLocalFormat();
+  const t = useTranslations('templatesUi');
+  const tp = useTranslations('projects');
+  const tc = useTranslations('common');
+  const templateCopy = useTemplateCatalog();
   const [customTemplates, setCustomTemplates] = useState<CustomTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -87,11 +95,11 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
       setCustomTemplates(templates);
     } catch (error) {
       logger.error('Failed to load custom templates:', error);
-      toast.error('Failed to load custom templates');
+      toast.error(t('loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadCustomTemplates();
@@ -108,11 +116,11 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
 
       try {
         await templateService.importTemplateFile(file);
-        toast.success('Template imported successfully!');
+        toast.success(t('imported'));
         await loadCustomTemplates();
       } catch (error) {
         logger.error('Failed to import template:', error);
-        toast.error(error instanceof Error ? error.message : 'Failed to import template');
+        toast.error(error instanceof Error ? error.message : t('importFailed'));
       }
     };
 
@@ -120,17 +128,17 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
   };
 
   const handleDeleteTemplate = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this template?')) {
+    if (!confirm(t('confirmDelete'))) {
       return;
     }
 
     try {
       await templateService.deleteCustomTemplate(id);
-      toast.success('Template deleted');
+      toast.success(t('deleted'));
       await loadCustomTemplates();
     } catch (error) {
       logger.error('Failed to delete template:', error);
-      toast.error('Failed to delete template');
+      toast.error(t('deleteFailed'));
     }
   };
 
@@ -138,25 +146,29 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
     try {
       // For built-in templates, create a custom template export
       if ('isBuiltIn' in template && template.isBuiltIn) {
-        toast.info('Exporting built-in template as custom template...');
+        toast.info(t('exportingBuiltIn'));
+
+        // The list carries a built-in's name and description in the interface language; the
+        // exported file carries the English source copy.
+        const source = BUILT_IN_TEMPLATES.find((tpl) => tpl.id === template.id) ?? template;
 
         // Create a temporary project to export
         const tempProject = await vfs.createProject(
-          template.name,
-          template.description
+          source.name,
+          source.description
         );
 
         // Fill it, backend features included. The export reads those back out of the project's
         // own storage, so a temp project that was only given files exports a template with no
         // edge functions, no secrets and no schema.
         const definition = getBuiltInTemplateDefinition(template.id);
-        if (!definition) throw new Error(`Unknown built-in template: ${template.id}`);
+        if (!definition) throw new Error(`Unknown built-in template: ${template.id}`); // i18n-ignore: internal invariant, only ever logged
         await instantiateBuiltInTemplate(vfs, tempProject.id, definition);
 
         // Export as template
         const blob = await templateService.exportProjectAsTemplate(vfs, tempProject.id, {
-          name: template.name,
-          description: template.description,
+          name: source.name,
+          description: source.description,
           version: '1.0.0',
           author: template.metadata?.author || 'OSW Studio',
           license: template.metadata?.license || 'mit',
@@ -170,13 +182,13 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${template.name.replace(/\s+/g, '-').toLowerCase()}.oswt`;
+        a.download = `${source.name.replace(/\s+/g, '-').toLowerCase()}.oswt`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        toast.success('Template exported successfully!');
+        toast.success(t('exportSuccess'));
       } else {
         // Custom template - re-export
         const customTemplate = template as CustomTemplate;
@@ -191,11 +203,11 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        toast.success('Template exported successfully!');
+        toast.success(t('exportSuccess'));
       }
     } catch (error) {
       logger.error('Failed to export template:', error);
-      toast.error('Failed to export template');
+      toast.error(t('exportFailed'));
     }
   };
 
@@ -209,8 +221,10 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
       // which used to be matched literally and quietly stopped matching when a name changed.
       const intent = 'metadata' in template ? template.metadata?.intent : undefined;
       const namesTheStartingPoint = intent === 'starter';
+      // The project's own name from here on, so it is written in the language of the person
+      // creating it: a built-in's name in the listing is already translated.
       const projectName = namesTheStartingPoint
-        ? `New ${template.name} Project`
+        ? t('newFromTemplate', { name: template.name })
         : template.name;
 
       // Resolved before the project exists: a built-in's files are a lazily imported chunk, and a
@@ -220,7 +234,7 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
           ? getBuiltInTemplateDefinition(template.id)
           : undefined;
       if ('isBuiltIn' in template && template.isBuiltIn && !definition) {
-        throw new Error(`Unknown built-in template: ${template.id}`);
+        throw new Error(`Unknown built-in template: ${template.id}`); // i18n-ignore: internal invariant, only ever logged
       }
 
       const project = await vfs.createProject(
@@ -249,31 +263,31 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
 
           // Summary toast
           const parts: string[] = [];
-          if (result.edgeFunctions > 0) parts.push(`${result.edgeFunctions} edge function(s)`);
-          if (result.serverFunctions > 0) parts.push(`${result.serverFunctions} server function(s)`);
-          if (result.secrets > 0) parts.push(`${result.secrets} secret placeholder(s)`);
-          if (result.scheduledFunctions > 0) parts.push(`${result.scheduledFunctions} schedule(s)`);
-          if (result.hasDatabaseSchema) parts.push('database schema');
+          if (result.edgeFunctions > 0) parts.push(t('provisionedEdge', { count: result.edgeFunctions }));
+          if (result.serverFunctions > 0) parts.push(t('provisionedServer', { count: result.serverFunctions }));
+          if (result.secrets > 0) parts.push(t('provisionedSecrets', { count: result.secrets }));
+          if (result.scheduledFunctions > 0) parts.push(t('provisionedSchedules', { count: result.scheduledFunctions }));
+          if (result.hasDatabaseSchema) parts.push(t('provisionedSchema'));
           if (parts.length > 0) {
-            toast.success(`Backend features provisioned: ${parts.join(', ')}`, { duration: 5000 });
+            toast.success(t('provisionedSummary', { parts: parts.join(', ') }), { duration: 5000 });
           }
         } catch (provisionError) {
           logger.error('Failed to provision backend features:', provisionError);
           toast.warning(
-            'Project created but backend features provisioning failed. You can configure features manually.',
+            t('provisionFailed'),
             { duration: 6000 }
           );
         }
       }
 
-      toast.success(`Project "${project.name}" created successfully!`);
+      toast.success(t('projectCreated', { name: project.name }));
 
       if (onProjectCreated) {
         onProjectCreated(project.id, !!backendFeatures);
       }
     } catch (error) {
       logger.error('Failed to create project from template:', error);
-      toast.error('Failed to create project');
+      toast.error(tp('createFailed'));
     } finally {
       setCreating(false);
     }
@@ -281,7 +295,11 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
 
   // Combine all templates
   const allTemplates: (CustomTemplate | BuiltInTemplateMetadata)[] = [
-    ...BUILT_IN_TEMPLATES,
+    // Built-in copy is translated here so every render site keeps reading `template.name`.
+    ...BUILT_IN_TEMPLATES.map((tpl) => {
+      const copy = templateCopy[tpl.id];
+      return copy ? { ...tpl, name: copy.name, description: copy.description } : tpl;
+    }),
     ...customTemplates
   ];
 
@@ -370,7 +388,7 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <Spinner size={48} className="mx-auto text-primary" />
-          <p className="mt-4">{creating ? 'Setting up your project...' : 'Loading templates...'}</p>
+          <p className="mt-4">{creating ? t('settingUpProject') : t('loadingTemplates')}</p>
         </div>
       </div>
     );
@@ -381,12 +399,12 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
       {/* Toolbar */}
       <div className="pt-4 px-4 pb-3 sm:pt-6 sm:px-6 sm:pb-3 shrink-0">
         <div className="mx-auto max-w-7xl flex flex-col sm:flex-row sm:items-center gap-3">
-        <h1 className="text-lg font-semibold shrink-0">Templates</h1>
+        <h1 className="text-lg font-semibold shrink-0">{tc('terms.templates')}</h1>
         {/* Search */}
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search templates..."
+            placeholder={t('search')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
@@ -402,9 +420,9 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="standard">Standard</SelectItem>
-              <SelectItem value="server">Backend</SelectItem>
+              <SelectItem value="all">{t('allTypes')}</SelectItem>
+              <SelectItem value="standard">{t('standard')}</SelectItem>
+              <SelectItem value="server">{t('backend')}</SelectItem>
             </SelectContent>
           </Select>
 
@@ -413,21 +431,21 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2">
                 <ArrowUpDown className="h-4 w-4" />
-                <span className="hidden sm:inline">Sort</span>
+                <span className="hidden sm:inline">{tc('labels.sort')}</span>
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-48" align="end">
               <div className="space-y-2">
-                <h4 className="font-semibold text-sm">Sort by</h4>
+                <h4 className="font-semibold text-sm">{tc('sort.by')}</h4>
                 <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortOption)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="updated">Last Updated</SelectItem>
-                    <SelectItem value="name">Name</SelectItem>
-                    <SelectItem value="author">Author</SelectItem>
-                    <SelectItem value="files">File Count</SelectItem>
+                    <SelectItem value="updated">{t('lastUpdated')}</SelectItem>
+                    <SelectItem value="name">{tc('labels.name')}</SelectItem>
+                    <SelectItem value="author">{tc('labels.author')}</SelectItem>
+                    <SelectItem value="files">{t('fileCount')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -440,7 +458,7 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
           {/* Import */}
           <Button onClick={handleImportTemplate} size="sm" className="gap-2">
             <Upload className="h-4 w-4" />
-            <span>Import</span>
+            <span>{tc('actions.import')}</span>
           </Button>
         </div>
         </div>
@@ -455,24 +473,24 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
               {searchQuery ? (
                 <>
                   <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="font-semibold mb-2">No templates found</h3>
+                  <h3 className="font-semibold mb-2">{t('noTemplatesFound')}</h3>
                   <p className="text-sm text-muted-foreground mb-4">
-                    No templates match your search query "{searchQuery}"
+                    {t('noMatchQuery', { query: searchQuery })}
                   </p>
                   <Button variant="outline" onClick={() => setSearchQuery('')}>
-                    Clear search
+                    {t('clearSearch')}
                   </Button>
                 </>
               ) : (
                 <>
                   <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="font-semibold mb-2">No custom templates yet</h3>
+                  <h3 className="font-semibold mb-2">{t('noCustomYet')}</h3>
                   <p className="text-sm text-muted-foreground mb-4">
-                    Import custom templates to get started with professional designs.
+                    {t('noCustomYetHint')}
                   </p>
                   <Button onClick={handleImportTemplate}>
                     <Upload className="h-4 w-4 mr-2" />
-                    Import Template
+                    {t('importTemplate')}
                   </Button>
                 </>
               )}
@@ -503,12 +521,12 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
                   <thead className="sticky top-0 z-10">
                     <tr>
                       <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none"></th>
-                      <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none w-full">Name</th>
-                      <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Type</th>
-                      <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Runtime</th>
-                      <th className="@max-5xl:hidden bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Author</th>
-                      <th className="@max-5xl:hidden bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">License</th>
-                      <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Updated</th>
+                      <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none w-full">{tc('labels.name')}</th>
+                      <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{tc('labels.type')}</th>
+                      <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{tc('labels.runtime')}</th>
+                      <th className="@max-5xl:hidden bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{tc('labels.author')}</th>
+                      <th className="@max-5xl:hidden bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{t('license')}</th>
+                      <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{tc('labels.updated')}</th>
                       <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none"></th>
                     </tr>
                   </thead>
@@ -542,7 +560,7 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
                           </td>
                           <td className="p-[4px_10px] align-middle whitespace-nowrap">
                             <Badge variant={isBuiltIn ? 'secondary' : 'outline'} className="text-[11px] px-[7px] py-[1px] h-auto rounded-full">
-                              {isBuiltIn ? 'Built-in' : 'Custom'}
+                              {isBuiltIn ? tc('labels.builtIn') : tc('labels.custom')}
                             </Badge>
                           </td>
                           <td className="p-[4px_10px] align-middle whitespace-nowrap">
@@ -555,13 +573,13 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
                             {license || '—'}
                           </td>
                           <td className="p-[4px_10px] text-[13px] text-muted-foreground align-middle whitespace-nowrap overflow-hidden text-ellipsis">
-                            {updatedAt ? formatCompactAge(updatedAt) : '—'}
+                            {updatedAt ? when.age(updatedAt) : '—'}
                           </td>
                           <td className="p-[4px_10px] align-middle whitespace-nowrap text-right" onClick={e => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
-                              <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleCreateProject(template)}>Use</Button>
+                              <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleCreateProject(template)}>{t('use')}</Button>
                               {templatePreviewTarget(template) && (
-                                <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handlePreviewTemplate(template)}>Preview</Button>
+                                <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handlePreviewTemplate(template)}>{tc('actions.preview')}</Button>
                               )}
                               {/* The menu is no longer custom-only. Use and Preview hide at
                                   COMPACT_ROW_WIDTH, and a built-in template had no menu to move them
@@ -575,11 +593,11 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
                                     {compactRows && (
                                       <>
                                         <DropdownMenuItem onClick={() => handleCreateProject(template)}>
-                                          <Plus className="w-4 h-4 mr-2" />Use
+                                          <Plus className="w-4 h-4 mr-2" />{t('use')}
                                         </DropdownMenuItem>
                                         {templatePreviewTarget(template) && (
                                           <DropdownMenuItem onClick={() => handlePreviewTemplate(template)}>
-                                            <Eye className="w-4 h-4 mr-2" />Preview
+                                            <Eye className="w-4 h-4 mr-2" />{tc('actions.preview')}
                                           </DropdownMenuItem>
                                         )}
                                         {!isBuiltIn && <DropdownMenuSeparator />}
@@ -588,10 +606,10 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
                                     {!isBuiltIn && (
                                       <>
                                         <DropdownMenuItem onClick={() => handleExportTemplate(template as CustomTemplate)}>
-                                          <Download className="w-4 h-4 mr-2" />Export
+                                          <Download className="w-4 h-4 mr-2" />{tc('actions.export')}
                                         </DropdownMenuItem>
                                         <DropdownMenuItem onClick={() => handleDeleteTemplate((template as CustomTemplate).id)} className="text-destructive focus:text-destructive">
-                                          <Trash2 className="w-4 h-4 mr-2" />Delete
+                                          <Trash2 className="w-4 h-4 mr-2" />{tc('actions.delete')}
                                         </DropdownMenuItem>
                                       </>
                                     )}

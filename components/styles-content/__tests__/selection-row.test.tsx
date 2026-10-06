@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { StylesContent, describeSelection, sourcePathOf } from '..';
@@ -25,7 +26,7 @@ const payload = (over: Partial<FocusContextPayload> = {}): FocusContextPayload =
 });
 
 function render(selection: FocusContextPayload | null) {
-  return renderToStaticMarkup(
+  return renderToStaticMarkup(withMessages(
     <StylesContent
       selection={selection}
       sendToFrame={vi.fn()}
@@ -35,7 +36,7 @@ function render(selection: FocusContextPayload | null) {
       onAskAgent={vi.fn()}
       onRefreshPreview={vi.fn()}
     />
-  );
+  ));
 }
 
 describe('describeSelection', () => {

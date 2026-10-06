@@ -1,21 +1,8 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { formatDistanceToNow } from "date-fns";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
-}
-
-/**
- * Compact relative age for dense table cells: drops date-fns's
- * "about"/"over"/"almost"/"less than" qualifiers so the value fits a narrow
- * column ("7 hours", "17 days", "3 months").
- */
-export function formatCompactAge(date: Date | number): string {
-  return formatDistanceToNow(date, { addSuffix: false }).replace(
-    /^(about|over|almost|less than)\s+/,
-    ''
-  );
 }
 
 // Lightweight logger with env-controlled levels

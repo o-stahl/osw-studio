@@ -5,6 +5,7 @@
  * Provides methods to push local data to server and pull server data to browser.
  */
 
+import { translator } from '@/lib/i18n/runtime';
 import { Project, VirtualFile, CustomTemplate } from './types';
 import { Skill } from './skills/types';
 import type { ModelTemplate } from '@/lib/llm/models/assignment';
@@ -252,7 +253,7 @@ export class SyncManager {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : translator()('sync.networkError'),
       };
     }
   }
@@ -270,7 +271,7 @@ export class SyncManager {
       if (oversized.length > 0) {
         return {
           success: false,
-          error: `Too large to sync (over ${Math.round(PUSH_FILE_LIMIT_BYTES / 1024 / 1024)}MB once encoded): ${oversized.join(', ')}`,
+          error: translator()('sync.tooLargeEncoded', { mb: Math.round(PUSH_FILE_LIMIT_BYTES / 1024 / 1024), files: oversized.join(', ') }),
         };
       }
 
@@ -307,7 +308,7 @@ export class SyncManager {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : translator()('sync.networkError'),
       };
     }
   }
@@ -341,7 +342,7 @@ export class SyncManager {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : translator()('sync.networkError'),
       };
     }
   }
@@ -389,7 +390,7 @@ export class SyncManager {
 
       const data = await response.json();
       if (!data.project) {
-        return { success: false, error: `Project ${projectId} not found on server` };
+        return { success: false, error: translator()('sync.notOnServer', { id: projectId }) };
       }
 
       return {
@@ -402,7 +403,7 @@ export class SyncManager {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : translator()('sync.networkError'),
       };
     }
   }
@@ -433,7 +434,7 @@ export class SyncManager {
       const data = await response.json() as { project: Project; files: FileManifestEntry[] };
       return { status: 'ok', project: data.project, files: data.files };
     } catch (error) {
-      return { status: 'unavailable', error: error instanceof Error ? error.message : 'Network error' };
+      return { status: 'unavailable', error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
   }
 
@@ -464,7 +465,7 @@ export class SyncManager {
     if (oversized.length > 0) {
       return {
         success: false,
-        error: `Too large to sync (over ${Math.round(PUSH_FILE_LIMIT_BYTES / 1024 / 1024)}MB once encoded): ${oversized.join(', ')}`,
+        error: translator()('sync.tooLargeEncoded', { mb: Math.round(PUSH_FILE_LIMIT_BYTES / 1024 / 1024), files: oversized.join(', ') }),
       };
     }
 
@@ -530,7 +531,7 @@ export class SyncManager {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : translator()('sync.networkError'),
       };
     }
   }
@@ -620,7 +621,7 @@ export class SyncManager {
         options
       );
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
   }
 
@@ -656,7 +657,7 @@ export class SyncManager {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : translator()('sync.networkError'),
       };
     }
   }
@@ -690,7 +691,7 @@ export class SyncManager {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : translator()('sync.networkError'),
       };
     }
   }
@@ -724,7 +725,7 @@ export class SyncManager {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : translator()('sync.networkError'),
       };
     }
   }
@@ -760,7 +761,7 @@ export class SyncManager {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : translator()('sync.networkError'),
       };
     }
   }
@@ -790,7 +791,7 @@ export class SyncManager {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : translator()('sync.networkError'),
       };
     }
   }
@@ -825,7 +826,7 @@ export class SyncManager {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : translator()('sync.networkError'),
       };
     }
   }
@@ -851,7 +852,7 @@ export class SyncManager {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : translator()('sync.networkError'),
       };
     }
   }
@@ -871,7 +872,7 @@ export class SyncManager {
       const data = await response.json();
       return { success: true, modelTemplates: data.modelTemplates || [] };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
   }
 
@@ -890,7 +891,7 @@ export class SyncManager {
       const data = await response.json();
       return { success: data.success, created: data.created, updated: data.updated, error: data.errors?.join(', ') };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
   }
 
@@ -905,7 +906,7 @@ export class SyncManager {
       const data = await response.json();
       return { success: true, modelTemplate: data.modelTemplate };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
   }
 
@@ -924,7 +925,7 @@ export class SyncManager {
       const data = await response.json();
       return { success: true, modelTemplate: data.modelTemplate, action: data.action };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
   }
 
@@ -938,7 +939,7 @@ export class SyncManager {
       }
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
   }
 
@@ -957,7 +958,7 @@ export class SyncManager {
       const data = await response.json();
       return { success: true, interviewTemplates: data.interviewTemplates || [] };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
   }
 
@@ -976,7 +977,7 @@ export class SyncManager {
       const data = await response.json();
       return { success: data.success, created: data.created, updated: data.updated, error: data.errors?.join(', ') };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
   }
 
@@ -991,7 +992,7 @@ export class SyncManager {
       const data = await response.json();
       return { success: true, interviewTemplate: data.interviewTemplate };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
   }
 
@@ -1010,7 +1011,7 @@ export class SyncManager {
       const data = await response.json();
       return { success: true, interviewTemplate: data.interviewTemplate, action: data.action };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
   }
 
@@ -1024,7 +1025,7 @@ export class SyncManager {
       }
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
   }
 
@@ -1043,7 +1044,7 @@ export class SyncManager {
       const data = await response.json();
       return { success: true, connections: data.connections || [] };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
   }
 
@@ -1062,7 +1063,7 @@ export class SyncManager {
       const data = await response.json();
       return { success: true, connection: data.connection, action: data.action };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
   }
 
@@ -1076,7 +1077,7 @@ export class SyncManager {
       }
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
   }
 
@@ -1109,7 +1110,7 @@ export class SyncManager {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : translator()('sync.networkError'),
       };
     }
   }
@@ -1148,7 +1149,7 @@ export class SyncManager {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : translator()('sync.networkError'),
       };
     }
   }
@@ -1178,7 +1179,7 @@ export class SyncManager {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : translator()('sync.networkError'),
       };
     }
   }
@@ -1195,7 +1196,7 @@ export class SyncManager {
       if (oversized.length > 0) {
         return {
           success: false,
-          error: `Too large to sync (over ${Math.round(PUSH_FILE_LIMIT_BYTES / 1024 / 1024)}MB once encoded): ${oversized.join(', ')}`,
+          error: translator()('sync.tooLargeEncoded', { mb: Math.round(PUSH_FILE_LIMIT_BYTES / 1024 / 1024), files: oversized.join(', ') }),
         };
       }
 
@@ -1231,7 +1232,7 @@ export class SyncManager {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : translator()('sync.networkError'),
       };
     }
   }
@@ -1257,7 +1258,7 @@ export class SyncManager {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : translator()('sync.networkError'),
       };
     }
   }
@@ -1298,7 +1299,7 @@ export class SyncManager {
 
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
   }
 
@@ -1371,12 +1372,12 @@ export class SyncManager {
         }
       } catch (writeError) {
         console.error('[SyncManager] Failed to write pulled backend features to IndexedDB:', writeError);
-        return { success: false, error: writeError instanceof Error ? writeError.message : 'Failed to write to IndexedDB' };
+        return { success: false, error: writeError instanceof Error ? writeError.message : 'Failed to write to IndexedDB' }; // i18n-ignore: the only caller discards the result
       }
 
       return { success: true };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
   }
 
@@ -1413,7 +1414,7 @@ export class SyncManager {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : translator()('sync.networkError'),
       };
     }
   }

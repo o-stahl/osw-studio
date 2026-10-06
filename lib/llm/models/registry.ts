@@ -17,7 +17,7 @@ const RECOMMENDED_DESCRIPTION =
 export const BUILT_IN_MODEL_TEMPLATES: ModelTemplate[] = [
   {
     id: 'or-recommended',
-    name: 'OpenRouter · Recommended',
+    name: 'OpenRouter · Recommended', // i18n-ignore: shown through useModelTemplateCopy
     builtin: true,
     description: RECOMMENDED_DESCRIPTION,
     assignment: {
@@ -30,7 +30,7 @@ export const BUILT_IN_MODEL_TEMPLATES: ModelTemplate[] = [
   },
   {
     id: 'hf-recommended',
-    name: 'HuggingFace · Recommended',
+    name: 'HuggingFace · Recommended', // i18n-ignore: shown through useModelTemplateCopy
     builtin: true,
     description: RECOMMENDED_DESCRIPTION,
     assignment: {

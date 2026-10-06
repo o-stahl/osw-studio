@@ -1,19 +1,14 @@
 'use client';
 
 import React, { useState, useMemo, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
+import { useBlockCatalog, useBlockCategories } from '@/lib/i18n/use-block-catalog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronRight, Info, X } from 'lucide-react';
-import { SEMANTIC_BLOCKS, BLOCK_CATEGORIES } from '@/lib/semantic-blocks/registry';
+import { SEMANTIC_BLOCKS, BLOCK_CATEGORIES, getBlockById } from '@/lib/semantic-blocks/registry';
 import { BlockCard } from './block-card';
 import type { SemanticBlock } from '@/lib/semantic-blocks/types';
-
-const CATEGORY_LABELS: Record<string, string> = {
-  Sections: 'Page Structure',
-  Content: 'Media & Text',
-  Interactive: 'Forms & Buttons',
-  Data: 'Numbers & Charts',
-};
 
 interface PalettePanelProps {
   onDragStart: (block: SemanticBlock) => void;
@@ -22,17 +17,38 @@ interface PalettePanelProps {
 }
 
 export function PalettePanel({ onDragStart, onClose, collapsed = false }: PalettePanelProps) {
+  const tt = useTranslations('tooltips');
+  const t = useTranslations('semanticBlocks');
   const [search, setSearch] = useState('');
   const [showInfo, setShowInfo] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
 
+  const blockCopy = useBlockCatalog();
+  const categoryLabels = useBlockCategories();
+
+  // Palette copy is translated here, so the cards below keep reading `block.name` and the search
+  // matches what the person actually sees.
+  const localisedBlocks = useMemo(
+    () => SEMANTIC_BLOCKS.map((b) => {
+      const copy = blockCopy[b.id];
+      return copy ? { ...b, name: copy.name, description: copy.description } : b;
+    }),
+    [blockCopy],
+  );
+
   const filteredBlocks = useMemo(() => {
-    if (!search.trim()) return SEMANTIC_BLOCKS;
+    if (!search.trim()) return localisedBlocks;
     const q = search.toLowerCase();
-    return SEMANTIC_BLOCKS.filter(
+    return localisedBlocks.filter(
       b => b.name.toLowerCase().includes(q) || b.description.toLowerCase().includes(q)
     );
-  }, [search]);
+  }, [search, localisedBlocks]);
+
+  // The cards carry translated copy; the drop marker and the agent need the English registry entry.
+  const handleBlockDragStart = useCallback(
+    (block: SemanticBlock) => onDragStart(getBlockById(block.id) ?? block),
+    [onDragStart],
+  );
 
   const toggleCategory = useCallback((cat: string) => {
     setCollapsedCategories(prev => {
@@ -52,12 +68,12 @@ export function PalettePanel({ onDragStart, onClose, collapsed = false }: Palett
       {/* Header */}
       <div className="px-3 pt-2.5 pb-2 border-b border-border/50">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold">Blocks</h3>
-          <span className="text-[11px] text-muted-foreground flex-1 truncate">Drag a block into the preview</span>
+          <h3 className="text-sm font-semibold">{t('panelTitle')}</h3>
+          <span className="text-[11px] text-muted-foreground flex-1 truncate">{t('dragHint')}</span>
           <button
             onClick={() => setShowInfo(!showInfo)}
             className="flex-shrink-0 p-0.5 rounded text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-            title={showInfo ? 'Hide info' : 'What are blocks?'}
+            title={showInfo ? t('hideInfo') : t('whatAreBlocks')}
           >
             <Info className="h-3.5 w-3.5" />
           </button>
@@ -66,18 +82,18 @@ export function PalettePanel({ onDragStart, onClose, collapsed = false }: Palett
             variant="ghost"
             className="h-6 w-6 flex-shrink-0"
             onClick={onClose}
-            title="Close palette"
+            title={tt('closePalette')}
           >
             <X className="h-3 w-3" />
           </Button>
         </div>
         {showInfo && (
           <p className="text-[10px] text-muted-foreground mt-1.5 leading-snug">
-            A semantic block is an implementation description, not a pre-built component. Place it on the preview where you want it, and the AI receives the block&apos;s specification along with the surrounding HTML context to write code that integrates with your existing implementation.
+            {t('infoParagraph')}
           </p>
         )}
         <Input
-          placeholder="Search blocks..."
+          placeholder={t('searchPlaceholder')}
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="h-7 text-xs mt-2"
@@ -98,13 +114,13 @@ export function PalettePanel({ onDragStart, onClose, collapsed = false }: Palett
                 className="flex items-center gap-1 w-full px-1 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
               >
                 {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                {CATEGORY_LABELS[category] || category}
+                {categoryLabels[category] ?? category}
                 <span className="text-muted-foreground/50 ml-auto">{blocks.length}</span>
               </button>
               {!isCollapsed && (
                 <div className="grid grid-cols-2 gap-1 pl-1">
                   {blocks.map(block => (
-                    <BlockCard key={block.id} block={block} onDragStart={onDragStart} />
+                    <BlockCard key={block.id} block={block} onDragStart={handleBlockDragStart} />
                   ))}
                 </div>
               )}
@@ -112,7 +128,7 @@ export function PalettePanel({ onDragStart, onClose, collapsed = false }: Palett
           );
         })}
         {filteredBlocks.length === 0 && (
-          <div className="text-center text-xs text-muted-foreground py-4">No blocks match &quot;{search}&quot;</div>
+          <div className="text-center text-xs text-muted-foreground py-4">{t('noMatch', { query: search })}</div>
         )}
       </div>
     </div>

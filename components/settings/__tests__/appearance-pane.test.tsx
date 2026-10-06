@@ -18,6 +18,8 @@ import { createRoot, type Root } from 'react-dom/client';
 
 const mocks = vi.hoisted(() => ({
   setTheme: vi.fn(),
+  refresh: vi.fn(),
+  setLocale: vi.fn(),
   setTelemetryOptIn: vi.fn(),
   toastError: vi.fn(),
 }));
@@ -25,6 +27,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('next-themes', () => ({ useTheme: () => ({ theme: 'dark', setTheme: mocks.setTheme }) }));
 vi.mock('@/lib/telemetry', () => ({ setTelemetryOptIn: mocks.setTelemetryOptIn, track: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { error: mocks.toastError, success: vi.fn() } }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.refresh }) }));
+vi.mock('@/lib/i18n/actions', () => ({ setLocale: mocks.setLocale }));
 vi.mock('@/lib/config/storage', () => ({
   configManager: {
     getSettings: () => ({ telemetryOptIn: true }),
@@ -33,6 +37,7 @@ vi.mock('@/lib/config/storage', () => ({
 }));
 
 import { AppearancePane } from '@/components/settings/appearance-pane';
+import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import { ViewModeProvider } from '@/components/view-mode-provider';
 import { readLocalStudioView } from '@/lib/view-mode-event';
 
@@ -40,7 +45,7 @@ let container: HTMLDivElement;
 let root: Root;
 
 function mount(node: React.ReactNode) {
-  act(() => { root.render(node); });
+  act(() => { root.render(withMessages(node)); });
 }
 
 /** The Interface row's two buttons, by their labels. */
@@ -66,7 +71,19 @@ function rowTitles(): string[] {
   return Array.from(container.querySelectorAll('*'))
     .filter((el) => el.children.length === 0)
     .map((el) => el.textContent ?? '')
-    .filter((t) => ['Interface', 'Theme', 'Anonymous usage analytics'].includes(t));
+    .filter((t) => ['Interface', 'Theme', 'Language', 'Anonymous usage analytics'].includes(t));
+}
+
+/** The Language row's buttons, each named in its own language. */
+function languageButtons() {
+  return Array.from(container.querySelectorAll('button'))
+    .filter((b) => ['English', '한국어', 'suomi'].includes(b.textContent ?? ''));
+}
+
+function pickLanguage(name: string) {
+  const button = languageButtons().find((b) => b.textContent === name);
+  if (!button) throw new Error(`no ${name} button`);
+  return act(async () => { button.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
 }
 
 beforeEach(() => {
@@ -76,6 +93,7 @@ beforeEach(() => {
   root = createRoot(container);
   localStorage.clear();
   vi.clearAllMocks();
+  mocks.setLocale.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -103,7 +121,7 @@ describe('the pane as it first paints', () => {
     // arrived and shoved Theme and Analytics down.
     mount(<ViewModeProvider initialStudioView={true}><AppearancePane /></ViewModeProvider>);
 
-    expect(rowTitles()).toEqual(['Interface', 'Theme', 'Anonymous usage analytics']);
+    expect(rowTitles()).toEqual(['Interface', 'Theme', 'Language', 'Anonymous usage analytics']);
   });
 
   it('shows the view the server looked up', () => {
@@ -187,5 +205,53 @@ describe('server mode, where the choice is the account', () => {
     // Leaving the control on the choice that failed would read as saved.
     expect(chosen()).toBe('Studio');
     expect(mocks.toastError).toHaveBeenCalled();
+  });
+});
+
+describe('the Language row', () => {
+  it('saves the picked language, then refreshes so the server render comes back in it', async () => {
+    mount(<ViewModeProvider initialStudioView={true}><AppearancePane /></ViewModeProvider>);
+
+    await pickLanguage('suomi');
+
+    expect(mocks.setLocale).toHaveBeenCalledTimes(1);
+    expect(mocks.setLocale).toHaveBeenCalledWith('fi');
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+    // The cookie has to be written before the refresh asks the server for the new render.
+    expect(mocks.setLocale.mock.invocationCallOrder[0]).toBeLessThan(mocks.refresh.mock.invocationCallOrder[0]);
+    expect(mocks.toastError).not.toHaveBeenCalled();
+  });
+
+  it('says so and releases the control when the language cannot be saved', async () => {
+    mocks.setLocale.mockRejectedValue(new Error('cookie refused'));
+    mount(<ViewModeProvider initialStudioView={true}><AppearancePane /></ViewModeProvider>);
+
+    await pickLanguage('suomi');
+
+    expect(mocks.toastError).toHaveBeenCalledWith('Could not change the language');
+    expect(mocks.refresh).not.toHaveBeenCalled();
+    // Back on the language actually in use, and pickable again rather than stuck pending.
+    expect(languageButtons().find((b) => b.getAttribute('data-state') === 'on')?.textContent).toBe('English');
+    expect(languageButtons().every((b) => !b.disabled)).toBe(true);
+  });
+
+  it('leaves the language alone when the one in use is pressed again', async () => {
+    // A single toggle group reports a press on its pressed item as '' (deselect). Passed on, that
+    // is a server call and a refresh for nothing.
+    mount(<ViewModeProvider initialStudioView={true}><AppearancePane /></ViewModeProvider>);
+
+    await pickLanguage('English');
+
+    expect(mocks.setLocale).not.toHaveBeenCalled();
+    expect(mocks.refresh).not.toHaveBeenCalled();
+  });
+
+  it('holds the row while a switch is saving', async () => {
+    mocks.setLocale.mockReturnValue(new Promise(() => {}));
+    mount(<ViewModeProvider initialStudioView={true}><AppearancePane /></ViewModeProvider>);
+
+    await pickLanguage('suomi');
+
+    expect(languageButtons().every((b) => b.disabled)).toBe(true);
   });
 });

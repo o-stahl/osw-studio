@@ -1,6 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
+import { isFreeModels } from '@/lib/llm/suggestions/free-models';
+import { useModelTemplateCopy } from '@/lib/i18n/use-model-template-copy';
 import { Image as ImageIcon, Mic, Brain, ChevronRight, ChevronDown, Lock, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -39,6 +42,7 @@ interface ProjectModelsPanelProps {
 // ---------------------------------------------------------------------------
 
 function useEnrichedName(ref: ModelRef | null): string {
+  const tm = useTranslations('models');
   const [name, setName] = useState<string>(() => (ref ? modelRefLabel(ref) : ''));
 
   useEffect(() => {
@@ -54,7 +58,7 @@ function useEnrichedName(ref: ModelRef | null): string {
     return () => { cancelled = true; };
   }, [ref?.provider, ref?.model]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return name;
+  return ref && isFreeModels(ref.model) ? tm('freeModels') : name;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,6 +72,8 @@ interface SlotValueDisplayProps {
 }
 
 function SlotValueDisplay({ slot, value, agentRef }: SlotValueDisplayProps) {
+  // Above the early return below, so the hook order never changes between renders.
+  const tm = useTranslations('models');
   // For agent slot the value is always a ModelRef
   const directRef: ModelRef | null =
     slot === 'agent'
@@ -97,7 +103,7 @@ function SlotValueDisplay({ slot, value, agentRef }: SlotValueDisplayProps) {
     return (
       <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
         <span className="w-[7px] h-[7px] rounded-full bg-muted-foreground/40 flex-shrink-0" />
-        {slot === 'voiceInput' ? 'Off — no mic' : 'Off'}
+        {slot === 'voiceInput' ? tm('offNoMic') : tm('off')}
       </div>
     );
   }
@@ -117,7 +123,7 @@ function SlotValueDisplay({ slot, value, agentRef }: SlotValueDisplayProps) {
     return (
       <div className="flex items-center gap-2 flex-wrap">
         <span className="font-semibold text-sm tracking-[-0.01em] text-foreground">
-          Browser / on-device
+          {tm('browserOnDevice')}
         </span>
       </div>
     );
@@ -214,6 +220,11 @@ function Section({
 // ---------------------------------------------------------------------------
 
 export function ProjectModelsPanel({ onManageSettings, onDone }: ProjectModelsPanelProps) {
+  const tc = useTranslations('common');
+  const tm = useTranslations('models');
+  const copy = useModelTemplateCopy();
+  const tcn = useTranslations('connections');
+  const tt = useTranslations('tooltips');
   // Re-resolve whenever the global model config changes. The root-mounted useModelConfigSignal
   // listens to the `modelConfigChanged` window event (dispatched by configManager writes) and
   // bumps this counter, which re-renders this panel so the display stays in sync.
@@ -308,7 +319,7 @@ export function ProjectModelsPanel({ onManageSettings, onDone }: ProjectModelsPa
       <div className="flex-shrink-0 p-3 border-b border-border">
         <div className="flex items-center gap-2.5">
           <p className="text-xs font-semibold tracking-[0.08em] uppercase text-muted-foreground shrink-0">
-            Models
+            {tc('terms.models')}
           </p>
           <Select value={active.id} onValueChange={handleTemplateSelect}>
             <SelectTrigger size="sm" className="rounded-full gap-1.5 text-[13px] font-medium text-foreground min-w-0 max-w-[220px]">
@@ -321,7 +332,7 @@ export function ProjectModelsPanel({ onManageSettings, onDone }: ProjectModelsPa
                 <SelectItem key={t.id} value={t.id}>
                   <span className="flex items-center gap-1.5">
                     {t.builtin && <Lock size={12} className="text-muted-foreground shrink-0" />}
-                    {t.name}
+                    {copy(t).name}
                   </span>
                 </SelectItem>
               ))}
@@ -342,7 +353,7 @@ export function ProjectModelsPanel({ onManageSettings, onDone }: ProjectModelsPa
               )}
             >
               <RotateCcw size={12} strokeWidth={2} />
-              Reset
+              {tc('actions.reset')}
             </button>
           )}
 
@@ -353,12 +364,12 @@ export function ProjectModelsPanel({ onManageSettings, onDone }: ProjectModelsPa
               <TooltipTrigger asChild>
                 <span className="shrink-0" tabIndex={0}>
                   <Button variant="default" size="sm" disabled className="h-7 text-xs pointer-events-none">
-                    Save
+                    {tc('actions.save')}
                   </Button>
                 </span>
               </TooltipTrigger>
               <TooltipContent side="top">
-                Built-in templates cannot be changed
+                {tt('builtInTemplatesLocked')}
               </TooltipContent>
             </Tooltip>
           ) : (
@@ -369,7 +380,7 @@ export function ProjectModelsPanel({ onManageSettings, onDone }: ProjectModelsPa
               onClick={handleSave}
               className="h-7 text-xs shrink-0"
             >
-              Save
+              {tc('actions.save')}
             </Button>
           )}
         </div>
@@ -380,7 +391,7 @@ export function ProjectModelsPanel({ onManageSettings, onDone }: ProjectModelsPa
         <div className="space-y-2">
           <Section
             icon={<Brain size={11} strokeWidth={2} />}
-            label="Agent"
+            label={tcn('agent')}
             expanded={openSlot === 'agent'}
             onToggle={() => toggleSlot('agent')}
             slot="agent"
@@ -391,7 +402,7 @@ export function ProjectModelsPanel({ onManageSettings, onDone }: ProjectModelsPa
           />
           <Section
             icon={<ImageIcon size={11} strokeWidth={2} />}
-            label="Image generation"
+            label={tc('labels.imageGeneration')}
             expanded={openSlot === 'imageGen'}
             onToggle={() => toggleSlot('imageGen')}
             slot="imageGen"
@@ -402,7 +413,7 @@ export function ProjectModelsPanel({ onManageSettings, onDone }: ProjectModelsPa
           />
           <Section
             icon={<Mic size={11} strokeWidth={2} />}
-            label="Voice input"
+            label={tc('labels.voiceInput')}
             expanded={openSlot === 'voiceInput'}
             onToggle={() => toggleSlot('voiceInput')}
             slot="voiceInput"
@@ -417,8 +428,7 @@ export function ProjectModelsPanel({ onManageSettings, onDone }: ProjectModelsPa
       {/* ---- Footer ---- */}
       <div className="flex-shrink-0 border-t border-border px-[18px] py-[10px] space-y-[6px]">
         <p className="text-xs text-muted-foreground leading-relaxed">
-          Applies to{' '}
-          <strong className="text-muted-foreground font-semibold">all projects</strong>.
+          {tm.rich('appliesToAll', { b: (chunks) => <strong className="text-muted-foreground font-semibold">{chunks}</strong> })}
         </p>
         <button
           type="button"
@@ -430,7 +440,7 @@ export function ProjectModelsPanel({ onManageSettings, onDone }: ProjectModelsPa
             'hover:text-primary',
           )}
         >
-          Manage providers &amp; templates
+          {tm('manageProvidersTemplates')}
           <ChevronRight size={13} strokeWidth={2} />
         </button>
 
@@ -438,7 +448,7 @@ export function ProjectModelsPanel({ onManageSettings, onDone }: ProjectModelsPa
         {onDone && (
           <div className="flex items-center gap-2 pt-1.5">
             <Button variant="default" size="sm" className="flex-1" onClick={onDone}>
-              Done
+              {tc('actions.done')}
             </Button>
           </div>
         )}

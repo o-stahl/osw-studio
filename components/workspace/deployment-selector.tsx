@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Deployment } from '@/lib/vfs/types';
+import { useTranslations } from 'next-intl';
 import { Server, Loader2 } from 'lucide-react';
 import {
   Select,
@@ -27,6 +28,7 @@ export function DeploymentSelector({
   className,
   workspaceId,
 }: DeploymentSelectorProps) {
+  const t = useTranslations('deployments');
   const apiBase = workspaceId ? `/api/w/${workspaceId}` : '/api';
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,7 +88,7 @@ export function DeploymentSelector({
     return (
       <div className={cn('flex items-center gap-2 text-sm text-muted-foreground', className)}>
         <Loader2 className="h-4 w-4 animate-spin" />
-        <span>Loading deployments...</span>
+        <span>{t('loading')}</span>
       </div>
     );
   }
@@ -114,11 +116,11 @@ export function DeploymentSelector({
         }}
       >
         <SelectTrigger size="sm" className="w-[180px] h-8">
-          <SelectValue placeholder="No deployment" />
+          <SelectValue placeholder={t('none')} />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="none">
-            <span className="text-muted-foreground">No deployment</span>
+            <span className="text-muted-foreground">{t('none')}</span>
           </SelectItem>
           {databaseEnabledDeployments.map((deployment) => (
             <SelectItem key={deployment.id} value={deployment.id}>

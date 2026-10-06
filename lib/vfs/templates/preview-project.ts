@@ -49,15 +49,15 @@ export interface TemplatePreviewProject {
 }
 
 /**
- * Why a template cannot be shown, or null when it can be.
+ * Why a template cannot be shown, as a code the UI words, or null when it can be.
  *
  * Terminal runtimes are the whole of it: Python and Lua produce console output rather than a page,
  * and there is nothing for an iframe to render. Everything else has an entry point, including the
  * Spring Boot kit, whose page is a project overview rather than the service.
  */
-export function templatePreviewUnavailableReason(runtime: ProjectRuntime): string | null {
+export function templatePreviewUnavailableReason(runtime: ProjectRuntime): 'console' | null {
   if (getRuntimeConfig(runtime).previewMode === 'terminal') {
-    return 'This template runs in the Console and has no page to preview.';
+    return 'console';
   }
   return null;
 }
@@ -103,7 +103,7 @@ export async function createTemplatePreviewProject(
   const projectId = `${TEMPLATE_PREVIEW_ID_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   const project = await vfs.createProject(
-    `Preview: ${resolved.template.name}`,
+    `Preview: ${resolved.template.name}`, // i18n-ignore: the name of a throwaway project nobody sees listed
     undefined,
     projectId
   );

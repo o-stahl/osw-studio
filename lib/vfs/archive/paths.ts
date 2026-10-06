@@ -1,7 +1,8 @@
 import type { ArchiveIssue } from './types';
+import { said, type ArchiveText, type ArchiveTextKey } from './text';
 
 /** The length term of updateFile's guard (lib/vfs/index.ts:1090); createFile has no such check. */
-const MAX_PATH_LENGTH = 200;
+export const MAX_PATH_LENGTH = 200;
 
 /**
  * C0 controls, DEL and C1, plus the bidi marks and overrides. The overrides matter beyond
@@ -13,7 +14,7 @@ const UNSAFE_CHARS = /[\u0000-\u001F\u007F-\u009F\u200E\u200F\u202A-\u202E\u2066
 
 export type PathResult =
   | { ok: true; path: string }
-  | { ok: false; code: ArchiveIssue['code']; message: string };
+  | { ok: false; code: ArchiveIssue['code']; message: string; text: ArchiveText };
 
 /**
  * Normalize an archive entry name to a project path, or refuse it.
@@ -26,48 +27,49 @@ export type PathResult =
  * '/./', so ordinary archives written by zip, Python's zipfile and most Java tools differ here.
  */
 export function validateArchivePath(name: string, unsafeOriginalName?: string): PathResult {
-  const reject = (message: string, code: ArchiveIssue['code'] = 'path-rejected'): PathResult =>
-    ({ ok: false, code, message });
+  const reject = (
+    key: ArchiveTextKey,
+    code: ArchiveIssue['code'] = 'path-rejected',
+    values?: ArchiveText['values']
+  ): PathResult => ({ ok: false, code, ...said(key, values) });
 
-  if (!name || !name.trim()) return reject('Empty path.');
+  if (!name || !name.trim()) return reject('emptyPath');
   // JSZip's loadAsync resolves the stored name: it strips '..' AND collapses './' and '//'.
   // So a mismatch is normal. Only a real parent segment in the raw name is a traversal signal.
   if (unsafeOriginalName && unsafeOriginalName.split(/[/\\]/).includes('..')) {
-    return reject('This path points outside the project. The archive may be damaged or unsafe.');
+    return reject('outsideProject');
   }
   // createFile and updateFile both normalize with `.replace(/\\n$|\\r$|\n$|\r$/, '').trim()`
   // (lib/vfs/index.ts:968, :1089), so '/a.txt ' and '/a.txt' are two paths here and one file in
   // storage — an entry that looks 'added' in the preview but overwrites on apply. Whole-string
   // only: .trim() never touches a space inside a segment, so 'a /b.txt' is an ordinary filename.
   if (name !== name.replace(/\\n$|\\r$|\n$|\r$/, '').trim()) {
-    return reject('Path has leading or trailing whitespace.');
+    return reject('whitespace');
   }
-  if (name.includes('\0')) return reject('Path contains a null byte.');
-  if (UNSAFE_CHARS.test(name)) return reject('Path contains a control or text-direction character.');
+  if (name.includes('\0')) return reject('nullByte');
+  if (UNSAFE_CHARS.test(name)) return reject('controlChar');
   // The remaining three terms of updateFile's guard; a path failing any of them validates here
   // and then throws mid-apply, after the preview promised it was fine.
-  if (name.includes('@@')) return reject("Path contains '@@', which file storage rejects.");
+  if (name.includes('@@')) return reject('doubleAt');
   // Named rather than described: an archive from an older Windows tool separates every path this
   // way, so the user sees this on all of their files at once and has to be told it is the tool
   // and not their project.
   if (name.includes('\\')) {
-    return reject(
-      'Path uses Windows-style separators. Re-create the archive with a tool that writes forward slashes.'
-    );
+    return reject('windowsSeparators');
   }
-  if (/^[a-zA-Z]:/.test(name)) return reject('Path is an absolute Windows path.');
+  if (/^[a-zA-Z]:/.test(name)) return reject('windowsAbsolute');
 
   const segments = name.split('/').filter((s) => s.length > 0);
-  if (segments.length === 0) return reject('Empty path.');
+  if (segments.length === 0) return reject('emptyPath');
   for (const segment of segments) {
     if (segment === '.' || segment === '..') {
-      return reject('This path points outside the project. The archive may be damaged or unsafe.');
+      return reject('outsideProject');
     }
   }
 
   const path = '/' + segments.join('/');
   if (path.length > MAX_PATH_LENGTH) {
-    return reject(`Path is longer than ${MAX_PATH_LENGTH} characters.`, 'path-too-long');
+    return reject('pathTooLong', 'path-too-long', { max: MAX_PATH_LENGTH });
   }
   return { ok: true, path };
 }

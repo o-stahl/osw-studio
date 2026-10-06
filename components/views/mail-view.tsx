@@ -15,6 +15,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -216,6 +217,9 @@ function PasswordControl({
   intent: PasswordIntent;
   onChange: (intent: PasswordIntent) => void;
 }) {
+  const t = useTranslations('mail');
+  const tcm = useTranslations('common');
+  const tp = useTranslations('publishSettings');
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState('');
 
@@ -241,11 +245,11 @@ function PasswordControl({
             setValue(e.target.value);
             onChange(e.target.value === '' ? undefined : e.target.value);
           }}
-          placeholder="New password"
+          placeholder={tp('newPassword')}
           className="h-9 w-full max-w-[220px]"
         />
         <Button variant="accent" size="sm" onClick={() => setEditing(false)}>
-          Done
+          {tcm('actions.done')}
         </Button>
         <Button
           variant="ghost"
@@ -256,7 +260,7 @@ function PasswordControl({
             onChange(undefined);
           }}
         >
-          Cancel
+          {tcm('actions.cancel')}
         </Button>
       </div>
     );
@@ -266,12 +270,12 @@ function PasswordControl({
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-xs text-muted-foreground">
         {state === 'pending-set'
-          ? 'Set on save'
+          ? tp('setOnSave')
           : state === 'pending-clear'
-            ? 'Cleared on save'
+            ? tp('clearedOnSave')
             : state === 'set'
-              ? 'Stored'
-              : 'Not set'}
+              ? t('stored')
+              : tp('notSet')}
       </span>
       <Button
         variant="outline"
@@ -281,16 +285,16 @@ function PasswordControl({
           setEditing(true);
         }}
       >
-        {passwordSet || state === 'pending-set' ? 'Change' : 'Set'}
+        {passwordSet || state === 'pending-set' ? tcm('actions.change') : tp('set')}
       </Button>
       {state === 'set' && (
         <Button variant="ghost" size="sm" onClick={() => onChange(null)}>
-          Clear
+          {tcm('actions.clear')}
         </Button>
       )}
       {(state === 'pending-set' || state === 'pending-clear') && (
         <Button variant="ghost" size="sm" onClick={() => onChange(undefined)}>
-          Undo
+          {tcm('actions.undo')}
         </Button>
       )}
     </div>
@@ -314,12 +318,14 @@ function SmtpFields({
   onPasswordChange: (intent: PasswordIntent) => void;
   fromHint?: React.ReactNode;
 }) {
+  const tc = useTranslations('common');
+  const t = useTranslations('mail');
   const set = (patch: Partial<SmtpForm>) => onChange({ ...form, ...patch });
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap gap-3">
-        <Field id={`${idPrefix}-host`} label="Host" className="min-w-[170px] flex-1">
+        <Field id={`${idPrefix}-host`} label={t('host')} className="min-w-[170px] flex-1">
           <Input
             id={`${idPrefix}-host`}
             value={form.host}
@@ -330,7 +336,7 @@ function SmtpFields({
             className="h-9 font-mono text-[13px]"
           />
         </Field>
-        <Field id={`${idPrefix}-port`} label="Port" className="w-[88px]">
+        <Field id={`${idPrefix}-port`} label={t('port')} className="w-[88px]">
           <Input
             id={`${idPrefix}-port`}
             value={form.port}
@@ -340,7 +346,7 @@ function SmtpFields({
             className="h-9 font-mono text-[13px]"
           />
         </Field>
-        <Field id={`${idPrefix}-secure`} label="Encryption" className="w-[136px]">
+        <Field id={`${idPrefix}-secure`} label={t('encryption')} className="w-[136px]">
           <Select
             value={form.secure}
             onValueChange={(value) => set({ secure: value as SmtpForm['secure'] })}
@@ -351,25 +357,25 @@ function SmtpFields({
             <SelectContent>
               <SelectItem value="starttls">STARTTLS</SelectItem>
               <SelectItem value="ssl">SSL/TLS</SelectItem>
-              <SelectItem value="none">None</SelectItem>
+              <SelectItem value="none">{t('none')}</SelectItem>
             </SelectContent>
           </Select>
         </Field>
       </div>
 
       <div className="flex flex-wrap gap-3">
-        <Field id={`${idPrefix}-user`} label="Username" className="min-w-[170px] flex-1">
+        <Field id={`${idPrefix}-user`} label={t('username')} className="min-w-[170px] flex-1">
           <Input
             id={`${idPrefix}-user`}
             value={form.user}
             onChange={(e) => set({ user: e.target.value })}
-            placeholder="Leave empty if the relay does not require a login"
+            placeholder={t('noLoginPlaceholder')}
             autoComplete="off"
             spellCheck={false}
             className="h-9 font-mono text-[13px]"
           />
         </Field>
-        <Field id={`${idPrefix}-password`} label="Password" className="min-w-[240px] flex-1">
+        <Field id={`${idPrefix}-password`} label={tc('labels.password')} className="min-w-[240px] flex-1">
           <PasswordControl
             idPrefix={idPrefix}
             passwordSet={passwordSet}
@@ -379,12 +385,12 @@ function SmtpFields({
         </Field>
       </div>
 
-      <Field id={`${idPrefix}-from`} label="From address" hint={fromHint}>
+      <Field id={`${idPrefix}-from`} label={t('fromAddress')} hint={fromHint}>
         <Input
           id={`${idPrefix}-from`}
           value={form.from}
           onChange={(e) => set({ from: e.target.value })}
-          placeholder="Acme Studio &lt;review@acme.studio&gt;"
+          placeholder={t('fromPlaceholder')}
           autoComplete="off"
           spellCheck={false}
           className="h-9 font-mono text-[13px]"
@@ -447,11 +453,13 @@ function QueueRow({
   scope: 'workspace' | 'instance';
   action?: React.ReactNode;
 }) {
+  const t = useTranslations('mail');
+  const tq = useTranslations('mail.queueSummary');
   if (!stats) {
-    return <SettingRow title="Queue" description="Could not read the queue." />;
+    return <SettingRow title={t('queue')} description={t('couldNotReadQueue')} />;
   }
 
-  const queue = presentQueue(stats, { scope });
+  const queue = presentQueue(tq, stats, { scope });
 
   return (
     <SettingRow
@@ -470,17 +478,18 @@ function QueueRow({
 }
 
 function StatusBadge({ state }: { state: SendingState }) {
+  const t = useTranslations('mail');
   if (state === 'sending') {
     return (
       <Badge variant="outline" className="border-green-500 text-green-500">
-        Sending
+        {t('sending')}
       </Badge>
     );
   }
   if (state === 'not-sending') {
     return (
       <Badge variant="outline" className="border-amber-500 text-amber-500">
-        Not sending
+        {t('notSending')}
       </Badge>
     );
   }
@@ -494,6 +503,9 @@ function StatusBadge({ state }: { state: SendingState }) {
 // ---------------------------------------------------------------------------
 
 export function MailView({ workspaceId }: { workspaceId?: string }) {
+  const tcm = useTranslations('common');
+  const t = useTranslations('mail');
+  const tn = useTranslations('nav');
   const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
   const apiBase = workspaceId ? `/api/w/${workspaceId}` : '/api';
 
@@ -630,11 +642,11 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
     } catch (error) {
       if ((error as Error)?.name === 'AbortError') return;
       logger.error('[MailView] Failed to load mail settings:', error);
-      toast.error('Could not load the mail settings');
+      toast.error(t('loadFailed'));
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [apiBase, applyInstance, applyWorkspace, isServerMode, workspaceId]);
+  }, [apiBase, applyInstance, applyWorkspace, isServerMode, workspaceId, t]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -676,7 +688,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
       if (wsDraft.mode === 'own') {
         const smtp = buildSmtpBody(wsDraft.smtp, wsDraft.password);
         if ('error' in smtp) {
-          toast.error(smtp.error);
+          toast.error(t(smtp.error));
           return;
         }
         Object.assign(body, smtp.body);
@@ -696,16 +708,16 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
       }
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        toast.error(data?.error ?? 'Could not save the mail settings');
+        toast.error(data?.error ?? t('saveFailed'));
         return;
       }
       applyWorkspace(data as WorkspaceMailResponse);
       setWsTest(null);
-      toast.success('Mail settings saved');
+      toast.success(t('saved'));
       void reloadQueues();
     } catch (error) {
       logger.error('[MailView] Failed to save workspace mail settings:', error);
-      toast.error('Could not save the mail settings');
+      toast.error(t('saveFailed'));
     } finally {
       setWsSaving(false);
     }
@@ -718,7 +730,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
       const res = await fetch(`${apiBase}/mail/test`, { method: 'POST' });
       const data = await res.json().catch(() => null);
       setWsTest(
-        presentTestResult({
+        presentTestResult(t, {
           status: res.status,
           error: data?.error ?? null,
           recipient: viewer.email,
@@ -727,7 +739,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
       void reloadQueues();
     } catch (error) {
       logger.error('[MailView] Test send failed:', error);
-      setWsTest(presentTestResult({ status: 0, error: null, recipient: viewer.email }));
+      setWsTest(presentTestResult(t, { status: 0, error: null, recipient: viewer.email }));
     } finally {
       setWsTesting(false);
     }
@@ -744,7 +756,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
 
     const smtp = buildSmtpBody(instDraft.smtp, instDraft.password);
     if ('error' in smtp) {
-      toast.error(smtp.error);
+      toast.error(t(smtp.error));
       return;
     }
 
@@ -761,16 +773,16 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
       }
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        toast.error(data?.error ?? 'Could not save the mail settings');
+        toast.error(data?.error ?? t('saveFailed'));
         return;
       }
       applyInstance(data as InstanceMailSettings);
       setInstTest(null);
-      toast.success('Instance mail settings saved');
+      toast.success(t('instanceSaved'));
       void reloadQueues();
     } catch (error) {
       logger.error('[MailView] Failed to save instance mail settings:', error);
-      toast.error('Could not save the mail settings');
+      toast.error(t('saveFailed'));
     } finally {
       setInstSaving(false);
     }
@@ -783,7 +795,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
       const res = await fetch('/api/admin/mail/test', { method: 'POST' });
       const data = await res.json().catch(() => null);
       setInstTest(
-        presentTestResult({
+        presentTestResult(t, {
           status: res.status,
           error: data?.error ?? null,
           recipient: viewer.email,
@@ -792,7 +804,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
       void reloadQueues();
     } catch (error) {
       logger.error('[MailView] Instance test send failed:', error);
-      setInstTest(presentTestResult({ status: 0, error: null, recipient: viewer.email }));
+      setInstTest(presentTestResult(t, { status: 0, error: null, recipient: viewer.email }));
     } finally {
       setInstTesting(false);
     }
@@ -812,16 +824,16 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
         held?: number;
       } | null;
       if (!res.ok || !data) {
-        toast.error('Could not run a delivery pass');
+        toast.error(t('deliveryPassFailed'));
         return;
       }
       toast.success(
-        `${data.accepted ?? 0} accepted by the mail server, ${data.failed ?? 0} refused, ${data.held ?? 0} held.`,
+        t('deliveryPassResult', { accepted: data.accepted ?? 0, failed: data.failed ?? 0, held: data.held ?? 0 }),
       );
       void reloadQueues();
     } catch (error) {
       logger.error('[MailView] Delivery pass failed:', error);
-      toast.error('Could not run a delivery pass');
+      toast.error(t('deliveryPassFailed'));
     } finally {
       setInstFlushing(false);
     }
@@ -832,7 +844,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-center text-muted-foreground">
-          <p>Mail is only available in Server Mode</p>
+          <p>{t('serverOnly')}</p>
         </div>
       </div>
     );
@@ -843,7 +855,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
       <div className="flex h-full items-center justify-center">
         <div className="text-center">
           <Spinner size={48} color="#f97316" className="mx-auto" />
-          <p className="mt-4">Loading mail settings...</p>
+          <p className="mt-4">{t('loading')}</p>
         </div>
       </div>
     );
@@ -852,7 +864,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
   // Derived from the *saved* settings, never the draft: this describes what is happening to mail
   // right now, and an unsaved edit is not happening to anything.
   const sending = ws
-    ? describeWorkspaceSending({
+    ? describeWorkspaceSending(t, {
         enabled: ws.enabled,
         mode: ws.mode,
         displayName: ws.displayName,
@@ -889,7 +901,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
           section's own header carries it there, next to the thing it is about. In the page header
           — above the instance section, for an admin — the same word read as a claim about the
           whole page. */}
-      <PageHeader title="Mail" maxWidth="max-w-3xl" />
+      <PageHeader title={tn('settings.mail')} maxWidth="max-w-3xl" />
 
       <PageBody maxWidth="max-w-3xl">
         {/* The instance tier leads for an admin: whether there is a server to relay through is what
@@ -897,13 +909,13 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
             anything. Everyone else never sees this section, so their page is unchanged. */}
         {viewer.isAdmin && instDraft && inst && (
           <Section>
-            <SectionHeader icon={Server} title="Instance mail server">
+            <SectionHeader icon={Server} title={t('instanceMailServer')}>
               {/* No sending badge here: the queue row below carries that state, and saying it twice
                   in one card reads as two different facts. */}
-              <Badge variant="secondary">Admin</Badge>
+              <Badge variant="secondary">{t('admin')}</Badge>
               <Switch
                 id="inst-enabled"
-                aria-label="Offer this server to workspaces"
+                aria-label={t('offerToWorkspaces')}
                 checked={instDraft.enabled}
                 onCheckedChange={(enabled) => setInstDraft({ ...instDraft, enabled })}
               />
@@ -911,16 +923,13 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
 
             <SectionBody className="flex flex-col gap-1.5 text-xs leading-relaxed text-muted-foreground">
               <p>
-                Workspaces can send through this SMTP, add a display name in front of the instance
-                From address, or use their own server. Instance mail still goes out if this is off.
+                {t('offerExplain')}
               </p>
               <p>
-                A workspace review email is only written when that workspace has sending on and the
-                deployment has Email notifications on in Review settings.
+                {t('reviewMailCondition')}
               </p>
               <p>
-                Turning this off stops workspaces from using the instance server. Mail already
-                queued for them is dropped. Turning it back on does not send what was missed.
+                {t('offerOffExplain')}
               </p>
             </SectionBody>
 
@@ -937,12 +946,11 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
                   passwordSet={inst.smtpPasswordSet}
                   password={instDraft.password}
                   onPasswordChange={(password) => setInstDraft({ ...instDraft, password })}
-                  fromHint="Replies to this address are not read. Each message includes a link back to the site."
+                  fromHint={t('repliesNotRead')}
                 />
 
                 <p className="text-xs leading-relaxed text-muted-foreground">
-                  Empty fields fall back to SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER,
-                  SMTP_PASSWORD, and SMTP_FROM. A value saved here overrides the environment.
+                  {t('envFallback')}
                 </p>
               </SectionBody>
             )}
@@ -955,7 +963,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
                   disabled={!instDirty || instSaving}
                   onClick={saveInstance}
                 >
-                  {instSaving ? 'Saving…' : 'Save'}
+                  {instSaving ? tcm('actions.saving') : tcm('actions.save')}
                 </Button>
                 {instDirty && !instSaving && (
                   <Button
@@ -963,7 +971,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
                     size="sm"
                     onClick={() => instBaseline && setInstDraft(instBaseline)}
                   >
-                    Discard
+                    {tcm('actions.discard')}
                   </Button>
                 )}
               </div>
@@ -977,11 +985,11 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
             <SectionBody className="border-t border-border px-4 py-1">
               <SettingRow
                 className="flex-wrap"
-                title="Test it"
+                title={t('testIt')}
                 description={
                   instDirty
-                    ? 'Save first — a test sends with the saved settings, not the ones on screen.'
-                    : 'Sends one message to your own address and shows the mail server’s own words if it fails.'
+                    ? t('saveFirstTest')
+                    : t('testExplain')
                 }
               >
                 <Button
@@ -990,7 +998,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
                   disabled={instTesting || instDirty}
                   onClick={testInstance}
                 >
-                  {instTesting ? 'Sending…' : 'Send test email'}
+                  {instTesting ? t('sendingTest') : t('sendTest')}
                 </Button>
               </SettingRow>
 
@@ -1005,7 +1013,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
                 scope="instance"
                 action={
                   <Button variant="outline" size="sm" disabled={instFlushing} onClick={flushQueue}>
-                    {instFlushing ? 'Sending…' : 'Send now'}
+                    {instFlushing ? t('sendingTest') : t('sendNow')}
                   </Button>
                 }
               />
@@ -1016,11 +1024,10 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
 
         {workspaceId && wsForbidden && (
           <Section>
-            <SectionHeader icon={Send} title="Sending for this workspace" />
+            <SectionHeader icon={Send} title={t('sendingForWorkspace')} />
             <SectionBody>
               <p className="text-xs leading-relaxed text-muted-foreground">
-                Only a workspace owner can change how this workspace sends mail. Ask an owner, or an
-                instance administrator, to set it up.
+                {t('ownerOnly')}
               </p>
             </SectionBody>
           </Section>
@@ -1028,11 +1035,11 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
 
         {workspaceId && wsDraft && ws && sending && (
           <Section>
-            <SectionHeader icon={Send} title="Sending for this workspace">
+            <SectionHeader icon={Send} title={t('sendingForWorkspace')}>
               <StatusBadge state={sending.state} />
               <Switch
                 id="ws-enabled"
-                aria-label="Send email from this workspace"
+                aria-label={t('sendFromWorkspace')}
                 checked={wsDraft.enabled}
                 onCheckedChange={(enabled) => setWsDraft({ ...wsDraft, enabled })}
               />
@@ -1040,12 +1047,10 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
 
             <SectionBody className="flex flex-col gap-1.5 text-xs leading-relaxed text-muted-foreground">
               <p>
-                Off means this workspace does not write or queue mail. Queued mail is dropped.
-                Turning it back on does not catch up missed mail.
+                {t('workspaceOffExplain')}
               </p>
               <p>
-                Review mail also needs Email notifications on for that deployment. Using the
-                instance server also needs the admin to offer it.
+                {t('reviewMailNeeds')}
               </p>
             </SectionBody>
 
@@ -1060,26 +1065,26 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
                   <ModeOption
                     selected={wsDraft.mode === 'instance'}
                     disabled={instanceUnavailable}
-                    title="Use the instance mail server"
+                    title={t('useInstanceServer')}
                     description={
                       instanceUnavailable
-                        ? 'The instance has no shared mail server, or it is not offered to workspaces. Ask an admin, or use your own server below.'
-                        : 'Nothing to set up. You can put your own name on it, but the address stays the instance’s — that is what keeps the mail out of spam folders.'
+                        ? t('noSharedServer')
+                        : t('instanceServerDesc')
                     }
                     onSelect={() => setWsDraft({ ...wsDraft, mode: 'instance' })}
                   >
                     <div className="max-w-[420px]">
                       <Field
                         id="ws-display-name"
-                        label="Display name"
-                        hint="Shown in front of the instance From address. There is no address field here because a custom workspace address through someone else’s relay fails SPF and DKIM and often goes to spam. Use your own server if you need your own From address."
+                        label={tcm('labels.displayName')}
+                        hint={t('displayNameHint')}
                       >
                         <Input
                           id="ws-display-name"
                           value={wsDraft.displayName}
                           maxLength={MAX_DISPLAY_NAME}
                           onChange={(e) => setWsDraft({ ...wsDraft, displayName: e.target.value })}
-                          placeholder="Acme Studio"
+                          placeholder="Acme Studio" // i18n-ignore: an example display name
                           className="h-9"
                         />
                       </Field>
@@ -1088,8 +1093,8 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
 
                   <ModeOption
                     selected={wsDraft.mode === 'own'}
-                    title="Use our own mail server"
-                    description="Your SMTP and your From address. Deliverability is yours to maintain."
+                    title={t('useOwnServer')}
+                    description={t('ownSmtpNote')}
                     onSelect={() => setWsDraft({ ...wsDraft, mode: 'own' })}
                   >
                     <SmtpFields
@@ -1103,19 +1108,18 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
                         ownFromOverridden ? (
                           <span className="flex flex-wrap items-center gap-2">
                             <span>
-                              The display name “{wsDraft.displayName.trim()}” is used in front of
-                              this address, in place of any name written into it.
+                              {t('displayNameOverrides', { name: wsDraft.displayName.trim() })}
                             </span>
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => setWsDraft({ ...wsDraft, displayName: '' })}
                             >
-                              Use this address’s name
+                              {t('useAddressName')}
                             </Button>
                           </span>
                         ) : (
-                          'Either an address on its own, or a name in front of it.'
+                          t('fromFormatHint')
                         )
                       }
                     />
@@ -1123,8 +1127,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
 
                   {instanceUnavailable && wsBaseline?.mode === 'instance' && (
                     <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-400">
-                      This workspace is set to use the instance mail server, which is not sending.
-                      Add your own server and save.
+                      {t('instanceNotSending')}
                     </p>
                   )}
                 </>
@@ -1134,7 +1137,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
             <SectionBody className="border-t border-border">
               <div className="flex items-center gap-2">
                 <Button variant="accent" size="sm" disabled={!wsDirty || wsSaving} onClick={saveWorkspace}>
-                  {wsSaving ? 'Saving…' : 'Save'}
+                  {wsSaving ? tcm('actions.saving') : tcm('actions.save')}
                 </Button>
                 {wsDirty && !wsSaving && (
                   <Button
@@ -1142,7 +1145,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
                     size="sm"
                     onClick={() => wsBaseline && setWsDraft(wsBaseline)}
                   >
-                    Discard
+                    {tcm('actions.discard')}
                   </Button>
                 )}
               </div>
@@ -1157,11 +1160,11 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
               <SectionBody className="border-t border-border px-4 py-1">
                 <SettingRow
                   className="flex-wrap"
-                  title="Test it"
+                  title={t('testIt')}
                   description={
                     wsDirty
-                      ? 'Save first — a test sends with the saved settings, not the ones on screen.'
-                      : 'Sends one message to your own address and shows the mail server’s own words if it fails.'
+                      ? t('saveFirstTest')
+                      : t('testExplain')
                   }
                 >
                   <Button
@@ -1170,7 +1173,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
                     disabled={wsTesting || wsDirty}
                     onClick={testWorkspace}
                   >
-                    {wsTesting ? 'Sending…' : 'Send test email'}
+                    {wsTesting ? t('sendingTest') : t('sendTest')}
                   </Button>
                 </SettingRow>
 
@@ -1188,10 +1191,10 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
 
         {!viewer.isAdmin && !workspaceId && (
           <Section>
-            <SectionHeader icon={Mail} title="Mail" />
+            <SectionHeader icon={Mail} title={tn('settings.mail')} />
             <SectionBody>
               <p className="text-xs text-muted-foreground">
-                Open a workspace to configure how it sends mail.
+                {t('openWorkspaceToConfigure')}
               </p>
             </SectionBody>
           </Section>
@@ -1200,9 +1203,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
         <p className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
           <span>
-            Mail is only written when a live server is available and sending is on. If a tier is off
-            or no server sits behind it, nothing is queued. Turning it back on starts from that
-            moment, so a quiet stretch does not arrive as one dump.
+            {t('writeConditions')}
           </span>
         </p>
       </PageBody>

@@ -10,8 +10,9 @@ import { RuntimeDatabase } from '@/lib/vfs/adapters/runtime-database';
 import { DatabaseAPI, DatabaseAPIOptions } from './types';
 
 /**
- * Tables that edge functions cannot access
- * These contain system data, analytics, and function definitions
+ * Runtime database tables that edge functions cannot access: the deployment's own machinery.
+ * Analytics is in a separate database, so its table names (`sessions`, `pageviews`) are free for
+ * a site's own tables.
  */
 const FORBIDDEN_TABLES = [
   'sqlite_',        // SQLite internal tables
@@ -20,10 +21,8 @@ const FORBIDDEN_TABLES = [
   'edge_functions', // Function definitions
   'function_logs',  // Execution logs
   'server_functions', // Server function definitions
+  'scheduled_functions', // Scheduled function definitions
   'secrets',        // Encrypted secrets
-  'pageviews',      // Analytics
-  'interactions',   // Analytics
-  'sessions',       // Analytics
   'files',          // VFS files
   'file_tree_nodes', // VFS tree
 ];
@@ -131,7 +130,7 @@ export function createDatabaseAPI(
       const result = deploymentDb.executeRawSQL(sql, params);
       return {
         changes: result.rowsAffected,
-        lastInsertRowid: 0, // SQLite doesn't expose this through our API currently
+        lastInsertRowid: result.lastInsertRowid ?? 0,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Query failed';

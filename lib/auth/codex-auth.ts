@@ -6,6 +6,7 @@
  * is kept in localStorage.
  */
 
+import { translator } from '@/lib/i18n/runtime';
 import { CodexAuthData } from '@/lib/llm/providers/types';
 import { configManager } from '@/lib/config/storage';
 
@@ -20,8 +21,8 @@ export async function startCodexLogin(): Promise<CodexLoginInfo> {
     method: 'POST',
     credentials: 'same-origin',
   });
-  const data = await res.json().catch(() => ({ error: 'Login failed' }));
-  if (!res.ok) throw new Error(data.error || 'Failed to start ChatGPT login');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || translator()('settings.codexStartFailed'));
   return data;
 }
 
@@ -33,8 +34,8 @@ export async function completeCodexLogin(redirectUrl: string): Promise<CodexAuth
     credentials: 'same-origin',
     body: JSON.stringify({ redirectUrl }),
   });
-  const data = await res.json().catch(() => ({ error: 'Login failed' }));
-  if (!res.ok) throw new Error(data.error || 'Failed to complete ChatGPT login');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || translator()('settings.codexCompleteFailed'));
   return data;
 }
 
@@ -44,9 +45,9 @@ export async function pollCodexLogin(): Promise<CodexAuthData | null> {
     method: 'PUT',
     credentials: 'same-origin',
   });
-  const data = await res.json().catch(() => ({ error: 'Login failed' }));
+  const data = await res.json().catch(() => ({}));
   if (res.status === 202) return null;
-  if (!res.ok) throw new Error(data.error || 'Failed to complete ChatGPT login');
+  if (!res.ok) throw new Error(data.error || translator()('settings.codexCompleteFailed'));
   return data;
 }
 
@@ -88,7 +89,7 @@ export async function refreshAccessToken(): Promise<CodexAuthData> {
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: 'Token refresh failed' }));
-    throw new Error(data.error || `Token refresh failed: ${res.status}`);
+    throw new Error(data.error || `Token refresh failed: ${res.status}`); // i18n-ignore: a background refresh's failure, only logged
   }
 
   // Server returns { access_token, expires_at }
@@ -102,7 +103,7 @@ export async function refreshAccessToken(): Promise<CodexAuthData> {
 export async function ensureValidCodexToken(): Promise<string> {
   const auth = configManager.getCodexAuth();
   if (!auth) {
-    throw new Error('ChatGPT session not found. Please log in via Settings.');
+    throw new Error('ChatGPT session not found. Please log in via Settings.'); // i18n-ignore: stored in the stopped event and shown raw as its details
   }
 
   if (!configManager.isCodexTokenExpired()) {
@@ -116,6 +117,6 @@ export async function ensureValidCodexToken(): Promise<string> {
     return refreshed.access_token;
   } catch {
     configManager.clearCodexAuth();
-    throw new Error('ChatGPT session expired. Please re-authenticate in Settings.');
+    throw new Error('ChatGPT session expired. Please re-authenticate in Settings.'); // i18n-ignore: stored in the stopped event and shown raw as its details
   }
 }

@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/ui/logo';
-import { ACTIVE_SCOPES, SCOPE_SUMMARY, type McpScope } from '@/lib/mcp/scopes';
+import { ACTIVE_SCOPES, type McpScope } from '@/lib/mcp/scopes';
 
 /**
  * What the account approves: one workspace, and which capabilities inside it. A scope the
@@ -24,7 +25,18 @@ interface ConsentFormProps {
   grantableByRole: Record<string, McpScope[]>;
 }
 
+const SCOPE_KEY = {
+  'projects:read': 'projectsRead',
+  'projects:write': 'projectsWrite',
+  agent: 'agent',
+  deploy: 'deploy',
+  analytics: 'analytics',
+  'workspace:admin': 'workspaceAdmin',
+} as const satisfies Record<McpScope, string>;
+
 export function ConsentForm(props: ConsentFormProps) {
+  const t = useTranslations('mcpConsent');
+  const tc = useTranslations('common');
   const [workspaceId, setWorkspaceId] = useState(props.workspaces[0].id);
   const [busy, setBusy] = useState<'approve' | 'deny' | null>(null);
   const [error, setError] = useState('');
@@ -59,13 +71,13 @@ export function ConsentForm(props: ConsentFormProps) {
       });
       const data = await res.json();
       if (!res.ok || !data.location) {
-        setError(data.error_description || data.error || 'Could not complete the connection.');
+        setError(data.error_description || data.error || t('connectFailed'));
         setBusy(null);
         return;
       }
       window.location.href = data.location;
     } catch {
-      setError('Could not reach the server.');
+      setError(t('unreachable'));
       setBusy(null);
     }
   };
@@ -88,24 +100,23 @@ export function ConsentForm(props: ConsentFormProps) {
       <div className="w-full max-w-lg rounded-lg border border-border bg-card p-6 space-y-5">
         <div className="space-y-2">
           <Logo className="h-8 w-8" />
-          <h1 className="text-xl font-semibold">Connect {props.clientName} to OSW Studio</h1>
+          <h1 className="text-xl font-semibold">{t('title', { client: props.clientName })}</h1>
           <p className="text-sm text-muted-foreground">
-            Signed in as {props.accountEmail}. The connection covers one workspace and only the capabilities you tick.
+            {t('signedInAs', { email: props.accountEmail })}
           </p>
           {/* The name above is chosen by whoever registered the client, and registration is open,
               so it proves nothing. Where the approval is sent does: a client on this machine comes
               back to a loopback address, and anything else is a program somewhere on the internet. */}
           <p className="text-xs text-muted-foreground">
-            Approval goes to{' '}
-            <span className="font-mono text-foreground break-all">{destination.host}</span>
-            {destination.loopback
-              ? ' — software running on this machine.'
-              : ' — a program on another machine. Only continue if you set it up.'}
+            {t.rich(destination.loopback ? 'approvalLocal' : 'approvalRemote', {
+              host: destination.host,
+              mono: (chunks) => <span className="font-mono text-foreground break-all">{chunks}</span>,
+            })}
           </p>
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="mcp-workspace" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Workspace</label>
+          <label htmlFor="mcp-workspace" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('workspace')}</label>
           <select
             id="mcp-workspace"
             value={workspaceId}
@@ -113,13 +124,13 @@ export function ConsentForm(props: ConsentFormProps) {
             className="w-full rounded-sm border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
           >
             {props.workspaces.map(w => (
-              <option key={w.id} value={w.id}>{w.name} ({w.role})</option>
+              <option key={w.id} value={w.id}>{t('workspaceOption', { name: w.name, role: w.role })}</option>
             ))}
           </select>
         </div>
 
         <div className="space-y-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Allow {props.clientName} to</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('allowTo', { client: props.clientName })}</span>
           <ul className="space-y-1.5">
             {ACTIVE_SCOPES.map(scope => {
               const permitted = grantable.has(scope);
@@ -138,8 +149,8 @@ export function ConsentForm(props: ConsentFormProps) {
                     }}
                   />
                   <label htmlFor={`scope-${scope}`} className={`text-sm ${permitted ? '' : 'text-muted-foreground'}`}>
-                    {SCOPE_SUMMARY[scope]}
-                    {!permitted && <span className="block text-xs">Needs a higher role than {role} in this workspace</span>}
+                    {t(`scopes.${SCOPE_KEY[scope]}`)}
+                    {!permitted && <span className="block text-xs">{t('needsHigherRole', { role })}</span>}
                   </label>
                 </li>
               );
@@ -151,14 +162,14 @@ export function ConsentForm(props: ConsentFormProps) {
 
         <div className="flex items-center justify-end gap-2 pt-1">
           <Button variant="ghost" size="sm" onClick={() => submit('deny')} disabled={busy !== null}>
-            {busy === 'deny' ? 'Cancelling…' : 'Cancel'}
+            {busy === 'deny' ? t('cancelling') : tc('actions.cancel')}
           </Button>
           <Button size="sm" onClick={() => submit('approve')} disabled={busy !== null || allowed.length === 0}>
-            {busy === 'approve' ? 'Connecting…' : 'Connect'}
+            {busy === 'approve' ? t('connecting') : t('connect')}
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          You can revoke this from Settings at any time. Tokens expire and are refreshed by the connector.
+          {t('revokeNote')}
         </p>
       </div>
     </main>

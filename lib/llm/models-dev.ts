@@ -17,6 +17,7 @@ const PROVIDER_MAP: Partial<Record<ProviderId, string>> = {
   zhipu: 'zhipuai',
   sambanova: 'sambanova',
   'opencode-go': 'opencode-go',
+  vercel: 'vercel',
 };
 
 interface ModelsDevCost {

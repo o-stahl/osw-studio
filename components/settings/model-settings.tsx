@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { configManager } from '@/lib/config/storage';
 import { validateApiKey as checkApiKey } from '@/lib/llm/llm-client';
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,9 @@ interface ModelSettingsPanelProps {
 }
 
 export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJudgeModelChange }: ModelSettingsPanelProps) {
+  const t = useTranslations('settings');
+  const tcn = useTranslations('connections');
+  const tc = useTranslations('common');
   const [selectedProvider, setSelectedProvider] = useState<ProviderId>(() =>
     configManager.getSelectedProvider()
   );
@@ -114,7 +118,7 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
 
   const validateApiKey = async () => {
     if (!currentApiKey) {
-      toast.error('Please enter an API key');
+      toast.error(t('apiKeyRequired'));
       return;
     }
 
@@ -124,13 +128,13 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
       setKeyValid(isValid);
       
       if (isValid) {
-        toast.success('API key is valid!');
+        toast.success(t('apiKeyValid'));
       } else {
-        toast.error('Invalid API key');
+        toast.error(t('apiKeyInvalid'));
       }
     } catch {
       setKeyValid(false);
-      toast.error('Failed to validate API key');
+      toast.error(t('apiKeyValidateFailed'));
     } finally {
       setValidatingKey(false);
     }
@@ -139,7 +143,7 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
   const handleConnect = async () => {
     const key = currentApiKey.trim();
     if (!key) {
-      toast.error('Please enter an API key');
+      toast.error(t('apiKeyRequired'));
       return;
     }
     setValidatingKey(true);
@@ -151,15 +155,15 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
         setApiKeyStored(true);
         setCurrentApiKey('');
         setKeyValid(null);
-        toast.success('API key connected!');
+        toast.success(t('apiKeyConnected'));
         window.dispatchEvent(new CustomEvent('apiKeyUpdated', {
           detail: { provider: selectedProvider, hasKey: true }
         }));
       } else {
-        toast.error('Invalid API key. Please check and try again.');
+        toast.error(t('apiKeyInvalidRetry'));
       }
     } catch {
-      toast.error('Failed to validate API key');
+      toast.error(t('apiKeyValidateFailed'));
     } finally {
       setValidatingKey(false);
     }
@@ -171,7 +175,7 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
     setApiKeyStored(false);
     setCurrentApiKey('');
     setKeyValid(null);
-    toast.success(`Disconnected from ${getProvider(selectedProvider).name}`);
+    toast.success(t('disconnectedFrom', { provider: getProvider(selectedProvider).name }));
     window.dispatchEvent(new CustomEvent('apiKeyUpdated', {
       detail: { provider: selectedProvider, hasKey: false }
     }));
@@ -183,9 +187,9 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="shrink-0">
-        <h3 className="font-semibold text-base tracking-tight">Model Settings</h3>
+        <h3 className="font-semibold text-base tracking-tight">{t('modelSettings')}</h3>
         <p className="text-muted-foreground text-xs mt-1">
-          Configure your AI model and API connection
+          {t('modelSettingsDesc')}
         </p>
       </div>
 
@@ -194,10 +198,10 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
 
       {/* Provider Selection */}
       <div>
-        <Label htmlFor="provider" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Provider</Label>
+        <Label htmlFor="provider" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('provider')}</Label>
         <Select value={selectedProvider} onValueChange={handleProviderChange}>
           <SelectTrigger id="provider" className="mt-2 !h-fit w-full">
-            <SelectValue placeholder="Select a provider">
+            <SelectValue placeholder={t('selectProvider')}>
               {selectedProvider && (
                 <div className="flex flex-col text-left">
                   <span className="font-medium">{providerConfig.name}</span>
@@ -243,7 +247,7 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
       ) : providerConfig.apiKeyRequired ? (
         apiKeyStored ? (
           <ConnectionBadge
-            method="API Key"
+            method={tcn('apiKey')}
             extra={(() => { const k = configManager.getProviderApiKey(selectedProvider); return k ? `···${k.slice(-4)}` : undefined; })()}
             info={providerConfig.apiKeyHelpUrl && (
               <a
@@ -252,14 +256,14 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
                 rel="noopener noreferrer"
                 className="text-primary hover:underline inline-flex items-center gap-0.5"
               >
-                Manage on {providerConfig.name} <ExternalLink className="h-2.5 w-2.5" />
+                {t('manageOn', { provider: providerConfig.name })} <ExternalLink className="h-2.5 w-2.5" />
               </a>
             )}
             onDisconnect={handleApiKeyDisconnect}
           />
         ) : (
           <div>
-            <Label htmlFor="api-key">{providerConfig.name} API Key</Label>
+            <Label htmlFor="api-key">{t('providerApiKey', { provider: providerConfig.name })}</Label>
             <div className="flex gap-2 mt-2">
               <div className="relative flex-1">
                 <Input
@@ -268,7 +272,7 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
                   value={currentApiKey}
                   onChange={(e) => { setCurrentApiKey(e.target.value); setKeyValid(null); }}
                   onKeyDown={(e) => { if (e.key === 'Enter' && currentApiKey.trim()) handleConnect(); }}
-                  placeholder={providerConfig.apiKeyPlaceholder || 'API Key'}
+                  placeholder={providerConfig.apiKeyPlaceholder || tcn('apiKeyPlaceholder')}
                   className="pr-10"
                   data-tour-id="provider-key-input"
                   disabled={validatingKey}
@@ -294,24 +298,28 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
                 {validatingKey ? (
                   <>
                     <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                    Connecting...
+                    {tcn('connecting')}
                   </>
                 ) : (
-                  'Connect'
+                  tcn('connect')
                 )}
               </Button>
             </div>
             {providerConfig.apiKeyHelpUrl && (
               <p className="text-sm text-muted-foreground mt-2">
-                Get your API key from{' '}
-                <a
-                  href={providerConfig.apiKeyHelpUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline inline-flex items-center gap-1"
-                >
-                  {providerConfig.name} <ExternalLink className="h-3 w-3" />
-                </a>
+                {t.rich('getApiKeyFrom', {
+                  provider: providerConfig.name,
+                  link: (chunks) => (
+                    <a
+                      href={providerConfig.apiKeyHelpUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline inline-flex items-center gap-1"
+                    >
+                      {chunks} <ExternalLink className="h-3 w-3" />
+                    </a>
+                  ),
+                })}
               </p>
             )}
           </div>
@@ -329,7 +337,7 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
                 type={showApiKey ? "text" : "password"}
                 value={currentApiKey}
                 onChange={(e) => handleApiKeyChange(e.target.value)}
-                placeholder={providerConfig.apiKeyPlaceholder || 'API Key'}
+                placeholder={providerConfig.apiKeyPlaceholder || tcn('apiKeyPlaceholder')}
                 className="pr-10"
                 data-tour-id="provider-key-input"
               />
@@ -351,7 +359,7 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
               disabled={validatingKey || !currentApiKey}
               size="sm"
             >
-              {validatingKey ? 'Validating...' : 'Validate'}
+              {validatingKey ? t('validating') : t('validate')}
             </Button>
             {keyValid !== null && (
               <div className="flex items-center">
@@ -364,26 +372,26 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
             )}
           </div>
           <p className="text-sm text-muted-foreground mt-2">
-            API key is optional for {providerConfig.name}. Only needed if you&apos;ve configured authentication on your local server.
+            {t('apiKeyOptionalFor', { provider: providerConfig.name })}
           </p>
         </div>
       ) : null}
 
       {!providerConfig.apiKeyRequired && providerConfig.isLocal && (
         <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
-          <p className="font-medium mb-1">Local Provider</p>
-          <p>Make sure {providerConfig.name} is running on your machine.</p>
-          <p>Default endpoint: <code className="text-xs">{providerConfig.baseUrl}</code></p>
+          <p className="font-medium mb-1">{t('localProvider')}</p>
+          <p>{t('ensureRunning', { provider: providerConfig.name })}</p>
+          <p>{t('defaultEndpoint')} <code className="text-xs">{providerConfig.baseUrl}</code></p>
           <div className="mt-2"><LocalContextLength providerId={selectedProvider} /></div>
           {selectedProvider === 'ollama' && (
             <OllamaPreflight />
           )}
           {selectedProvider === 'lmstudio' && (
             <div className="mt-2 text-xs">
-              <p className="font-medium">For tool use support:</p>
-              <p>• Load a model like qwen/qwen3-4b-thinking-2507</p>
-              <p>• Start the local server in LM Studio</p>
-              <p>• Models will be automatically discovered</p>
+              <p className="font-medium">{t('toolUseSupport')}</p>
+              <p>• {t('lmStudioLoadModel')}</p>
+              <p>• {t('lmStudioStartServer')}</p>
+              <p>• {t('lmStudioAutoDiscover')}</p>
             </div>
           )}
         </div>
@@ -394,7 +402,7 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
 
       {/* Code Model */}
       <div>
-        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Code Model</Label>
+        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('codeModel')}</Label>
         <div className="mt-2">
           <ModelSelector
             provider={selectedProvider}
@@ -417,9 +425,9 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
       {!showJudgeModel && (
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-medium">Use different model for chat</div>
+            <div className="text-sm font-medium">{t('differentChatModel')}</div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Select a separate (usually cheaper) model for chat/planning
+              {t('chatModelHint')}
             </p>
           </div>
           <Switch
@@ -433,7 +441,7 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
       {/* Chat Model (conditional) — hidden in judge mode */}
       {!showJudgeModel && useSeparateChatModel && (
         <div>
-          <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Chat Model</Label>
+          <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('chatModel')}</Label>
           <div className="mt-2">
             <ModelSelector
               provider={selectedProvider}
@@ -456,10 +464,10 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
           <hr className="border-border" />
           <div>
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Judge Model <span className="normal-case font-normal">(optional)</span>
+              {t('judgeModel')} <span className="normal-case font-normal">{tc('labels.optionalParen')}</span>
             </Label>
             <p className="text-xs text-muted-foreground mt-1 mb-2">
-              Separate model for evaluating subjective test criteria
+              {t('judgeModelDesc')}
             </p>
             <ModelSelector
               provider={selectedProvider}
@@ -475,9 +483,9 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
       {/* Auto-Compaction */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-sm font-medium">Auto-compact</div>
+          <div className="text-sm font-medium">{t('autoCompact')}</div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Summarize conversation when reaching 60% of the model&apos;s context limit
+            {t('autoCompactDesc')}
           </p>
         </div>
         <Switch
@@ -493,10 +501,10 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
       {compactionEnabled && (
         <div className="space-y-2">
           <label className="text-sm font-medium text-foreground">
-            Compaction limit (tokens)
+            {t('compactionLimitLabel')}
           </label>
           <p className="text-xs text-muted-foreground">
-            Leave empty to auto-detect (60% of model context). Manual values are used as-is.
+            {t('compactionLimitHelp')}
           </p>
           <input
             type="number"
@@ -510,7 +518,7 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
                 isNaN(num) || num <= 0 ? undefined : num
               );
             }}
-            placeholder="e.g. 128000"
+            placeholder={t('compactionLimitPlaceholder')}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             min={1}
           />
@@ -523,7 +531,7 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
       {onClose && (
         <div className="shrink-0 flex justify-end pt-4 border-t mt-4">
           <Button onClick={onClose} size="sm">
-            Done
+            {tc('actions.done')}
           </Button>
         </div>
       )}

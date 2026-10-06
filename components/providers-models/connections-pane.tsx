@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useTranslations } from 'next-intl';
+import { useProviderDescriptions } from '@/lib/i18n/use-provider-descriptions';
 import { Plus, Search, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +27,7 @@ import { Drawer } from './drawer';
 import { SearchConnectionsSection } from './search-connections';
 import type { ProviderId } from '@/lib/llm/providers/types';
 import { disconnectCodex } from '@/lib/auth/codex-auth';
+import { startSignIn } from '@/lib/auth/provider-sign-in';
 import { cn, logger } from '@/lib/utils';
 import {
   CustomHeadersEditor,
@@ -72,7 +75,11 @@ interface ConnectConfigBodyProps {
   onBack: () => void;
 }
 
-function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectConfigBodyProps) {
+export function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectConfigBodyProps) {
+  const t = useTranslations('connections');
+  const tc = useTranslations('common');
+  const ts = useTranslations('settings');
+  const tconnect = useTranslations('connect');
   const providerConfig = getProvider(providerId);
   const archetype = getProviderArchetype(providerId);
 
@@ -85,10 +92,33 @@ function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectConfigBod
     emitApiKeyUpdate(providerId, hasKey);
   }, [providerId]);
 
+  // OpenRouter can also be connected by signing in. A popup keeps this page open and announces the
+  // key when it lands; desktop sends popups to the system browser, so there it redirects instead.
+  const canSignIn = providerId === 'openrouter';
+  const signingIn = useRef(false);
+  const signIn = () => {
+    signingIn.current = true;
+    startSignIn('openrouter', { popup: process.env.NEXT_PUBLIC_DESKTOP !== 'true' })
+      .then((started) => { if (!started) toast.error(tconnect('popupBlocked')); })
+      .catch(() => toast.error(tconnect('signInFailed')));
+  };
+  useEffect(() => {
+    if (!canSignIn) return;
+    const onKey = (e: Event) => {
+      const detail = (e as CustomEvent<{ provider?: string; hasKey?: boolean }>).detail;
+      if (signingIn.current && detail?.provider === providerId && detail.hasKey) {
+        signingIn.current = false;
+        onConnected();
+      }
+    };
+    window.addEventListener('apiKeyUpdated', onKey);
+    return () => window.removeEventListener('apiKeyUpdated', onKey);
+  }, [canSignIn, providerId, onConnected]);
+
   const handleConnect = async () => {
     const key = currentApiKey.trim();
     if (!key) {
-      toast.error('Please enter an API key');
+      toast.error(ts('apiKeyRequired'));
       return;
     }
     setValidatingKey(true);
@@ -98,14 +128,14 @@ function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectConfigBod
         configManager.setProviderApiKey(providerId, key);
         configManager.clearModelCache(providerId);
         track('connection_added', { provider: providerId, method: 'key' });
-        toast.success(`Connected to ${providerConfig.name}!`);
+        toast.success(t('connectedTo', { name: providerConfig.name }));
         dispatchApiKeyEvent(true);
         onConnected();
       } else {
-        toast.error('Invalid API key. Please check and try again.');
+        toast.error(ts('apiKeyInvalidRetry'));
       }
     } catch {
-      toast.error('Failed to validate API key');
+      toast.error(ts('apiKeyValidateFailed'));
     } finally {
       setValidatingKey(false);
     }
@@ -121,14 +151,16 @@ function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectConfigBod
       const models = await loadProviderModels(providerId);
       if (models.length > 0) {
         track('connection_added', { provider: providerId, method: 'local' });
-        toast.success(`Connected to ${providerConfig.name} · ${models.length} model${models.length === 1 ? '' : 's'}`);
+        toast.success(t('connectedModels', { name: providerConfig.name, count: models.length }));
         dispatchApiKeyEvent(!!currentApiKey.trim());
         onConnected();
       } else {
-        toast.error(`Couldn't reach ${providerConfig.name}${providerConfig.baseUrl ? ` at ${providerConfig.baseUrl}` : ''}. Is the server running?`);
+        toast.error(providerConfig.baseUrl
+            ? t('unreachableAt', { name: providerConfig.name, url: providerConfig.baseUrl })
+            : t('unreachable', { name: providerConfig.name }));
       }
     } catch {
-      toast.error(`Couldn't reach ${providerConfig.name}. Is the server running?`);
+      toast.error(t('unreachable', { name: providerConfig.name }));
     } finally {
       setTesting(false);
     }
@@ -168,11 +200,11 @@ function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectConfigBod
       <div className="px-[18px] py-4 space-y-4">
 
         <div className="p-3 border rounded-md bg-muted/50 text-sm text-muted-foreground space-y-1">
-          <p className="font-medium">Local Provider</p>
-          <p>Make sure {providerConfig.name} is running on your machine.</p>
+          <p className="font-medium">{ts('localProvider')}</p>
+          <p>{ts('ensureRunning', { provider: providerConfig.name })}</p>
           {providerConfig.baseUrl && (
             <p>
-              Default endpoint:{' '}
+              {ts('defaultEndpoint')}{' '}
               <code className="text-xs">{providerConfig.baseUrl}</code>
             </p>
           )}
@@ -183,8 +215,8 @@ function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectConfigBod
 
         <div>
           <Label htmlFor="local-key">
-            API Key
-            <span className="text-muted-foreground text-xs ml-1">(optional)</span>
+            {t('apiKey')}
+            <span className="text-muted-foreground text-xs ml-1">{tc('labels.optionalParen')}</span>
           </Label>
           <div className="flex gap-2 mt-2">
             <div className="relative flex-1">
@@ -193,7 +225,7 @@ function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectConfigBod
                 type={showApiKey ? 'text' : 'password'}
                 value={currentApiKey}
                 onChange={(e) => setCurrentApiKey(e.target.value)}
-                placeholder={providerConfig.apiKeyPlaceholder || 'Only if your server requires auth'}
+                placeholder={providerConfig.apiKeyPlaceholder || t('authOnlyIfRequired')}
                 className="pr-10"
               />
               <Button
@@ -207,16 +239,16 @@ function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectConfigBod
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            API key is optional for {providerConfig.name}. Only needed if you&apos;ve configured authentication on your local server.
+            {ts('apiKeyOptionalFor', { provider: providerConfig.name })}
           </p>
         </div>
 
         <div className="flex gap-2 justify-end pt-2">
           <Button variant="ghost" size="sm" onClick={onBack} disabled={testing}>
-            Back
+            {tc('actions.back')}
           </Button>
           <Button size="sm" onClick={handleLocalConnect} disabled={testing}>
-            {testing ? 'Testing…' : 'Test & connect'}
+            {testing ? t('testing') : t('testAndConnect')}
           </Button>
         </div>
       </div>
@@ -227,8 +259,24 @@ function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectConfigBod
   return (
     <div className="px-[18px] py-4 space-y-4">
 
+      {canSignIn && (
+        <>
+          <Button onClick={signIn} className="w-full gap-2" variant="outline">
+            {ts('signInWithProvider', { provider: providerConfig.name })}
+          </Button>
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">{ts('orPasteKey')}</span>
+            </div>
+          </div>
+        </>
+      )}
+
       <div>
-        <Label htmlFor="cloud-key">{providerConfig.name} API Key</Label>
+        <Label htmlFor="cloud-key">{ts('providerApiKey', { provider: providerConfig.name })}</Label>
         <div className="flex gap-2 mt-2">
           <div className="relative flex-1">
             <Input
@@ -237,7 +285,7 @@ function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectConfigBod
               value={currentApiKey}
               onChange={(e) => { setCurrentApiKey(e.target.value); }}
               onKeyDown={(e) => { if (e.key === 'Enter' && currentApiKey.trim()) handleConnect(); }}
-              placeholder={providerConfig.apiKeyPlaceholder || 'API Key'}
+              placeholder={providerConfig.apiKeyPlaceholder || t('apiKeyPlaceholder')}
               className="pr-10"
               disabled={validatingKey}
             />
@@ -258,31 +306,35 @@ function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectConfigBod
             {validatingKey ? (
               <>
                 <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                Connecting...
+                {t('connecting')}
               </>
             ) : (
-              'Connect'
+              t('connect')
             )}
           </Button>
         </div>
         {providerConfig.apiKeyHelpUrl && (
           <p className="text-sm text-muted-foreground mt-2">
-            Get your API key from{' '}
-            <a
-              href={providerConfig.apiKeyHelpUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline inline-flex items-center gap-1"
-            >
-              {providerConfig.name} <ExternalLink className="h-3 w-3" />
-            </a>
+            {ts.rich('getApiKeyFrom', {
+              provider: providerConfig.name,
+              link: (chunks) => (
+                <a
+                  href={providerConfig.apiKeyHelpUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  {chunks} <ExternalLink className="h-3 w-3" />
+                </a>
+              ),
+            })}
           </p>
         )}
       </div>
 
       <div className="flex gap-2 justify-end pt-2">
         <Button variant="ghost" size="sm" onClick={onBack}>
-          Back
+          {tc('actions.back')}
         </Button>
       </div>
     </div>
@@ -299,6 +351,8 @@ interface ConnectCustomBodyProps {
 }
 
 function ConnectCustomBody({ onConnected, onBack }: ConnectCustomBodyProps) {
+  const tc = useTranslations('common');
+  const t = useTranslations('connections');
   const [name, setName] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [currentApiKey, setCurrentApiKey] = useState('');
@@ -315,15 +369,15 @@ function ConnectCustomBody({ onConnected, onBack }: ConnectCustomBodyProps) {
     const trimmedName = name.trim();
     const trimmedUrl = baseUrl.trim();
     if (!trimmedName) {
-      toast.error('Please enter a provider name');
+      toast.error(t('providerNameRequired'));
       return;
     }
     if (!trimmedUrl) {
-      toast.error('Please enter an API endpoint URL');
+      toast.error(t('endpointRequired'));
       return;
     }
     if (requireApiKey && !currentApiKey.trim()) {
-      toast.error('Please enter an API token');
+      toast.error(t('apiTokenRequired'));
       return;
     }
     // External-only: custom endpoints must be public. Reject loopback/private/non-http
@@ -331,14 +385,14 @@ function ConnectCustomBody({ onConnected, onBack }: ConnectCustomBodyProps) {
     try {
       assertPublicHttpUrl(trimmedUrl);
     } catch {
-      toast.error('Only external (public) endpoints are supported. Local or private addresses aren’t allowed for custom providers.');
+      toast.error(t('externalOnly'));
       return;
     }
 
     const id = configManager.generateCustomProviderId(trimmedName);
     const badNames = unusableHeaderNames(headerRows);
     if (badNames.length > 0) {
-      toast.error(`Remove these headers first, they can't all be sent: ${badNames.join(', ')}`);
+      toast.error(t('badHeaders', { names: badNames.join(', ') }));
       return;
     }
 
@@ -361,13 +415,13 @@ function ConnectCustomBody({ onConnected, onBack }: ConnectCustomBodyProps) {
     try {
       const models = await loadProviderModels(id);
       if (models.length > 0) {
-        toast.success(`Connected to ${cfg.name} · ${models.length} model${models.length === 1 ? '' : 's'}`);
+        toast.success(t('connectedModels', { name: cfg.name, count: models.length }));
       } else {
-        toast.warning(`Added ${cfg.name}, but no models were listed. The endpoint may not expose /models — check the URL and token, or pick a model manually.`);
+        toast.warning(t('addedEmptyModels', { name: cfg.name }));
       }
     } catch (err) {
       logger.error(`[custom-provider] ${trimmedName} model discovery failed:`, err);
-      toast.warning(`Added ${cfg.name}, but couldn't reach its model list. Check the endpoint URL and token.`);
+      toast.warning(t('addedNoModels', { name: cfg.name }));
     } finally {
       setTesting(false);
       dispatchApiKeyEvent(id, !!key);
@@ -378,19 +432,19 @@ function ConnectCustomBody({ onConnected, onBack }: ConnectCustomBodyProps) {
   return (
     <div className="px-[18px] py-4 space-y-4">
       <div>
-        <Label htmlFor="custom-name">Provider name</Label>
+        <Label htmlFor="custom-name">{t('providerName')}</Label>
         <Input
           id="custom-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="e.g., My provider"
+          placeholder={t('providerNamePlaceholder')}
           className="mt-2"
           disabled={testing}
         />
       </div>
 
       <div>
-        <Label htmlFor="custom-url">API endpoint</Label>
+        <Label htmlFor="custom-url">{t('apiEndpoint')}</Label>
         <Input
           id="custom-url"
           value={baseUrl}
@@ -400,17 +454,16 @@ function ConnectCustomBody({ onConnected, onBack }: ConnectCustomBodyProps) {
           disabled={testing}
         />
         <p className="text-xs text-muted-foreground mt-2">
-          Base URL for an OpenAI-compatible API. The app will append{' '}
-          <code className="text-xs">/chat/completions</code> and{' '}
-          <code className="text-xs">/models</code>. Only external (public) endpoints
-          are supported — local addresses aren’t allowed.
+          {t.rich('baseUrlHint', {
+            code: (chunks) => <code className="text-xs">{chunks}</code>,
+          })}
         </p>
       </div>
 
       <div>
         <Label htmlFor="custom-key">
-          API token
-          <span className="text-muted-foreground text-xs ml-1">({requireApiKey ? 'required' : 'optional'})</span>
+          {t('apiToken')}
+          <span className="text-muted-foreground text-xs ml-1">{requireApiKey ? t('requiredParen') : tc('labels.optionalParen')}</span>
         </Label>
         <div className="flex gap-2 mt-2">
           <div className="relative flex-1">
@@ -445,7 +498,7 @@ function ConnectCustomBody({ onConnected, onBack }: ConnectCustomBodyProps) {
 
       <div className="flex items-center justify-between">
         <Label htmlFor="custom-require-key" className="text-sm font-normal cursor-pointer">
-          Require API token
+          {t('requireApiToken')}
         </Label>
         <Switch
           id="custom-require-key"
@@ -457,16 +510,16 @@ function ConnectCustomBody({ onConnected, onBack }: ConnectCustomBodyProps) {
 
       <div className="flex gap-2 justify-end pt-2">
         <Button variant="ghost" size="sm" onClick={onBack} disabled={testing}>
-          Back
+          {tc('actions.back')}
         </Button>
         <Button size="sm" onClick={handleConnect} disabled={testing || !name.trim() || !baseUrl.trim() || (requireApiKey && !currentApiKey.trim())}>
           {testing ? (
             <>
               <Loader2 className="h-3 w-3 animate-spin mr-1" />
-              Testing…
+              {t('testing')}
             </>
           ) : (
-            'Test & connect'
+            t('testAndConnect')
           )}
         </Button>
       </div>
@@ -484,6 +537,8 @@ interface ConnectChooseBodyProps {
 }
 
 function ConnectChooseBody({ onChoose, onChooseCustom }: ConnectChooseBodyProps) {
+  const t = useTranslations('connections');
+  const describe = useProviderDescriptions();
   const [query, setQuery] = useState('');
 
   const allProviders = getOfferableProviders();
@@ -493,7 +548,7 @@ function ConnectChooseBody({ onChoose, onChooseCustom }: ConnectChooseBodyProps)
     ? unconnected.filter(
         (p) =>
           p.name.toLowerCase().includes(query.toLowerCase()) ||
-          p.description.toLowerCase().includes(query.toLowerCase())
+          describe(p).toLowerCase().includes(query.toLowerCase())
       )
     : unconnected;
 
@@ -513,13 +568,13 @@ function ConnectChooseBody({ onChoose, onChooseCustom }: ConnectChooseBodyProps)
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-semibold text-sm">Custom / OpenAI compatible</span>
+          <span className="font-semibold text-sm">{t('customOpenAiCompatible')}</span>
           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-sm bg-muted border border-border text-muted-foreground">
-            Custom endpoint
+            {t('customEndpoint')}
           </span>
         </div>
         <div className="text-xs text-muted-foreground mt-0.5">
-          Add any OpenAI-compatible API endpoint.
+          {t('addAnyEndpoint')}
         </div>
       </div>
       <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
@@ -527,11 +582,11 @@ function ConnectChooseBody({ onChoose, onChooseCustom }: ConnectChooseBodyProps)
   );
 
   const archetypeLabel: Record<string, string> = {
-    aggregator: 'API key',
-    cloud: 'API key',
-    subscription: 'Subscription',
-    local: 'Local endpoint',
-    custom: 'Custom endpoint',
+    aggregator: t('apiKey'),
+    cloud: t('apiKey'),
+    subscription: t('subscription'),
+    local: t('localEndpoint'),
+    custom: t('customEndpoint'),
   };
 
   return (
@@ -541,7 +596,7 @@ function ConnectChooseBody({ onChoose, onChooseCustom }: ConnectChooseBodyProps)
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           autoFocus
-          placeholder="Search providers…"
+          placeholder={t('searchProviders')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="pl-9"
@@ -552,7 +607,7 @@ function ConnectChooseBody({ onChoose, onChooseCustom }: ConnectChooseBodyProps)
       <div className="space-y-1 pt-1">
         {!query.trim() && customCard}
         {filtered.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-6 text-center">No providers match.</p>
+          <p className="text-sm text-muted-foreground py-6 text-center">{t('noProvidersMatch')}</p>
         ) : (
           filtered.map((p) => {
             const archetype = getProviderArchetype(p.id);
@@ -580,7 +635,7 @@ function ConnectChooseBody({ onChoose, onChooseCustom }: ConnectChooseBodyProps)
                       {label}
                     </span>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{p.description}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">{describe(p)}</div>
                 </div>
 
                 <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
@@ -605,6 +660,8 @@ interface ConnectionRowProps {
 }
 
 function ConnectionRow({ providerId, onDisconnect, onEdit, onRevalidate }: ConnectionRowProps) {
+  const t = useTranslations('connections');
+  const tc = useTranslations('common');
   const cfg = getProvider(providerId);
   const cred = maskedCred(providerId);
   const [revalidating, setRevalidating] = useState(false);
@@ -630,25 +687,25 @@ function ConnectionRow({ providerId, onDisconnect, onEdit, onRevalidate }: Conne
 
       <div className="flex items-center gap-1.5 flex-shrink-0">
         <div className="h-1.5 w-1.5 rounded-full bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.5)]" />
-        <span className="text-xs font-semibold text-green-500 mr-1">Connected</span>
+        <span className="text-xs font-semibold text-green-500 mr-1">{tc('labels.connected')}</span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="icon" variant="ghost" className="size-7" title="Connection options" disabled={revalidating}>
+            <Button size="icon" variant="ghost" className="size-7" title={tc('labels.connectionOptions')} disabled={revalidating}>
               {revalidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreVertical className="h-4 w-4" />}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onSelect={onEdit}>
               <Pencil className="h-4 w-4" />
-              Edit
+              {tc('actions.edit')}
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => { void handleRevalidate(); }}>
               <RefreshCw className="h-4 w-4" />
-              Revalidate
+              {t('revalidate')}
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={onDisconnect} className="text-destructive focus:text-destructive">
               <Unplug className="h-4 w-4" />
-              Disconnect
+              {t('disconnect')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -668,6 +725,9 @@ interface EditConfigBodyProps {
 }
 
 function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyProps) {
+  const t = useTranslations('connections');
+  const tc = useTranslations('common');
+  const ts = useTranslations('settings');
   const providerConfig = getProvider(providerId);
   const archetype = getProviderArchetype(providerId);
   const isCustom = archetype === 'custom';
@@ -706,11 +766,11 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
         configManager.removeCustomProvider(providerId);
       }
       track('connection_removed', { provider: isCustom ? 'custom' : providerId });
-      toast.success(`Disconnected from ${providerConfig.name}`);
+      toast.success(t('disconnectedFrom', { name: providerConfig.name }));
       dispatchApiKeyEvent(false);
       onDisconnected();
     } catch {
-      toast.error('Failed to disconnect. Please try again.');
+      toast.error(ts('disconnectFailed'));
     } finally {
       setDisconnecting(false);
     }
@@ -720,18 +780,18 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
     const name = customName.trim();
     const url = customUrl.trim();
     if (!name || !url) {
-      toast.error('Name and endpoint URL are required');
+      toast.error(t('nameEndpointRequired'));
       return;
     }
     try {
       assertPublicHttpUrl(url);
     } catch {
-      toast.error('Only external (public) endpoints are supported. Local or private addresses aren’t allowed for custom providers.');
+      toast.error(t('externalOnly'));
       return;
     }
     const badNames = unusableHeaderNames(headerRows);
     if (badNames.length > 0) {
-      toast.error(`Remove these headers first, they can't all be sent: ${badNames.join(', ')}`);
+      toast.error(t('badHeaders', { names: badNames.join(', ') }));
       return;
     }
     setSavingCustom(true);
@@ -751,13 +811,13 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
       const models = await loadProviderModels(providerId);
       toast.success(
         models.length > 0
-          ? `Updated ${cfg.name} · ${models.length} model${models.length === 1 ? '' : 's'}`
-          : `Updated ${cfg.name}`
+          ? t('updatedModels', { name: cfg.name, count: models.length })
+          : t('updatedName', { name: cfg.name })
       );
       dispatchApiKeyEvent(!!customKey.trim());
       onDone();
     } catch {
-      toast.error('Failed to update custom provider');
+      toast.error(t('updateCustomFailed'));
     } finally {
       setSavingCustom(false);
     }
@@ -775,7 +835,7 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
           }}
         />
         <div className="flex justify-end pt-2">
-          <Button size="sm" onClick={onDone}>Done</Button>
+          <Button size="sm" onClick={onDone}>{tc('actions.done')}</Button>
         </div>
       </div>
     );
@@ -792,7 +852,7 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
           }}
         />
         <div className="flex justify-end pt-2">
-          <Button size="sm" onClick={onDone}>Done</Button>
+          <Button size="sm" onClick={onDone}>{tc('actions.done')}</Button>
         </div>
       </div>
     );
@@ -803,7 +863,7 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
     return (
       <div className="px-[18px] py-4 space-y-4">
         <div>
-          <Label htmlFor="edit-custom-name">Provider name</Label>
+          <Label htmlFor="edit-custom-name">{t('providerName')}</Label>
           <Input
             id="edit-custom-name"
             value={customName}
@@ -814,7 +874,7 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
         </div>
 
         <div>
-          <Label htmlFor="edit-custom-url">API endpoint</Label>
+          <Label htmlFor="edit-custom-url">{t('apiEndpoint')}</Label>
           <Input
             id="edit-custom-url"
             value={customUrl}
@@ -825,7 +885,7 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
         </div>
 
         <div>
-          <Label htmlFor="edit-custom-key">API token</Label>
+          <Label htmlFor="edit-custom-key">{t('apiToken')}</Label>
           <div className="flex gap-2 mt-2">
             <div className="relative flex-1">
               <Input
@@ -833,7 +893,7 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
                 type={showCustomKey ? 'text' : 'password'}
                 value={customKey}
                 onChange={(e) => setCustomKey(e.target.value)}
-                placeholder={customRequireKey ? 'Required' : 'Optional'}
+                placeholder={customRequireKey ? tc('labels.required') : tc('labels.optional')}
                 className="pr-10"
                 disabled={savingCustom}
               />
@@ -859,7 +919,7 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
 
         <div className="flex items-center justify-between">
           <Label htmlFor="edit-custom-require-key" className="text-sm font-normal cursor-pointer">
-            Require API token
+            {t('requireApiToken')}
           </Label>
           <Switch
             id="edit-custom-require-key"
@@ -876,7 +936,7 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
             onClick={handleDisconnect}
             disabled={disconnecting || savingCustom}
           >
-            {disconnecting ? 'Deleting…' : 'Delete'}
+            {disconnecting ? t('deleting') : tc('actions.delete')}
           </Button>
           <Button
             size="sm"
@@ -886,10 +946,10 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
             {savingCustom ? (
               <>
                 <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                Saving…
+                {tc('actions.saving')}
               </>
             ) : (
-              'Save'
+              tc('actions.save')
             )}
           </Button>
         </div>
@@ -908,12 +968,12 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
           disconnecting={disconnecting}
         />
         <p className="text-xs text-muted-foreground">
-          Local providers are always available when running. Disconnect removes them from the connections list.
+          {t('localAlwaysAvailable')}
         </p>
         <LocalContextLength providerId={providerId} />
         {providerId === 'ollama' && <OllamaPreflight />}
         <div className="flex justify-end pt-2">
-          <Button size="sm" onClick={onDone}>Done</Button>
+          <Button size="sm" onClick={onDone}>{tc('actions.done')}</Button>
         </div>
       </div>
     );
@@ -934,7 +994,7 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
               rel="noopener noreferrer"
               className="text-primary hover:underline inline-flex items-center gap-0.5"
             >
-              Manage on {providerConfig.name} <ExternalLink className="h-2.5 w-2.5" />
+              {ts('manageOn', { provider: providerConfig.name })} <ExternalLink className="h-2.5 w-2.5" />
             </a>
           ) : undefined
         }
@@ -942,7 +1002,7 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
         disconnecting={disconnecting}
       />
       <div className="flex justify-end pt-2">
-        <Button size="sm" onClick={onDone}>Done</Button>
+        <Button size="sm" onClick={onDone}>{tc('actions.done')}</Button>
       </div>
     </div>
   );
@@ -959,10 +1019,18 @@ type ConnDrawerMode = 'connect-choose' | 'connect-config' | 'connect-custom' | '
 // ---------------------------------------------------------------------------
 
 export function ConnectionsPane() {
+  const tc = useTranslations('common');
+  const t = useTranslations('connections');
+  const describe = useProviderDescriptions();
+  const ts = useTranslations('settings');
   // Bumped after connect/disconnect to force a re-render that re-evaluates which
   // providers are connected. The value itself is unused — only the update matters.
   const [, setConnVersion] = useState(0);
   const refresh = useCallback(() => setConnVersion((v) => v + 1), []);
+  // Connections live in this browser's storage, which the server render cannot see: read them only
+  // once hydrated, so the server HTML and the first client render agree.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
 
   // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -990,12 +1058,12 @@ export function ConnectionsPane() {
     try {
       const models = await loadProviderModels(id);
       if (models.length > 0) {
-        toast.success(`Refreshed ${models.length} model${models.length !== 1 ? 's' : ''} for ${cfg.name}`);
+        toast.success(t('refreshedModels', { name: cfg.name, count: models.length }));
       } else {
-        toast.error(`No models returned for ${cfg.name}. Check the connection.`);
+        toast.error(t('noModelsFor', { name: cfg.name }));
       }
     } catch {
-      toast.error(`Failed to refresh ${cfg.name} models`);
+      toast.error(t('refreshFailedFor', { name: cfg.name }));
     }
   };
 
@@ -1024,17 +1092,17 @@ export function ConnectionsPane() {
         configManager.removeCustomProvider(id);
       }
       track('connection_removed', { provider: isCustom ? 'custom' : id });
-      toast.success(`Disconnected from ${cfg.name}`);
+      toast.success(t('disconnectedFrom', { name: cfg.name }));
       emitApiKeyUpdate(id, false);
       refresh();
     } catch {
-      toast.error('Failed to disconnect. Please try again.');
+      toast.error(ts('disconnectFailed'));
     }
   };
 
   const showLocalProviders = !process.env.NEXT_PUBLIC_GATEWAY_URL;
   const allProviders = getAllProviders();
-  const connectedProviders = allProviders.filter((p) => isProviderConnected(p.id));
+  const connectedProviders = hydrated ? allProviders.filter((p) => isProviderConnected(p.id)) : [];
 
   const cloudProviders = connectedProviders.filter((p) => {
     const arch = getProviderArchetype(p.id);
@@ -1052,21 +1120,21 @@ export function ConnectionsPane() {
   let drawerScope: string | undefined;
 
   if (drawerMode === 'connect-choose') {
-    drawerLabel = 'Add a provider';
-    drawerTitle = 'Choose a provider';
-    drawerScope = 'Cloud, subscription, local, or a custom OpenAI-compatible endpoint.';
+    drawerLabel = t('addProvider');
+    drawerTitle = t('chooseProvider');
+    drawerScope = t('chooseProviderScope');
   } else if (drawerMode === 'connect-custom') {
-    drawerLabel = '← Back';
-    drawerTitle = 'Custom provider';
-    drawerScope = 'Connect any OpenAI-compatible API endpoint.';
+    drawerLabel = `← ${tc('actions.back')}`;
+    drawerTitle = t('customProvider');
+    drawerScope = t('customProviderScope');
   } else if (drawerMode === 'connect-config' && selectedProviderId) {
-    drawerLabel = '← Back';
+    drawerLabel = `← ${tc('actions.back')}`;
     drawerTitle = getProvider(selectedProviderId).name;
-    drawerScope = getProvider(selectedProviderId).description;
+    drawerScope = describe(getProvider(selectedProviderId));
   } else if (drawerMode === 'edit-config' && selectedProviderId) {
-    drawerLabel = 'Edit connection';
+    drawerLabel = t('editConnection');
     drawerTitle = getProvider(selectedProviderId).name;
-    drawerScope = `Connected`;
+    drawerScope = tc('labels.connected');
   }
 
   return (
@@ -1077,32 +1145,32 @@ export function ConnectionsPane() {
           <div>
             <h3 className="text-sm font-semibold text-foreground">AI</h3>
             <p className="text-xs text-muted-foreground mt-1">
-              Inference providers. When multiple are connected, the model you pick (globally or per project) decides which one is used.
+              {t('inferenceProvidersHint')}
             </p>
           </div>
           <Button
             variant="default"
             size="sm"
-            autoFocus={connectedProviders.length === 0}
+            autoFocus={hydrated && connectedProviders.length === 0}
             className={cn(
               'gap-1.5 shrink-0',
               // Nothing connected yet: make the primary next step obvious.
-              connectedProviders.length === 0 && 'ring-2 ring-primary/70 animate-ring-opacity',
+              hydrated && connectedProviders.length === 0 && 'ring-2 ring-primary/70 animate-ring-opacity',
             )}
             onClick={openAddDrawer}
           >
             <Plus className="h-3.5 w-3.5" />
-            Add a provider
+            {t('addProvider')}
           </Button>
         </div>
 
         {/* Cloud section */}
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-            Cloud
+            {t('cloud')}
           </p>
         {cloudProviders.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-1 pl-1">None yet.</p>
+          hydrated && <p className="text-sm text-muted-foreground py-1 pl-1">{t('noneYet')}</p>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {cloudProviders.map((p) => (
@@ -1122,7 +1190,7 @@ export function ConnectionsPane() {
       {customProviders.length > 0 && (
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-            Custom
+            {tc('labels.custom')}
           </p>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {customProviders.map((p) => (
@@ -1142,10 +1210,10 @@ export function ConnectionsPane() {
       {showLocalProviders && (
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-            Local
+            {t('local')}
           </p>
           {localProviders.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-1 pl-1">None yet.</p>
+            hydrated && <p className="text-sm text-muted-foreground py-1 pl-1">{t('noneYet')}</p>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
               {localProviders.map((p) => (

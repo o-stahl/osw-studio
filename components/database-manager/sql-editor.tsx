@@ -5,6 +5,8 @@ import MonacoEditor from '@monaco-editor/react';
 import { Play, Loader2, AlertCircle, CheckCircle2, History, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTheme } from 'next-themes';
+import { useTranslations } from 'next-intl';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { cn } from '@/lib/utils';
 
 interface SqlEditorProps {
@@ -33,6 +35,8 @@ export function SqlEditor({ deploymentId, queryEndpoint, workspaceId }: SqlEdito
   const [history, setHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const { resolvedTheme } = useTheme();
+  const t = useTranslations('backend.sql');
+  const { number } = useLocalFormat();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -77,7 +81,7 @@ export function SqlEditor({ deploymentId, queryEndpoint, workspaceId }: SqlEdito
       if (!res.ok) {
         setResult({
           success: false,
-          error: data.error || 'Query failed',
+          error: data.error || t('queryFailed'),
           executionTime,
         });
       } else {
@@ -93,13 +97,13 @@ export function SqlEditor({ deploymentId, queryEndpoint, workspaceId }: SqlEdito
     } catch (err) {
       setResult({
         success: false,
-        error: err instanceof Error ? err.message : 'Query failed',
+        error: err instanceof Error ? err.message : t('queryFailed'),
         executionTime: Date.now() - startTime,
       });
     } finally {
       setExecuting(false);
     }
-  }, [sql, deploymentId, saveToHistory]);
+  }, [sql, deploymentId, saveToHistory, t]);
 
   // Handle keyboard shortcut
   const handleEditorMount = useCallback((editor: unknown) => {
@@ -132,7 +136,7 @@ export function SqlEditor({ deploymentId, queryEndpoint, workspaceId }: SqlEdito
               ) : (
                 <Play className="h-4 w-4 mr-1" />
               )}
-              Execute
+              {t('execute')}
             </Button>
             <span className="text-xs text-muted-foreground">
               Ctrl/Cmd + Enter
@@ -144,7 +148,7 @@ export function SqlEditor({ deploymentId, queryEndpoint, workspaceId }: SqlEdito
             onClick={() => setShowHistory(!showHistory)}
           >
             <History className="h-4 w-4 mr-1" />
-            History
+            {t('history')}
           </Button>
         </div>
 
@@ -190,7 +194,7 @@ export function SqlEditor({ deploymentId, queryEndpoint, workspaceId }: SqlEdito
       <div className="flex-1 overflow-hidden border rounded-lg">
         {result === null ? (
           <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-            Execute a query to see results
+            {t('emptyResult')}
           </div>
         ) : result.success ? (
           <div className="h-full flex flex-col">
@@ -198,13 +202,13 @@ export function SqlEditor({ deploymentId, queryEndpoint, workspaceId }: SqlEdito
             <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-b text-sm">
               <CheckCircle2 className="h-4 w-4 text-green-500" />
               {result.rows && result.rows.length > 0 ? (
-                <span>{result.rows.length} row{result.rows.length !== 1 ? 's' : ''}</span>
+                <span>{t('rows', { count: result.rows.length })}</span>
               ) : result.rowsAffected !== undefined && result.rowsAffected > 0 ? (
-                <span>{result.rowsAffected} row{result.rowsAffected !== 1 ? 's' : ''} affected</span>
+                <span>{t('rowsAffected', { count: result.rowsAffected })}</span>
               ) : (
-                <span>Query executed successfully</span>
+                <span>{t('success')}</span>
               )}
-              <span className="text-muted-foreground">({result.executionTime}ms)</span>
+              <span className="text-muted-foreground">({number(result.executionTime ?? 0, { style: 'unit', unit: 'millisecond', unitDisplay: 'narrow' })})</span>
             </div>
 
             {/* Results table */}
@@ -244,7 +248,7 @@ export function SqlEditor({ deploymentId, queryEndpoint, workspaceId }: SqlEdito
         ) : (
           <div className="h-full flex flex-col items-center justify-center gap-2 p-4">
             <AlertCircle className="h-6 w-6 text-destructive" />
-            <p className="text-sm text-destructive font-medium">Query Error</p>
+            <p className="text-sm text-destructive font-medium">{t('error')}</p>
             <p className="text-sm text-muted-foreground text-center max-w-md">
               {result.error}
             </p>

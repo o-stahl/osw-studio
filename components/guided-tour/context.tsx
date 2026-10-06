@@ -9,7 +9,6 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { configManager } from '@/lib/config/storage';
 import { GUIDED_TOUR_STEPS } from './steps';
 import {
   GuidedTourEventHandler,
@@ -207,8 +206,11 @@ export function GuidedTourProvider({ children }: { children: React.ReactNode }) 
         const otherProjects = allProjects.filter(p => p.id !== tourDemoProjectId);
 
         if (otherProjects.length > 0) {
-          // Delete the tour demo project since user has other projects
+          // Delete the tour demo project since user has other projects. In server mode it was
+          // pushed while open, so the server's copy goes too, or the next pull brings it back.
           await vfs.deleteProject(tourDemoProjectId);
+          const { autoDeleteProject } = await import('@/lib/vfs/auto-sync');
+          await autoDeleteProject(tourDemoProjectId);
 
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('projectsChanged'));
@@ -226,7 +228,6 @@ export function GuidedTourProvider({ children }: { children: React.ReactNode }) 
     setStepIndex(0);
     setStepKey((key) => key + 1);
     setStatus(mode === 'finish' ? 'completed' : 'idle');
-    configManager.setHasSeenTour(true);
     demoAbortController.current?.abort();
     workspaceHandlerRef.current = null;
   }, [resetWorkspaceData, tourDemoProjectId, projectList, stepIndex]);

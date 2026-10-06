@@ -18,6 +18,8 @@ import { SSEClient } from '@/lib/server-generate/sse-client';
 import { handleFilesChanged, cancelPendingFileSync } from '@/lib/server-generate/file-sync-handler';
 import { handleBuildRequested } from '@/lib/server-generate/build-delegation-handler';
 import { handleSearchRequested } from '@/lib/server-generate/search-delegation-handler';
+import { handleImageRequested } from '@/lib/server-generate/image-delegation-handler';
+import { imageModelFor } from '@/lib/llm/image-gen';
 import { playTaskCompleteSound, playTaskCompleteSoundSubtle } from '@/lib/utils/task-complete-sound';
 import { checkpointManager } from '@/lib/vfs/checkpoint';
 import { saveManager } from '@/lib/vfs/save-manager';
@@ -26,6 +28,7 @@ import { notifyServerProjectsChanged, notifyServerDeploymentsChanged } from '@/l
 import { getProjectAssignment } from '@/lib/llm/models/project-assignment';
 import type { InterviewTemplate } from '@/lib/interview/types';
 import type { ApprovalRequest, ApprovalOutcome } from '@/lib/llm/permissions';
+import { translator } from '@/lib/i18n/runtime';
 
 const MAX_DEBUG_EVENTS = 2000;
 let debugIdCounter = 0;
@@ -51,7 +54,50 @@ function isServerMode(): boolean {
   return process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
 }
 
-async function pullAndCheckpointServerFiles(
+/**
+ * One read-modify-write of a project record at a time. Cost writes and a pull's write-back both
+ * replace the whole record, so either one landing between the other's read and write undid it.
+ */
+const projectWrites = new Map<string, Promise<void>>();
+
+function queueProjectWrite<T>(projectId: string, write: () => Promise<T>): Promise<T> {
+  const run = (projectWrites.get(projectId) ?? Promise.resolve()).then(write);
+  const settled = run.then(() => {}, () => {});
+  projectWrites.set(projectId, settled);
+  void settled.then(() => { if (projectWrites.get(projectId) === settled) projectWrites.delete(projectId); });
+  return run;
+}
+
+/**
+ * Count a server run's spend in this browser's record of the project, which is what the header and
+ * the cost settings read. The server records cost in its own copy of the project (which may not
+ * exist there), so without this a server run never moved the header. Only the orchestrator's usage
+ * events carry `taskCost`; the provider's own per-call event does not, and would count twice.
+ */
+function recordServerUsage(
+  projectId: string,
+  data: Record<string, unknown>,
+  get: () => CombinedState,
+  set: (partial: Partial<CombinedState>) => void,
+) {
+  const taskId = (data.sourceTaskId as string | undefined) ?? get().generationTasks.get(projectId)?.serverTaskId;
+  if (typeof data.taskCost !== 'number' || !taskId) return;
+  const usage = (data.usage ?? {}) as { provider?: string; promptTokens?: number; completionTokens?: number };
+  const taskCost = data.taskCost;
+  const taskTokens = typeof data.taskTokens === 'number' ? data.taskTokens : undefined;
+  queueProjectWrite(projectId, async () => {
+    const total = await vfs.recordServerTaskCost(projectId, {
+      taskId,
+      taskCost,
+      taskTokens,
+      provider: usage.provider || 'unknown',
+      tokenUsage: { input: usage.promptTokens ?? 0, output: usage.completionTokens ?? 0 },
+    });
+    if (get().projectId === projectId) set({ projectCost: total });
+  }).catch(err => logger.warn('[ServerGen] Failed to record cost:', err));
+}
+
+export async function pullAndCheckpointServerFiles(
   projectId: string,
   get: () => CombinedState,
 ) {
@@ -112,17 +158,23 @@ async function pullAndCheckpointServerFiles(
     await markSyncNeedsRetry(projectId, target.name || serverProject.name, { reason: 'conflict' });
     return;
   }
-  target.name = serverProject.name;
-  target.description = serverProject.description;
-  if (serverProject.settings) target.settings = normalizeProjectSettings(serverProject.settings);
-  target.updatedAt = serverUpdatedAt;
-  target.serverUpdatedAt = serverUpdatedAt;
-  target.lastSyncedAt = new Date();
-  target.syncStatus = 'synced';
-  if (typeof serverProject.revision === 'number') {
-    target.revision = serverProject.revision;
-  }
-  await vfs.updateProject(target, { preserveUpdatedAt: true });
+  // Merged into a fresh read, in the project's write queue: the file pull above can take a while,
+  // and a cost write in that window would otherwise be overwritten by the record read earlier.
+  await queueProjectWrite(projectId, async () => {
+    let record = target;
+    try { record = await vfs.getProject(projectId); } catch { /* first pull: nothing stored yet */ }
+    record.name = serverProject.name;
+    record.description = serverProject.description;
+    if (serverProject.settings) record.settings = normalizeProjectSettings(serverProject.settings);
+    record.updatedAt = serverUpdatedAt;
+    record.serverUpdatedAt = serverUpdatedAt;
+    record.lastSyncedAt = new Date();
+    record.syncStatus = 'synced';
+    if (typeof serverProject.revision === 'number') {
+      record.revision = serverProject.revision;
+    }
+    await vfs.updateProject(record, { preserveUpdatedAt: true });
+  });
   // Files are one store; edge/server functions, schedules and secrets are another. An MCP
   // backend_upsert writes the latter, and without this pull a later UI publish would push the
   // tab's stale IndexedDB copy and wipe the connector's work.
@@ -132,7 +184,7 @@ async function pullAndCheckpointServerFiles(
     logger.warn('[ServerGen] Backend features pull failed:', err);
   }
   try {
-    const cp = await checkpointManager.createCheckpoint(projectId, 'After server generation', { kind: 'auto' });
+    const cp = await checkpointManager.createCheckpoint(projectId, 'After server generation', { kind: 'auto', label: { key: 'afterServerGeneration' } });
     get().addDebugEvent('checkpoint_created', {
       checkpointId: cp.id, description: cp.description, timestamp: cp.timestamp,
     }, projectId);
@@ -209,11 +261,6 @@ export interface OrchestratorSlice {
   clearUserStop: () => void;
 
   isProjectGenerating: (projectId: string) => boolean;
-  /**
-   * Whether Continue can do anything for the viewed project: only a client-side orchestrator holds
-   * a pause to resolve. Server-mode runs have none, and offering the button there did nothing.
-   */
-  canContinueGeneration: () => boolean;
   isAnyGenerating: () => boolean;
 
   // Event methods
@@ -238,7 +285,6 @@ export interface OrchestratorSlice {
   connectSSE: () => void;
   disconnectSSE: () => void;
   startServerGeneration: (projectId: string, prompt: string, chatMode: boolean, images?: PendingImage[], options?: StartGenerationOptions) => Promise<boolean>;
-  continueGeneration: () => void;
   resetOrchestrator: () => void;
 
   // Settings
@@ -262,11 +308,11 @@ export interface OrchestratorSlice {
 }
 
 /**
- * Shown when a start is refused because the project already has a task. Exported because the UI
- * paths that turn a gesture down for the same reason (a restore, a retry, starting an interview)
- * have to say the same thing.
+ * The notice when a start is refused because the project already has a task, as a key. Exported
+ * because the UI paths that turn a gesture down for the same reason (a restore, a retry, starting
+ * an interview) have to say the same thing.
  */
-export const PROJECT_BUSY_NOTICE = 'Still working on the last change. Wait for it to finish, or stop it first.';
+export const PROJECT_BUSY_NOTICE = 'orchestrator.projectBusy' as const;
 
 type CombinedState = OrchestratorSlice & {
   projectId: string;
@@ -316,8 +362,6 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     set({ pendingApproval: null });
     queued.forEach((a) => a.resolve('deny'));
   },
-
-  canContinueGeneration: () => !!get().generationTasks.get(get().projectId)?.orchestratorInstance,
 
   isProjectGenerating: (projectId: string) => {
     const task = get().generationTasks.get(projectId);
@@ -513,7 +557,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     // finishes and lands changes the client sees as another device's. The guard has to sit ahead of
     // both paths.
     if (get().isProjectGenerating(projectId)) {
-      toast.info(PROJECT_BUSY_NOTICE);
+      toast.info(translator()(PROJECT_BUSY_NOTICE));
       return false;
     }
 
@@ -526,12 +570,12 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     const trimmedPrompt = message.trim();
     const hasAttachments = !!(images?.length || options?.audio?.length || options?.files?.length);
     if (!trimmedPrompt && !hasAttachments) {
-      toast.error('Please enter a prompt');
+      toast.error(translator()('orchestrator.noPrompt'));
       return false;
     }
 
     const chatMode = options?.chatMode ?? false;
-    const projectName = get().projectName || 'Untitled';
+    const projectName = get().projectName || '';
 
     // Create the GenerationTask entry synchronously so `generating=true` is
     // visible before any async work. Model is filled in after assignment resolves.
@@ -543,7 +587,6 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       startedAt: Date.now(),
       result: null,
       paused: false,
-      pausedMessage: null,
       orchestratorInstance: null,
       persistedInstance: get().generationTasks.get(projectId)?.persistedInstance ?? null,
     };
@@ -573,7 +616,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       cancelTasks.delete(projectId);
       set({ generationTasks: cancelTasks, ...deriveScalarFields(cancelTasks, get().projectId) });
       logger.error('[Orchestrator] Failed to resolve project model assignment:', err);
-      toast.error('Could not resolve this project\'s model configuration. Check your provider settings.');
+      toast.error(translator()('orchestrator.assignmentFailed'));
       return false;
     }
     if (get().userStop) set({ userStop: null });
@@ -589,8 +632,8 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       // OAuth providers stop here too rather than sending an empty bearer, and an expired sign-in
       // lands here as well since getProviderApiKey drops it.
       toast.error(providerConfig.usesOAuth
-        ? `Sign in with ${providerConfig.name} to run tasks`
-        : `Please set your ${providerConfig.name} API key in settings`);
+        ? translator()('orchestrator.signInToRun', { provider: providerConfig.name })
+        : translator()('orchestrator.setApiKey', { provider: providerConfig.name }));
       return false;
     }
 
@@ -599,7 +642,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
         const cancelTasks = new Map(get().generationTasks);
         cancelTasks.delete(projectId);
         set({ generationTasks: cancelTasks, ...deriveScalarFields(cancelTasks, get().projectId) });
-        toast.error(`No model selected for ${providerConfig.name}. Please select a model in settings.`);
+        toast.error(translator()('orchestrator.noModelForProvider', { provider: providerConfig.name }));
         return false;
       }
     }
@@ -610,7 +653,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       const cancelTasks = new Map(get().generationTasks);
       cancelTasks.delete(projectId);
       set({ generationTasks: cancelTasks, ...deriveScalarFields(cancelTasks, get().projectId) });
-      toast.error(`No model selected. Please select a model in settings.`);
+      toast.error(translator()('orchestrator.noModel'));
       return false;
     }
 
@@ -649,22 +692,6 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       }
       if (event === 'runtimeChanged' && data?.runtime && isViewingThis) {
         get().updateProjectSettings({ runtime: data.runtime });
-      }
-      if (event === 'error_paused') {
-        const tasks = new Map(get().generationTasks);
-        const t = tasks.get(projectId);
-        if (t) {
-          tasks.set(projectId, { ...t, paused: true, pausedMessage: data?.message || 'API error' });
-          set({ generationTasks: tasks });
-        }
-      }
-      if (event === 'iteration' || event === 'tool_status') {
-        const t = get().generationTasks.get(projectId);
-        if (t?.paused) {
-          const tasks = new Map(get().generationTasks);
-          tasks.set(projectId, { ...t, paused: false, pausedMessage: null });
-          set({ generationTasks: tasks });
-        }
       }
     };
 
@@ -761,12 +788,19 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
         }
         set({ generationTasks: successTasks, ...deriveScalarFields(successTasks, get().projectId) });
         if (isForeground && !awaitingUser) playTaskCompleteSound();
-        if (!awaitingUser) toast.success('Task completed');
+        if (!awaitingUser) toast.success(translator()('orchestrator.taskCompleted'));
       } else {
-        // User-initiated stops are not failures: stopGeneration already
-        // tracked task_fail (reason: stopped) and the user expects no error.
-        const wasStopped = result.exitReason === 'stopped' || result.exitReason === 'error_stop';
-        if (!wasStopped) {
+        // A user's Stop already tracked task_fail (reason: stopped) in stopGeneration, which marks
+        // the task failed at once; a Stop pressed while a provider error was being handled ends as
+        // error_stop, so the task's mark is what tells them apart. A provider error stop is a
+        // failure for telemetry, but the stopped card in the thread already says so: no toast.
+        // Once stopped, a new run can start before this one returns; the entry is then the new
+        // run's, and this one was stopped.
+        const entry = get().generationTasks.get(projectId);
+        const ownEntry = entry?.startedAt === newTask.startedAt;
+        const userStopped = result.exitReason === 'stopped' || !ownEntry || entry?.result === 'failed';
+        const wasStopped = userStopped || result.exitReason === 'error_stop';
+        if (!userStopped) {
           track('task_fail', {
             provider: currentProvider, model: modelToUse, reason: 'api_error',
             duration_ms: Date.now() - taskStartTime, task_id: taskId,
@@ -775,24 +809,28 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
           });
         }
 
-        const failForeground = isTabVisible() && get().projectId === projectId;
-        const failTasks = new Map(get().generationTasks);
-        if (failForeground) {
-          failTasks.delete(projectId);
-        } else {
-          const failTask = failTasks.get(projectId);
-          if (failTask) {
-            failTasks.set(projectId, { ...failTask, result: 'failed' });
+        if (ownEntry) {
+          const failForeground = isTabVisible() && get().projectId === projectId;
+          const failTasks = new Map(get().generationTasks);
+          if (failForeground) {
+            failTasks.delete(projectId);
+          } else {
+            const failTask = failTasks.get(projectId);
+            if (failTask) {
+              failTasks.set(projectId, { ...failTask, result: 'failed' });
+            }
           }
+          set({ generationTasks: failTasks, ...deriveScalarFields(failTasks, get().projectId) });
         }
-        set({ generationTasks: failTasks, ...deriveScalarFields(failTasks, get().projectId) });
         if (!wasStopped) {
-          toast.error(result.summary || 'Generation failed', { duration: 5000, position: 'bottom-center' });
+          toast.error(result.summary || translator()('orchestrator.generationFailed'), { duration: 5000, position: 'bottom-center' });
         }
       }
     } catch (error) {
       logger.error('Generation error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to generate';
+      // The thrown message when there is one; stored as-is, so a missing one stays missing rather
+      // than freezing a fallback sentence in today's language.
+      const errorMessage = error instanceof Error ? error.message : undefined;
       track('task_fail', {
         provider: currentProvider, model: modelToUse, reason: 'api_error',
         duration_ms: Date.now() - taskStartTime, task_id: taskId,
@@ -809,8 +847,8 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
         }
       }
       set({ generationTasks: errorTasks, ...deriveScalarFields(errorTasks, get().projectId) });
-      get().addDebugEvent('error', { message: errorMessage }, projectId);
-      toast.error(errorMessage, { duration: 5000, position: 'bottom-center' });
+      get().addDebugEvent('error', errorMessage ? { message: errorMessage } : {}, projectId);
+      toast.error(errorMessage ?? translator()('orchestrator.generationFailed'), { duration: 5000, position: 'bottom-center' });
     } finally {
       // Clear orchestratorInstance but keep persistedInstance
       const finalTasks = new Map(get().generationTasks);
@@ -895,14 +933,6 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     // Dispatch event
     if (typeof globalThis.dispatchEvent === 'function') {
       globalThis.dispatchEvent(new CustomEvent('generationStateChanged', { detail: { generating: false, projectId: targetId } }));
-    }
-  },
-
-  continueGeneration: () => {
-    const task = get().generationTasks.get(get().projectId);
-    if (task?.orchestratorInstance) {
-      task.orchestratorInstance.continue();
-      toast.info('Resuming task...');
     }
   },
 
@@ -1013,7 +1043,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
         kind: 'edit',
         projectId: data.projectId,
         projectName: data.projectName,
-        clientLabel: data.clientLabel || 'An MCP client',
+        clientLabel: data.clientLabel || '',
       });
       try {
         // pullAndCheckpointServerFiles merges and checkpoints but does not create; a project made
@@ -1078,7 +1108,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
           kind: 'run',
           projectId: data.projectId,
           projectName,
-          clientLabel: data.clientLabel || 'An MCP client',
+          clientLabel: data.clientLabel || '',
         });
         // The run continues whatever conversation the project already has. It used to clear it
         // first, which was an unrecoverable delete of the person's own chat (`clearEvents` writes
@@ -1090,7 +1120,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
           ? { requestId: data.requestId, ok: true, taskId }
           : { requestId: data.requestId, ok: false, error: 'This tab could not start the task. Its provider connection or model may not be set.' };
       } catch (error) {
-        body = { requestId: data.requestId, ok: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        body = { requestId: data.requestId, ok: false, error: error instanceof Error ? error.message : 'Unknown error' }; // i18n-ignore: answered to the MCP client
       }
       // The notice belongs to a running task; if none started there is nothing to announce.
       if (!body.ok) clearMcpActivity(data.projectId);
@@ -1122,6 +1152,10 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
           handleBuildRequested(data as any);
           return;
         }
+        if (event === 'image_requested') {
+          handleImageRequested(data as unknown as Parameters<typeof handleImageRequested>[0]);
+          return;
+        }
         if (event === 'search_requested') {
           handleSearchRequested(data as any);
           return;
@@ -1132,8 +1166,8 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
           markMcpActivity({
             kind: 'deploy',
             projectId: `deployment:${String((data as { deploymentId?: string }).deploymentId ?? '')}`,
-            projectName: d.deploymentName ?? 'a deployment',
-            clientLabel: d.clientLabel || 'An MCP client',
+            projectName: d.deploymentName || '',
+            clientLabel: d.clientLabel || '',
             action: d.action,
           });
           notifyServerDeploymentsChanged();
@@ -1179,7 +1213,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
                 playTaskCompleteSound();
               }
               if (!awaitingUser) {
-                toast.success(data.result === 'stopped' ? 'Task stopped' : 'Task completed');
+                toast.success(translator()(data.result === 'stopped' ? 'orchestrator.taskStopped' : 'orchestrator.taskCompleted'));
                 pullAndCheckpointServerFiles(projectId, get).catch(err => {
                   logger.warn('[ServerGen] Post-completion pull failed:', err);
                 });
@@ -1192,9 +1226,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
           return;
         }
         if (event === 'usage') {
-          if (data.totalCost != null && get().projectId === projectId) {
-            set({ projectCost: data.totalCost as number });
-          }
+          recordServerUsage(projectId, data, get, set);
           // Don't return — let it fall through to addDebugEvent so chat panel gets usage info
         }
 
@@ -1254,19 +1286,11 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
         get().addDebugEvent(event, data, projectId);
 
         const isViewingThis = get().projectId === projectId;
-        if (event === 'error_paused') {
-          const tasks = new Map(get().generationTasks);
-          const t = [...tasks.values()].find((tt) => tt.serverTaskId && tt.projectId === projectId);
-          if (t) {
-            tasks.set(projectId, { ...t, paused: true, pausedMessage: (data?.message as string) || 'API error' });
-            set({ generationTasks: tasks });
-          }
-        }
         if ((event === 'iteration' || event === 'tool_status') && isViewingThis) {
           const t = get().generationTasks.get(projectId);
           if (t?.paused) {
             const tasks = new Map(get().generationTasks);
-            tasks.set(projectId, { ...t, paused: false, pausedMessage: null });
+            tasks.set(projectId, { ...t, paused: false });
             set({ generationTasks: tasks });
           }
         }
@@ -1286,7 +1310,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
   },
 
   startServerGeneration: async (projectId: string, prompt: string, chatMode: boolean, images?: PendingImage[], options?: StartGenerationOptions) => {
-    const projectName = get().projectName || 'Untitled';
+    const projectName = get().projectName || '';
 
     /**
      * Claim the project before the first `await`, exactly as the browser path does.
@@ -1309,7 +1333,6 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       startedAt: Date.now(),
       result: null,
       paused: false,
-      pausedMessage: null,
       orchestratorInstance: null,
       persistedInstance: null,
     });
@@ -1330,7 +1353,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       assignment = await getProjectAssignment();
     } catch (err) {
       logger.error('[ServerGen] Failed to resolve project model assignment:', err);
-      toast.error('Could not resolve this project\'s model configuration. Check your provider settings.');
+      toast.error(translator()('orchestrator.assignmentFailed'));
       abandonClaim();
       return false;
     }
@@ -1340,7 +1363,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     const model = assignment.agent.model;
 
     if (!model) {
-      toast.error(`No model selected for ${providerConfig.name}. Please select a model in settings.`);
+      toast.error(translator()('orchestrator.noModelForProvider', { provider: providerConfig.name }));
       abandonClaim();
       return false;
     }
@@ -1348,7 +1371,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     // Server-mode generation carries the key in the request body (the backend has no
     // server-side auth resolution for the user's provider). Local providers have none.
     if (!apiKey && providerConfig.apiKeyRequired) {
-      toast.error(`Please set your ${providerConfig.name} API key in settings`);
+      toast.error(translator()('orchestrator.setApiKey', { provider: providerConfig.name }));
       abandonClaim();
       return false;
     }
@@ -1405,7 +1428,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
 
     // Snapshot current project state so the user can roll back after server generation
     try {
-      const cp = await checkpointManager.createCheckpoint(projectId, 'Pre-generation snapshot', { kind: 'auto' });
+      const cp = await checkpointManager.createCheckpoint(projectId, 'Pre-generation snapshot', { kind: 'auto', label: { key: 'preGeneration' } });
       get().addDebugEvent('checkpoint_created', {
         checkpointId: cp.id, description: cp.description, timestamp: cp.timestamp,
       }, projectId);
@@ -1454,7 +1477,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId,
-          projectName,
+          projectName: projectName || undefined,
           prompt,
           model,
           apiKey,
@@ -1464,6 +1487,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
           permissionOverrides: configManager.getPermissionOverrides(),
           webSearchAvailable: configManager.isWebSearchConfigured(),
           ...(webSearch ? { webSearch } : {}),
+          imageGenAvailable: imageModelFor(assignment) !== null,
           conversationHistory,
           ...(Object.keys(executeOptions).length > 0 ? { executeOptions } : {}),
           generationParams: {
@@ -1480,14 +1504,14 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        toast.error((error as any).error || 'Failed to start server generation');
+        toast.error((error as any).error || translator()('orchestrator.serverStartFailed'));
         abandonClaim();
         return false;
       }
 
       ({ taskId } = await response.json());
     } catch {
-      toast.error('Failed to connect to server for generation');
+      toast.error(translator()('orchestrator.serverConnectFailed'));
       abandonClaim();
       return false;
     }
@@ -1504,7 +1528,6 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
         startedAt: Date.now(),
         result: null,
         paused: false,
-        pausedMessage: null,
         orchestratorInstance: null,
         persistedInstance: null,
       }),
@@ -1564,7 +1587,6 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
             startedAt: serverTask.startedAt,
             result: null,
             paused: serverTask.status === 'paused',
-            pausedMessage: null,
             orchestratorInstance: null,
             persistedInstance: null,
             serverTaskId: serverTask.taskId,
@@ -1584,7 +1606,6 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
             startedAt: serverTask.startedAt,
             result,
             paused: false,
-            pausedMessage: null,
             orchestratorInstance: null,
             persistedInstance: null,
             serverTaskId: serverTask.taskId,
@@ -1615,7 +1636,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
           generationTasks.set(pid, { ...task, result: 'unavailable' });
           get().addDebugEvent('task_complete', {
             result: 'unavailable',
-            error: 'Generation status expired — outcome unknown',
+            error: 'Generation status expired — outcome unknown', // i18n-ignore: debug event data
             recovered: true,
           }, pid);
         }

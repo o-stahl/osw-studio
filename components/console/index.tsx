@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Terminal as TerminalIcon, Play, Square, Trash2 } from 'lucide-react';
 import { PanelHeader } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
@@ -106,6 +107,13 @@ function writeLogLine(term: import('@xterm/xterm').Terminal, level: string, text
 }
 
 export function ConsolePanel({ projectId, runtime, onClose, bufferedMessages, onBufferConsumed }: ConsolePanelProps) {
+  const tc = useTranslations('common');
+  const tw = useTranslations('workspace');
+  // Terminal output is written from long-lived effects and callbacks; reading the translator
+  // through a ref keeps their text in the current locale.
+  const consoleText = useTranslations('workspace.console');
+  const consoleTextRef = useRef(consoleText);
+  consoleTextRef.current = consoleText;
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<import('@xterm/xterm').Terminal | null>(null);
   const fitAddonRef = useRef<import('@xterm/addon-fit').FitAddon | null>(null);
@@ -219,7 +227,7 @@ export function ConsolePanel({ projectId, runtime, onClose, bufferedMessages, on
       setIsReady(true);
 
       // Welcome message
-      terminal.writeln('\x1b[2mConsole ready \u2014 type \'help\' for commands\x1b[0m');
+      terminal.writeln(`\x1b[2m${consoleTextRef.current('ready')}\x1b[0m`);
       writePrompt(terminal);
 
       // Replay buffered messages captured while console was hidden
@@ -300,7 +308,7 @@ export function ConsolePanel({ projectId, runtime, onClose, bufferedMessages, on
       if (detail.success) {
         // Skip consecutive success messages (multiple compiles on load)
         if (!lastBuildSuccessRef.current) {
-          term.writeln('\x1b[32m\u2713 Build successful\x1b[0m');
+          term.writeln(`\x1b[32m\u2713 ${consoleTextRef.current('buildSuccessful')}\x1b[0m`);
         }
         lastBuildSuccessRef.current = true;
       } else {
@@ -370,9 +378,9 @@ export function ConsolePanel({ projectId, runtime, onClose, bufferedMessages, on
           lastRunCompletedRef.current = Date.now();
           setIsRunning(false);
           if (msg.exitCode === 0) {
-            term.writeln('\x1b[2m--- Script completed ---\x1b[0m');
+            term.writeln(`\x1b[2m--- ${consoleTextRef.current('scriptCompleted')} ---\x1b[0m`);
           } else {
-            term.writeln(`\x1b[31;2m--- Script exited with code ${msg.exitCode} ---\x1b[0m`);
+            term.writeln(`\x1b[31;2m--- ${consoleTextRef.current('scriptExited', { code: msg.exitCode ?? '' })} ---\x1b[0m`);
           }
           writePrompt(term);
           break;
@@ -648,7 +656,7 @@ export function ConsolePanel({ projectId, runtime, onClose, bufferedMessages, on
     if (!term) return;
 
     if (args.length === 0) {
-      term.writeln('\x1b[33mUsage: exec <file.py|file.lua>\x1b[0m');
+      term.writeln(`\x1b[33m${consoleTextRef.current('usage', { usage: 'exec <file.py|file.lua>' })}\x1b[0m`);
       writePrompt(term);
       return;
     }
@@ -657,8 +665,8 @@ export function ConsolePanel({ projectId, runtime, onClose, bufferedMessages, on
     const sr = runtimeFromExtension(filePath);
 
     if (!sr) {
-      term.writeln(`\x1b[31mUnsupported file type: ${filePath}\x1b[0m`);
-      term.writeln('\x1b[2mSupported: .py, .lua\x1b[0m');
+      term.writeln(`\x1b[31m${consoleTextRef.current('unsupportedType', { file: filePath })}\x1b[0m`);
+      term.writeln(`\x1b[2m${consoleTextRef.current('supportedTypes', { types: '.py, .lua' })}\x1b[0m`);
       writePrompt(term);
       return;
     }
@@ -682,10 +690,10 @@ export function ConsolePanel({ projectId, runtime, onClose, bufferedMessages, on
     isRunningRef.current = true;
     setIsRunning(true);
 
-    term.writeln(`\x1b[2m--- Running ${filePath} ---\x1b[0m`);
+    term.writeln(`\x1b[2m--- ${consoleTextRef.current('running', { file: filePath })} ---\x1b[0m`);
 
     scriptRunner.execute(projectId, sr, filePath).catch(err => {
-      term.writeln(`\x1b[31mFailed to execute: ${err}\x1b[0m`);
+      term.writeln(`\x1b[31m${consoleTextRef.current('execFailed', { error: String(err) })}\x1b[0m`);
       isRunningRef.current = false;
       setIsRunning(false);
       writePrompt(term);
@@ -713,7 +721,7 @@ export function ConsolePanel({ projectId, runtime, onClose, bufferedMessages, on
         }
       }
     } catch (err) {
-      term.writeln(`\x1b[31mError: ${err instanceof Error ? err.message : 'Unknown error'}\x1b[0m`);
+      term.writeln(`\x1b[31m${consoleTextRef.current('error', { error: err instanceof Error ? err.message : consoleTextRef.current('unknownError') })}\x1b[0m`);
     }
 
     writePrompt(term);
@@ -723,17 +731,18 @@ export function ConsolePanel({ projectId, runtime, onClose, bufferedMessages, on
     const term = xtermRef.current;
     if (!term) return;
 
+    const say = consoleTextRef.current;
     term.writeln('');
-    term.writeln('\x1b[1mAvailable commands:\x1b[0m');
-    term.writeln('  \x1b[36mexec <file>\x1b[0m     Run a script (.py, .lua)');
-    term.writeln('  \x1b[36mclear\x1b[0m           Clear the console');
-    term.writeln('  \x1b[36mhelp\x1b[0m            Show this help');
+    term.writeln(`\x1b[1m${say('helpCommands')}\x1b[0m`);
+    term.writeln(`  \x1b[36mexec <file>\x1b[0m     ${say('helpExec')}`);
+    term.writeln(`  \x1b[36mclear\x1b[0m           ${say('helpClear')}`);
+    term.writeln(`  \x1b[36mhelp\x1b[0m            ${say('helpHelp')}`);
     term.writeln('');
-    term.writeln('\x1b[1mVFS commands:\x1b[0m');
+    term.writeln(`\x1b[1m${say('helpVfs')}\x1b[0m`);
     term.writeln('  ls, cat, head, tail, grep, rg, find, mkdir, touch,');
     term.writeln('  rm, mv, cp, echo, sed, wc, tree, curl');
     term.writeln('');
-    term.writeln('\x1b[1mOperators:\x1b[0m | (pipe), > >> (redirect), && || (chain)');
+    term.writeln(`\x1b[1m${say('helpOperators')}\x1b[0m ${say('helpOperatorList')}`);
     term.writeln('');
 
     writePrompt(term);
@@ -753,7 +762,7 @@ export function ConsolePanel({ projectId, runtime, onClose, bufferedMessages, on
     setIsRunning(false);
     const term = xtermRef.current;
     if (term) {
-      term.writeln('\x1b[33m--- Script aborted ---\x1b[0m');
+      term.writeln(`\x1b[33m--- ${consoleTextRef.current('scriptAborted')} ---\x1b[0m`);
       writePrompt(term);
     }
   }, []);
@@ -769,7 +778,7 @@ export function ConsolePanel({ projectId, runtime, onClose, bufferedMessages, on
     <div className="h-full flex flex-col">
       <PanelHeader
         icon={TerminalIcon}
-        title="Console"
+        title={tw('tabs.console')}
         color="var(--button-terminal-active, #22c55e)"
         onClose={onClose}
         panelKey="console"
@@ -784,7 +793,7 @@ export function ConsolePanel({ projectId, runtime, onClose, bufferedMessages, on
                   onClick={stopScript}
                 >
                   <Square className="h-2.5 w-2.5 md:h-3 md:w-3" />
-                  <span className="text-xs">Stop</span>
+                  <span className="text-xs">{tc('actions.stop')}</span>
                 </Button>
               ) : (
                 <Button
@@ -795,7 +804,7 @@ export function ConsolePanel({ projectId, runtime, onClose, bufferedMessages, on
                   disabled={!selectedEntryPoint && !defaultEntryPoint}
                 >
                   <Play className="h-2.5 w-2.5 md:h-3 md:w-3" />
-                  <span className="text-xs">Run</span>
+                  <span className="text-xs">{tw('run')}</span>
                 </Button>
               )
             )}
@@ -806,7 +815,7 @@ export function ConsolePanel({ projectId, runtime, onClose, bufferedMessages, on
               onClick={clearConsole}
             >
               <Trash2 className="h-2.5 w-2.5 md:h-3 md:w-3" />
-              <span className="text-xs">Clear</span>
+              <span className="text-xs">{tc('actions.clear')}</span>
             </Button>
           </>
         }

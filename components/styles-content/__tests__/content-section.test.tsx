@@ -1,11 +1,17 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { StylesContent } from '..';
 import type { FocusContextPayload } from '@/lib/preview/types';
 import type { ApplyResult } from '@/lib/direct-edit/types';
 import type { TextReadResult } from '@/lib/direct-edit/apply-text';
+import { NextIntlClientProvider } from 'next-intl';
+import en from '@/messages/en.json';
+import fi from '@/messages/fi.json';
+import { deepMerge } from '@/lib/i18n/merge';
+import { textRefusalAgentPrompt } from '@/components/text-popover/state';
 
 /**
  * The CONTENT section, on the screen.
@@ -66,7 +72,7 @@ async function mount(
   over: Partial<React.ComponentProps<typeof StylesContent>> = {},
 ) {
   await act(async () => {
-    root.render(
+    root.render(withMessages(
       <StylesContent
         selection={selection}
         sendToFrame={vi.fn()}
@@ -81,7 +87,7 @@ async function mount(
         onRefreshPreview={vi.fn()}
         {...over}
       />,
-    );
+    ));
   });
 }
 
@@ -207,6 +213,39 @@ describe('editing the text inline', () => {
       .find(el => (el.textContent ?? '').includes('Ask the agent'))!;
     await click(ask);
     expect(onAskAgent).toHaveBeenCalledWith(expect.stringContaining('come from the template'));
+  });
+
+  it('asks the agent in English when the panel is in another language', async () => {
+    onReadText.mockResolvedValue({ ok: false, reason: 'has-expression', file: '/index.hbs' });
+    const onAskAgent = vi.fn();
+    await act(async () => {
+      root.render(
+        <NextIntlClientProvider locale="fi" messages={deepMerge(en, fi)}>
+          <StylesContent
+            selection={payload()}
+            sendToFrame={vi.fn()}
+            applyStyle={vi.fn()}
+            tokens={[]}
+            onReadText={onReadText}
+            onApplyText={onApplyText}
+            onReplaceImage={onReplaceImage}
+            imageUrl={null}
+            onOpenFile={vi.fn()}
+            onAskAgent={onAskAgent}
+            onRefreshPreview={vi.fn()}
+          />
+        </NextIntlClientProvider>,
+      );
+    });
+
+    // The panel speaks Finnish…
+    expect(container.textContent).toContain(fi.textPopover.msgExpression);
+    const ask = Array.from(container.querySelectorAll('button'))
+      .find(el => (el.textContent ?? '') === fi.styles.askAgent)!;
+    await click(ask);
+    // …and what goes to the agent is the English request, never the panel's own words.
+    expect(onAskAgent).toHaveBeenCalledWith(textRefusalAgentPrompt({ reason: 'has-expression', file: '/index.hbs' }));
+    expect(onAskAgent.mock.calls[0][0]).not.toContain(fi.textPopover.msgExpression);
   });
 
   it('asks before changing every instance of a shared tag, and names how many', async () => {

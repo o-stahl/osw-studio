@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useTranslations } from 'next-intl';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -60,10 +61,12 @@ export function PaginationRange({
   totalPages,
   className,
 }: PaginationRangeProps) {
+  // Above the early return: a hook called after it would change the hook order between renders.
+  const t = useTranslations('common.pagination');
   if (totalPages <= 1) return null;
   return (
     <p className={cn('text-[11px] text-muted-foreground', className)}>
-      {rangeStart}–{rangeEnd} of {total}
+      {t('range', { start: rangeStart, end: rangeEnd, total })}
     </p>
   );
 }
@@ -75,6 +78,7 @@ export function Pagination({
   scrollTarget,
   className,
 }: PaginationProps) {
+  const t = useTranslations('common.pagination');
   if (totalPages <= 1) return null;
 
   const pageList = buildPageList(page, totalPages);
@@ -109,7 +113,7 @@ export function Pagination({
         className={navBtn}
         onClick={() => handleChange(page - 1)}
         disabled={!canPrev}
-        aria-label="Previous page"
+        aria-label={t('previous')}
       >
         <ChevronLeft className="h-3.5 w-3.5" />
       </button>
@@ -123,7 +127,7 @@ export function Pagination({
             type="button"
             className={p === page ? pageBtnActive : pageBtn}
             onClick={() => handleChange(p)}
-            aria-label={`Page ${p}`}
+            aria-label={t('page', { page: p })}
             aria-current={p === page ? 'page' : undefined}
           >
             {p}
@@ -136,7 +140,7 @@ export function Pagination({
         className={navBtn}
         onClick={() => handleChange(page + 1)}
         disabled={!canNext}
-        aria-label="Next page"
+        aria-label={t('next')}
       >
         <ChevronRight className="h-3.5 w-3.5" />
       </button>

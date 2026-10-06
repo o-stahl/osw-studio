@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
 import { Deployment, Project } from '@/lib/vfs/types';
 import { vfs } from '@/lib/vfs';
 import { getLoginUrl } from '@/lib/config/storage';
@@ -31,7 +32,8 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { logger, formatCompactAge } from '@/lib/utils';
+import { logger } from '@/lib/utils';
+import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { track } from '@/lib/telemetry';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { Pagination, PaginationRange } from '@/components/ui/pagination';
@@ -50,12 +52,17 @@ interface DeploymentsViewProps {
 }
 
 /** Shared by the URL text and the copy button beside it, so the two cannot behave differently. */
-function copyDeploymentUrl(url: string): void {
+function copyDeploymentUrl(url: string, copied: string): void {
   navigator.clipboard.writeText(url);
-  toast.success('URL copied');
+  toast.success(copied);
 }
 
 export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsViewProps) {
+  const when = useLocalFormat();
+  const t = useTranslations('deployments');
+  const tSort = useTranslations('common.sort');
+  const tc = useTranslations('common');
+  const tp = useTranslations('projects');
   const apiBase = workspaceId ? `/api/w/${workspaceId}` : '/api';
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [detailSection, setDetailSection] = useState<string | undefined>(undefined);
@@ -222,13 +229,13 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
       await vfs.init();
       const project = await vfs.getProject(deployment.projectId);
       if (!project) {
-        toast.error('Project not found in local storage');
+        toast.error(t('projectNotFound'));
         return;
       }
       onProjectSelect(project);
     } catch (error) {
       logger.error('[DeploymentsView] Failed to load project:', error);
-      toast.error('Failed to load project');
+      toast.error(t('loadProjectFailed'));
     }
   };
 
@@ -240,14 +247,14 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
       await vfs.init();
       const project = await vfs.getProject(deployment.projectId);
       if (!project) {
-        toast.error('Project not found in local storage');
+        toast.error(t('projectNotFound'));
         return;
       }
       setTemplateExportProject(project);
       setShowTemplateExportModal(true);
     } catch (error) {
       logger.error('[DeploymentsView] Failed to load project for template export:', error);
-      toast.error('Failed to load project');
+      toast.error(t('loadProjectFailed'));
     }
   };
 
@@ -271,7 +278,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.error || 'Failed to save review settings');
+      throw new Error(error.error || t('saveReviewFailed'));
     }
 
     const updated = await response.json();
@@ -291,7 +298,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
           deploymentName: selectedDeployment.name,
           currentProjectId: selectedDeployment.projectId,
           newProjectId: settings.projectId!,
-          newProjectName: newProject?.name || 'Unknown',
+          newProjectName: newProject?.name || t('unknown'),
           pendingSettings: settings,
         });
         return; // Don't save yet — swap dialog will handle it
@@ -307,7 +314,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
 
         if (!deploymentResponse.ok) {
           const error = await deploymentResponse.json();
-          throw new Error(error.error || 'Failed to update project');
+          throw new Error(error.error || tp('updateFailed'));
         }
       }
 
@@ -330,7 +337,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to save settings');
+        throw new Error(error.error || t('saveSettingsFailed'));
       }
 
       const result = await response.json();
@@ -395,7 +402,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
     }
 
     setSwapDialogState(null);
-    toast.success('Project swapped and deployment republished');
+    toast.success(t('swappedAndRepublished'));
     await loadData();
   };
 
@@ -413,12 +420,12 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
 
     try {
       // First, sync files from IndexedDB to server
-      toast.info('Syncing project files...');
+      toast.info(t('syncingFiles'));
 
       await vfs.init();
       const project = await vfs.getProject(deployment.projectId);
       if (!project) {
-        throw new Error('Project not found in local storage');
+        throw new Error(t('projectNotFound'));
       }
 
       // Block publishing for terminal-mode runtimes (Python, Lua) — they can't be
@@ -427,7 +434,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
       const runtime = project.settings?.runtime;
       trackedRuntime = runtime ?? 'unknown';
       if (runtime && getRuntimeConfig(runtime).previewMode === 'terminal') {
-        throw new Error(`${getRuntimeConfig(runtime).label} projects cannot be published as static sites. Use ZIP export instead.`);
+        throw new Error(t('terminalNotPublishable', { runtime: getRuntimeConfig(runtime).label }));
       }
 
       const { flushEditorToVfs } = await import('@/lib/vfs/flush-editor');
@@ -436,13 +443,13 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
 
       let files = await vfs.listFiles(deployment.projectId);
       if (files.length === 0) {
-        throw new Error('This project has no files in the browser to publish. Open it, confirm the files are there, Save, then publish again.');
+        throw new Error(t('noFilesToPublish'));
       }
 
       if (runtime && isRuntimeBundled(runtime)) {
         // Always compile fresh — generated files may be stale or absent
         // (e.g. user publishes without opening the preview first)
-        toast.info('Compiling project bundles...');
+        toast.info(t('compilingBundles'));
         const { VirtualServer } = await import('@/lib/preview/virtual-server');
         const vs = new VirtualServer(vfs as any, deployment.projectId, { runtime, minify: true });
         await vs.compileProject();
@@ -460,13 +467,13 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
       // Push project and files to server. A project too large for one request body goes in
       // batches, which is many sequential requests over however slow the link is, so it reports
       // where it is instead of sitting on "Building deployment..." for the duration.
-      const uploadProgress = createSyncProgressToast(`Uploading "${project.name}"`);
+      const uploadProgress = createSyncProgressToast(t('uploadingProject', { name: project.name }));
       const syncResult = await syncManager.pushProjectWithFiles(project, files, {
         onProgress: ({ batch, batches }) => uploadProgress.update(batch, batches),
       });
       if (!syncResult.success) {
         uploadProgress.dismiss();
-        throw new Error(syncResult.error || 'Failed to sync files to server');
+        throw new Error(syncResult.error || t('syncFilesFailed'));
       }
       if (syncResult.project) {
         const { persistAcknowledgedRevision } = await import('@/lib/vfs/auto-sync');
@@ -489,7 +496,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
 
       if (edgeFunctions.length > 0 || serverFunctions.length > 0 ||
           secrets.length > 0 || scheduledFunctions.length > 0) {
-        toast.info('Syncing backend features...');
+        toast.info(t('syncingBackend'));
         const featuresSyncResult = await syncManager.pushBackendFeatures(deployment.projectId, {
           edgeFunctions,
           serverFunctions,
@@ -497,11 +504,11 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
           scheduledFunctions,
         });
         if (!featuresSyncResult.success) {
-          throw new Error(featuresSyncResult.error || 'Failed to sync backend features');
+          throw new Error(featuresSyncResult.error || t('syncBackendFailed'));
         }
       }
 
-      toast.info('Building deployment...');
+      toast.info(t('building'));
 
       // Call publish API to trigger build
       const response = await fetch(`${apiBase}/deployments/${deploymentId}/publish`, {
@@ -510,7 +517,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to publish');
+        throw new Error(error.error || t('publishFailed'));
       }
 
       const result = await response.json();
@@ -521,7 +528,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
         has_custom_domain: !!deployment.customDomain,
       });
 
-      toast.success(`Deployment published! ${result.filesWritten} files written.`);
+      toast.success(t('publishedFiles', { count: result.filesWritten }));
 
       // Update state optimistically with publish data
       updateDeploymentInState(deploymentId, {
@@ -541,7 +548,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
         result: 'fail',
         has_custom_domain: !!deployment.customDomain,
       });
-      toast.error(error instanceof Error ? error.message : 'Failed to publish. Please try again.');
+      toast.error(error instanceof Error ? error.message : t('publishFailed'));
       // Clear publishing state on error
       setPublishingStates(prev => ({ ...prev, [deploymentId]: false }));
     }
@@ -562,7 +569,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
       });
     } catch (err) {
       logger.error('[DeploymentsView] Failed to update deployment thumbnail:', err);
-      toast.error('Failed to update thumbnail');
+      toast.error(t('thumbnailFailed'));
     }
   };
 
@@ -570,7 +577,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
     const deployment = deployments.find(s => s.id === deploymentId);
     if (!deployment) return;
 
-    if (!confirm(`Unpublish "${deployment.name}"? The site stops being served. The deployment, its settings and its data are kept, and publishing again restores it at the same URL.`)) {
+    if (!confirm(t('confirmUnpublish', { name: deployment.name }))) {
       return;
     }
 
@@ -581,7 +588,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to unpublish deployment');
+        throw new Error(error.error || t('unpublishFailed'));
       }
 
       // Both fields drive the published badges, so clearing them here keeps the row honest
@@ -591,10 +598,10 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
         lastPublishedVersion: undefined,
         updatedAt: new Date(),
       });
-      toast.success(`Unpublished "${deployment.name}"`);
+      toast.success(t('unpublishedName', { name: deployment.name }));
     } catch (error) {
       logger.error('Failed to unpublish deployment:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to unpublish deployment');
+      toast.error(error instanceof Error ? error.message : t('unpublishFailed'));
     }
   };
 
@@ -602,7 +609,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
     const deployment = deployments.find(s => s.id === deploymentId);
     if (!deployment) return;
 
-    if (!confirm(`Delete deployment "${deployment.name}"? This cannot be undone.`)) {
+    if (!confirm(t('confirmDelete', { name: deployment.name }))) {
       return;
     }
 
@@ -613,7 +620,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to delete deployment');
+        throw new Error(error.error || t('deleteFailed'));
       }
 
       track('deployment_delete');
@@ -621,7 +628,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
       await loadData();
     } catch (error) {
       logger.error('Failed to delete deployment:', error);
-      alert('Failed to delete deployment. Please try again.');
+      alert(t('deleteFailed'));
     }
   };
 
@@ -637,7 +644,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to create deployment');
+        throw new Error(error.error || t('createFailed'));
       }
 
       track('deployment_create');
@@ -700,7 +707,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center text-muted-foreground">
-          <p>Deployments feature is only available in Server Mode</p>
+          <p>{t('serverModeOnly')}</p>
         </div>
       </div>
     );
@@ -711,7 +718,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
           <Spinner size={48} color="#f97316" className="mx-auto" />
-          <p className="mt-4">Loading deployments...</p>
+          <p className="mt-4">{t('loading')}</p>
         </div>
       </div>
     );
@@ -761,12 +768,12 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
   return (
     <>
       <PageShell>
-        <PageHeader title="Deployments">
+        <PageHeader title={tc('terms.deployments')}>
           {/* New Deployment */}
           <div className="flex items-center shrink-0">
             <Button onClick={handleOpenCreate} size="sm" className="gap-2">
               <Plus className="h-4 w-4" />
-              <span>New</span>
+              <span>{tc('actions.new')}</span>
             </Button>
           </div>
 
@@ -774,7 +781,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search deployments..."
+              placeholder={t('searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9"
@@ -789,21 +796,21 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-2">
                   <ArrowUpDown className="h-4 w-4" />
-                  <span className="hidden sm:inline">Sort</span>
+                  <span className="hidden sm:inline">{tc('labels.sort')}</span>
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-48" align="end">
                 <div className="space-y-2">
-                  <h4 className="font-semibold text-sm">Sort by</h4>
+                  <h4 className="font-semibold text-sm">{t('sortBy')}</h4>
                   <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortOption)}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="updated">Last Updated</SelectItem>
-                      <SelectItem value="published">Last Published</SelectItem>
-                      <SelectItem value="created">Date Created</SelectItem>
-                      <SelectItem value="name">Name</SelectItem>
+                      <SelectItem value="updated">{tSort('lastUpdated')}</SelectItem>
+                      <SelectItem value="published">{tSort('lastPublished')}</SelectItem>
+                      <SelectItem value="created">{tSort('dateCreated')}</SelectItem>
+                      <SelectItem value="name">{tc('labels.name')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -819,17 +826,16 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
                 <Globe className="h-16 w-16 text-muted-foreground mb-4" />
                 {deployments.length === 0 ? (
                   <>
-                    <h2 className="text-xl font-semibold mb-2">No Deployments Yet</h2>
+                    <h2 className="text-xl font-semibold mb-2">{t('noneYet')}</h2>
                     <p className="text-muted-foreground mb-4 max-w-md">
-                      Create your first deployment by clicking the "New" button above.
-                      Deployments let you publish projects and manage their public settings independently.
+                      {t('firstDeploymentHint')}
                     </p>
                   </>
                 ) : (
                   <>
-                    <h2 className="text-xl font-semibold mb-2">No deployments found</h2>
+                    <h2 className="text-xl font-semibold mb-2">{t('noneFound')}</h2>
                     <p className="text-muted-foreground mb-4 max-w-md">
-                      Try adjusting your search or filter criteria
+                      {t('adjustSearch')}
                     </p>
                   </>
                 )}
@@ -863,10 +869,10 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
                       <thead className="sticky top-0 z-10">
                         <tr>
                           <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none"></th>
-                          <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none w-full">Name</th>
+                          <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none w-full">{tc('labels.name')}</th>
                           <th className="@max-3xl:hidden bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">URL</th>
-                          <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Ver.</th>
-                          <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">Published</th>
+                          <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{t('ver')}</th>
+                          <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none">{t('publishedHeader')}</th>
                           <th className="bg-muted text-[11px] font-medium text-muted-foreground text-left p-[6px_10px] border-b whitespace-nowrap select-none"></th>
                         </tr>
                       </thead>
@@ -920,17 +926,17 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
                                         part of it a person points at meaning to take the address. The
                                         copy button beside it stays the keyboard-reachable path. */}
                                     <span
-                                      onClick={(e) => { e.stopPropagation(); copyDeploymentUrl(publicUrl); }}
-                                      title="Copy URL"
+                                      onClick={(e) => { e.stopPropagation(); copyDeploymentUrl(publicUrl, t('urlCopied')); }}
+                                      title={tc('actions.copyUrl')}
                                       className="@max-5xl:hidden flex-1 min-w-0 font-mono truncate cursor-copy hover:text-foreground transition-colors"
                                     >
                                       {publicUrl.replace(/^https?:\/\//, '')}
                                     </span>
                                     <button
                                       type="button"
-                                      onClick={(e) => { e.stopPropagation(); copyDeploymentUrl(publicUrl); }}
+                                      onClick={(e) => { e.stopPropagation(); copyDeploymentUrl(publicUrl, t('urlCopied')); }}
                                       className="shrink-0 h-5 w-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted-foreground/15 transition-colors"
-                                      title="Copy URL"
+                                      title={tc('actions.copyUrl')}
                                     >
                                       <Copy className="w-3 h-3" />
                                     </button>
@@ -940,7 +946,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
                                       rel="noopener noreferrer"
                                       onClick={(e) => e.stopPropagation()}
                                       className="shrink-0 h-5 w-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted-foreground/15 transition-colors"
-                                      title="Open link"
+                                      title={tc('actions.openLink')}
                                     >
                                       <ExternalLink className="w-3 h-3" />
                                     </a>
@@ -951,12 +957,12 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
                                 {deployment.settingsVersion}{' / '}{deployment.lastPublishedVersion ?? '—'}
                               </td>
                               <td className="p-[4px_10px] text-[13px] text-muted-foreground align-middle whitespace-nowrap overflow-hidden text-ellipsis">
-                                {deployment.publishedAt ? formatCompactAge(new Date(deployment.publishedAt)) : '—'}
+                                {deployment.publishedAt ? when.age(deployment.publishedAt) : '—'}
                               </td>
                               <td className="p-[4px_10px] align-middle whitespace-nowrap text-right" onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center justify-end gap-1">
                                   <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleOpenDetail(deployment)}>
-                                    <Settings className="w-3 h-3" />Edit
+                                    <Settings className="w-3 h-3" />{tc('actions.edit')}
                                   </Button>
                                   <Button
                                     variant={hasPendingChanges ? 'outline' : 'ghost'}
@@ -966,7 +972,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
                                     disabled={publishingStates[deployment.id]}
                                   >
                                     <RefreshCw className={`w-3 h-3 ${publishingStates[deployment.id] ? 'animate-spin' : ''}`} />
-                                    {isPublished ? 'Republish' : 'Publish'}
+                                    {isPublished ? tc('actions.republish') : tc('actions.publish')}
                                   </Button>
                                   <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
@@ -980,19 +986,19 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
                                       {compactRows && (
                                         <>
                                           <DropdownMenuItem onClick={() => handleOpenDetail(deployment)}>
-                                            <Settings className="w-4 h-4 mr-2" />Edit
+                                            <Settings className="w-4 h-4 mr-2" />{tc('actions.edit')}
                                           </DropdownMenuItem>
                                           <DropdownMenuItem
                                             onClick={() => handlePublish(deployment.id)}
                                             disabled={publishingStates[deployment.id]}
                                           >
                                             <RefreshCw className="w-4 h-4 mr-2" />
-                                            {isPublished ? 'Republish' : 'Publish'}
+                                            {isPublished ? tc('actions.republish') : tc('actions.publish')}
                                           </DropdownMenuItem>
                                           {isPublished && (
                                             <DropdownMenuItem asChild>
                                               <a href={publicUrl} target="_blank" rel="noopener noreferrer">
-                                                <ExternalLink className="w-4 h-4 mr-2" />Open link
+                                                <ExternalLink className="w-4 h-4 mr-2" />{tc('actions.openLink')}
                                               </a>
                                             </DropdownMenuItem>
                                           )}
@@ -1000,21 +1006,21 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
                                         </>
                                       )}
                                       <DropdownMenuItem onClick={() => handleEditProject(deployment)}>
-                                        <Pencil className="w-4 h-4 mr-2" />Edit Project
+                                        <Pencil className="w-4 h-4 mr-2" />{t('editProject')}
                                       </DropdownMenuItem>
                                       <DropdownMenuSeparator />
                                       {isPublished && (
-                                        <DropdownMenuItem onClick={() => copyDeploymentUrl(publicUrl)}>
-                                          <Copy className="w-4 h-4 mr-2" />Copy URL
+                                        <DropdownMenuItem onClick={() => copyDeploymentUrl(publicUrl, t('urlCopied'))}>
+                                          <Copy className="w-4 h-4 mr-2" />{tc('actions.copyUrl')}
                                         </DropdownMenuItem>
                                       )}
                                       {isPublished && (
                                         <DropdownMenuItem onClick={() => handleUnpublish(deployment.id)}>
-                                          <EyeOff className="w-4 h-4 mr-2" />Unpublish
+                                          <EyeOff className="w-4 h-4 mr-2" />{tc('actions.unpublish')}
                                         </DropdownMenuItem>
                                       )}
                                       <DropdownMenuItem onClick={() => handleDelete(deployment.id)} className="text-destructive focus:text-destructive">
-                                        <Trash2 className="w-4 h-4 mr-2" />Delete
+                                        <Trash2 className="w-4 h-4 mr-2" />{tc('actions.delete')}
                                       </DropdownMenuItem>
                                     </DropdownMenuContent>
                                   </DropdownMenu>

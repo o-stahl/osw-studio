@@ -91,28 +91,6 @@ describe('CostCalculator.calculateCost', () => {
   });
 });
 
-describe('CostCalculator.formatCost', () => {
-  it('formats zero', () => {
-    expect(CostCalculator.formatCost(0)).toBe('$0.00');
-  });
-
-  it('formats very small costs', () => {
-    expect(CostCalculator.formatCost(0.00001)).toBe('<$0.0001');
-  });
-
-  it('formats small costs with 4 decimals', () => {
-    expect(CostCalculator.formatCost(0.0012)).toBe('$0.0012');
-  });
-
-  it('formats medium costs with 3 decimals', () => {
-    expect(CostCalculator.formatCost(0.123)).toBe('$0.123');
-  });
-
-  it('formats large costs with 2 decimals', () => {
-    expect(CostCalculator.formatCost(5.678)).toBe('$5.68');
-  });
-});
-
 describe('CostCalculator.getPricing', () => {
   it('returns static pricing for known model', () => {
     const pricing = CostCalculator.getPricing('openai', 'gpt-4o');

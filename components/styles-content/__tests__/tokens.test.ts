@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { createTranslator } from 'next-intl';
+
+import en from '@/messages/en.json';
 import {
   sameColor,
   COLOR_TOLERANCE,
@@ -270,7 +273,8 @@ describe('the colour control', () => {
 
   it('describes the change in the past tense, naming the token and its file', () => {
     const token = tokens.find(t => t.name === '--accent')!;
-    const message = tokenSupersedeMessage(background, token);
+    const message = tokenSupersedeMessage(background.label, token, createTranslator({ locale: 'en', messages: en, namespace: 'styles' }));
+    expect(message).toContain(background.label);
     expect(message).toContain('--accent');
     expect(message).toContain('/styles.css');
     expect(message).toContain('Only this element changed');

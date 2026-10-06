@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import React, { act } from 'react';
+import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import { createRoot, type Root } from 'react-dom/client';
 
 /**
@@ -42,7 +43,7 @@ afterEach(() => {
 
 async function mount(open = true) {
   await act(async () => {
-    root.render(
+    root.render(withMessages(
       <TextPopover
         open={open}
         onOpenChange={onOpenChange}
@@ -50,7 +51,7 @@ async function mount(open = true) {
         onApply={onApply}
         onAskAgent={onAskAgent}
       />,
-    );
+    ));
   });
 }
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ProviderId, InputModality } from '@/lib/llm/providers/types';
+import { ProviderId, InputModality, type OutputModality, type ProviderModel } from '@/lib/llm/providers/types';
 import { getProvider } from '@/lib/llm/providers/registry';
 import { assertPublicHttpUrl } from '@/lib/llm/providers/url-safety';
 import { sanitizeCustomHeaders } from '@/lib/llm/providers/custom-headers';
@@ -22,6 +22,37 @@ interface CodexCatalogModel {
 }
 
 const CODEX_DEFAULT_MODALITIES: InputModality[] = ['text', 'image'];
+
+// Entries of GET https://gen.pollinations.ai/v1/models (only the fields we read).
+interface PollinationsModel {
+  id: string;
+  title?: string;
+  category?: string;
+  community?: boolean;
+  supported_endpoints?: string[];
+  context_length?: number;
+  tools?: boolean;
+  reasoning?: boolean;
+  input_modalities?: InputModality[];
+  output_modalities?: string[];
+  health?: { status?: string };
+}
+
+function isHealthStatus(value: unknown): value is NonNullable<ProviderModel['health']> {
+  return value === 'healthy' || value === 'degraded' || value === 'down';
+}
+
+// Entries of GET https://ai-gateway.vercel.sh/v1/models (only the fields we read).
+interface VercelModel {
+  id: string;
+  name?: string;
+  type?: string;
+  context_window?: number;
+  max_tokens?: number;
+  tags?: string[];
+  modalities?: { input?: InputModality[] };
+  pricing?: { input?: string; output?: string };
+}
 
 /** Ceiling for a user-supplied endpoint's model list. Long enough for a cold gateway. */
 const DISCOVERY_TIMEOUT_MS = 15_000;
@@ -275,6 +306,79 @@ export async function POST(request: NextRequest) {
                 contextLength: m.limit?.context,
                 inputModalities: m.modalities?.input,
               }));
+          }
+          break;
+        }
+
+        case 'pollinations': {
+          // The catalog is public; the key only matters for generation. Community models are run by
+          // third-party operators, so project content would go to whoever runs them: left out. So are
+          // the decision models (`/alpha/decisions`), third-party judges that cannot chat or use
+          // tools, whose `community` flag is not set.
+          const polResponse = await fetch('https://gen.pollinations.ai/v1/models', {
+            signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
+          });
+          if (polResponse.ok) {
+            const polData = await polResponse.json();
+            const list: PollinationsModel[] = Array.isArray(polData) ? polData : (polData.data ?? []);
+            const health = (m: PollinationsModel) => (isHealthStatus(m.health?.status) ? { health: m.health.status } : {});
+            const text = list
+              .filter((m) => m.category === 'text' && !m.community && !m.supported_endpoints?.includes('/alpha/decisions'))
+              .map((m) => ({
+                id: m.id,
+                name: m.title || m.id,
+                contextLength: m.context_length,
+                supportsFunctions: m.tools === true,
+                supportsReasoning: m.reasoning === true,
+                inputModalities: m.input_modalities,
+                ...health(m),
+              }));
+            // For the image slot; generated through `/v1/images/generations` (see /api/generate-image).
+            const images = list
+              .filter((m) => m.category === 'image' && !m.community
+                && m.output_modalities?.includes('image')
+                && m.supported_endpoints?.includes('/v1/images/generations'))
+              .map((m) => ({
+                id: m.id,
+                name: m.title || m.id,
+                inputModalities: m.input_modalities,
+                outputModalities: ['image'] as OutputModality[],
+                ...health(m),
+              }));
+            models = [...text, ...images];
+          }
+          break;
+        }
+
+        case 'vercel': {
+          const vercelResponse = await fetch('https://ai-gateway.vercel.sh/v1/models', {
+            signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
+          });
+          if (vercelResponse.ok) {
+            const vercelData = await vercelResponse.json();
+            const list: VercelModel[] = vercelData.data ?? [];
+            const perMillion = (v: unknown) => {
+              const n = Number(v);
+              return Number.isFinite(n) ? n * 1_000_000 : undefined;
+            };
+            models = list
+              .filter((m) => m.type === 'language')
+              .map((m) => {
+                const tags: string[] = Array.isArray(m.tags) ? m.tags : [];
+                const input = perMillion(m.pricing?.input);
+                const output = perMillion(m.pricing?.output);
+                return {
+                  id: m.id,
+                  name: m.name || m.id,
+                  contextLength: m.context_window,
+                  maxTokens: m.max_tokens,
+                  supportsFunctions: tags.includes('tool-use'),
+                  supportsReasoning: tags.includes('reasoning'),
+                  inputModalities: m.modalities?.input,
+                  ...(input !== undefined && output !== undefined ? { pricing: { input, output } } : {}),
+                  ...(tags.includes('free') ? { free: true } : {}),
+                };
+              });
           }
           break;
         }
