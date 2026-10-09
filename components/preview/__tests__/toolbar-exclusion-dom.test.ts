@@ -54,7 +54,7 @@ function jsOf(html: string): string {
 }
 
 function send(message: unknown): void {
-  window.dispatchEvent(new MessageEvent('message', { data: message }));
+  window.dispatchEvent(Object.assign(new Event('message'), { data: message, source: window.parent }));
 }
 
 function messagesOfType(type: string): Array<{ type?: string; payload?: Record<string, unknown> }> {

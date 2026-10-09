@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { FrameScrollMemory, readFrameScroll } from '../scroll-memory';
+import { FrameScrollMemory } from '../scroll-memory';
 
 /**
  * Keeping the preview frame's scroll position across the recompile that replaces its document.
@@ -13,48 +13,6 @@ import { FrameScrollMemory, readFrameScroll } from '../scroll-memory';
  * **Only reachable by hand:** that `loadPage` records before writing `srcdoc` and that `handleLoad`
  * restores before announcing frame-ready. Both are ordering facts about a real browser.
  */
-
-/** An iframe, as far as `readFrameScroll` is concerned. */
-function frameAt(scroll: { scrollX?: unknown; scrollY?: unknown } | null): HTMLIFrameElement {
-  return { contentWindow: scroll } as unknown as HTMLIFrameElement;
-}
-
-describe('readFrameScroll', () => {
-  it('reads the position out of the frame', () => {
-    expect(readFrameScroll(frameAt({ scrollX: 12, scrollY: 500 }))).toEqual({ x: 12, y: 500 });
-  });
-
-  it('answers null, not a zeroed pair, when there is nothing to read', () => {
-    // The distinction is load-bearing: `remember` treats null as "clear the slot" and a zeroed pair as
-    // "the frame was at the top". Collapsing the two would let an unreadable frame be recorded as a
-    // position, and restored over one the caller already had.
-    expect(readFrameScroll(null)).toBeNull();
-    expect(readFrameScroll(frameAt(null))).toBeNull();
-    expect(readFrameScroll(frameAt({ scrollX: 0, scrollY: 0 }))).toEqual({ x: 0, y: 0 });
-  });
-
-  it('treats a missing or non-numeric offset as zero on that axis', () => {
-    expect(readFrameScroll(frameAt({ scrollY: 300 }))).toEqual({ x: 0, y: 300 });
-    expect(readFrameScroll(frameAt({ scrollX: 'left', scrollY: 300 }))).toEqual({ x: 0, y: 300 });
-  });
-
-  it('answers null rather than NaN for a non-finite offset', () => {
-    expect(readFrameScroll(frameAt({ scrollX: 0, scrollY: NaN }))).toBeNull();
-    expect(readFrameScroll(frameAt({ scrollX: 0, scrollY: Infinity }))).toBeNull();
-  });
-
-  it('survives a frame that has navigated away', () => {
-    // A cross-origin `contentWindow` read throws a SecurityError. This runs immediately before a
-    // `srcdoc` write, so a throw here would take the reload with it.
-    const escaped = {
-      get contentWindow(): Window | null {
-        throw new Error('SecurityError: cross-origin');
-      },
-    } as unknown as HTMLIFrameElement;
-
-    expect(readFrameScroll(escaped)).toBeNull();
-  });
-});
 
 describe('FrameScrollMemory', () => {
   it('hands a recorded position back for the same page', () => {

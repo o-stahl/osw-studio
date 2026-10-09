@@ -46,7 +46,7 @@ const MARKUP =
 const posted: PostedMessage[] = [];
 
 function send(message: unknown): void {
-  window.dispatchEvent(new MessageEvent('message', { data: message }));
+  window.dispatchEvent(Object.assign(new Event('message'), { data: message, source: window.parent }));
 }
 
 function overlays(): NodeListOf<Element> {
@@ -119,7 +119,7 @@ function isolatedInstance(markup: string): Instance {
   return {
     doc,
     posted: instancePosted,
-    send: (message: unknown) => bus.dispatchEvent(new MessageEvent('message', { data: message })),
+    send: (message: unknown) => bus.dispatchEvent(Object.assign(new Event('message'), { data: message, source: win.parent })),
   };
 }
 

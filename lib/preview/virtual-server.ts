@@ -434,6 +434,8 @@ export class VirtualServer {
 // VFS Asset Interceptor - Auto-injected by OSW Studio
 (function() {
   const deploymentId = ${JSON.stringify(deploymentIdForScript)};
+  // The app's origin, written in rather than read off window.parent: the preview cannot read it.
+  const apiOrigin = ${JSON.stringify(this.baseUrl)};
 
   // Helper function to resolve VFS paths to blob URLs
   function resolveVfsUrl(url) {
@@ -581,8 +583,7 @@ export class VirtualServer {
     // First check if this is an edge function call
     if (isEdgeFunctionUrl(url)) {
       const apiUrl = toEdgeFunctionApiUrl(url);
-      // Use the parent window's origin for the API call
-      const fullApiUrl = window.parent ? window.parent.location.origin + apiUrl : apiUrl;
+      const fullApiUrl = apiOrigin + apiUrl;
       return originalFetch(fullApiUrl, init);
     }
 
@@ -607,7 +608,7 @@ export class VirtualServer {
       // Check for edge function first
       if (isEdgeFunctionUrl(url)) {
         const apiUrl = toEdgeFunctionApiUrl(url);
-        finalUrl = window.parent ? window.parent.location.origin + apiUrl : apiUrl;
+        finalUrl = apiOrigin + apiUrl;
       } else {
         finalUrl = resolveVfsUrl(url);
       }
@@ -630,7 +631,7 @@ export class VirtualServer {
         e.stopPropagation();
 
         const apiUrl = toEdgeFunctionApiUrl(action);
-        const fullApiUrl = window.parent ? window.parent.location.origin + apiUrl : apiUrl;
+        const fullApiUrl = apiOrigin + apiUrl;
         const method = (form.method || 'GET').toUpperCase();
 
         // Collect form data

@@ -29,7 +29,7 @@ interface PostedMessage {
 const posted: PostedMessage[] = [];
 
 function enableSelector() {
-  window.dispatchEvent(new MessageEvent('message', { data: { type: 'selector-toggle', active: true } }));
+  window.dispatchEvent(Object.assign(new Event('message'), { data: { type: 'selector-toggle', active: true }, source: window.parent }));
 }
 
 function overlays(): NodeListOf<Element> {

@@ -1,37 +1,12 @@
 /**
  * Remembers the preview frame's scroll position across `srcdoc` reassignments.
- * Read once from the outgoing document (same-origin, no scroll listener), keyed on `activePath`
- * so a genuine page navigation opens at the top.
+ * The outgoing document reports its own position (`preview:scroll`, see `preview-bridge.ts`);
+ * keyed on `activePath` so a genuine page navigation opens at the top.
  */
 
 export interface FrameScroll {
   x: number;
   y: number;
-}
-
-/**
- * Read the live scroll position out of a preview iframe.
- *
- * Returns null rather than a zeroed pair for every failure, so "the frame was at the top" and "the
- * frame could not be read" stay distinguishable — a zero would be remembered as a position and
- * restored over one the caller already had.
- *
- * The `try` is for the escape case: the frame may have navigated to an external site, and reading
- * `contentWindow` then throws a cross-origin `SecurityError`. That is a document nobody wants a scroll
- * position for anyway.
- */
-export function readFrameScroll(frame: HTMLIFrameElement | null): FrameScroll | null {
-  if (!frame) return null;
-  try {
-    const win = frame.contentWindow;
-    if (!win) return null;
-    const x = typeof win.scrollX === 'number' ? win.scrollX : 0;
-    const y = typeof win.scrollY === 'number' ? win.scrollY : 0;
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-    return { x, y };
-  } catch {
-    return null;
-  }
 }
 
 /** Single slot, not a map: only the outgoing page's position is meaningful. */

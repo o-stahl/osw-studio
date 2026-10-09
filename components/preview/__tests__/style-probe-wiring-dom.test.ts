@@ -34,7 +34,7 @@ interface PostedMessage {
 const posted: PostedMessage[] = [];
 
 function send(message: unknown): void {
-  window.dispatchEvent(new MessageEvent('message', { data: message }));
+  window.dispatchEvent(Object.assign(new Event('message'), { data: message, source: window.parent }));
 }
 
 function only(type: string): PostedMessage {

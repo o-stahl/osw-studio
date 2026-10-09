@@ -85,6 +85,10 @@ export interface PlacementResult {
 export type ConsoleLevel = 'log' | 'warn' | 'error' | 'info' | 'debug';
 
 export type PreviewMessage =
+  /** The document stamped with `loadId` reached its load event. See `previewBridgeScript`. */
+  | { type: 'preview:ready'; loadId: number }
+  /** Where that document is scrolled to, sent trailing after scrolling stops. */
+  | { type: 'preview:scroll'; loadId: number; x: number; y: number }
   | { type: 'navigate'; path: string }
   | { type: 'preview:external'; href: string }
   | { type: 'reload' }

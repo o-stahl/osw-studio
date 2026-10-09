@@ -11,7 +11,8 @@ import {
 } from '@/lib/preview/types';
 import { vfs } from '@/lib/vfs';
 import { PreviewLifecycle } from '@/lib/preview/preview-lifecycle';
-import { FrameScrollMemory, readFrameScroll } from '@/lib/preview/scroll-memory';
+import { FrameScrollMemory, type FrameScroll } from '@/lib/preview/scroll-memory';
+import { previewBridgeScript } from '@/lib/preview/preview-bridge';
 import { PreviewCompileGate, mergeCompileRequests, observePreviewRoot } from '@/lib/preview/compile-gate';
 import type { CompileRequest } from '@/lib/preview/compile-gate';
 import { STRIP_PROVENANCE_JS } from '@/lib/preview/provenance';
@@ -192,6 +193,8 @@ const DEVICE_SIZES: Record<DeviceSize, { width?: string; height?: string; maxHei
 // (A synchronous main-thread hang can't be timed out — the event loop is blocked; that's the
 // heartbeat's job, not this.)
 const COMPILE_TIMEOUT_MS = 30000;
+/** How long after the frame's load event a document of ours has to report in before it counts as escaped. */
+const ACK_TIMEOUT_MS = 3000;
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms); // i18n-ignore: a compile error's detail
@@ -535,6 +538,8 @@ export function generatePlacementScript(): string {
     });
 
     window.addEventListener('message', function(event) {
+      // Only the host drives the preview; project code in this frame, or a page it opened, does not.
+      if (event.source !== window.parent) return;
       var data = event.data;
       if (!data || typeof data !== 'object') return;
 
@@ -999,6 +1004,10 @@ export function generateNavigationScript(normalizedPath: string, directEdit: boo
           }
 
           window.addEventListener('message', function(event) {
+            // Only the host drives the preview; project code in this frame, or a page it opened, does not.
+            if (event.source !== window.parent) {
+              return;
+            }
             const data = event.data;
             if (!data || typeof data !== 'object') {
               return;
@@ -1392,11 +1401,14 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
   // read would re-apply it on every recompile and yank the preview back off the page the user
   // navigated to.
   const pendingInitialPathRef = useRef<string | null>(initialPath ?? null);
-  // Set true once we've successfully read our own marker from the frame. Guards escape detection:
-  // we only trust a "contentWindow read threw" as a real cross-origin escape once we know reads
-  // normally work — so if they never do (unexpected sandbox behaviour), escape detection is inert
-  // and can never break a working preview.
-  const markerReadableRef = useRef(false);
+  // Each document we write posts `preview:ready` from its own load event, and the iframe element
+  // fires `load` in this window. The two arrive in either order (a cross-origin frame runs in its
+  // own process), so they are paired by count: a load with no ack inside ACK_TIMEOUT_MS is a
+  // document that is not ours, the frame having navigated to an external site.
+  const unpairedAcksRef = useRef(0);
+  const ackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The outgoing document's scroll position, as last reported by the frame itself.
+  const frameScrollRef = useRef<FrameScroll | null>(null);
 
   // Respond to a confident escape signal (the load-event marker check found the frame is no longer
   // our document): one bounded auto-reload, then the recovery overlay. Stable — safe to call from
@@ -1556,58 +1568,58 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     }
     const handleLoad = () => {
       postMessageToIframe({ type: 'selector-toggle', active: selectorActiveRef.current });
-      // Verify, on the load event, that the frame still holds the document we wrote. contentWindow
-      // is stable and same-origin here (unlike the very-early postMessage ack, which can race), so
-      // reading our marker is the reliable readiness signal. Escape ONLY on a confident signal —
-      // reading contentWindow throws (cross-origin: the frame navigated to an external site), or a
-      // *different-numbered* marker is present. A missing marker mid-transition is treated as OK so
-      // a normal load can never be mistaken for an escape.
       const expected = lifecycleRef.current.loadId;
       if (expected === 0) return; // initial about:blank load, before we've written any document
 
-      try {
-        const marker = (iframeRef.current?.contentWindow as unknown as { __oswPreview?: { loadId?: number } })?.__oswPreview;
-        const markerLoadId = marker?.loadId;
-        if (markerLoadId === expected) {
-          // Our current document loaded — ready.
-          markerReadableRef.current = true;
-          lifecycleRef.current.onAck(expected);
-          setEscaped(false);
-          // Before the consumer, deliberately. Frame-ready is answered with a `selection-resolve`,
-          // and resolving is what re-anchors the toolbar — whose side is chosen from the viewport. Put
-          // the document back where the user had it first, or the bar is placed against scroll 0 and
-          // the user is then shown scroll 500. Both are `postMessage` into the same frame, so the
-          // frame handles them in this order.
-          const restore = scrollMemoryRef.current.take(activePathRef.current);
-          if (restore) {
-            postMessageToIframe({ type: 'scroll-restore', scrollX: restore.x, scrollY: restore.y });
-          }
-          // Only here, and only after the marker matched: this is the first moment a message posted
-          // into the frame reaches the document we wrote. Announced on every load, because each one
-          // invalidates whatever the consumer knows about the old document.
-          onFrameReadyRef.current?.();
-          // After the consumer, not before: this document is brand new and has no toolbar colours
-          // at all until they are sent again, and the selection the consumer is about to re-resolve
-          // is what mounts the toolbar that reads them.
-          postToolbarThemeRef.current();
-        } else if (typeof markerLoadId === 'number') {
-          // A different load's marker: still one of our documents (a stale/rapid load), not an
-          // external escape — reads work, so record that, but don't recover.
-          markerReadableRef.current = true;
-        }
-        // else: readable window with no marker yet (our doc still settling) → do nothing.
-      } catch {
-        // contentWindow read threw → cross-origin → the frame navigated to an external site. Only
-        // act on this once we've proven reads normally work, so an unexpected sandbox that always
-        // throws can't be mistaken for a perpetual escape.
-        if (markerReadableRef.current) handleEscapeSignal(expected);
+      if (unpairedAcksRef.current > 0) {
+        unpairedAcksRef.current -= 1;
+        return;
       }
+      if (ackTimerRef.current) clearTimeout(ackTimerRef.current);
+      ackTimerRef.current = setTimeout(() => {
+        ackTimerRef.current = null;
+        if (unpairedAcksRef.current > 0) {
+          unpairedAcksRef.current -= 1;
+          return;
+        }
+        handleEscapeSignal(expected);
+      }, ACK_TIMEOUT_MS);
     };
     iframe.addEventListener('load', handleLoad);
     return () => {
       iframe.removeEventListener('load', handleLoad);
+      if (ackTimerRef.current) clearTimeout(ackTimerRef.current);
     };
   }, [iframeReady, postMessageToIframe, handleEscapeSignal]);
+
+  /** A document we wrote reached its load event. Any loadId counts as ours; only the current one is ready. */
+  const handleReadyAck = useCallback((loadId: number) => {
+    if (ackTimerRef.current) {
+      clearTimeout(ackTimerRef.current);
+      ackTimerRef.current = null;
+    } else {
+      unpairedAcksRef.current += 1;
+    }
+    if (!lifecycleRef.current.onAck(loadId)) return;
+    setEscaped(false);
+    // Before the consumer, deliberately. Frame-ready is answered with a `selection-resolve`,
+    // and resolving is what re-anchors the toolbar — whose side is chosen from the viewport. Put
+    // the document back where the user had it first, or the bar is placed against scroll 0 and
+    // the user is then shown scroll 500. Both are `postMessage` into the same frame, so the
+    // frame handles them in this order.
+    const restore = scrollMemoryRef.current.take(activePathRef.current);
+    if (restore) {
+      postMessageToIframe({ type: 'scroll-restore', scrollX: restore.x, scrollY: restore.y });
+    }
+    // Only here: this is the first moment a message posted into the frame reaches the document
+    // we wrote. Announced on every load, because each one invalidates whatever the consumer knows
+    // about the old document.
+    onFrameReadyRef.current?.();
+    // After the consumer, not before: this document is brand new and has no toolbar colours
+    // at all until they are sent again, and the selection the consumer is about to re-resolve
+    // is what mounts the toolbar that reads them.
+    postToolbarThemeRef.current();
+  }, [postMessageToIframe]);
 
   useEffect(() => {
     activePathRef.current = activePath;
@@ -1971,23 +1983,24 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     const vfsMapJson = JSON.stringify(Object.fromEntries(projectToUse.blobUrls)).replace(/</g, '\\u003c');
     const vfsMapScript = `<script>window.__oswVfsBlobUrls = ${vfsMapJson};</script>`;
 
-    // Per-load handshake: stamp the document with a fresh loadId marker in <head> (runs during
-    // parse, before app JS). On the iframe's load event the host reads this marker to confirm the
-    // frame still holds the document it wrote; if it navigated away, we recover.
+    // Where the outgoing document was scrolled to, as it last reported, keyed on the page it was
+    // showing — `activePathRef` is still the old path here, and is updated below. A recompile
+    // reloads the same path and gets it back; a navigation does not, and opens at the top.
+    scrollMemoryRef.current.remember(activePathRef.current, frameScrollRef.current);
+    frameScrollRef.current = null;
+
+    // Per-load handshake: the document reports its own load and scroll position by message, with a
+    // fresh loadId (runs during parse, before app JS). See `previewBridgeScript`.
     const loadId = ++loadIdCounterRef.current;
     lifecycleRef.current.beginLoad(loadId, isRecovery);
-    const markerScript = `<script>window.__oswPreview={loadId:${loadId}};</script>`;
+    unpairedAcksRef.current = 0;
+    const markerScript = previewBridgeScript(loadId);
     const headInject = markerScript + vfsMapScript;
     if (processedHtml.includes('<head>')) {
       processedHtml = processedHtml.replace('<head>', '<head>' + headInject);
     } else {
       processedHtml = headInject + processedHtml;
     }
-
-    // Where the outgoing document was scrolled to, read off it in the last moment it exists and keyed
-    // on the page it was showing — `activePathRef` is still the old path here, and is updated below.
-    // A recompile reloads the same path and gets it back; a navigation does not, and opens at the top.
-    scrollMemoryRef.current.remember(activePathRef.current, readFrameScroll(iframeRef.current));
 
     // Clear stale runtime errors before loading new content —
     // only errors from this compilation should be in the buffer.
@@ -2063,6 +2076,17 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
       }
       const data = event.data;
       if (!data || typeof data !== 'object') {
+        return;
+      }
+
+      if (data.type === 'preview:ready' && typeof data.loadId === 'number') {
+        handleReadyAck(data.loadId);
+        return;
+      }
+
+      if (data.type === 'preview:scroll' && data.loadId === lifecycleRef.current.loadId
+        && Number.isFinite(data.x) && Number.isFinite(data.y)) {
+        frameScrollRef.current = { x: data.x, y: data.y };
         return;
       }
 
@@ -2177,7 +2201,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     return () => {
       window.removeEventListener('message', handleMessage);
     };
-  }, [handleNavigation, onFocusSelection, onPlacementComplete, onTreeLevel, onTreeLevels, onTreeStale,
+  }, [handleNavigation, handleReadyAck, onFocusSelection, onPlacementComplete, onTreeLevel, onTreeLevels, onTreeStale,
       onStyleComputed, onStyleProbeResult, onSelectionResolved, onToolbarAction, onToolbarHover, t, tc]);
 
 

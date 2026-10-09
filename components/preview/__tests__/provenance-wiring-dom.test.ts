@@ -47,7 +47,7 @@ describe('selector script against a live DOM', () => {
     });
 
     new Function(jsOf(generateNavigationScript('/index.html')))();
-    window.dispatchEvent(new MessageEvent('message', { data: { type: 'selector-toggle', active: true } }));
+    window.dispatchEvent(Object.assign(new Event('message'), { data: { type: 'selector-toggle', active: true }, source: window.parent }));
 
     // The *second* article, deliberately: the index reported has to be the one source tag's, not
     // the rendered element's. That is the property the whole design rests on — if provenance were

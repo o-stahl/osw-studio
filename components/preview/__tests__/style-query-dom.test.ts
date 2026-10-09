@@ -35,7 +35,7 @@ interface PostedMessage {
 const posted: PostedMessage[] = [];
 
 function send(message: unknown): void {
-  window.dispatchEvent(new MessageEvent('message', { data: message }));
+  window.dispatchEvent(Object.assign(new Event('message'), { data: message, source: window.parent }));
 }
 
 function only(type: string): PostedMessage {
@@ -82,6 +82,16 @@ beforeEach(() => {
 });
 
 describe('style-query', () => {
+  it('ignores a query that did not come from the host', () => {
+    const nodeId = selectCard();
+    posted.length = 0;
+    window.dispatchEvent(Object.assign(new Event('message'), {
+      data: { type: 'style-query', nodeId, properties: ['color'] },
+      source: window,
+    }));
+    expect(posted).toEqual([]);
+  });
+
   it('returns the rendered values for the properties asked about', () => {
     const nodeId = selectCard();
 
