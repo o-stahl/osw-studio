@@ -289,6 +289,8 @@ OSW Studio is a **solo-maintained, community-driven** project. Contributions wel
 - 🔀 [Submit pull requests](https://github.com/o-stahl/osw-studio/pulls)
 - 📣 Share what you've built (open an issue or discussion!)
 
+Found a security problem? Please report it privately, not in an issue: see [SECURITY.md](SECURITY.md).
+
 **Built something cool?** I'd love to see it! Share your creations in [GitHub Discussions](https://github.com/o-stahl/osw-studio/discussions) or open an issue with screenshots.
 
 ## License
