@@ -15,6 +15,7 @@ import { FrameScrollMemory, type FrameScroll } from '@/lib/preview/scroll-memory
 import { previewBridgeScript } from '@/lib/preview/preview-bridge';
 import { previewShellHtml, sendShellContent } from '@/lib/preview/preview-shell';
 import { runFunctionCall } from '@/lib/preview/function-proxy';
+import { getPreviewStorage, setPreviewStorageArea } from '@/lib/preview/preview-storage';
 import { PreviewCompileGate, mergeCompileRequests, observePreviewRoot } from '@/lib/preview/compile-gate';
 import type { CompileRequest } from '@/lib/preview/compile-gate';
 import { STRIP_PROVENANCE_JS } from '@/lib/preview/provenance';
@@ -1415,7 +1416,9 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
   // Read by the message handler, which is not re-registered when the deployment changes.
   const deploymentIdRef = useRef(deploymentId);
   deploymentIdRef.current = deploymentId;
-  const pendingShellRef = useRef<{ loadId: number; html: string; blobUrls: string[]; cache: Map<string, Blob> } | null>(null);
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
+  const pendingShellRef = useRef<{ loadId: number; html: string; blobUrls: string[]; cache: Map<string, Blob>; projectId: string } | null>(null);
   // Blobs already read for a compile, so a reload of the same compile does not read them again.
   const shellCacheRef = useRef(new WeakMap<object, Map<string, Blob>>());
 
@@ -1618,7 +1621,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     const target = iframeRef.current?.contentWindow;
     if (!pending || pending.loadId !== loadId || loadId !== lifecycleRef.current.loadId || !target) return;
     pendingShellRef.current = null;
-    sendShellContent(target, loadId, pending.html, pending.blobUrls, pending.cache).catch((err) => {
+    sendShellContent(target, loadId, pending.html, pending.blobUrls, pending.cache, getPreviewStorage(pending.projectId)).catch((err) => {
       logger.error('[Preview] Could not send the page to the preview frame:', err);
     });
   }, [pairAck]);
@@ -2038,7 +2041,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
       cache = new Map();
       shellCacheRef.current.set(projectToUse, cache);
     }
-    pendingShellRef.current = { loadId, html: processedHtml, blobUrls: [...projectToUse.blobUrls.values()], cache };
+    pendingShellRef.current = { loadId, html: processedHtml, blobUrls: [...projectToUse.blobUrls.values()], cache, projectId };
     iframeRef.current.srcdoc = previewShellHtml(loadId);
     setActivePath(normalizedPath);
     activePathRef.current = normalizedPath;
@@ -2123,6 +2126,15 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
         runFunctionCall(data, deploymentIdRef.current).then((reply) => {
           target.postMessage(reply, '*', reply.body ? [reply.body] : []);
         });
+        return;
+      }
+
+      if (data.type === 'preview:storage') {
+        // Only the document on screen writes: a late report from the page being replaced would
+        // otherwise overwrite what the new one starts from.
+        if (data.loadId === lifecycleRef.current.loadId) {
+          setPreviewStorageArea(projectIdRef.current, data.area, data.data);
+        }
         return;
       }
 

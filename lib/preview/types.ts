@@ -92,6 +92,8 @@ export type PreviewMessage =
   | { type: 'preview:shell-error'; loadId: number; error: string }
   /** An edge-function call the host makes for the frame. See `lib/preview/function-proxy.ts`. */
   | import('./function-proxy').FunctionCall
+  /** One storage area of the frame's stand-ins, whole. See `lib/preview/preview-storage.ts`. */
+  | { type: 'preview:storage'; loadId: number; area: string; data: Record<string, string> }
   /** Where that document is scrolled to, sent trailing after scrolling stops. */
   | { type: 'preview:scroll'; loadId: number; x: number; y: number }
   | { type: 'navigate'; path: string }

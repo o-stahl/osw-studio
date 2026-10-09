@@ -10,6 +10,7 @@ import { captureIframeScreenshot } from './screenshot';
 import { injectVfsBlobMap } from '@/lib/preview/inject-vfs-blob-map';
 import { previewBridgeScript } from '@/lib/preview/preview-bridge';
 import { loadIntoShell } from '@/lib/preview/preview-shell';
+import { getPreviewStorage } from '@/lib/preview/preview-storage';
 
 export async function captureProjectScreenshot(projectId: string): Promise<string | null> {
   await vfs.init();
@@ -80,7 +81,7 @@ export async function captureProjectScreenshot(projectId: string): Promise<strin
   document.body.appendChild(iframe);
 
   try {
-    await loadIntoShell(iframe, html, compiled.blobUrls.values(), 15000);
+    await loadIntoShell(iframe, html, compiled.blobUrls.values(), 15000, getPreviewStorage(projectId));
 
     // Let the page render
     await new Promise(r => setTimeout(r, 1500));

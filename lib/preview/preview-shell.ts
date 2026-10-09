@@ -13,6 +13,8 @@
  * after the modules it imports), which works because a URL is only made once its contents are final.
  */
 
+import type { PreviewStorageSnapshot } from './preview-storage';
+
 export const SHELL_READY = 'preview:shell-ready';
 export const SHELL_CONTENT = 'preview:shell-content';
 
@@ -53,6 +55,7 @@ export function previewShellHtml(loadId: number): string {
     + `if(waits)rest.push(x);else made[x.a.url]=URL.createObjectURL(new Blob([swap(x.t)],{type:x.a.blob.type}));});`
     + `if(rest.length===list.length){rest.forEach(function(x){made[x.a.url]=URL.createObjectURL(new Blob([swap(x.t)],{type:x.a.blob.type}));});rest=[];}`
     + `list=rest;}`
+    + `window.__oswStorageSeed=d.storage||{};`
     + `var html=swap(d.html);document.open();document.write(html);document.close();`
     + `}).catch(fail);});`
     + `p.postMessage({type:'${SHELL_READY}',loadId:id},'*');`
@@ -114,10 +117,11 @@ export async function sendShellContent(
   html: string,
   blobUrls: Iterable<string>,
   cache?: Map<string, Blob>,
+  storage?: PreviewStorageSnapshot,
 ): Promise<void> {
   const origin = window.location.origin;
   const assets = await collectShellAssets(html, blobUrls, origin, cache);
-  target.postMessage({ type: SHELL_CONTENT, loadId, html, assets, prefix: blobUrlPrefix(origin) }, '*');
+  target.postMessage({ type: SHELL_CONTENT, loadId, html, assets, prefix: blobUrlPrefix(origin), storage }, '*');
 }
 
 /**
@@ -129,6 +133,7 @@ export function loadIntoShell(
   html: string,
   blobUrls: Iterable<string>,
   timeoutMs: number,
+  storage?: PreviewStorageSnapshot,
 ): Promise<void> {
   const loadId = 0;
   return new Promise<void>((resolve, reject) => {
@@ -142,7 +147,7 @@ export function loadIntoShell(
       const data = event.data as { type?: string; loadId?: number; error?: string } | null;
       if (!data || data.loadId !== loadId) return;
       if (data.type === SHELL_READY) {
-        sendShellContent(iframe.contentWindow!, loadId, html, blobUrls).catch((err) => finish(err));
+        sendShellContent(iframe.contentWindow!, loadId, html, blobUrls, undefined, storage).catch((err) => finish(err));
       } else if (data.type === 'preview:ready') {
         finish();
       } else if (data.type === 'preview:shell-error') {
