@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
 import { EdgeFunction } from '@/lib/vfs/types';
 import {
   Plus, Loader2, AlertCircle, Code2, MoreVertical, Pencil, Trash2,
@@ -17,6 +18,7 @@ import {
 import { FunctionEditor } from './function-editor';
 import { cn } from '@/lib/utils';
 import type { FunctionsDataProvider } from './data-providers';
+import { apiFetch } from '@/lib/api/backend-status';
 
 interface FunctionsManagerProps {
   deploymentId?: string;
@@ -47,7 +49,7 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
       if (dataProvider) {
         setFunctions(await dataProvider.list());
       } else if (deploymentId) {
-        const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/functions`);
+        const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/functions`);
         if (!res.ok) {
           const data = await res.json();
           throw new Error(data.error || t('loadFunctionsFailed'));
@@ -67,18 +69,19 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
       if (dataProvider) {
         await dataProvider.toggle(fn.id, !fn.enabled);
       } else if (deploymentId) {
-        const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/functions/${fn.id}`, {
+        const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/functions/${fn.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled: !fn.enabled }),
         });
-        if (!res.ok) throw new Error('Failed to update function');
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || t('updateFunctionFailed'));
       } else {
         return;
       }
       await loadFunctions();
     } catch (err) {
       console.error('Failed to toggle function:', err);
+      toast.error(err instanceof Error ? err.message : t('updateFunctionFailed'));
     }
   };
 
@@ -89,16 +92,17 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
       if (dataProvider) {
         await dataProvider.remove(fn.id);
       } else if (deploymentId) {
-        const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/functions/${fn.id}`, {
+        const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/functions/${fn.id}`, {
           method: 'DELETE',
         });
-        if (!res.ok) throw new Error('Failed to delete function');
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || t('deleteFunctionFailed'));
       } else {
         return;
       }
       await loadFunctions();
     } catch (err) {
       console.error('Failed to delete function:', err);
+      toast.error(err instanceof Error ? err.message : t('deleteFunctionFailed'));
     }
   };
 
@@ -117,7 +121,7 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
       } else if (!deploymentId) {
         throw new Error(t('noDeploymentId'));
       } else if (editingFunction) {
-        const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/functions/${editingFunction.id}`, {
+        const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/functions/${editingFunction.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
@@ -127,7 +131,7 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
           throw new Error(err.error || t('updateFunctionFailed'));
         }
       } else {
-        const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/functions`, {
+        const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/functions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),

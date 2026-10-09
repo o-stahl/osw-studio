@@ -13,7 +13,7 @@ import { getAvailableModels, verifyApiKey } from '@/lib/llm/llm-client';
 import { loadProviderModels } from '@/lib/llm/models/model-catalog';
 import { activateProviderAsGlobalDefault } from '@/lib/llm/models/global-auto-assign';
 import { shouldAutoAssignAgent } from '@/lib/llm/models/project-assignment';
-import { startSignIn } from '@/lib/auth/provider-sign-in';
+import { useSignInStart } from '@/lib/hooks/use-sign-in-start';
 import { checkHFCapabilities, loginHF } from '@/lib/auth/hf-auth';
 import { detectDeploymentType } from '@/lib/telemetry/config';
 import { track } from '@/lib/telemetry';
@@ -202,13 +202,14 @@ export function ConnectOptions({ exclude = [], onMoreOptions, rowsOnly = false, 
     }
   }, [local, probeLocal, t]);
 
+  const startSignIn = useSignInStart();
   const signIn = useCallback((provider: 'openrouter') => {
     // Sign-in pages refuse to load inside a frame (OpenRouter sends frame-ancestors 'self'), and
     // the HuggingFace Space runs this app in one; there, as on a stopped task's card, use a popup.
     startSignIn(provider, { popup: keepPage || isFramed() })
       .then((started) => { if (!started) toast.error(t('popupBlocked')); })
       .catch(() => toast.error(t('signInFailed')));
-  }, [t, keepPage]);
+  }, [t, keepPage, startSignIn]);
 
   const openKeyPage = useCallback((url: string) => {
     window.open(url, '_blank', 'noopener,noreferrer');

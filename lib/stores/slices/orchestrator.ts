@@ -26,6 +26,24 @@ import { saveManager } from '@/lib/vfs/save-manager';
 import { localHasUnackedEdits, markSyncNeedsRetry } from '@/lib/vfs/auto-sync';
 import { notifyServerProjectsChanged, notifyServerDeploymentsChanged } from '@/lib/vfs/sync-events';
 import { getProjectAssignment } from '@/lib/llm/models/project-assignment';
+import { outcomeForStop, recordModelOutcome } from '@/lib/llm/suggestions/observed';
+import { FREE_MODELS_FALLBACK, isFreeModels } from '@/lib/llm/suggestions/free-models';
+import type { ProviderId } from '@/lib/llm/providers/types';
+
+/**
+ * The free models a server run on "Free models" should use, best first, minus those cooling down.
+ * The ranking needs this browser's records, which the server does not have. Empty when it cannot be
+ * worked out, which leaves the run on OpenRouter's free router.
+ */
+async function freeModelCandidates(provider: ProviderId): Promise<string[]> {
+  try {
+    const { rankProviderModels } = await import('@/lib/llm/suggestions/suggest');
+    const ranked = await rankProviderModels(provider, { freeOnly: true });
+    return ranked.filter((r) => !r.coolingDown).map((r) => r.model.id).slice(0, 20);
+  } catch {
+    return [];
+  }
+}
 import type { InterviewTemplate } from '@/lib/interview/types';
 import type { ApprovalRequest, ApprovalOutcome } from '@/lib/llm/permissions';
 import { translator } from '@/lib/i18n/runtime';
@@ -1148,6 +1166,23 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
           });
           return;
         }
+        if (event === 'model_switched') {
+          // A server run on "Free models" moved past a model; note it as a stop would be.
+          const sw = data as { provider?: string; fromModel?: string; reason?: string };
+          const outcome = sw.reason === 'busy' || sw.reason === 'unavailable' || sw.reason === 'refused' ? sw.reason : null;
+          if (outcome && sw.provider && sw.fromModel && sw.fromModel !== FREE_MODELS_FALLBACK) {
+            recordModelOutcome(sw.provider, sw.fromModel, outcome);
+          }
+        }
+        if (event === 'api_stopped') {
+          // A server-side run cannot write this browser's record of how models did, so the stop is
+          // noted here: the next suggestion then passes over the model that just failed.
+          const stop = data as { provider?: string; model?: string; errorCategory?: string };
+          const outcome = outcomeForStop(stop.errorCategory ?? '');
+          if (outcome && stop.provider && stop.model && stop.model !== FREE_MODELS_FALLBACK) {
+            recordModelOutcome(stop.provider, stop.model, outcome);
+          }
+        }
         if (event === 'build_requested') {
           handleBuildRequested(data as any);
           return;
@@ -1498,6 +1533,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
             debugStreamEnabled: configManager.getDebugStreamEnabled(),
             modelPricing: {},
             cachedModels: configManager.getCachedModels(provider)?.models ?? [],
+            ...(isFreeModels(model) ? { freeModelCandidates: await freeModelCandidates(provider) } : {}),
           },
         }),
       });

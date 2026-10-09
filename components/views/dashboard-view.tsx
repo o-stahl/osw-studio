@@ -27,6 +27,7 @@ import { logger } from '@/lib/utils';
 import { skillsService } from '@/lib/vfs/skills';
 import pkg from '@/package.json';
 import { PageShell, PageHeader, PageBody } from '@/components/ui/page-shell';
+import { apiFetch } from '@/lib/api/backend-status';
 
 const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
 
@@ -667,7 +668,7 @@ interface DashboardViewProps {
 
 // Fetch workspace-scoped data for non-admin server mode users
 async function fetchWorkspaceData(workspaceId: string): Promise<BrowserDashboardData> {
-  const response = await fetch(`/api/w/${workspaceId}/sync/status`);
+  const response = await apiFetch(`/api/w/${workspaceId}/sync/status`);
   if (!response.ok) throw new Error('Failed to fetch workspace data');
   const data = await response.json();
   const whatsNew = await fetchWhatsNew();
@@ -711,7 +712,7 @@ export function DashboardView({ workspaceId, onNavigate, onProjectSelect, onStar
         setBrowserData(result);
       } else if (isServerMode) {
         // Server mode without workspace (legacy admin path)
-        const response = await fetch('/api/admin/dashboard');
+        const response = await apiFetch('/api/admin/dashboard');
         if (!response.ok) throw new Error('Failed to fetch dashboard data');
         const result = await response.json();
         setServerData(result);

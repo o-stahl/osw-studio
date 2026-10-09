@@ -2,14 +2,15 @@
 
 import React, { useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { ArrowLeftRight, Clock, OctagonPause, Play } from 'lucide-react';
+import { ArrowLeftRight, Clock, OctagonPause, Play, Sparkles } from 'lucide-react';
 import { getDefaultModel, getProvider } from '@/lib/llm/providers/registry';
 import { isProviderConnected } from '@/lib/llm/providers/connection-status';
 import type { ProviderId } from '@/lib/llm/providers/types';
 import type { ModelRef } from '@/lib/llm/models/assignment';
 import type { ProviderQuota } from '@/lib/llm/provider-status';
 import { modelLabel } from '@/lib/llm/providers/model-label';
-import { isFreeModels } from '@/lib/llm/suggestions/free-models';
+import { FREE_MODELS_FALLBACK, isFreeModels } from '@/lib/llm/suggestions/free-models';
+import { cn } from '@/lib/utils';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { ConnectOptions } from './connect-options';
 import { configManager } from '@/lib/config/storage';
@@ -31,38 +32,59 @@ const openModelPicker = () => window.dispatchEvent(new CustomEvent(OPEN_MODEL_PI
 const providerName = (id: string) => (id ? getProvider(id).name : '');
 
 interface NoticeData {
-  kind: 'retrying' | 'switched';
+  kind: 'retrying' | 'switched' | 'picked' | 'resolved';
   provider: string;
   /** The HTTP status being retried: 429 is a rate limit, 5xx the provider not answering. */
   status?: number;
   fromModel?: string;
   toModel?: string;
-  reason?: 'busy' | 'unavailable';
+  reason?: 'busy' | 'unavailable' | 'refused';
+}
+
+/**
+ * The base for a note in the chat thread that is not a message: a provider limit, a model switch,
+ * a stopped task. One look for all of them, with the icon carrying the kind.
+ */
+export function ChatNotice({ icon: Icon, iconClassName, children }: {
+  icon: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+  iconClassName?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground" role="status">
+      <Icon className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', iconClassName)} aria-hidden={true} />
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">{children}</div>
+    </div>
+  );
 }
 
 export function LimitNotice({ data }: { data: NoticeData }) {
   const t = useTranslations('limits');
   if (data.kind === 'retrying') {
     return (
-      <div className="flex items-start gap-2 rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground" role="status">
-        <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <ChatNotice icon={Clock}>
         <span>{t((data.status ?? 0) >= 500 ? 'retryingServer' : 'retrying', { provider: providerName(data.provider) })}</span>
-      </div>
+      </ChatNotice>
     );
   }
   const provider = data.provider as ProviderId;
   const from = modelLabel(provider, data.fromModel ?? '');
   const to = modelLabel(provider, data.toModel ?? '');
+  if (data.kind === 'picked' || data.kind === 'resolved') {
+    // OpenRouter's free router picks the model itself; which one is known once it answers.
+    const text = data.kind === 'resolved'
+      ? t('routerAnswering', { model: to })
+      : data.toModel === FREE_MODELS_FALLBACK ? t('pickedRouter') : t('pickedFree', { model: to });
+    return (
+      <ChatNotice icon={Sparkles}>
+        <span>{text}</span>
+      </ChatNotice>
+    );
+  }
   return (
-    <div className="flex items-start gap-2 rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground" role="status">
-      <ArrowLeftRight className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-      <span>
-        {t(data.reason === 'unavailable' ? 'switchedUnavailable' : 'switchedBusy', { from, to })}{' '}
-        <button type="button" onClick={openModelPicker} className="text-primary underline-offset-2 hover:underline">
-          {t('chooseAnother')}
-        </button>
-      </span>
-    </div>
+    <ChatNotice icon={ArrowLeftRight}>
+      <span>{t(data.reason === 'unavailable' ? 'switchedUnavailable' : data.reason === 'refused' ? 'switchedRefused' : 'switchedBusy', { from, to })}</span>
+    </ChatNotice>
   );
 }
 
@@ -83,6 +105,8 @@ interface StoppedData {
 
 /** Where a spent allowance leaves the task: it can only go on somewhere else, or after a top-up. */
 const SPENT = new Set(['daily_limit', 'credit_exhausted']);
+/** The provider's own words say why: which key, or what in the request was refused. */
+const SHOW_DETAILS = new Set(['auth_expired', 'blocked']);
 
 /** OpenRouter's documented free tier: 50 free requests a day until $10 of credit is bought. */
 const OPENROUTER_FREE_TIER_DAILY = 50;
@@ -120,6 +144,7 @@ export function StoppedCard({ data, live, onContinue }: {
       case 'model_busy':
       case 'model_not_found': return t('titleModel', { model });
       case 'auth_expired': return t('titleAuth', { provider: name });
+      case 'blocked': return t('titleBlocked', { provider: name });
       default: return name ? t('titleOther', { provider: name }) : t('titleOtherNoProvider');
     }
   })();
@@ -143,6 +168,7 @@ export function StoppedCard({ data, live, onContinue }: {
   } else if (category === 'rate_limited' || category === 'server_error') lines.push(t('rateBody'));
   else if (category === 'model_busy' || category === 'model_not_found') lines.push(t('modelBody'));
   else if (category === 'auth_expired') lines.push(t('authBody'));
+  else if (category === 'blocked') lines.push(t('blockedBody'));
 
   const alternatives = (data.alternatives ?? []).filter((a) => a.provider !== provider);
   const [first, ...others] = alternatives;
@@ -154,15 +180,11 @@ export function StoppedCard({ data, live, onContinue }: {
   const offerContinue = (data.canRetrySame !== false && !spent) || movedOn;
 
   return (
-    <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-card px-3.5 py-3">
-      <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-        <OctagonPause className="h-3.5 w-3.5 shrink-0 text-amber-500" aria-hidden="true" />
-        {title}
-      </div>
-      {lines.map((line) => <p key={line} className="text-xs leading-relaxed text-muted-foreground">{line}</p>)}
-      {live && <p className="text-xs leading-relaxed text-muted-foreground">{t('stoppedHere')}</p>}
-      {lines.length === 0 && data.message && (
-        <details className="text-xs text-muted-foreground">
+    <ChatNotice icon={OctagonPause} iconClassName="text-amber-500">
+      {/* One notification, read as a sentence or two: what happened, then what to do. */}
+      <p>{[title, ...lines, ...(live ? [t('stoppedHere')] : [])].join(' ')}</p>
+      {(lines.length === 0 || SHOW_DETAILS.has(category)) && data.message && (
+        <details>
           <summary className="cursor-pointer hover:text-foreground">{t('details')}</summary>
           <p className="mt-1 whitespace-pre-wrap font-mono text-[11px]">{data.message}</p>
         </details>
@@ -174,7 +196,7 @@ export function StoppedCard({ data, live, onContinue }: {
             <button
               type="button"
               onClick={() => onContinue()}
-              className="flex h-9 w-full items-center justify-center gap-2 rounded-md border border-primary/30 bg-primary/15 text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
+              className="flex h-8 w-full items-center justify-center gap-2 rounded-md border border-primary/30 bg-primary/15 text-xs font-semibold text-primary transition-colors hover:bg-primary/20"
             >
               <Play className="h-3.5 w-3.5" aria-hidden="true" />
               {movedOn ? t('continueWithModel', { model: nameOf(working.provider, working.model) }) : t('continue')}
@@ -184,7 +206,7 @@ export function StoppedCard({ data, live, onContinue }: {
             <button
               type="button"
               onClick={() => onContinue(data.suggestion)}
-              className="flex h-9 w-full items-center justify-center gap-2 rounded-md border border-border bg-muted text-sm font-semibold text-foreground transition-colors hover:bg-accent"
+              className="flex h-8 w-full items-center justify-center gap-2 rounded-md border border-border bg-muted text-xs font-semibold text-foreground transition-colors hover:bg-accent"
             >
               <ArrowLeftRight className="h-3.5 w-3.5" aria-hidden="true" />
               {t('tryModel', { model: nameOf(data.suggestion.provider, data.suggestion.model) })}
@@ -195,7 +217,7 @@ export function StoppedCard({ data, live, onContinue }: {
               <button
                 type="button"
                 onClick={() => onContinue(first)}
-                className="flex h-9 w-full items-center justify-center gap-2 rounded-md border border-border bg-muted text-sm font-semibold text-foreground transition-colors hover:bg-accent"
+                className="flex h-8 w-full items-center justify-center gap-2 rounded-md border border-border bg-muted text-xs font-semibold text-foreground transition-colors hover:bg-accent"
               >
                 <Play className="h-3.5 w-3.5" aria-hidden="true" />
                 {t('continueWith', { provider: providerName(first.provider) })}
@@ -223,7 +245,7 @@ export function StoppedCard({ data, live, onContinue }: {
           )}
         </div>
       )}
-    </div>
+    </ChatNotice>
   );
 }
 

@@ -993,7 +993,8 @@ interface ProjectSettingsModalProps {
   onProjectUpdate: (project: Project) => void;
   enabled: boolean;
   onToggleEnabled: (enabled: boolean) => void;
-  workspaceId?: string;
+  /** Required, though it may be undefined: without it the schema editor calls an unscoped route that does not exist. */
+  workspaceId: string | undefined;
 }
 
 export function ProjectSettingsModal({ project, isOpen, onClose, onProjectUpdate, enabled, onToggleEnabled, workspaceId }: ProjectSettingsModalProps) {

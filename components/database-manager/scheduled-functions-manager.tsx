@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { ScheduledFunction, EdgeFunction } from '@/lib/vfs/types';
 import {
@@ -18,6 +19,7 @@ import {
 import { ScheduledFunctionEditor } from './scheduled-function-editor';
 import { cn } from '@/lib/utils';
 import type { ScheduledFunctionsDataProvider } from './data-providers';
+import { apiFetch } from '@/lib/api/backend-status';
 
 interface ScheduledFunctionsManagerProps {
   deploymentId?: string;
@@ -55,8 +57,8 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
         setEdgeFunctions(fns);
       } else if (deploymentId) {
         const [schedRes, fnRes] = await Promise.all([
-          fetch(`${apiBase}/admin/deployments/${deploymentId}/scheduled-functions`),
-          fetch(`${apiBase}/admin/deployments/${deploymentId}/functions`),
+          apiFetch(`${apiBase}/admin/deployments/${deploymentId}/scheduled-functions`),
+          apiFetch(`${apiBase}/admin/deployments/${deploymentId}/functions`),
         ]);
         if (!schedRes.ok) {
           const data = await schedRes.json();
@@ -83,18 +85,19 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
       if (dataProvider) {
         await dataProvider.toggle(fn.id, !fn.enabled);
       } else if (deploymentId) {
-        const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/scheduled-functions/${fn.id}`, {
+        const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/scheduled-functions/${fn.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled: !fn.enabled }),
         });
-        if (!res.ok) throw new Error('Failed to update scheduled function');
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || t('updateScheduleFailed'));
       } else {
         return;
       }
       await loadFunctions();
     } catch (err) {
       console.error('Failed to toggle scheduled function:', err);
+      toast.error(err instanceof Error ? err.message : t('updateScheduleFailed'));
     }
   };
 
@@ -105,16 +108,17 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
       if (dataProvider) {
         await dataProvider.remove(fn.id);
       } else if (deploymentId) {
-        const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/scheduled-functions/${fn.id}`, {
+        const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/scheduled-functions/${fn.id}`, {
           method: 'DELETE',
         });
-        if (!res.ok) throw new Error('Failed to delete scheduled function');
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || t('deleteScheduleFailed'));
       } else {
         return;
       }
       await loadFunctions();
     } catch (err) {
       console.error('Failed to delete scheduled function:', err);
+      toast.error(err instanceof Error ? err.message : t('deleteScheduleFailed'));
     }
   };
 
@@ -125,7 +129,7 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
       } else if (!deploymentId) {
         throw new Error(t('noDeploymentId'));
       } else if (editingFunction) {
-        const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/scheduled-functions/${editingFunction.id}`, {
+        const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/scheduled-functions/${editingFunction.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
@@ -135,7 +139,7 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
           throw new Error(err.error || t('updateScheduleFailed'));
         }
       } else {
-        const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/scheduled-functions`, {
+        const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/scheduled-functions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),

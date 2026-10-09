@@ -126,3 +126,35 @@ describe('observed outcomes, the edges', () => {
     expect(getObserved('openrouter', 'm')).toEqual({ ok: 1, fail: 0 });
   });
 });
+
+/**
+ * OpenRouter refuses some free models to every app not on its list ("only available on agentic
+ * harnesses"). Ten minutes changes nothing about that, so a refusal is passed over for a day and
+ * outlives a reload; it says nothing about how good the model is.
+ */
+describe('a model that refused the request', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetCooldowns();
+  });
+
+  it('is passed over for a day, after a reload too, and then offered again', () => {
+    const now = 1_000_000;
+    recordModelOutcome('openrouter', 'gated:free', 'refused', now);
+    resetCooldowns(); // a reload forgets the in-memory cooldowns
+    expect(isCoolingDown('openrouter', 'gated:free', now + 23 * 60 * 60_000)).toBe(true);
+    expect(isCoolingDown('openrouter', 'gated:free', now + 25 * 60 * 60_000)).toBe(false);
+  });
+
+  it('does not count against the model', () => {
+    recordModelOutcome('openrouter', 'gated:free', 'refused');
+    expect(getObserved('openrouter', 'gated:free')).toBeUndefined();
+  });
+
+  it('is not suggested next, so two failing models are not offered in turn', () => {
+    recordModelOutcome('openrouter', 'a', 'refused');
+    const ranked = ['a', 'b'].map((id) => ({ provider: 'openrouter', model: { id }, coolingDown: isCoolingDown('openrouter', id) }));
+    // Stopped on b: the only other model, a, refused earlier, so nothing is offered.
+    expect(nextSuggestion(ranked as never, { provider: 'openrouter', model: 'b' })).toBeUndefined();
+  });
+});

@@ -48,6 +48,7 @@ const CODE_CATEGORIES: Record<ApiErrorCode, string> = {
   daily_limit: 'daily_limit',
   credit_exhausted: 'credit_exhausted',
   auth: 'auth_expired',
+  blocked: 'blocked',
   model_unavailable: 'model_not_found',
   overloaded: 'server_error',
   tool_unsupported: 'tool_not_supported',

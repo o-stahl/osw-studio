@@ -17,7 +17,7 @@ const err = (category: string, provider: string, status = 400) => new ProviderAp
  */
 describe('isTerminalApiError', () => {
   it('offers no resend when the provider will refuse the same request every time', () => {
-    for (const c of ['tool_not_supported', 'invalid_request', 'context_too_long']) {
+    for (const c of ['tool_not_supported', 'invalid_request', 'context_too_long', 'blocked']) {
       expect(isTerminalApiError(err(c, 'openai')), c).toBe(true);
     }
   });

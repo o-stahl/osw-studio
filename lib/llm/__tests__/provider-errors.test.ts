@@ -4,6 +4,19 @@ import { classifyProviderError, classifyGeminiError, parseRetryAfter, parseReset
 const headers = (h: Record<string, string>) => ({ get: (name: string) => h[name.toLowerCase()] ?? null });
 
 describe('classifyProviderError', () => {
+  it('reads an OpenRouter 403 as a refused request, not a refused key, and a 401 as the key', () => {
+    // OpenRouter answers 403 for a moderation flag or a guardrail block; a bad key is 401.
+    const flagged = { reasons: ['violence'], flagged_input: 'x', provider_name: 'OpenAI', model_slug: 'm' };
+    expect(classifyProviderError({ status: 403, provider: 'openrouter', message: 'm requires moderation on OpenAI. Your input was flagged', metadata: flagged }).code).toBe('blocked');
+    expect(classifyProviderError({ status: 403, provider: 'openrouter', message: 'Forbidden' }).code).toBe('blocked');
+    expect(classifyProviderError({ status: 401, provider: 'openrouter', message: 'User not found.' }).code).toBe('auth');
+  });
+
+  it('reads another provider\'s 403 as the key, unless it says the content was refused', () => {
+    expect(classifyProviderError({ status: 403, provider: 'openai', message: 'Project does not have access to model' }).code).toBe('auth');
+    expect(classifyProviderError({ status: 403, provider: 'groq', message: 'Request flagged by content moderation' }).code).toBe('blocked');
+  });
+
   it('reads an OpenRouter shared upstream pool as one busy model', () => {
     // The body OpenRouter returned for a busy free model, 2026-10-03.
     const result = classifyProviderError({

@@ -93,6 +93,7 @@ import { Pagination, PaginationRange } from '@/components/ui/pagination';
 import { COMPACT_ROW_WIDTH } from '@/lib/constants/layout';
 import { useNarrowContainer } from '@/lib/hooks/use-narrow-container';
 import { REPO_URL } from '@/lib/constants/links';
+import { ServerDeleteRefused, deleteProjectServerFirst } from '@/lib/vfs/auto-sync';
 
 interface ProjectManagerProps {
   onProjectSelect: (project: Project) => void;
@@ -528,15 +529,14 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
     }
 
     try {
-      await vfs.deleteProject(project.id);
+      await deleteProjectServerFirst(project.id);
       clearLegacyProjectSchema(project.id);
-      import('@/lib/vfs/auto-sync').then(m => m.autoDeleteProject(project.id)).catch(() => {});
       toast.success(t('deleted'));
       track('project_delete');
       await reloadProjects();
     } catch (error) {
       logger.error('Failed to delete project:', error);
-      toast.error(t('deleteFailed'));
+      toast.error(error instanceof ServerDeleteRefused ? error.message : t('deleteFailed'));
     }
   }, [reloadProjects, t]);
 
@@ -1188,6 +1188,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
           isOpen={true}
           onClose={() => setBackendProject(null)}
           onProjectUpdate={(updated: Project) => setBackendProject(updated)}
+          workspaceId={workspaceId}
           enabled={backendProjectEnabled}
           onToggleEnabled={(enabled: boolean) => {
             localStorage.setItem(`osw-backend-${backendProject.id}`, String(enabled));

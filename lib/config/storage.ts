@@ -680,14 +680,16 @@ class ConfigManager {
       this.emitModelConfigChanged();
     }
   }
-  deleteModelTemplate(id: string): void {
+  /** Server first in server mode: throws `ServerDeleteRefused` and keeps the template if refused. */
+  async deleteModelTemplate(id: string): Promise<void> {
     if (isBuiltInTemplateId(id)) return; // built-ins cannot be deleted
+    if (typeof window !== 'undefined') {
+      const { autoDeleteModelTemplate } = await import('@/lib/vfs/auto-sync');
+      await autoDeleteModelTemplate(id);
+    }
     const all = { ...(this.getSettings().modelTemplates || {}) };
     delete all[id];
     this.setSetting('modelTemplates', all);
-    if (typeof window !== 'undefined') {
-      import('@/lib/vfs/auto-sync').then(({ autoDeleteModelTemplate }) => autoDeleteModelTemplate(id)).catch((e) => logger.debug('[ConfigManager] model-template auto-delete trigger failed', e));
-    }
   }
   /** Store a template pulled from the server, preserving its server timestamp and marking it synced. */
   importModelTemplateFromServer(t: ModelTemplate): void {
@@ -852,11 +854,13 @@ class ConfigManager {
     }
   }
 
-  removeCustomProvider(id: string): void {
-    removeCustomProviderConfig(id);
+  /** Server first in server mode: throws `ServerDeleteRefused` and keeps the connection if refused. */
+  async removeCustomProvider(id: string): Promise<void> {
     if (typeof window !== 'undefined') {
-      import('@/lib/vfs/auto-sync').then(({ autoDeleteConnection }) => autoDeleteConnection(id)).catch((e) => logger.debug('[ConfigManager] connection auto-delete trigger failed', e));
+      const { autoDeleteConnection } = await import('@/lib/vfs/auto-sync');
+      await autoDeleteConnection(id);
     }
+    removeCustomProviderConfig(id);
   }
 
   generateCustomProviderId(base: string): string {

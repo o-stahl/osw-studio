@@ -60,6 +60,7 @@ import {
 } from '@/components/ui/popover';
 import { COMPACT_ROW_WIDTH } from '@/lib/constants/layout';
 import { useNarrowContainer } from '@/lib/hooks/use-narrow-container';
+import { ServerDeleteRefused } from '@/lib/vfs/auto-sync';
 
 interface TemplateManagerProps {
   onProjectCreated?: (projectId: string, hasBackendFeatures: boolean) => void;
@@ -138,7 +139,7 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
       await loadCustomTemplates();
     } catch (error) {
       logger.error('Failed to delete template:', error);
-      toast.error(t('deleteFailed'));
+      toast.error(error instanceof ServerDeleteRefused ? error.message : t('deleteFailed'));
     }
   };
 

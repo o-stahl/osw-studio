@@ -7,6 +7,7 @@ import { ProviderId } from './providers/types';
 import { logger } from '../utils';
 import { VirtualFile } from '@/lib/vfs';
 import { resolveWireFormat } from './providers/wire-format';
+import { FREE_MODELS_FALLBACK } from './suggestions/free-models';
 
 // Re-export for consumers that import from streaming-parser
 export type { ReasoningDetail };
@@ -51,6 +52,7 @@ export async function parseStreamingResponse(
 ): Promise<StreamResponse> {
   const { provider, suppressAssistantDelta = false, onProgress } = options;
   const isAnthropic = resolveWireFormat(provider as ProviderId, options.model) === 'anthropic';
+  let routerModelAnnounced = false;
   const reader = response.body?.getReader();
   if (!reader) throw new Error('No response stream');
 
@@ -206,6 +208,13 @@ export async function parseStreamingResponse(
 
           try {
             const json = JSON.parse(data);
+            // OpenRouter's free router answers with a model of its own choosing, named on every
+            // chunk; nothing else says which one is answering.
+            if (!routerModelAnnounced && options.model === FREE_MODELS_FALLBACK && typeof json.model === 'string'
+                && json.model && json.model !== FREE_MODELS_FALLBACK) {
+              routerModelAnnounced = true;
+              onProgress?.('model_resolved', { provider, model: json.model });
+            }
 
             // Midstream error: some providers (OpenRouter → Minimax, etc.) deliver
             // upstream errors as a normal chunk with empty choices and an error field

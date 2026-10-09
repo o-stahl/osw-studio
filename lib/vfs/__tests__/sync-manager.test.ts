@@ -120,3 +120,20 @@ describe('SyncManager.pushFiles', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('SyncManager with an expired session', () => {
+  it('raises the session-expired banner on a 401 from the workspace API', async () => {
+    const { clearAuthExpired, getBackendStatus } = await import('@/lib/api/backend-status');
+    clearAuthExpired();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }),
+    ));
+    const manager = new SyncManager();
+    manager.workspaceId = 'ws1';
+
+    const result = await manager.pushSkill({ id: 's1', name: 's1', content: '' } as any);
+
+    expect(result.success).toBe(false);
+    expect(getBackendStatus().authExpired).toBe(true);
+  });
+});

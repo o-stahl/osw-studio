@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { getBackendStatus, subscribeBackendStatus } from '@/lib/api/backend-status';
 import { getMcpActivity, subscribeMcpActivity } from '@/lib/api/mcp-activity';
 import { setLocale } from '@/lib/i18n/actions';
-import { defaultLocale } from '@/lib/i18n/config';
+import { defaultLocale, isEmbedded } from '@/lib/i18n/config';
 import type { OfferLocale } from '@/lib/i18n/config';
 import type { OfferStrings } from '@/lib/i18n/offer';
 
@@ -53,7 +53,7 @@ export function LanguageOffer({
   const answer = (chosen: OfferLocale | typeof defaultLocale) => {
     startTransition(async () => {
       try {
-        await setLocale(chosen);
+        await setLocale(chosen, { embedded: isEmbedded() });
       } catch {
         toast.error(t('languageChangeFailed'));
         return;

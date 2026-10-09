@@ -6,7 +6,7 @@ import type { ModelRef } from '@/lib/llm/models/assignment';
  * conversation, so the agent picks up from its own last step. Addressed to the agent, and shown in
  * the thread as the user's message.
  */
-const CONTINUE_AFTER_STOP_PROMPT = 'Continue the task from where you stopped.'; // i18n-ignore: sent to the agent as the user's message
+export const CONTINUE_AFTER_STOP_PROMPT = 'Continue the task from where you stopped.'; // i18n-ignore: sent to the agent as the user's message
 
 /**
  * Continue a stopped task as a new turn, on `withModel` when the user picked one from the stopped

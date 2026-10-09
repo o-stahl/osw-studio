@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { resolveReviewAccess } from '@/lib/review/access';
+import { resolveReviewAccess, teamAccessRefusal } from '@/lib/review/access';
 import { authorizeStatusChange } from '@/lib/review/comment-status';
 import { toWireComment } from '@/lib/review/comment-view';
 import { isReviewOriginAllowed } from '@/lib/review/origin-gate';
@@ -26,6 +26,13 @@ function notFound(): NextResponse {
   return NextResponse.json({ error: 'Not found' }, { status: 404, headers: PRIVATE_HEADERS });
 }
 
+function teamRefused(status: 401 | 403): NextResponse {
+  return NextResponse.json(
+    { error: status === 401 ? 'Unauthorized' : 'Forbidden' },
+    { status, headers: PRIVATE_HEADERS }
+  );
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ deploymentId: string; id: string }> }
@@ -34,6 +41,8 @@ export async function PATCH(
 
   try {
     const access = await resolveReviewAccess(deploymentId, request);
+    const refusal = await teamAccessRefusal(request, access);
+    if (refusal) return teamRefused(refusal);
     if (access.kind === 'denied') return notFound();
 
     // A write, and therefore the same origin gate the other two review writes carry. A team

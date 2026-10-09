@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { FunctionLog } from '@/lib/vfs/types';
 import {
@@ -10,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { apiFetch } from '@/lib/api/backend-status';
 
 interface LogsViewerProps {
   deploymentId: string;
@@ -37,7 +39,7 @@ export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/database/logs?limit=200`);
+      const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/database/logs?limit=200`);
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || t('loadLogsFailed'));
@@ -55,13 +57,14 @@ export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
     if (!confirm(t('confirmClearLogs'))) return;
 
     try {
-      const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/database/logs`, {
+      const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/database/logs`, {
         method: 'DELETE',
       });
-      if (!res.ok) throw new Error('Failed to clear logs');
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || t('clearLogsFailed'));
       await loadLogs();
     } catch (err) {
       console.error('Failed to clear logs:', err);
+      toast.error(err instanceof Error ? err.message : t('clearLogsFailed'));
     }
   };
 

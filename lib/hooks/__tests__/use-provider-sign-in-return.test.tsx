@@ -21,7 +21,7 @@ vi.mock('@/lib/telemetry', () => ({ track }));
 const settled = vi.hoisted(() => ({ fn: vi.fn(async () => {}) }));
 vi.mock('@/lib/llm/models/global-auto-assign', () => ({ connectSettled: () => settled.fn() }));
 
-import { useProviderSignInReturn } from '../use-provider-sign-in-return';
+import { finishRelayedSignIn, useProviderSignInReturn } from '../use-provider-sign-in-return';
 
 const PENDING_KEY = 'osw_provider_sign_ins';
 const SIGNED_IN = 'osw-provider-signed-in';
@@ -208,5 +208,61 @@ describe('a sign-in finished in a popup', () => {
     });
     expect(toast.success).toHaveBeenCalledWith('connect.connected');
     expect(keyUpdates).toEqual([{ provider: 'openrouter', hasKey: true }]);
+  });
+});
+
+/**
+ * On the HuggingFace Space the popup has no opener (huggingface.co severs it) and the return lands
+ * on the Space's page, in a frame that shares the starting frame's storage. That copy stores the
+ * key and says so over a BroadcastChannel; the page that started the sign-in announces it.
+ */
+describe('a relayed sign-in', () => {
+  function relayed(nonce: string) {
+    const all = JSON.parse(localStorage.getItem(PENDING_KEY) ?? '{}');
+    all[nonce] = { provider: 'openrouter', verifier: 'v'.repeat(43), redirectUri: 'https://huggingface.co/spaces/o/s', returnProject: null, relay: true, startedAt: Date.now() };
+    localStorage.setItem(PENDING_KEY, JSON.stringify(all));
+  }
+
+  it('is left to the relay screen: the studio\'s hook exchanges nothing', async () => {
+    relayed('n1');
+    at('?code=abc');
+    mount();
+    await flush();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(config.setProviderApiKey).not.toHaveBeenCalled();
+  });
+
+  it('stores the key and broadcasts it, leaving the connect handling to the starting page', async () => {
+    const heard: unknown[] = [];
+    const listener = new BroadcastChannel('osw-provider-sign-in');
+    listener.onmessage = (e) => heard.push(e.data);
+    relayed('n1');
+
+    await expect(finishRelayedSignIn(new URLSearchParams('?code=abc'))).resolves.toBe('openrouter');
+    await vi.waitFor(() => expect(heard).toEqual([{ type: SIGNED_IN, provider: 'openrouter', from: expect.any(String) }]));
+    listener.close();
+
+    expect(config.setProviderApiKey).toHaveBeenCalledWith('openrouter', 'sk-or-v1-abc');
+    expect(config.clearModelCache).toHaveBeenCalledWith('openrouter');
+    expect(keyUpdates).toEqual([]);
+    expect(settled.fn).not.toHaveBeenCalled();
+  });
+
+  it('does not take its own broadcast for another page\'s', async () => {
+    at('');
+    mount();
+    relayed('n1');
+    await finishRelayedSignIn(new URLSearchParams('?code=abc'));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(keyUpdates).toEqual([]);
+  });
+
+  it('is announced by the page that started it when the broadcast arrives', async () => {
+    at('');
+    mount();
+    const sender = new BroadcastChannel('osw-provider-sign-in');
+    sender.postMessage({ type: SIGNED_IN, provider: 'openrouter' });
+    sender.close();
+    await vi.waitFor(() => expect(keyUpdates).toEqual([{ provider: 'openrouter', hasKey: true }]));
   });
 });

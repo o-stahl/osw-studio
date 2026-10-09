@@ -77,7 +77,7 @@ function rowTitles(): string[] {
 /** The Language row's buttons, each named in its own language. */
 function languageButtons() {
   return Array.from(container.querySelectorAll('button'))
-    .filter((b) => ['English', '한국어', 'suomi'].includes(b.textContent ?? ''));
+    .filter((b) => ['English', '한국어', 'Suomi'].includes(b.textContent ?? ''));
 }
 
 function pickLanguage(name: string) {
@@ -212,10 +212,10 @@ describe('the Language row', () => {
   it('saves the picked language, then refreshes so the server render comes back in it', async () => {
     mount(<ViewModeProvider initialStudioView={true}><AppearancePane /></ViewModeProvider>);
 
-    await pickLanguage('suomi');
+    await pickLanguage('Suomi');
 
     expect(mocks.setLocale).toHaveBeenCalledTimes(1);
-    expect(mocks.setLocale).toHaveBeenCalledWith('fi');
+    expect(mocks.setLocale).toHaveBeenCalledWith('fi', { embedded: false });
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
     // The cookie has to be written before the refresh asks the server for the new render.
     expect(mocks.setLocale.mock.invocationCallOrder[0]).toBeLessThan(mocks.refresh.mock.invocationCallOrder[0]);
@@ -226,7 +226,7 @@ describe('the Language row', () => {
     mocks.setLocale.mockRejectedValue(new Error('cookie refused'));
     mount(<ViewModeProvider initialStudioView={true}><AppearancePane /></ViewModeProvider>);
 
-    await pickLanguage('suomi');
+    await pickLanguage('Suomi');
 
     expect(mocks.toastError).toHaveBeenCalledWith('Could not change the language');
     expect(mocks.refresh).not.toHaveBeenCalled();
@@ -250,7 +250,7 @@ describe('the Language row', () => {
     mocks.setLocale.mockReturnValue(new Promise(() => {}));
     mount(<ViewModeProvider initialStudioView={true}><AppearancePane /></ViewModeProvider>);
 
-    await pickLanguage('suomi');
+    await pickLanguage('Suomi');
 
     expect(languageButtons().every((b) => b.disabled)).toBe(true);
   });

@@ -17,6 +17,7 @@ import { scriptRunner } from '@/lib/scripting/script-runner';
 import type { ScriptRuntime } from '@/lib/scripting/types';
 import { classifyGateKey, needsApproval, capabilityLabel, type ApprovalRequest, type ApprovalOutcome } from './permissions';
 import { configManager } from '@/lib/config/storage';
+import { apiFetch } from '@/lib/api/backend-status';
 
 export type ToolId = 'bash';
 
@@ -661,7 +662,7 @@ async function executeShellSegment(
       const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
       const wsMatch = isServerMode && typeof document !== 'undefined' && document.cookie.match(/osw_workspace=([^;]+)/);
       const bashUrl = wsMatch ? `/api/w/${wsMatch[1]}/bash/execute` : '/api/bash/execute';
-      const response = await fetch(bashUrl, {
+      const response = await apiFetch(bashUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ deploymentId, cmd: cmdArray })

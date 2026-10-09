@@ -111,9 +111,11 @@ class InterviewTemplatesService {
   async deleteTemplate(id: string): Promise<void> {
     await this.init();
     if (isBuiltInInterviewTemplateId(id)) throw new Error(translator()('interviews.builtInDelete'));
-    if (!this.custom.delete(id)) throw new Error(`Template "${id}" not found.`); // i18n-ignore: an invariant
+    if (!this.custom.has(id)) throw new Error(`Template "${id}" not found.`); // i18n-ignore: an invariant
+    const { autoDeleteInterviewTemplate } = await import('@/lib/vfs/auto-sync');
+    await autoDeleteInterviewTemplate(id);
+    this.custom.delete(id);
     this.save();
-    import('@/lib/vfs/auto-sync').then(({ autoDeleteInterviewTemplate }) => autoDeleteInterviewTemplate(id)).catch(() => {});
   }
 
   // ---- Sync support (mirrors SkillsService) ----

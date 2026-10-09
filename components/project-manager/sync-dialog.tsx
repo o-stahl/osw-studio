@@ -17,6 +17,7 @@ import { SyncTabs, BulkActionState } from './sync-tabs';
 import { useSyncStatus } from './hooks/use-sync-status';
 import { notifyServerProjectsChanged } from '@/lib/vfs/sync-events';
 import { invalidateSyncStatusCache } from '@/lib/vfs/auto-sync';
+import { apiFetch } from '@/lib/api/backend-status';
 
 interface SyncDialogProps {
   open: boolean;
@@ -42,7 +43,7 @@ export function SyncDialog({ open, onOpenChange, onSyncComplete }: SyncDialogPro
   const checkAuth = async () => {
     setAuthLoading(true);
     try {
-      const response = await fetch('/api/auth/me');
+      const response = await apiFetch('/api/auth/me');
       const data = await response.json();
       setAuthenticated(data.authenticated);
     } catch {

@@ -400,3 +400,37 @@ describe('a malformed review cookie', () => {
     expect(result).toEqual({ kind: 'participant', participantId: cookie.participantId });
   });
 });
+
+describe('teamAccessRefusal', () => {
+  const asTeam = { headers: new Headers({ 'X-OSW-Review-As': 'team' }) };
+  const participant = { kind: 'participant' as const, participantId: 'p-1' };
+  const team = { kind: 'team' as const, participantId: 'user:user-7', userId: 'user-7', canModerate: true };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSession.mockResolvedValue(null);
+  });
+
+  it('refuses an expired account session that fell back to a participant cookie with 401', async () => {
+    const { teamAccessRefusal } = await load();
+    expect(await teamAccessRefusal(asTeam, participant)).toBe(401);
+  });
+
+  it('refuses a signed-in account with no team access that would act as a participant with 403', async () => {
+    const { teamAccessRefusal } = await load();
+    mocks.getSession.mockResolvedValue(TEAM_SESSION);
+    expect(await teamAccessRefusal(asTeam, participant)).toBe(403);
+  });
+
+  it('leaves a signed-in member facing a closed review copy to the 404', async () => {
+    const { teamAccessRefusal } = await load();
+    mocks.getSession.mockResolvedValue(TEAM_SESSION);
+    expect(await teamAccessRefusal(asTeam, { kind: 'denied' })).toBeNull();
+  });
+
+  it('passes team access, and requests that did not ask to act as the team', async () => {
+    const { teamAccessRefusal } = await load();
+    expect(await teamAccessRefusal(asTeam, team)).toBeNull();
+    expect(await teamAccessRefusal({ headers: new Headers() }, participant)).toBeNull();
+  });
+});

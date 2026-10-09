@@ -177,7 +177,7 @@ const suggest = vi.hoisted(() => ({
 }));
 vi.mock('../suggestions/suggest', () => suggest);
 const observed = vi.hoisted(() => ({ recordModelOutcome: vi.fn() }));
-vi.mock('../suggestions/observed', () => observed);
+vi.mock('../suggestions/observed', async (orig) => ({ ...(await orig<object>()), ...observed }));
 
 const status = vi.hoisted(() => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -369,6 +369,57 @@ describe('"Free models" moving on', () => {
     expect(suggest.rankProviderModels).not.toHaveBeenCalled();
   });
 
+  it('records a stop on a model the user picked, so the next suggestion passes it over', async () => {
+    // A stopped card that offered B after A failed, then A again after B failed, walked in a circle.
+    observed.recordModelOutcome.mockClear();
+    await handle(apiError('model_busy', { model: 'picked/a' }), assign('picked/a'));
+    expect(observed.recordModelOutcome).toHaveBeenCalledWith('openrouter', 'picked/a', 'busy');
+    observed.recordModelOutcome.mockClear();
+    await handle(apiError('blocked', { status: 403, model: 'picked/b' }), assign('picked/b'));
+    expect(observed.recordModelOutcome).toHaveBeenCalledWith('openrouter', 'picked/b', 'refused');
+  });
+
+  it('records nothing for a stop that is not about the model', async () => {
+    observed.recordModelOutcome.mockClear();
+    await handle(apiError('auth_expired', { status: 401, model: 'picked/a' }), assign('picked/a'));
+    expect(observed.recordModelOutcome).not.toHaveBeenCalled();
+  });
+
+  it('passes over a free model that refused the request, and says it refused', async () => {
+    suggest.rankProviderModels.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      { provider: 'openrouter', model: { id: 'next/model:free' }, coolingDown: false },
+    ]);
+    observed.recordModelOutcome.mockClear();
+    const { action, events } = await handle(apiError('blocked', { status: 403, model: 'gated/model:free' }), assign(FREE));
+    expect(action).toBe('retry');
+    expect(events.find((e) => e.event === 'model_switched')?.data).toMatchObject({ toModel: 'next/model:free', reason: 'refused' });
+    expect(observed.recordModelOutcome).toHaveBeenCalledWith('openrouter', 'gated/model:free', 'refused');
+  });
+
+  it('says in the thread which free model "Free models" landed on, or that the router chooses', async () => {
+    const events: Array<{ event: string; data?: unknown }> = [];
+    suggest.rankProviderModels.mockResolvedValue([{ provider: 'openrouter', model: { id: 'ready/model:free' }, coolingDown: false }]);
+    const o = new MultiAgentOrchestrator('test-p1', 'orchestrator', (event, data) => events.push({ event, data }), { assignment: assign(FREE) });
+    // @ts-expect-error private
+    await o.pickFreeModel();
+    expect(events.find((e) => e.event === 'model_picked')?.data).toEqual({ provider: 'openrouter', model: 'ready/model:free' });
+
+    events.length = 0;
+    suggest.rankProviderModels.mockResolvedValue([]);
+    const o2 = new MultiAgentOrchestrator('test-p1', 'orchestrator', (event, data) => events.push({ event, data }), { assignment: assign(FREE) });
+    // @ts-expect-error private
+    await o2.pickFreeModel();
+    expect(events.find((e) => e.event === 'model_picked')?.data).toEqual({ provider: 'openrouter', model: 'openrouter/free' });
+  });
+
+  it('names no pick for a model the user chose', async () => {
+    const events: Array<{ event: string }> = [];
+    const o = new MultiAgentOrchestrator('test-p1', 'orchestrator', (event) => events.push({ event }), { assignment: assign('picked/a') });
+    // @ts-expect-error private
+    await o.pickFreeModel();
+    expect(events.some((e) => e.event === 'model_picked')).toBe(false);
+  });
+
   it('starts on the best free model that is not cooling down', async () => {
     suggest.rankProviderModels.mockResolvedValue([
       { provider: 'openrouter', model: { id: 'cooling/model:free' }, coolingDown: true },
@@ -379,6 +430,47 @@ describe('"Free models" moving on', () => {
     await o.pickFreeModel();
     // @ts-expect-error private
     expect(o.freeModelPick).toBe('ready/model:free');
+  });
+
+  it('runs a server-side "Free models" task on the browser\'s best candidate and keeps it until one fails', async () => {
+    const events: Array<{ event: string; data?: Record<string, unknown> }> = [];
+    const config = Object.assign(Object.create(configManager), {
+      getSelectedProvider: () => 'openrouter',
+      getProviderModel: () => FREE,
+      freeModelCandidates: ['best:free', 'next:free', 'third:free'],
+    });
+    const o = new MultiAgentOrchestrator('test-p1', 'orchestrator', (event, data) => events.push({ event, data: data as Record<string, unknown> }), { serverContext: serverContext({ config }) });
+    // @ts-expect-error private
+    await o.pickFreeModel();
+    // @ts-expect-error private
+    expect(o.getProviderConfig().model).toBe('best:free');
+    expect(events.find((e) => e.event === 'model_picked')?.data).toEqual({ provider: 'openrouter', model: 'best:free' });
+
+    // @ts-expect-error private
+    expect(await o.rotateFreeModel(apiError('model_busy', { model: 'best:free' }))).toBe(true);
+    // @ts-expect-error private
+    expect(o.getProviderConfig().model).toBe('next:free');
+    expect(events.find((e) => e.event === 'model_switched')?.data).toMatchObject({ fromModel: 'best:free', toModel: 'next:free', reason: 'busy' });
+    // Never back to one this run already tried.
+    // @ts-expect-error private
+    expect(await o.rotateFreeModel(apiError('blocked', { status: 403, model: 'next:free' }))).toBe(true);
+    // @ts-expect-error private
+    expect(o.getProviderConfig().model).toBe('third:free');
+    // @ts-expect-error private
+    expect(await o.rotateFreeModel(apiError('model_busy', { model: 'third:free' }))).toBe(false);
+  });
+
+  it('ignores candidates that are not plain model ids', async () => {
+    const config = Object.assign(Object.create(configManager), {
+      getSelectedProvider: () => 'openrouter',
+      getProviderModel: () => FREE,
+      freeModelCandidates: ['bad id; rm', 42, 'osw/free-models', 'ok/model:free'],
+    });
+    const o = new MultiAgentOrchestrator('test-p1', 'orchestrator', () => {}, { serverContext: serverContext({ config }) });
+    // @ts-expect-error private
+    await o.pickFreeModel();
+    // @ts-expect-error private
+    expect(o.getProviderConfig().model).toBe('ok/model:free');
   });
 
   it('picks nothing in a server-side run, which uses OpenRouter\'s free router', async () => {

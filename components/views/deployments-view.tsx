@@ -42,6 +42,7 @@ import { captureDeploymentScreenshot } from '@/lib/utils/deployment-thumbnail';
 import { ReviewBadge } from '@/components/ui/review-badge';
 import { useNarrowContainer } from '@/lib/hooks/use-narrow-container';
 import { COMPACT_ROW_WIDTH } from '@/lib/constants/layout';
+import { apiFetch } from '@/lib/api/backend-status';
 
 type SortOption = 'updated' | 'created' | 'name' | 'published';
 
@@ -101,8 +102,8 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
       }
 
       const [deploymentsResponse, projectsResponse] = await Promise.all([
-        fetch(`${apiBase}/deployments`),
-        fetch(`${apiBase}/projects?fields=id,name`), // Only fetch id and name fields
+        apiFetch(`${apiBase}/deployments`),
+        apiFetch(`${apiBase}/projects?fields=id,name`), // Only fetch id and name fields
       ]);
 
       // Redirect to login if unauthorized
@@ -137,7 +138,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
   const fetchProjects = useCallback(async () => {
     if (!isServerMode) return;
     try {
-      const res = await fetch(`${apiBase}/projects?fields=id,name`);
+      const res = await apiFetch(`${apiBase}/projects?fields=id,name`);
       if (res.status === 401) {
         window.location.href = getLoginUrl();
         return;
@@ -270,7 +271,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
     deploymentId: string,
     review: ReviewDraft
   ): Promise<Deployment['review']> => {
-    const response = await fetch(`${apiBase}/deployments/${deploymentId}`, {
+    const response = await apiFetch(`${apiBase}/deployments/${deploymentId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ review }),
@@ -285,7 +286,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
     return updated.review;
   };
 
-  const handleSaveSettings = async (settings: DeploymentSettingsUpdate) => {
+  const handleSaveSettings = async (settings: DeploymentSettingsUpdate): Promise<boolean | void> => {
     if (!selectedDeployment) return;
 
     try {
@@ -301,12 +302,12 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
           newProjectName: newProject?.name || t('unknown'),
           pendingSettings: settings,
         });
-        return; // Don't save yet — swap dialog will handle it
+        return false; // Not saved yet: the swap dialog saves the rest once the swap succeeds
       }
 
       if (projectIdChanged) {
         // Non-server mode or first deploy: update directly
-        const deploymentResponse = await fetch(`${apiBase}/deployments/${selectedDeployment.id}`, {
+        const deploymentResponse = await apiFetch(`${apiBase}/deployments/${selectedDeployment.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ projectId: settings.projectId }),
@@ -327,7 +328,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
         ? await saveReviewBlock(selectedDeployment.id, review)
         : selectedDeployment.review;
 
-      const response = await fetch(`${apiBase}/deployments/${selectedDeployment.id}/settings`, {
+      const response = await apiFetch(`${apiBase}/deployments/${selectedDeployment.id}/settings`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -381,28 +382,28 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
     try {
       const savedReview = review ? await saveReviewBlock(deploymentId, review) : undefined;
 
-      const response = await fetch(`${apiBase}/deployments/${deploymentId}/settings`, {
+      const response = await apiFetch(`${apiBase}/deployments/${deploymentId}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(publishSettings),
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        updateDeploymentInState(deploymentId, {
-          ...pendingSettings,
-          ...(review ? { review: savedReview } : {}),
-          settingsVersion: result.settingsVersion,
-          updatedAt: new Date(),
-          publishedAt: new Date(),
-        });
-      }
+      if (!response.ok) throw new Error(`Settings save failed: ${response.status}`); // i18n-ignore: logged, never shown
+      const result = await response.json();
+      updateDeploymentInState(deploymentId, {
+        ...pendingSettings,
+        ...(review ? { review: savedReview } : {}),
+        settingsVersion: result.settingsVersion,
+        updatedAt: new Date(),
+        publishedAt: new Date(),
+      });
+      toast.success(t('swappedAndRepublished'));
     } catch (err) {
       logger.error('[DeploymentsView] Failed to save settings after swap:', err);
+      toast.error(t('swappedSettingsNotSaved'), { duration: Infinity });
     }
 
     setSwapDialogState(null);
-    toast.success(t('swappedAndRepublished'));
     await loadData();
   };
 
@@ -511,7 +512,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
       toast.info(t('building'));
 
       // Call publish API to trigger build
-      const response = await fetch(`${apiBase}/deployments/${deploymentId}/publish`, {
+      const response = await apiFetch(`${apiBase}/deployments/${deploymentId}/publish`, {
         method: 'POST',
       });
 
@@ -556,7 +557,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
 
   const handleDeploymentThumbnailChange = async (deploymentId: string, image: string | undefined) => {
     try {
-      const response = await fetch(`${apiBase}/deployments/${deploymentId}/thumbnail`, {
+      const response = await apiFetch(`${apiBase}/deployments/${deploymentId}/thumbnail`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ previewImage: image ?? null }),
@@ -582,7 +583,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
     }
 
     try {
-      const response = await fetch(`${apiBase}/deployments/${deploymentId}/publish`, {
+      const response = await apiFetch(`${apiBase}/deployments/${deploymentId}/publish`, {
         method: 'DELETE',
       });
 
@@ -614,7 +615,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
     }
 
     try {
-      const response = await fetch(`${apiBase}/deployments/${deploymentId}`, {
+      const response = await apiFetch(`${apiBase}/deployments/${deploymentId}`, {
         method: 'DELETE',
       });
 
@@ -634,7 +635,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
 
   const handleCreateDeployment = async (data: { projectId: string; name: string; slug?: string }) => {
     try {
-      const response = await fetch(`${apiBase}/deployments`, {
+      const response = await apiFetch(`${apiBase}/deployments`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

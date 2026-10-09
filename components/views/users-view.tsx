@@ -40,6 +40,7 @@ import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { Section, SectionBody, SectionHeader } from '@/components/ui/section';
 import { SettingRow } from '@/components/ui/setting-row';
 import { useRoleLabel } from './role-label';
+import { apiFetch } from '@/lib/api/backend-status';
 
 interface WorkspaceInfo {
   id: string;
@@ -131,7 +132,7 @@ export function UsersView({
   const externalIdentity = !!process.env.NEXT_PUBLIC_GATEWAY_URL;
 
   useEffect(() => {
-    fetch('/api/auth/me')
+    apiFetch('/api/auth/me')
       .then(res => res.ok ? res.json() : null)
       .then(data => setIsAdmin(data?.user?.isAdmin === true))
       .catch(() => setIsAdmin(false));
@@ -145,7 +146,7 @@ export function UsersView({
 
   useEffect(() => {
     if (showCreateDialog || showEditDialog) {
-      fetch('/api/admin/workspaces')
+      apiFetch('/api/admin/workspaces')
         .then(res => res.ok ? res.json() : null)
         .then(data => {
           if (data?.workspaces) {
@@ -156,20 +157,23 @@ export function UsersView({
     }
   }, [showCreateDialog, showEditDialog]);
 
-  const loadUsers = async () => {
+  /** Loads the list into state and returns it, or null when it could not be loaded (already reported). */
+  const loadUsers = async (): Promise<UserInfo[] | null> => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/users');
+      const res = await apiFetch('/api/admin/users');
       if (res.status === 401) {
         window.location.href = getLoginUrl();
-        return;
+        return null;
       }
       if (!res.ok) throw new Error('Failed to load users');
       const data = await res.json();
       setUsers(data.users);
+      return data.users as UserInfo[];
     } catch (err) {
       logger.error('[UsersView] Failed to load users:', err);
       toast.error(t('loadUsersFailed'));
+      return null;
     } finally {
       setLoading(false);
     }
@@ -209,7 +213,7 @@ export function UsersView({
       if (editForm.password) {
         body.password = editForm.password;
       }
-      const res = await fetch(`/api/admin/users/${editUser.id}`, {
+      const res = await apiFetch(`/api/admin/users/${editUser.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -234,7 +238,7 @@ export function UsersView({
   const handleChangeRole = async (workspaceId: string, newRole: string) => {
     if (!editUser) return;
     try {
-      const res = await fetch(`/api/admin/workspaces/${workspaceId}/access`, {
+      const res = await apiFetch(`/api/admin/workspaces/${workspaceId}/access`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: editUser.id, role: newRole }),
@@ -244,9 +248,7 @@ export function UsersView({
         throw new Error(error.error || t('changeRoleFailed'));
       }
       toast.success(t('roleUpdated'));
-      await loadUsers();
-      const updated = (await (await fetch('/api/admin/users')).json()).users as UserInfo[];
-      const refreshed = updated.find(u => u.id === editUser.id);
+      const refreshed = (await loadUsers())?.find(u => u.id === editUser.id);
       if (refreshed) setEditUser(refreshed);
     } catch (err) {
       logger.error('[UsersView] Failed to change role:', err);
@@ -257,7 +259,7 @@ export function UsersView({
   const handleRevokeAccess = async (workspaceId: string) => {
     if (!editUser) return;
     try {
-      const res = await fetch(`/api/admin/workspaces/${workspaceId}/access`, {
+      const res = await apiFetch(`/api/admin/workspaces/${workspaceId}/access`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: editUser.id }),
@@ -267,9 +269,7 @@ export function UsersView({
         throw new Error(error.error || t('revokeFailed'));
       }
       toast.success(t('accessRevoked'));
-      await loadUsers();
-      const updated = (await (await fetch('/api/admin/users')).json()).users as UserInfo[];
-      const refreshed = updated.find(u => u.id === editUser.id);
+      const refreshed = (await loadUsers())?.find(u => u.id === editUser.id);
       if (refreshed) setEditUser(refreshed);
     } catch (err) {
       logger.error('[UsersView] Failed to revoke access:', err);
@@ -281,7 +281,7 @@ export function UsersView({
     if (!editUser || !grantWorkspaceId) return;
     setGrantingAccess(true);
     try {
-      const res = await fetch(`/api/admin/workspaces/${grantWorkspaceId}/access`, {
+      const res = await apiFetch(`/api/admin/workspaces/${grantWorkspaceId}/access`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: editUser.id, role: grantRole }),
@@ -293,9 +293,7 @@ export function UsersView({
       toast.success(t('accessGranted'));
       setGrantWorkspaceId('');
       setGrantRole('editor');
-      await loadUsers();
-      const updated = (await (await fetch('/api/admin/users')).json()).users as UserInfo[];
-      const refreshed = updated.find(u => u.id === editUser.id);
+      const refreshed = (await loadUsers())?.find(u => u.id === editUser.id);
       if (refreshed) setEditUser(refreshed);
     } catch (err) {
       logger.error('[UsersView] Failed to grant access:', err);
@@ -307,7 +305,7 @@ export function UsersView({
 
   const handleToggleActive = async (user: UserInfo) => {
     try {
-      const res = await fetch(`/api/admin/users/${user.id}`, {
+      const res = await apiFetch(`/api/admin/users/${user.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ active: !user.active }),
@@ -329,7 +327,7 @@ export function UsersView({
       return;
     }
     try {
-      const res = await fetch(`/api/admin/users/${user.id}`, {
+      const res = await apiFetch(`/api/admin/users/${user.id}`, {
         method: 'DELETE',
       });
       if (!res.ok) {
@@ -351,7 +349,7 @@ export function UsersView({
     }
     setSaving(true);
     try {
-      const res = await fetch('/api/admin/users', {
+      const res = await apiFetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

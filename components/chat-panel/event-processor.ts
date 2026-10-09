@@ -55,6 +55,8 @@ interface ProcessorState {
   textAccum: Map<string, DeltaAccum>;
   toolParamAccum: Map<string, DeltaAccum>;
   toolCmdCache: Map<string, string | null>;
+  /** The model OpenRouter's free router last answered with in this response, so only a change is shown. */
+  lastRouterModel: string | null;
 }
 
 function extractPartialCmd(raw: string): string | null {
@@ -94,6 +96,7 @@ function freshState(): ProcessorState {
     textAccum: new Map(),
     toolParamAccum: new Map(),
     toolCmdCache: new Map(),
+    lastRouterModel: null,
   };
 }
 
@@ -180,6 +183,30 @@ export class EventProcessor {
           const data = { kind: 'retrying', provider: event.data?.provider ?? '', status: event.data?.status ?? 0 };
           if (last?.type === 'notice' && last.data?.kind === 'retrying') last.data = data;
           else state.currentTurn.items.push({ id: `item-${state.itemIdCounter++}`, type: 'notice', timestamp: event.timestamp, data });
+          break;
+        }
+
+        case 'model_picked':
+          state.currentTurn.items.push({
+            id: `item-${state.itemIdCounter++}`,
+            type: 'notice',
+            timestamp: event.timestamp,
+            data: { kind: 'picked', provider: event.data?.provider ?? '', toModel: event.data?.model ?? '' },
+          });
+          break;
+
+        case 'model_resolved': {
+          // OpenRouter's free router may answer a request with a different model than the last. The
+          // notice goes where that happened, and only when it did, not before every step.
+          const model = event.data?.model ?? '';
+          if (model === state.lastRouterModel) break;
+          state.lastRouterModel = model;
+          state.currentTurn.items.push({
+            id: `item-${state.itemIdCounter++}`,
+            type: 'notice',
+            timestamp: event.timestamp,
+            data: { kind: 'resolved', provider: event.data?.provider ?? '', toModel: model },
+          });
           break;
         }
 
@@ -475,6 +502,7 @@ export class EventProcessor {
               };
             }
             if (!isSyntheticError) {
+              state.lastRouterModel = null;
               state.taskStartTime = event.timestamp;
               const lastUsageTurn = [...state.result].reverse().find(t => t.usage);
               if (lastUsageTurn?.usage) {
@@ -637,9 +665,24 @@ export class EventProcessor {
           state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
           break;
 
-        case 'checkpoint_created':
+        case 'checkpoint_created': {
+          // Restore and Retry go after the response the checkpoint closes.
+          const items = state.currentTurn.items.filter((item) => item.type !== 'waiting');
+          // A server run snapshots the project before it starts, while the turn holds only the
+          // user's message; that snapshot stays in the checkpoints panel, not under the prompt.
+          if (items.some((item) => item.type === 'user') && items.every((item) => item.type === 'user' || item.type === 'project_context')) break;
+          // A run's last step opens a turn and can end without adding to it, so the checkpoint taken
+          // at the end arrives on an empty turn that the next message would join. It belongs to the
+          // response, which is the last turn already closed.
+          if (items.length === 0) {
+            // Nothing closed yet means the response is older than the events kept here; its
+            // checkpoint has no place in this view, and must not land on the next prompt.
+            if (state.result.length > 0) state.result[state.result.length - 1].checkpointId = event.data?.checkpointId;
+            break;
+          }
           state.currentTurn.checkpointId = event.data?.checkpointId;
           break;
+        }
 
         case 'iteration':
           state.currentTurn.iteration = event.data?.iteration;

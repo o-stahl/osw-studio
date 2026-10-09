@@ -33,14 +33,14 @@ const t: ModelTemplate = {
 };
 
 describe('configManager model templates', () => {
-  it('round-trips templates and the default id, stamping updatedAt', () => {
+  it('round-trips templates and the default id, stamping updatedAt', async () => {
     configManager.saveModelTemplate(t);
     const saved = configManager.getModelTemplate('t1');
     expect(saved).toMatchObject({ id: 't1', name: 'Mine', assignment: t.assignment });
     expect(saved?.updatedAt).toBeInstanceOf(Date); // stamped on save
     configManager.setDefaultTemplateId('t1');
     expect(configManager.getDefaultTemplateId()).toBe('t1');
-    configManager.deleteModelTemplate('t1');
+    await configManager.deleteModelTemplate('t1');
     expect(configManager.getModelTemplate('t1')).toBeNull();
   });
 
@@ -66,11 +66,11 @@ describe('configManager model templates', () => {
     expect(configManager.getModelTemplate('default')?.builtin).toBe(false);
   });
 
-  it('refuses to overwrite or delete a built-in template', () => {
+  it('refuses to overwrite or delete a built-in template', async () => {
     const builtin = BUILT_IN_MODEL_TEMPLATES[0];
     configManager.saveModelTemplate({ ...builtin, name: 'Hacked' });
     expect(configManager.getModelTemplate(builtin.id)).toEqual(builtin); // unchanged
-    configManager.deleteModelTemplate(builtin.id);
+    await configManager.deleteModelTemplate(builtin.id);
     expect(configManager.getModelTemplate(builtin.id)).toEqual(builtin); // still present
   });
 

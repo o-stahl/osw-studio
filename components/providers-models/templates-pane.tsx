@@ -9,6 +9,7 @@ import { configManager } from '@/lib/config/storage';
 import { trackAgentProviderChange } from '@/lib/telemetry/provider-selection';
 import { getProvider } from '@/lib/llm/providers/registry';
 import { track } from '@/lib/telemetry';
+import { toast } from 'sonner';
 import type { ModelTemplate, ModelRef } from '@/lib/llm/models/assignment';
 
 // ---------------------------------------------------------------------------
@@ -292,8 +293,13 @@ export function TemplatesPane() {
     refresh();
   }
 
-  function handleDelete(id: string) {
-    configManager.deleteModelTemplate(id);
+  async function handleDelete(id: string) {
+    try {
+      await configManager.deleteModelTemplate(id);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+      return;
+    }
     track('model_template_deleted');
 
     // If we deleted the active template, fall back to any remaining template

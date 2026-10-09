@@ -11,6 +11,7 @@
  */
 
 import type { VirtualFileSystem } from './index';
+import { apiFetch } from '@/lib/api/backend-status';
 
 const legacyKey = (projectId: string) => `osw-db-schema-${projectId}`;
 
@@ -113,7 +114,7 @@ export async function applyProjectDatabaseSchema(
     const url = workspaceId
       ? `/api/w/${workspaceId}${path}`
       : (await import('./auto-sync')).getAutoSyncApiUrl(path);
-    const res = await fetch(url, {
+    const res = await apiFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql: ddl }),

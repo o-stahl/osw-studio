@@ -14,7 +14,7 @@ import { normalizeProjectSettings } from './project-settings';
 import { saveManager } from './save-manager';
 import { logger } from '@/lib/utils';
 import { toast } from 'sonner';
-import { apiFetch } from '@/lib/api/backend-status';
+import { apiFetch, getBackendStatus, subscribeBackendStatus } from '@/lib/api/backend-status';
 import { track } from '@/lib/telemetry';
 import { translator } from '@/lib/i18n/runtime';
 
@@ -149,10 +149,11 @@ const MAX_RETRIES = 3;
 async function buildFileDelta(
   projectId: string,
   files: VirtualFile[]
-): Promise<{ files: VirtualFile[]; deletedPaths: string[] } | null> {
+): Promise<{ files: VirtualFile[]; deletedPaths: string[] } | 'unauthorized' | null> {
   try {
     const response = await apiFetch(getAutoSyncApiUrl(`/sync/projects/${projectId}?manifest=1`));
     if (response.status === 404) return { files, deletedPaths: [] };
+    if (response.status === 401) return 'unauthorized';
     if (!response.ok) return null;
 
     const manifest = await response.json() as {
@@ -314,9 +315,12 @@ async function pushProject(projectId: string, silent: boolean): Promise<void> {
       throw new Error('Sync failed: could not read the server manifest');
     }
 
-    const response = await postProjectBatches(projectId, project, delta.files, delta.deletedPaths);
+    // An expired session: the banner is up, and the load after signing in pushes what is left.
+    const response = delta === 'unauthorized'
+      ? null
+      : await postProjectBatches(projectId, project, delta.files, delta.deletedPaths);
 
-    if (response.status === 401) {
+    if (!response || response.status === 401) {
       syncRetries.delete(projectId);
       logger.warn(`[AutoSync] Skipping ${projectId}: session expired`);
       return;
@@ -552,6 +556,21 @@ export async function pullServerUpdates(projectId: string, showToast = true): Pr
 
 const AUTO_PULL_SESSION_KEY = 'osw_auto_pull_done';
 
+function markAutoPullDone(): void {
+  // A pull that ran into an expired session has to run again after signing in.
+  if (getBackendStatus().authExpired) return;
+  try { sessionStorage.setItem(AUTO_PULL_SESSION_KEY, '1'); } catch { /* sessionStorage unavailable */ }
+}
+
+// While signed out, the server refuses and pulls fail, so the once-per-tab pull has to run again
+// after the next sign-in, which usually reloads this same tab.
+if (typeof window !== 'undefined') {
+  subscribeBackendStatus((status) => {
+    if (!status.authExpired) return;
+    try { sessionStorage.removeItem(AUTO_PULL_SESSION_KEY); } catch { /* sessionStorage unavailable */ }
+  });
+}
+
 /**
  * Auto-pull projects from server on first load of a browser tab.
  * Compares local `serverUpdatedAt` against server timestamps — only pulls
@@ -631,7 +650,7 @@ export async function autoPullAllProjects(onProgress?: (current: number, total: 
 
     if (needsPull.length === 0 && conflicts.length === 0) {
       logger.debug(`[AutoSync] All ${skipped} projects up to date`);
-      try { sessionStorage.setItem(AUTO_PULL_SESSION_KEY, '1'); } catch {}
+      markAutoPullDone();
       return { pulled: 0, skipped, conflicts, errors: 0 };
     }
 
@@ -665,7 +684,7 @@ export async function autoPullAllProjects(onProgress?: (current: number, total: 
       logger.debug(`[AutoSync] Auto-pull complete: ${pulled} updated, ${skipped} skipped, ${errors} errors`);
     }
 
-    try { sessionStorage.setItem(AUTO_PULL_SESSION_KEY, '1'); } catch {}
+    markAutoPullDone();
     return { pulled, skipped, conflicts, errors };
   } catch (error) {
     logger.error('[AutoSync] Failed to auto-pull projects:', error);
@@ -779,17 +798,46 @@ export async function reconcileProjectsToServer(
   }
 }
 
+export type ServerDeleteReason = 'auth' | 'forbidden' | 'failed';
+
+/** The server did not delete the item. Its message is ready to show; nothing was deleted. */
+export class ServerDeleteRefused extends Error {
+  constructor(public readonly reason: ServerDeleteReason) {
+    super(translator()(`sync.deleteRefused.${reason}`));
+    this.name = 'ServerDeleteRefused';
+  }
+}
+
 /**
- * Auto-delete a project from the server (non-blocking)
+ * DELETE a synced item on the server, before the caller touches the local copy. A 404 counts as
+ * deleted: the item never reached the server. No-op in browser mode.
+ */
+async function deleteOnServer(path: string): Promise<void> {
+  if (process.env.NEXT_PUBLIC_SERVER_MODE !== 'true') return;
+  let res: Response;
+  try {
+    res = await apiFetch(getAutoSyncApiUrl(path), { method: 'DELETE' });
+  } catch (error) {
+    logger.error(`[AutoSync] DELETE ${path} failed:`, error);
+    throw new ServerDeleteRefused('failed');
+  }
+  if (res.ok || res.status === 404) return;
+  logger.error(`[AutoSync] DELETE ${path} refused: ${res.status}`);
+  throw new ServerDeleteRefused(res.status === 401 ? 'auth' : res.status === 403 ? 'forbidden' : 'failed');
+}
+
+/**
+ * Delete a project from the server. Resolves once the server has it gone; throws
+ * `ServerDeleteRefused` otherwise, so the caller keeps the local copy.
  */
 export async function autoDeleteProject(projectId: string): Promise<void> {
-  if (process.env.NEXT_PUBLIC_SERVER_MODE !== 'true') return;
-  try {
-    await apiFetch(getAutoSyncApiUrl(`/sync/projects/${projectId}`), { method: 'DELETE' });
-    logger.debug(`[AutoSync] Project ${projectId} deleted from server`);
-  } catch (error) {
-    logger.error(`[AutoSync] Failed to delete project ${projectId} from server:`, error);
-  }
+  await deleteOnServer(`/sync/projects/${projectId}`);
+}
+
+/** Delete a project on the server, then locally. A refused server delete keeps both copies. */
+export async function deleteProjectServerFirst(projectId: string): Promise<void> {
+  await autoDeleteProject(projectId);
+  await vfs.deleteProject(projectId);
 }
 
 /**
@@ -801,7 +849,8 @@ export async function autoSyncSkill(skill: import('./skills/types').Skill): Prom
   try {
     const { getSyncManager } = await import('./sync-manager');
     const syncManager = getSyncManager();
-    await syncManager.pushSkill(skill);
+    const pushed = await syncManager.pushSkill(skill);
+    if (!pushed.success) throw new Error(pushed.error || 'push refused'); // i18n-ignore: logged, never shown
     logger.debug(`[AutoSync] Skill ${skill.id} synced`);
   } catch (error) {
     logger.error(`[AutoSync] Failed to sync skill ${skill.id}:`, error);
@@ -810,16 +859,11 @@ export async function autoSyncSkill(skill: import('./skills/types').Skill): Prom
 }
 
 /**
- * Auto-delete a skill from the server (non-blocking)
+ * Delete a skill from the server. Resolves once the server has it gone; throws
+ * `ServerDeleteRefused` otherwise, so the caller keeps the local copy.
  */
 export async function autoDeleteSkill(skillId: string): Promise<void> {
-  if (process.env.NEXT_PUBLIC_SERVER_MODE !== 'true') return;
-  try {
-    await apiFetch(getAutoSyncApiUrl(`/sync/skills/${skillId}`), { method: 'DELETE' });
-    logger.debug(`[AutoSync] Skill ${skillId} deleted from server`);
-  } catch (error) {
-    logger.error(`[AutoSync] Failed to delete skill ${skillId} from server:`, error);
-  }
+  await deleteOnServer(`/sync/skills/${skillId}`);
 }
 
 /**
@@ -830,7 +874,8 @@ export async function autoSyncTemplate(template: import('./types').CustomTemplat
   try {
     const { getSyncManager } = await import('./sync-manager');
     const syncManager = getSyncManager();
-    await syncManager.pushTemplate(template);
+    const pushed = await syncManager.pushTemplate(template);
+    if (!pushed.success) throw new Error(pushed.error || 'push refused'); // i18n-ignore: logged, never shown
     logger.debug(`[AutoSync] Template ${template.id} synced`);
   } catch (error) {
     logger.error(`[AutoSync] Failed to sync template ${template.id}:`, error);
@@ -839,16 +884,11 @@ export async function autoSyncTemplate(template: import('./types').CustomTemplat
 }
 
 /**
- * Auto-delete a template from the server (non-blocking)
+ * Delete a template from the server. Resolves once the server has it gone; throws
+ * `ServerDeleteRefused` otherwise, so the caller keeps the local copy.
  */
 export async function autoDeleteTemplate(templateId: string): Promise<void> {
-  if (process.env.NEXT_PUBLIC_SERVER_MODE !== 'true') return;
-  try {
-    await apiFetch(getAutoSyncApiUrl(`/sync/templates/${templateId}`), { method: 'DELETE' });
-    logger.debug(`[AutoSync] Template ${templateId} deleted from server`);
-  } catch (error) {
-    logger.error(`[AutoSync] Failed to delete template ${templateId} from server:`, error);
-  }
+  await deleteOnServer(`/sync/templates/${templateId}`);
 }
 
 /**
@@ -860,7 +900,8 @@ export async function autoSyncModelTemplate(template: import('@/lib/llm/models/a
   try {
     const { getSyncManager } = await import('./sync-manager');
     const syncManager = getSyncManager();
-    await syncManager.pushModelTemplate(template);
+    const pushed = await syncManager.pushModelTemplate(template);
+    if (!pushed.success) throw new Error(pushed.error || 'push refused'); // i18n-ignore: logged, never shown
     logger.debug(`[AutoSync] Model template ${template.id} synced`);
   } catch (error) {
     logger.error(`[AutoSync] Failed to sync model template ${template.id}:`, error);
@@ -869,16 +910,11 @@ export async function autoSyncModelTemplate(template: import('@/lib/llm/models/a
 }
 
 /**
- * Auto-delete a model template from the server (non-blocking)
+ * Delete a model template from the server. Resolves once the server has it gone; throws
+ * `ServerDeleteRefused` otherwise, so the caller keeps the local copy.
  */
 export async function autoDeleteModelTemplate(templateId: string): Promise<void> {
-  if (process.env.NEXT_PUBLIC_SERVER_MODE !== 'true') return;
-  try {
-    await apiFetch(getAutoSyncApiUrl(`/sync/model-templates/${templateId}`), { method: 'DELETE' });
-    logger.debug(`[AutoSync] Model template ${templateId} deleted from server`);
-  } catch (error) {
-    logger.error(`[AutoSync] Failed to delete model template ${templateId} from server:`, error);
-  }
+  await deleteOnServer(`/sync/model-templates/${templateId}`);
 }
 
 /**
@@ -889,7 +925,8 @@ export async function autoSyncConnection(cfg: import('@/lib/llm/providers/types'
   try {
     const { toConnectionRecord } = await import('@/lib/llm/providers/connection-record');
     const { getSyncManager } = await import('./sync-manager');
-    await getSyncManager().pushConnection(toConnectionRecord(cfg));
+    const pushed = await getSyncManager().pushConnection(toConnectionRecord(cfg));
+    if (!pushed.success) throw new Error(pushed.error || 'push refused'); // i18n-ignore: logged, never shown
     logger.debug(`[AutoSync] Connection ${cfg.id} synced`);
   } catch (error) {
     logger.error(`[AutoSync] Failed to sync connection ${cfg.id}:`, error);
@@ -928,7 +965,8 @@ export async function autoSyncInterviewTemplate(template: import('@/lib/intervie
   if (template.isBuiltIn) return;
   try {
     const { getSyncManager } = await import('./sync-manager');
-    await getSyncManager().pushInterviewTemplate(template);
+    const pushed = await getSyncManager().pushInterviewTemplate(template);
+    if (!pushed.success) throw new Error(pushed.error || 'push refused'); // i18n-ignore: logged, never shown
     logger.debug(`[AutoSync] Interview template ${template.id} synced`);
   } catch (error) {
     logger.error(`[AutoSync] Failed to sync interview template ${template.id}:`, error);
@@ -937,27 +975,17 @@ export async function autoSyncInterviewTemplate(template: import('@/lib/intervie
 }
 
 /**
- * Auto-delete an interview template from the server (non-blocking)
+ * Delete an interview template from the server. Resolves once the server has it gone; throws
+ * `ServerDeleteRefused` otherwise, so the caller keeps the local copy.
  */
 export async function autoDeleteInterviewTemplate(templateId: string): Promise<void> {
-  if (process.env.NEXT_PUBLIC_SERVER_MODE !== 'true') return;
-  try {
-    await apiFetch(getAutoSyncApiUrl(`/sync/interview-templates/${templateId}`), { method: 'DELETE' });
-    logger.debug(`[AutoSync] Interview template ${templateId} deleted from server`);
-  } catch (error) {
-    logger.error(`[AutoSync] Failed to delete interview template ${templateId} from server:`, error);
-  }
+  await deleteOnServer(`/sync/interview-templates/${templateId}`);
 }
 
 /**
- * Auto-delete a custom provider connection from the server (non-blocking)
+ * Delete a custom provider connection from the server. Resolves once the server has it gone; throws
+ * `ServerDeleteRefused` otherwise, so the caller keeps the local copy.
  */
 export async function autoDeleteConnection(id: string): Promise<void> {
-  if (process.env.NEXT_PUBLIC_SERVER_MODE !== 'true') return;
-  try {
-    await apiFetch(getAutoSyncApiUrl(`/sync/connections/${id}`), { method: 'DELETE' });
-    logger.debug(`[AutoSync] Connection ${id} deleted from server`);
-  } catch (error) {
-    logger.error(`[AutoSync] Failed to delete connection ${id} from server:`, error);
-  }
+  await deleteOnServer(`/sync/connections/${id}`);
 }

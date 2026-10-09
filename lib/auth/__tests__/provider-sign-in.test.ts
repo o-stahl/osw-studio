@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { authorizeUrl, codeChallenge, completeSignIn, pendingSignIn, returnParams, signInReturnProject, startSignIn, SIGN_IN_PARAMS } from '../provider-sign-in';
+import { authorizeUrl, codeChallenge, completeSignIn, isRelayedReturn, pendingSignIn, prepareSignIn, returnParams, signInReturnProject, startSignIn, SIGN_IN_PARAMS } from '../provider-sign-in';
 
 const PENDING_KEY = 'osw_provider_sign_ins';
 const realCrypto = globalThis.crypto;
@@ -208,5 +208,82 @@ describe('signInReturnProject', () => {
     expect(signInReturnProject()).toBeNull();
     pending('n1', 'openrouter', Date.now() - 60 * 60_000);
     expect(signInReturnProject()).toBeNull();
+  });
+});
+
+describe('isRelayedReturn', () => {
+  const store = (relay: boolean) => localStorage.setItem(PENDING_KEY, JSON.stringify({
+    n1: { provider: 'openrouter', verifier: 'v'.repeat(43), redirectUri: 'https://huggingface.co/spaces/o/s', returnProject: null, ...(relay ? { relay: true } : {}), startedAt: Date.now() },
+  }));
+
+  it('is true for a code coming back to a relayed sign-in', () => {
+    store(true);
+    expect(isRelayedReturn(new URLSearchParams('?code=abc'))).toBe(true);
+  });
+
+  it('is false for an ordinary return, a page that is not a return, or HuggingFace\'s own', () => {
+    store(false);
+    expect(isRelayedReturn(new URLSearchParams('?code=abc'))).toBe(false);
+    store(true);
+    expect(isRelayedReturn(new URLSearchParams(''))).toBe(false);
+    expect(isRelayedReturn(new URLSearchParams('?code=abc&state=hf'))).toBe(false);
+  });
+});
+
+/**
+ * huggingface.co severs a popup opened from the Space's frame from its opener, so `window.open`
+ * answers null and a blank popup can never be pointed anywhere. A prepared sign-in opens straight
+ * at the provider, and inside the Space returns to the Space's page, whose frame shares this
+ * frame's storage. Kept last: preparing leaves the next pair ready for whatever runs after.
+ */
+describe('startSignIn, prepared', () => {
+  const stored = () => Object.entries(JSON.parse(localStorage.getItem(PENDING_KEY) ?? '{}') as Record<string, {
+    redirectUri: string; verifier: string; relay?: boolean;
+  }>);
+
+  it('opens the popup straight at the provider, with nothing awaited first', async () => {
+    await prepareSignIn();
+    const open = vi.fn((_url?: string) => ({}) as Window);
+    vi.stubGlobal('open', open);
+
+    const started = startSignIn('openrouter', { popup: true });
+    // Synchronously, before the promise settles: the click still counts as the user's.
+    expect(open).toHaveBeenCalledTimes(1);
+    await expect(started).resolves.toBe(true);
+
+    const url = new URL(open.mock.calls[0][0] as string);
+    expect(url.origin + url.pathname).toBe('https://openrouter.ai/auth');
+    const [nonce, entry] = stored()[0];
+    expect(url.searchParams.get('code_challenge')).toBe(await codeChallenge(entry.verifier));
+    expect(new URL(url.searchParams.get('callback_url')!).searchParams.get('osw_sign_in')).toBe(nonce);
+    expect(entry).not.toHaveProperty('relay');
+  });
+
+  it('returns to the page it is given and marks the sign-in relayed, never reporting it blocked', async () => {
+    await prepareSignIn();
+    const open = vi.fn((_url?: string) => null);
+    vi.stubGlobal('open', open);
+
+    await expect(startSignIn('openrouter', { popup: true, returnTo: 'https://huggingface.co/spaces/o/s' })).resolves.toBe(true);
+
+    const callback = new URL(new URL(open.mock.calls[0][0] as string).searchParams.get('callback_url')!);
+    expect(callback.origin + callback.pathname).toBe('https://huggingface.co/spaces/o/s');
+    expect(stored()[0][1]).toMatchObject({ redirectUri: 'https://huggingface.co/spaces/o/s', relay: true });
+  });
+
+  it('still reports a blocked popup that is not relayed, and forgets it', async () => {
+    await prepareSignIn();
+    vi.stubGlobal('open', vi.fn(() => null));
+    await expect(startSignIn('openrouter', { popup: true })).resolves.toBe(false);
+    expect(localStorage.getItem(PENDING_KEY)).toBeNull();
+  });
+
+  it('ignores returnTo when the sign-in leaves this page rather than opening a popup', async () => {
+    await prepareSignIn();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await startSignIn('openrouter', { returnTo: 'https://huggingface.co/spaces/o/s' });
+    errors.mockRestore();
+    expect(stored()[0][1]).toMatchObject({ redirectUri: `${window.location.origin}/` });
+    expect(stored()[0][1]).not.toHaveProperty('relay');
   });
 });

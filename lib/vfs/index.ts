@@ -19,6 +19,7 @@ import { IndexedDBAdapter } from './adapters/indexeddb-adapter';
 import { getRuntimeConfig } from '@/lib/runtimes/registry';
 import { compileStaticSite } from '@/lib/publishing/compile-static-site';
 import { arrayBufferToBase64, base64ToArrayBuffer } from './binary-encoding';
+import { apiFetch } from '@/lib/api/backend-status';
 
 /**
  * A VirtualFile prepared for JSON export. Binary content is base64-encoded and
@@ -374,7 +375,7 @@ export class VirtualFileSystem {
           const ctxUrl = wsCookie
             ? `/api/w/${wsCookie[1]}/admin/deployments/${deploymentId}/server-context`
             : `/api/admin/deployments/${deploymentId}/server-context`;
-          const response = await fetch(ctxUrl);
+          const response = await apiFetch(ctxUrl);
           if (response.ok) {
             const data = await response.json();
             const schemaFile = data.files?.find((f: { path: string }) => f.path === '/.server/db/schema.sql');

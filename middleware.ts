@@ -17,6 +17,7 @@ import type { NextRequest } from 'next/server';
 import { verifySession, maybeRefreshSession, SESSION_COOKIE_NAME, SESSION_DURATION } from '@/lib/auth/session';
 import type { SessionData } from '@/lib/auth/session';
 import { PENDING_MCP_COOKIE, pendingAuthorizationIsWellFormed } from '@/lib/mcp/pending';
+import { isCrossOriginWrite } from '@/lib/web/origin-guard';
 
 async function nextWithRefreshedSession(session: SessionData): Promise<NextResponse> {
   const response = NextResponse.next();
@@ -46,6 +47,12 @@ export async function middleware(request: NextRequest) {
   const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
   const { pathname } = request.nextUrl;
   const isDesktop = process.env.OSW_DESKTOP === 'true';
+
+  // Before anything else, desktop included: its API has no session at all, so any page the user
+  // opens could otherwise write to it on localhost.
+  if (isCrossOriginWrite(request.method, pathname, request.headers)) {
+    return NextResponse.json({ error: 'Cross-origin request refused' }, { status: 403 });
+  }
 
   // Desktop app: skip auth but still handle workspace routing
   if (isDesktop) {
@@ -263,11 +270,15 @@ export async function middleware(request: NextRequest) {
  * What is lost is a redirect to the login page for a *page* path ending in one of these, which no
  * real workspace view does.
  *
+ * `/api/` paths are never skipped, whatever they end in: a route whose last segment is a value
+ * (`/api/w/{id}/sync/projects/{id}`) can be sent one ending in `.js`, and the cross-origin write
+ * check here is the only one those routes have. Preview misses resolve against page paths, not `/api/`.
+ *
  * Written out rather than composed from a constant: Next has to statically analyse this value at
  * build time and ignores one it cannot, which would leave every route above unguarded.
  */
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|deployments/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|avif|js|mjs|cjs|css|map|woff|woff2|ttf|otf|eot)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|deployments/|(?!api/).*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|avif|js|mjs|cjs|css|map|woff|woff2|ttf|otf|eot)$).*)',
   ],
 };

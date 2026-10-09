@@ -16,6 +16,8 @@ export interface HFCapabilities {
   clientId: string | null;
   scopes: string;
   codexAvailable: boolean;
+  /** `owner/name` on a HuggingFace Space, else null. */
+  spaceId: string | null;
 }
 
 let capabilities: Promise<HFCapabilities> | null = null;
@@ -32,7 +34,7 @@ export function checkHFCapabilities(): Promise<HFCapabilities> {
     });
     if (!res.ok) {
       capabilities = null; // only an answer is kept; a failed request may be asked again
-      return { oauthAvailable: false, clientId: null, scopes: 'openid profile', codexAvailable: true };
+      return { oauthAvailable: false, clientId: null, scopes: 'openid profile', codexAvailable: true, spaceId: null };
     }
     return res.json() as Promise<HFCapabilities>;
   })().catch((err) => {

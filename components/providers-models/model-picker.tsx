@@ -196,7 +196,8 @@ interface ModelRowProps {
 }
 function ModelRow({ entry: { provider, model }, selected, showDeveloper, onClick }: ModelRowProps) {
   const tm = useTranslations('models');
-  // "Free models" is a selection, not a model: no developer, size or price of its own.
+  // "Free models" is a selection, not a model: no size or price of its own, and its developer is
+  // whichever free model it lands on, so the column says it varies rather than staying blank.
   const rotating = isFreeModels(model.id);
   const ctx = rotating ? '' : fmtCtx(model.contextLength);
   const price = rotating ? '' : fmtPrice(tm, model, formatModelPrice);
@@ -225,8 +226,8 @@ function ModelRow({ entry: { provider, model }, selected, showDeveloper, onClick
       <div className="flex flex-col gap-0.5 min-w-0 md:hidden">
         <span className="truncate text-[13px] font-medium text-foreground">{name}</span>
         <span className="flex items-center gap-2 min-w-0 text-xs text-muted-foreground">
-          {showDeveloper && distinct && (
-            <span className={cn('min-w-0 truncate', developerColor)}>{vendor}</span>
+          {showDeveloper && (distinct || rotating) && (
+            <span className={cn('min-w-0 truncate', developerColor)}>{rotating ? tm('freeModelsDeveloper') : vendor}</span>
           )}
           {meta && <span className="shrink-0 tabular-nums whitespace-nowrap">{meta}</span>}
         </span>
@@ -236,7 +237,7 @@ function ModelRow({ entry: { provider, model }, selected, showDeveloper, onClick
       <div className="hidden md:flex md:items-center md:gap-2.5">
         {showDeveloper && (
           <span className={cn('w-[64px] shrink-0 truncate text-xs', developerColor)}>
-            {distinct ? vendor : ''}
+            {rotating ? tm('freeModelsDeveloper') : distinct ? vendor : ''}
           </span>
         )}
         <span className={cn('min-w-0 truncate text-[13px] font-medium text-foreground', rotating ? 'shrink-0' : 'flex-1')}>

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Eye, EyeOff, Loader2, ExternalLink, MoreVertical, Pencil, RefreshCw, Unplug } from 'lucide-react';
 import { toast } from 'sonner';
+import { ServerDeleteRefused } from '@/lib/vfs/auto-sync';
 import { configManager } from '@/lib/config/storage';
 import { track } from '@/lib/telemetry';
 import { validateApiKey as checkApiKey } from '@/lib/llm/llm-client';
@@ -27,7 +28,7 @@ import { Drawer } from './drawer';
 import { SearchConnectionsSection } from './search-connections';
 import type { ProviderId } from '@/lib/llm/providers/types';
 import { disconnectCodex } from '@/lib/auth/codex-auth';
-import { startSignIn } from '@/lib/auth/provider-sign-in';
+import { useSignInStart } from '@/lib/hooks/use-sign-in-start';
 import { cn, logger } from '@/lib/utils';
 import {
   CustomHeadersEditor,
@@ -96,6 +97,7 @@ export function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectCo
   // key when it lands; desktop sends popups to the system browser, so there it redirects instead.
   const canSignIn = providerId === 'openrouter';
   const signingIn = useRef(false);
+  const startSignIn = useSignInStart();
   const signIn = () => {
     signingIn.current = true;
     startSignIn('openrouter', { popup: process.env.NEXT_PUBLIC_DESKTOP !== 'true' })
@@ -751,6 +753,10 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
   const handleDisconnect = async () => {
     setDisconnecting(true);
     try {
+      // First, so a refused server delete leaves the key and connection as they were.
+      if (isCustom) {
+        await configManager.removeCustomProvider(providerId);
+      }
       if (providerId === 'openai-codex') {
         await disconnectCodex();
         configManager.clearCodexAuth();
@@ -762,15 +768,12 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
         configManager.setProviderApiKey(providerId, '');
         configManager.clearModelCache(providerId);
       }
-      if (isCustom) {
-        configManager.removeCustomProvider(providerId);
-      }
       track('connection_removed', { provider: isCustom ? 'custom' : providerId });
       toast.success(t('disconnectedFrom', { name: providerConfig.name }));
       dispatchApiKeyEvent(false);
       onDisconnected();
-    } catch {
-      toast.error(ts('disconnectFailed'));
+    } catch (error) {
+      toast.error(error instanceof ServerDeleteRefused ? error.message : ts('disconnectFailed'));
     } finally {
       setDisconnecting(false);
     }
@@ -1077,6 +1080,10 @@ export function ConnectionsPane() {
     const cfg = getProvider(id);
     const isCustom = getProviderArchetype(id) === 'custom';
     try {
+      // First, so a refused server delete leaves the key and connection as they were.
+      if (isCustom) {
+        await configManager.removeCustomProvider(id);
+      }
       if (id === 'openai-codex') {
         await disconnectCodex();
         configManager.clearCodexAuth();
@@ -1088,15 +1095,12 @@ export function ConnectionsPane() {
         configManager.setProviderApiKey(id, '');
         configManager.clearModelCache(id);
       }
-      if (isCustom) {
-        configManager.removeCustomProvider(id);
-      }
       track('connection_removed', { provider: isCustom ? 'custom' : id });
       toast.success(t('disconnectedFrom', { name: cfg.name }));
       emitApiKeyUpdate(id, false);
       refresh();
-    } catch {
-      toast.error(ts('disconnectFailed'));
+    } catch (error) {
+      toast.error(error instanceof ServerDeleteRefused ? error.message : ts('disconnectFailed'));
     }
   };
 

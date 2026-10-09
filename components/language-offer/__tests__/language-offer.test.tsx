@@ -74,7 +74,7 @@ describe('LanguageOffer', () => {
   it('switches to the offered language, then refreshes', async () => {
     mount();
     await press(button(fi.accept));
-    expect(mocks.setLocale).toHaveBeenCalledWith('fi');
+    expect(mocks.setLocale).toHaveBeenCalledWith('fi', { embedded: false });
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
     expect(mocks.setLocale.mock.invocationCallOrder[0]).toBeLessThan(mocks.refresh.mock.invocationCallOrder[0]);
   });
@@ -82,11 +82,11 @@ describe('LanguageOffer', () => {
   it('records a decline as English, from either button', async () => {
     mount();
     await press(button('No thanks'));
-    expect(mocks.setLocale).toHaveBeenLastCalledWith('en');
+    expect(mocks.setLocale).toHaveBeenLastCalledWith('en', { embedded: false });
 
     await press(container.querySelector('button[aria-label="No thanks"]') ?? undefined);
     expect(mocks.setLocale).toHaveBeenCalledTimes(2);
-    expect(mocks.setLocale).toHaveBeenLastCalledWith('en');
+    expect(mocks.setLocale).toHaveBeenLastCalledWith('en', { embedded: false });
   });
 
   it('says so and does not refresh when the choice cannot be saved', async () => {

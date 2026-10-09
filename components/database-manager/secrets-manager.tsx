@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { Secret } from '@/lib/vfs/types';
 import {
@@ -18,6 +19,7 @@ import {
 import { SecretEditor } from './secret-editor';
 import { cn } from '@/lib/utils';
 import type { SecretsDataProvider } from './data-providers';
+import { apiFetch } from '@/lib/api/backend-status';
 
 interface SecretsManagerProps {
   deploymentId?: string;
@@ -50,7 +52,7 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
         setSecrets(result.secrets);
         setEncryptionConfigured(result.encryptionConfigured);
       } else if (deploymentId) {
-        const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/secrets`);
+        const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/secrets`);
         if (!res.ok) {
           const data = await res.json();
           throw new Error(data.error || t('loadSecretsFailed'));
@@ -73,16 +75,17 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
       if (dataProvider) {
         await dataProvider.remove(secret.id);
       } else if (deploymentId) {
-        const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/secrets/${secret.id}`, {
+        const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/secrets/${secret.id}`, {
           method: 'DELETE',
         });
-        if (!res.ok) throw new Error('Failed to delete secret');
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || t('deleteSecretFailed'));
       } else {
         return;
       }
       await loadSecrets();
     } catch (err) {
       console.error('Failed to delete secret:', err);
+      toast.error(err instanceof Error ? err.message : t('deleteSecretFailed'));
     }
   };
 
@@ -93,7 +96,7 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
       } else if (!deploymentId) {
         throw new Error(t('noDeploymentId'));
       } else if (editingSecret) {
-        const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/secrets/${editingSecret.id}`, {
+        const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/secrets/${editingSecret.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
@@ -103,7 +106,7 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
           throw new Error(err.error || t('updateSecretFailed'));
         }
       } else {
-        const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/secrets`, {
+        const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/secrets`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),

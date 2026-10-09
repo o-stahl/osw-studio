@@ -597,14 +597,24 @@ Habits:
         headers: response.headers,
       });
 
-      // Auth errors — actionable message for all providers
+      // A request the provider refused for its content (moderation, a guardrail): its own words say
+      // why, and the key is fine, so they are passed on rather than an authentication hint.
+      if (errorClass.code === 'blocked') {
+        const reasons = Array.isArray(errorMetadata?.reasons) ? (errorMetadata.reasons as unknown[]).filter((r) => typeof r === 'string') : [];
+        return NextResponse.json(
+          { ...errorClass, error: `${providerConfig.name} refused the request: ${cleanError}${reasons.length ? ` (${reasons.join(', ')})` : ''}` },
+          { status: response.status }
+        );
+      }
+
+      // Auth errors — actionable message for all providers, with what the provider said
       if (response.status === 401 || response.status === 403) {
         const providerName = providerConfig.name;
         const authHint = providerConfig.usesOAuth
           ? `Try reconnecting your ${providerName} account in Settings.`
           : `Check your ${providerName} API key in Settings.`;
         return NextResponse.json(
-          { ...errorClass, error: `${providerName} authentication failed. ${authHint}` },
+          { ...errorClass, error: `${providerName} authentication failed (${cleanError}). ${authHint}` },
           { status: response.status }
         );
       }

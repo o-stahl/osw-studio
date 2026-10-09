@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
 import { ServerFunction } from '@/lib/vfs/types';
 import {
   Plus, Loader2, AlertCircle, Wrench, MoreVertical, Pencil, Trash2,
@@ -17,6 +18,7 @@ import {
 import { ServerFunctionEditor } from './server-function-editor';
 import { cn } from '@/lib/utils';
 import type { ServerFunctionsDataProvider } from './data-providers';
+import { apiFetch } from '@/lib/api/backend-status';
 
 interface ServerFunctionsManagerProps {
   deploymentId?: string;
@@ -45,7 +47,7 @@ export function ServerFunctionsManager({ deploymentId, dataProvider, workspaceId
       if (dataProvider) {
         setFunctions(await dataProvider.list());
       } else if (deploymentId) {
-        const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/server-functions`);
+        const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/server-functions`);
         if (!res.ok) {
           const data = await res.json();
           throw new Error(data.error || t('loadHelpersFailed'));
@@ -65,18 +67,19 @@ export function ServerFunctionsManager({ deploymentId, dataProvider, workspaceId
       if (dataProvider) {
         await dataProvider.toggle(fn.id, !fn.enabled);
       } else if (deploymentId) {
-        const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/server-functions/${fn.id}`, {
+        const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/server-functions/${fn.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled: !fn.enabled }),
         });
-        if (!res.ok) throw new Error('Failed to update server function');
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || t('updateHelperFailed'));
       } else {
         return;
       }
       await loadFunctions();
     } catch (err) {
       console.error('Failed to toggle server function:', err);
+      toast.error(err instanceof Error ? err.message : t('updateHelperFailed'));
     }
   };
 
@@ -87,16 +90,17 @@ export function ServerFunctionsManager({ deploymentId, dataProvider, workspaceId
       if (dataProvider) {
         await dataProvider.remove(fn.id);
       } else if (deploymentId) {
-        const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/server-functions/${fn.id}`, {
+        const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/server-functions/${fn.id}`, {
           method: 'DELETE',
         });
-        if (!res.ok) throw new Error('Failed to delete server function');
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || t('deleteHelperFailed'));
       } else {
         return;
       }
       await loadFunctions();
     } catch (err) {
       console.error('Failed to delete server function:', err);
+      toast.error(err instanceof Error ? err.message : t('deleteHelperFailed'));
     }
   };
 
@@ -107,7 +111,7 @@ export function ServerFunctionsManager({ deploymentId, dataProvider, workspaceId
       } else if (!deploymentId) {
         throw new Error(t('noDeploymentId'));
       } else if (editingFunction) {
-        const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/server-functions/${editingFunction.id}`, {
+        const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/server-functions/${editingFunction.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
@@ -117,7 +121,7 @@ export function ServerFunctionsManager({ deploymentId, dataProvider, workspaceId
           throw new Error(err.error || t('updateHelperFailed'));
         }
       } else {
-        const res = await fetch(`${apiBase}/admin/deployments/${deploymentId}/server-functions`, {
+        const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/server-functions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),

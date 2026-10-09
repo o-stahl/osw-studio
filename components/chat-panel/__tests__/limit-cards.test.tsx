@@ -121,6 +121,26 @@ describe('StoppedCard', () => {
     expect(button(/^Continue$/)).toBeUndefined();
   });
 
+  it('says a refused request is not the key, shows the provider\'s reason, and offers no plain Continue', () => {
+    working('openrouter', 'm');
+    render(<StoppedCard live onContinue={() => {}} data={{
+      errorCategory: 'blocked', provider: 'openrouter', model: 'm', canRetrySame: false,
+      message: 'm requires moderation on OpenAI. Your input was flagged',
+    }} />);
+    expect(container.textContent).toContain('OpenRouter refused this request');
+    expect(container.textContent).toContain('Your key is fine');
+    expect(container.textContent).not.toContain('flagged the request');
+    expect(container.textContent).not.toContain('did not accept the key');
+    expect(container.textContent).toContain('Your input was flagged');
+    expect(button(/^Continue$/)).toBeUndefined();
+  });
+
+  it('shows the provider\'s own words beside a refused key', () => {
+    working('openrouter', 'm');
+    render(<StoppedCard live onContinue={() => {}} data={{ errorCategory: 'auth_expired', provider: 'openrouter', model: 'm', message: 'User not found.' }} />);
+    expect(container.textContent).toContain('User not found.');
+  });
+
   it('words a failure without a provider without naming one', () => {
     working('openrouter', 'm');
     render(<StoppedCard live onContinue={() => {}} data={{ errorCategory: 'unknown', provider: '', model: '' }} />);
@@ -140,6 +160,29 @@ describe('LimitNotice', () => {
     expect(container.textContent).toContain('Groq is limiting requests');
     render(<LimitNotice data={{ kind: 'retrying', provider: 'groq', status: 502 }} />);
     expect(container.textContent).toContain('Groq did not answer');
+  });
+
+  it('names the free model a run is on, or says the router chooses', () => {
+    const limits = createTranslator({ locale: 'en', messages: en, namespace: 'limits' });
+    render(<LimitNotice data={{ kind: 'picked', provider: 'openrouter', toModel: 'nvidia/nemotron-3-ultra-550b-a55b:free' }} />);
+    expect(container.textContent).toContain(limits('pickedFree', { model: 'nemotron-3-ultra-550b-a55b:free' }));
+    render(<LimitNotice data={{ kind: 'picked', provider: 'openrouter', toModel: 'openrouter/free' }} />);
+    expect(container.textContent).toContain(limits('pickedRouter'));
+    render(<LimitNotice data={{ kind: 'resolved', provider: 'openrouter', toModel: 'nvidia/nemotron-3-super-120b-a12b:free' }} />);
+    expect(container.textContent).toContain(limits('routerAnswering', { model: 'nemotron-3-super-120b-a12b:free' }));
+  });
+
+  it('offers no model choice on a notice about the rotation, which is doing what was asked', () => {
+    render(<LimitNotice data={{ kind: 'switched', provider: 'openrouter', fromModel: 'a:free', toModel: 'b:free', reason: 'busy' }} />);
+    expect(button(/Choose another/)).toBeUndefined();
+    render(<LimitNotice data={{ kind: 'picked', provider: 'openrouter', toModel: 'a:free' }} />);
+    expect(button(/Choose another/)).toBeUndefined();
+  });
+
+  it('says a model refused the request when that is why it moved on', () => {
+    const limits = createTranslator({ locale: 'en', messages: en, namespace: 'limits' });
+    render(<LimitNotice data={{ kind: 'switched', provider: 'openrouter', fromModel: 'a:free', toModel: 'b:free', reason: 'refused' }} />);
+    expect(container.textContent).toContain(limits('switchedRefused', { from: 'a:free', to: 'b:free' }));
   });
 
   it('names both models when it moved on', () => {

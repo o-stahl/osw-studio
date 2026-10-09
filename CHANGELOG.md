@@ -1,5 +1,56 @@
 # Changelog
 
+## Unreleased
+
+### Security
+- **API writes from another site's page are refused**: `isCrossOriginWrite` (`lib/web/origin-guard.ts`) runs first in `middleware.ts`, desktop included, and answers 403 to a POST, PUT, PATCH or DELETE under `/api/` whose `Origin` is not the app's own (`Host`, `X-Forwarded-Host`, `SPACE_HOST`, `NEXT_PUBLIC_APP_URL`, `ALLOWED_ORIGINS`). `CROSS_ORIGIN_ROUTES` exempts deployment functions, analytics collection, `/api/mcp`, its OAuth token, register and revoke endpoints and file URLs. Session-cookie routes accepted such writes, and the desktop API had no check at all.
+- **Middleware runs for every `/api/` path**: the matcher skips static-file extensions on page paths only. A route ending in a value, such as `/api/w/{id}/sync/projects/x.js`, skipped middleware.
+
+### Fixes
+- **An OpenRouter 403 stops the task as a refused request, not a refused key**: `classifyProviderError` (`lib/llm/provider-errors.ts`) gives `blocked` for an OpenRouter 403 (moderation or guardrail) and for any provider's 403 worded as content moderation; only 401 and other 403s are `auth`. `blocked` is in `TERMINAL_CATEGORIES`, so the stopped card offers another model rather than a plain Continue, and shows the provider's message under Details (`SHOW_DETAILS`, also for `auth_expired`). It read as "OpenRouter did not accept the key", and Continue resent the same refused request.
+- **A model that failed is not suggested again straight away**: every stop that is about the model is recorded, not only "Free models" rotations: in the orchestrator for a browser run, and in the store's `api_stopped` handler for a server run (`outcomeForStop`, `lib/llm/suggestions/observed.ts`). A `refused` outcome is kept for a day in localStorage `osw-model-refused` and counts as cooling down. The stopped card's next suggestion offered back the model the person had just left.
+- **A server run on "Free models" stays on one free model until it fails**: `startServerGeneration` sends `freeModelCandidates` (the browser's free ranking, minus models cooling down) in `generationParams`; the server orchestrator runs on the first and `rotateFreeModel` moves down the list on a busy, missing or refused model, never back to one tried. The store records the model a `model_switched` passed over. Server runs sent OpenRouter's free router, which answered each request with a different model.
+- **The thread names the model "Free models" is running on**: `model_picked` when a run picks one, `model_resolved` from `parseStreamingResponse` when OpenRouter's free router names the model answering, shown at the step where the model changed (`lastRouterModel`); both, and `model_switched`, are forwarded over SSE. "Free models" also moves past a model that refused (`switchedRefused`).
+- **A request that stopped before any reply is left out of the model's history when a new message follows**: `MultiAgentOrchestrator.execute` drops trailing user messages (`dropUnansweredMessages`) unless the prompt is `CONTINUE_AFTER_STOP_PROMPT`, and saves the history as `conversation_replaced`; the thread still shows them. The model read the refused request and the new one as one task. `conversation_replaced` carries a copy of the messages, so a message added afterwards is not in it.
+- **Restore and Retry sit after the response, not under the next message**: `EventProcessor` (`components/chat-panel/event-processor.ts`) attaches a `checkpoint_created` that arrives on an empty turn to the last closed turn (or to none, when the kept events start after that response), and none to a turn holding only the user's message (a server run's "Pre-generation snapshot", still in the checkpoints panel). A run's last step opens a turn and can end without adding to it, so the end checkpoint landed there and the next prompt joined that turn.
+- **Server Mode deletes on the server before deleting locally**: `deleteOnServer` (`lib/vfs/auto-sync.ts`) awaits the DELETE and throws `ServerDeleteRefused` (`auth`, `forbidden`, `failed`; messages under `sync.deleteRefused`) unless it answers 2xx or 404. Every `autoDelete*` caller awaits it before its local delete: `deleteProjectServerFirst` (project manager, guided tour), `deleteSkill`, `deleteCustomTemplate`, `deleteTemplate` (interviews), and `ConfigManager.deleteModelTemplate` and `removeCustomProvider`, which are now async. Each fired the server delete without waiting, so an expired session removed the local copy and the server kept it.
+- **An expired session clears the once-per-tab auto-pull flag**: `auto-sync.ts` removes `osw_auto_pull_done` from sessionStorage on `markAuthExpired`, and `markAutoPullDone` does not set it while the session is expired, so `autoPullAllProjects` runs again after logging back in. A project the server kept stayed hidden in that tab.
+- **Background pushes stop on an expired session and count refusals as failures**: `buildFileDelta` returns `'unauthorized'` on a manifest 401, and `pushProject` skips without retrying; the next load's `reconcileProjectsToServer` pushes it. It retried three times, then showed `sync.failedKept`. `autoSyncSkill`, `autoSyncTemplate`, `autoSyncModelTemplate`, `autoSyncInterviewTemplate` and `autoSyncConnection` treat a `success: false` result as failed (`sync_fail`) instead of logging it as synced.
+- **A deployment save waiting on the swap dialog stays unsaved**: `DeploymentDetail`'s `onSave` may resolve `false` (`handleSaveSettings` when it opens the swap dialog), which keeps `isDirty`. `handleSwapComplete` shows `deployments.swappedSettingsNotSaved` when the settings save after a swap fails. The edits read as saved before the swap ran, and a failed settings save still said "Project swapped and deployment republished".
+- **Studio calls to `/api/w/` and `/api/admin/` raise the session-expired banner**: `SyncManager`, the deployments, members, workspaces, users and mail views, the database managers, the schema editor and viewer, the project swap dialog, the review panel and `deployment-selector` use `apiFetch` instead of `fetch`. A 401 showed only an "Unauthorized" toast, or nothing; `lib/api/__tests__/gated-fetch.test.ts` fails on a plain `fetch` to those paths.
+- **The studio's review panel replies only as the team**: it sends `REVIEW_AS_TEAM_HEADER` (`lib/review/api-base.ts`), and the comment routes answer 401 with no account session, or 403 for an account that would act as a participant (`teamAccessRefusal`, `lib/review/access.ts`); the panel raises the expired banner on a 401. With the session expired, a reply fell back to a participant cookie the browser held and was posted as that client.
+- **The schema editor opened from the Projects list uses the workspace routes**: `ProjectManager` passes `workspaceId` to `ProjectSettingsModal`, where it is now a required prop. Apply DDL, the SQL tab and the tables view called `/api/projects/{id}/database/...`, which does not exist.
+- **The users view refreshes the edited user from the list it just loaded**: `loadUsers` returns the users; changing a role, revoking or granting access no longer makes an unchecked second `/api/admin/users` request, whose failure showed an error after the success toast.
+- **A refused toggle, delete or clear in a deployment's Backend section shows a toast**: `functions-manager`, `scheduled-functions-manager`, `server-functions-manager`, `secrets-manager` and `logs-viewer` (`components/database-manager/`) show the server's `error`, or `backend.delete*Failed` / `clearLogsFailed` / `update*Failed`. They only logged to the console.
+- **`/api/generate` passes on the provider's reason for a 401 or 403**: a `blocked` refusal answers with the provider's own message and moderation `reasons`; an `auth` error keeps the key hint and adds the message. Both answered "authentication failed. Check your API key" and dropped what the provider said.
+
+### Tests
+- **Coverage for the origin check**: `__tests__/middleware-origin.test.ts` and `__tests__/middleware-matcher.test.ts`; 403 classification in `provider-errors.test.ts`, `terminal-api-error.test.ts`, `limit-cards.test.tsx` and `app/api/generate/__tests__/error-class.test.ts`; stop records and notices in `multi-agent-orchestrator-stops.test.ts`, `ranking-edges.test.ts`, `streaming-parser-router-model.test.ts` and `lib/stores/__tests__/orchestrator-server-stop-outcome.test.ts`; server-first deletes and the pull flag in `lib/vfs/__tests__/server-first-delete.test.ts`; background sync with an expired session in `lib/vfs/__tests__/auth-expired-sync.test.ts`; the swap-pending save in `components/deployment-detail/__tests__/save-pending.test.tsx`; team-only review requests in `lib/review/__tests__/access.test.ts` and `app/review/__tests__/review-end-to-end.test.ts`; the banner from `SyncManager` in `lib/vfs/__tests__/sync-manager.test.ts`; the Backend section toast in `components/database-manager/__tests__/refused-action-toast.test.tsx`.
+
+## v1.105.3 - 2026-10-08
+
+### Fixes
+- **The HuggingFace Space's sign-in popup shows a close screen instead of the studio**: `app/page.tsx` renders `SignInRelay` (`components/sign-in-relay/`) for a relayed return (`isRelayedReturn`), which runs `finishRelayedSignIn` and asks to close the window; `useProviderSignInReturn` skips relayed returns. huggingface.co keeps the popup from closing itself, so it stayed open with the full studio loaded.
+
+### Tests
+- **Coverage for the relay screen**: `components/sign-in-relay/__tests__/sign-in-relay.test.tsx`, `app/__tests__/root-page-relay.test.tsx`, and `isRelayedReturn` / `finishRelayedSignIn` in the existing sign-in tests.
+
+## v1.105.2 - 2026-10-08
+
+### Fixes
+- **OpenRouter sign-in should work inside the HuggingFace Space's embed**: `prepareSignIn` (`lib/auth/provider-sign-in.ts`) makes the PKCE pair before the click, so the popup opens straight at OpenRouter. In the Space, `useSignInStart` (`lib/hooks/use-sign-in-start.ts`) passes `returnTo`, the Space's huggingface.co page (`spaceId` from `/api/auth/hf/capabilities`), whose frame shares the embed's storage; that copy stores the key and posts on `SIGN_IN_CHANNEL`. huggingface.co's `Cross-Origin-Opener-Policy: same-origin` left the popup on about:blank, reported as blocked.
+
+### Tests
+- **Coverage for the relayed sign-in**: `lib/auth/__tests__/provider-sign-in.test.ts` (prepared and relayed popups), `lib/hooks/__tests__/use-provider-sign-in-return.test.tsx` (broadcast and pickup), `lib/hooks/__tests__/use-sign-in-start.test.tsx` and `app/api/auth/hf/capabilities/__tests__/route.test.ts` (`spaceId`).
+
+## v1.105.1 - 2026-10-07
+
+### Fixes
+- **The language choice holds inside the HuggingFace Space's embed**: `setLocale` (`lib/i18n/actions.ts`) takes `{ embedded }` from `isEmbedded` (`lib/i18n/config.ts`) and, in a frame over HTTPS, writes `osw_locale` as `SameSite=None; Secure; Partitioned`. The Lax cookie was neither stored nor sent in the huggingface.co iframe, so the language menu and the first-visit offer changed nothing there.
+
+### Tests
+- **Coverage for the framed locale cookie**: `lib/i18n/__tests__/actions.test.ts` checks the cookie attributes embedded, unembedded and without HTTPS; `use-locale-switch.test.tsx` checks the flag reaches `setLocale`.
+
 ## v1.105.0 - 2026-10-06
 
 ### Translations

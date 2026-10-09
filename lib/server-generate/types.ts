@@ -59,6 +59,13 @@ export interface ServerGenerationParams {
   debugStreamEnabled?: boolean;
   modelPricing?: Record<string, { prompt: number; completion: number }>;
   cachedModels?: Array<{ id: string; name: string; context_length?: number }>;
+  /**
+   * For "Free models": the free models the browser ranks best, in order, minus those cooling down.
+   * The run stays on the first and moves down the list only when one is busy, gone or refuses.
+   * The ranking lives in the browser, so without this a server run sends OpenRouter's free router,
+   * which picks a different model on every request.
+   */
+  freeModelCandidates?: string[];
 }
 
 /** Server-side task state */

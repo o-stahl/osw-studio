@@ -16,6 +16,7 @@ import { getSession } from '@/lib/auth/session';
 import { resolveDeployment } from '@/lib/vfs/adapters/deployment-adapter';
 import type { ReviewConfig } from '@/lib/vfs/types';
 import { reviewCookieName, verifyReviewSession } from './session';
+import { REVIEW_AS_TEAM_HEADER } from './api-base';
 
 export type ReviewAccess =
   | { kind: 'participant'; participantId: string }
@@ -163,4 +164,19 @@ export async function resolveReviewAccess(
   if (isReviewExpired(review)) return { kind: 'denied' };
 
   return (await resolveParticipant(deploymentId, review, request)) ?? { kind: 'denied' };
+}
+
+/**
+ * For a request that asked to act as the team (`REVIEW_AS_TEAM_HEADER`): 401 when there is no
+ * account session, 403 when it would otherwise act as a client participant. Null otherwise, so a
+ * review copy that is not open still answers 404 to a signed-in member.
+ */
+export async function teamAccessRefusal(
+  request: CookieSource,
+  access: ReviewAccess
+): Promise<401 | 403 | null> {
+  if (request.headers?.get(REVIEW_AS_TEAM_HEADER) !== 'team') return null;
+  if (access.kind === 'team') return null;
+  if (!(await getSession())) return 401;
+  return access.kind === 'participant' ? 403 : null;
 }

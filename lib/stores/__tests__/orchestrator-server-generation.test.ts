@@ -14,6 +14,8 @@ vi.mock('@/lib/vfs/sync-manager', () => ({
 vi.mock('@/lib/vfs/checkpoint', () => ({
   checkpointManager: { createCheckpoint: vi.fn().mockResolvedValue({ id: 'cp1', description: '', timestamp: 0 }) },
 }));
+const rankProviderModels = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/llm/suggestions/suggest', () => ({ rankProviderModels }));
 
 setupOrchestratorMocks();
 
@@ -87,6 +89,31 @@ describe('orchestrator slice — startServerGeneration model resolution', () => 
     store.setState({ connectSSE: vi.fn() });
     await store.getState().startServerGeneration('proj2', 'a hero image', false);
     expect(JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string).imageGenAvailable).toBe(true);
+  });
+
+  it('sends "Free models" the free models to run on, best first, leaving out those cooling down', async () => {
+    // The ranking needs this browser's records; without the list the server sent OpenRouter's free
+    // router, which answered each request with a different model.
+    rankProviderModels.mockResolvedValue([
+      { provider: 'openrouter', model: { id: 'best:free' }, coolingDown: false },
+      { provider: 'openrouter', model: { id: 'busy:free' }, coolingDown: true },
+      { provider: 'openrouter', model: { id: 'next:free' }, coolingDown: false },
+    ]);
+    vi.mocked(getProjectAssignment).mockResolvedValue({
+      agent: { provider: 'openrouter', model: 'osw/free-models' },
+      imageGen: null, voiceInput: null, autoCompact: false, compactLimit: null,
+    } as any);
+    await store.getState().startServerGeneration('proj1', 'build it', false);
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(rankProviderModels).toHaveBeenCalledWith('openrouter', { freeOnly: true });
+    expect(body.generationParams.freeModelCandidates).toEqual(['best:free', 'next:free']);
+  });
+
+  it('sends no candidates for a model the user picked', async () => {
+    await store.getState().startServerGeneration('proj1', 'build it', false);
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.generationParams).not.toHaveProperty('freeModelCandidates');
+    expect(rankProviderModels).not.toHaveBeenCalled();
   });
 
   it('labels the snapshot it takes before the run, so the panel can word it', async () => {

@@ -47,6 +47,14 @@ describe('the middleware matcher', () => {
     expect(reachesMiddleware(`${WS}/projects/my.css.project`)).toBe(true);
   });
 
+  it('never skips an API path, whatever it ends in', () => {
+    // A route whose last segment is a value can be sent one ending in `.js`; skipping it would skip
+    // the cross-origin write check, which is the only one that route has.
+    for (const path of ['/api/w/x/sync/projects/evil.js', '/api/admin/users/x.css', '/api/w/x/deployments/d.png']) {
+      expect(reachesMiddleware(path)).toBe(true);
+    }
+  });
+
   it('keeps excluding the build output and published deployments', () => {
     expect(reachesMiddleware('/_next/static/chunks/main.js')).toBe(false);
     expect(reachesMiddleware('/deployments/abc/index.html')).toBe(false);

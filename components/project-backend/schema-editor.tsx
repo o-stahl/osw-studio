@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { SchemaViewer } from '@/components/database-manager/schema-viewer';
 import { SqlEditor } from '@/components/database-manager/sql-editor';
 import { getProjectSchema, setProjectSchema } from '@/lib/vfs/project-schema';
+import { apiFetch } from '@/lib/api/backend-status';
 
 interface SchemaEditorProps {
   projectId: string;
@@ -44,7 +45,7 @@ export function SchemaEditor({ projectId, enabled, onSchemaChange, workspaceId }
         if (!storedSchema) return;
 
         // Check if database already has tables
-        const schemaRes = await fetch(schemaEndpoint);
+        const schemaRes = await apiFetch(schemaEndpoint);
         if (!schemaRes.ok) return;
         const schemaData = await schemaRes.json();
         if (schemaData.tables && schemaData.tables.length > 0) {
@@ -53,7 +54,7 @@ export function SchemaEditor({ projectId, enabled, onSchemaChange, workspaceId }
         }
 
         // Database is empty but the project has DDL — apply it
-        const res = await fetch(queryEndpoint, {
+        const res = await apiFetch(queryEndpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sql: storedSchema }),
@@ -76,7 +77,7 @@ export function SchemaEditor({ projectId, enabled, onSchemaChange, workspaceId }
 
     setApplying(true);
     try {
-      const res = await fetch(queryEndpoint, {
+      const res = await apiFetch(queryEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sql: ddl.trim() }),

@@ -18,7 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { RATE_LIMIT_CONFIG } from '@/lib/analytics/rate-limiter';
-import { actsAsTeam, resolveReviewAccess } from '@/lib/review/access';
+import { actsAsTeam, resolveReviewAccess, teamAccessRefusal } from '@/lib/review/access';
 import { isReviewOriginAllowed } from '@/lib/review/origin-gate';
 import {
   resolveCommentAuthorship,
@@ -48,6 +48,13 @@ const PRIVATE_HEADERS = {
  */
 function notFound(): NextResponse {
   return NextResponse.json({ error: 'Not found' }, { status: 404, headers: PRIVATE_HEADERS });
+}
+
+function teamRefused(status: 401 | 403): NextResponse {
+  return NextResponse.json(
+    { error: status === 401 ? 'Unauthorized' : 'Forbidden' },
+    { status, headers: PRIVATE_HEADERS }
+  );
 }
 
 function badRequest(error: string): NextResponse {
@@ -88,6 +95,8 @@ export async function GET(
     }
 
     const access = await resolveReviewAccess(deploymentId, request);
+    const refusal = await teamAccessRefusal(request, access);
+    if (refusal) return teamRefused(refusal);
     if (access.kind === 'denied') return notFound();
 
     const db = openReviewDatabase(deploymentId);
@@ -153,6 +162,8 @@ export async function POST(
     }
 
     const access = await resolveReviewAccess(deploymentId, request);
+    const refusal = await teamAccessRefusal(request, access);
+    if (refusal) return teamRefused(refusal);
     if (access.kind === 'denied') return notFound();
 
     // The review copy is reachable only at the app origin, so that is the whole allowlist — not the

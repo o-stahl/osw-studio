@@ -99,7 +99,7 @@ describe('Sidebar footer', () => {
   it('lists each language in its own name and switches to the one picked', async () => {
     await render();
     const items = await open('Language');
-    expect(texts(items)).toEqual(['English', '한국어', 'suomi']);
+    expect(texts(items)).toEqual(['English', '한국어', 'Suomi']);
     await act(async () => { items[2].click(); });
     expect(setLocale).toHaveBeenCalledWith('fi');
     expect(refresh).toHaveBeenCalled();

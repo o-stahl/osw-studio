@@ -173,7 +173,7 @@ const suggest = vi.hoisted(() => ({
   alternativesTo: vi.fn(async () => []),
 }));
 vi.mock('../suggestions/suggest', () => suggest);
-vi.mock('../suggestions/observed', () => ({ recordModelOutcome: vi.fn() }));
+vi.mock('../suggestions/observed', async (orig) => ({ ...(await orig<object>()), recordModelOutcome: vi.fn() }));
 
 import { MultiAgentOrchestrator, AgentMessage } from '../multi-agent-orchestrator';
 import { runStructuredJudge } from '@/lib/testing/judge';
@@ -328,6 +328,49 @@ describe('MultiAgentOrchestrator result propagation and lifecycle', () => {
     await orchestrator.execute('next step');
 
     expect(captured.some(m => m.metadata?.isCompactSummary)).toBe(true);
+  });
+
+  it('leaves an unanswered request out of the model\'s history when a new message replaces it', async () => {
+    // A request refused before any reply stays as an instruction nobody answered; the next message
+    // is the task now, and the model should not read both.
+    let captured: Message[] = [];
+    const events: Array<{ event: string; data?: Record<string, unknown> }> = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    h.loopBehavior.run = async (deps: any): Promise<AgentLoopResult> => {
+      captured = deps.context.getMessages();
+      return { ...h.okResult };
+    };
+    const orchestrator = new MultiAgentOrchestrator('test-p1', 'orchestrator', (event, data) => events.push({ event, data: data as Record<string, unknown> }));
+    orchestrator.importConversation([
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'first task' },
+      { role: 'assistant', content: 'done' },
+      { role: 'user', content: 'refused request' },
+    ]);
+    await orchestrator.execute('new request');
+
+    const texts = captured.map((m) => (typeof m.content === 'string' ? m.content : ''));
+    expect(texts).not.toContain('refused request');
+    expect(texts).toContain('first task');
+    // Saved without it, so a later run rebuilds the same history.
+    const replaced = events.find((e) => e.event === 'conversation_replaced')?.data?.messages as AgentMessage[];
+    expect(replaced.map((m) => m.content)).toEqual(['sys', 'first task', 'done']);
+  });
+
+  it('keeps an unanswered request when Continue picks it up', async () => {
+    let captured: Message[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    h.loopBehavior.run = async (deps: any): Promise<AgentLoopResult> => {
+      captured = deps.context.getMessages();
+      return { ...h.okResult };
+    };
+    const orchestrator = new MultiAgentOrchestrator('test-p1');
+    orchestrator.importConversation([
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'refused request' },
+    ]);
+    await orchestrator.execute('Continue the task from where you stopped.');
+    expect(captured.map((m) => m.content)).toContain('refused request');
   });
 
   it('appends the template agenda to the interview agent system prompt', async () => {

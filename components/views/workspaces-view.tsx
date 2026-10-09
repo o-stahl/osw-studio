@@ -40,6 +40,7 @@ import { logger } from '@/lib/utils';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { PageShell, PageHeader, PageBody } from '@/components/ui/page-shell';
 import { useRoleLabel } from './role-label';
+import { apiFetch } from '@/lib/api/backend-status';
 
 interface WorkspaceMember {
   userId: string;
@@ -128,7 +129,7 @@ export function WorkspacesView() {
   const loadWorkspaces = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/workspaces');
+      const res = await apiFetch('/api/admin/workspaces');
       if (res.status === 401) {
         window.location.href = getLoginUrl();
         return;
@@ -159,7 +160,7 @@ export function WorkspacesView() {
     if (!editWorkspace) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/admin/workspaces/${editWorkspace.id}`, {
+      const res = await apiFetch(`/api/admin/workspaces/${editWorkspace.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -195,7 +196,7 @@ export function WorkspacesView() {
     }
     setSaving(true);
     try {
-      const res = await fetch('/api/admin/workspaces', {
+      const res = await apiFetch('/api/admin/workspaces', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -222,7 +223,7 @@ export function WorkspacesView() {
   const handleDelete = async (ws: WorkspaceInfo) => {
     if (!confirm(t('confirmDeleteWorkspace', { name: ws.name }))) return;
     try {
-      const res = await fetch(`/api/admin/workspaces/${ws.id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/admin/workspaces/${ws.id}`, { method: 'DELETE' });
       if (!res.ok) {
         const error = await res.json();
         throw new Error(error.error || t('deleteWorkspaceFailed'));
@@ -242,7 +243,7 @@ export function WorkspacesView() {
   const loadDetail = async (wsId: string) => {
     setLoadingDetail(true);
     try {
-      const res = await fetch(`/api/admin/workspaces/${wsId}`);
+      const res = await apiFetch(`/api/admin/workspaces/${wsId}`);
       if (!res.ok) throw new Error('Failed to load workspace details');
       const data = await res.json();
       setWorkspaceDetail(data);
@@ -272,7 +273,7 @@ export function WorkspacesView() {
     }
     setAddingMember(true);
     try {
-      const res = await fetch(`/api/admin/workspaces/${expandedId}/access`, {
+      const res = await apiFetch(`/api/admin/workspaces/${expandedId}/access`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: addMemberForm.email, role: addMemberForm.role }),
@@ -297,7 +298,7 @@ export function WorkspacesView() {
   const handleRemoveMember = async (wsId: string, userId: string, memberEmail: string) => {
     if (!confirm(t('confirmRemoveMember', { email: memberEmail }))) return;
     try {
-      const res = await fetch(`/api/admin/workspaces/${wsId}/access`, {
+      const res = await apiFetch(`/api/admin/workspaces/${wsId}/access`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId }),

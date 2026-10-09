@@ -17,6 +17,8 @@ export type ApiErrorCode =
   /** No credit or allowance left. Nothing succeeds until it is topped up or renews. */
   | 'credit_exhausted'
   | 'auth'
+  /** The provider refused this request's content (moderation, a guardrail). Another model may take it; the key is fine. */
+  | 'blocked'
   /** The model is gone, renamed, or has no provider serving it right now. */
   | 'model_unavailable'
   | 'overloaded'
@@ -49,6 +51,7 @@ export interface ProviderErrorClass {
 }
 
 const CREDIT_WORDS = ['credit', 'quota', 'billing', 'insufficient', 'balance', 'payment required'];
+const BLOCK_WORDS = ['moderation', 'flagged', 'guardrail', 'content policy', 'safety'];
 const RATE_WORDS = ['rate-limited', 'rate limit', 'ratelimit', 'too many requests', 'retry shortly', 'retry after', 'temporarily'];
 
 /** `Retry-After` is seconds or an HTTP date. Anything else is no answer rather than zero. */
@@ -83,7 +86,13 @@ export function classifyProviderError(input: ProviderErrorInput): ProviderErrorC
     ...(resetAt !== undefined ? { resetAt } : {}),
   });
 
-  if (status === 401 || status === 403) return { code: 'auth' };
+  if (status === 401) return { code: 'auth' };
+  if (status === 403) {
+    // OpenRouter answers 403 for a moderation flag or a guardrail block, never for a bad key (401).
+    // Elsewhere 403 is usually a key without access, unless it says it was the content.
+    const flagged = BLOCK_WORDS.some((w) => lower.includes(w)) || Array.isArray(input.metadata?.reasons);
+    return { code: provider === 'openrouter' || flagged ? 'blocked' : 'auth' };
+  }
   if (status === 402) return withTiming('credit_exhausted');
 
   if (status === 429) {

@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import { logger } from '@/lib/utils';
 import { emitViewChanged } from '@/lib/view-mode-event';
 import { useRoleLabel } from './role-label';
+import { apiFetch } from '@/lib/api/backend-status';
 
 /**
  * The workspace tier of the users page.
@@ -70,7 +71,7 @@ export function WorkspaceMembers({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/w/${workspaceId}/users`);
+      const res = await apiFetch(`/api/w/${workspaceId}/users`);
       if (!res.ok) throw new Error('Failed to load members');
       const data = await res.json();
       setMembers(data.members ?? []);
@@ -92,7 +93,7 @@ export function WorkspaceMembers({
     }
     setAdding(true);
     try {
-      const res = await fetch(`/api/w/${workspaceId}/users`, {
+      const res = await apiFetch(`/api/w/${workspaceId}/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -120,7 +121,7 @@ export function WorkspaceMembers({
   const patchMember = async (userId: string, body: Record<string, unknown>, failure: string) => {
     setBusyUserId(userId);
     try {
-      const res = await fetch(`/api/w/${workspaceId}/users/${userId}`, {
+      const res = await apiFetch(`/api/w/${workspaceId}/users/${userId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -140,7 +141,7 @@ export function WorkspaceMembers({
   const removeMember = async (member: Member) => {
     setBusyUserId(member.userId);
     try {
-      const res = await fetch(`/api/w/${workspaceId}/users/${member.userId}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/w/${workspaceId}/users/${member.userId}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || t('removeMemberFailed'));
       toast.success(t('removedEmail', { email: member.email }));

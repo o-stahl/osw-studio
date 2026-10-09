@@ -9,7 +9,7 @@ vi.mock('@huggingface/hub', () => ({ oauthLoginUrl: vi.fn(), oauthHandleRedirect
 vi.mock('@/lib/config/storage', () => ({ configManager: {} }));
 
 const ANSWER = { oauthAvailable: true, clientId: 'cid', scopes: 'openid profile', codexAvailable: false };
-const FALLBACK = { oauthAvailable: false, clientId: null, scopes: 'openid profile', codexAvailable: true };
+const FALLBACK = { oauthAvailable: false, clientId: null, scopes: 'openid profile', codexAvailable: true, spaceId: null };
 
 async function load() {
   vi.resetModules();

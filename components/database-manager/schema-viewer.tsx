@@ -6,6 +6,7 @@ import { TableInfo } from '@/lib/vfs/types';
 import { ChevronRight, ChevronDown, Table2, KeyRound, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { apiFetch } from '@/lib/api/backend-status';
 
 interface SchemaViewerProps {
   deploymentId?: string;
@@ -34,7 +35,7 @@ export function SchemaViewer({ deploymentId, schemaEndpoint, showSystemTablesTog
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(endpoint);
+      const res = await apiFetch(endpoint);
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || t('loadSchemaFailed'));

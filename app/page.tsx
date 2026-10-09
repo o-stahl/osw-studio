@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { StudioApp } from '@/components/studio-app';
+import { SignInRelay } from '@/components/sign-in-relay';
+import { isRelayedReturn } from '@/lib/auth/provider-sign-in';
 import { REPO_URL } from '@/lib/constants/links';
 
 /**
@@ -22,6 +24,12 @@ export default function Home() {
   const [bootDetail, setBootDetail] = useState<string | null>(null);
   const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
   const isDesktop = process.env.NEXT_PUBLIC_DESKTOP === 'true';
+  // The HuggingFace Space's popup coming back from a provider sign-in finishes it and shows only that;
+  // it is decided before paint, since only the browser holds the pending sign-in.
+  const [relay, setRelay] = useState(false);
+  useLayoutEffect(() => {
+    if (!isServerMode && isRelayedReturn()) setRelay(true);
+  }, [isServerMode]);
 
   useEffect(() => {
     if (!isServerMode) return;
@@ -84,5 +92,5 @@ export default function Home() {
     );
   }
 
-  return <StudioApp />;
+  return relay ? <SignInRelay /> : <StudioApp />;
 }

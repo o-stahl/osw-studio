@@ -208,9 +208,8 @@ export function GuidedTourProvider({ children }: { children: React.ReactNode }) 
         if (otherProjects.length > 0) {
           // Delete the tour demo project since user has other projects. In server mode it was
           // pushed while open, so the server's copy goes too, or the next pull brings it back.
-          await vfs.deleteProject(tourDemoProjectId);
-          const { autoDeleteProject } = await import('@/lib/vfs/auto-sync');
-          await autoDeleteProject(tourDemoProjectId);
+          const { deleteProjectServerFirst } = await import('@/lib/vfs/auto-sync');
+          await deleteProjectServerFirst(tourDemoProjectId);
 
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('projectsChanged'));

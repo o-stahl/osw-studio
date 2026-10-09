@@ -45,6 +45,24 @@ describe('POST /api/generate — error class on the error body', () => {
     await expect(res.json()).resolves.toMatchObject({ code: 'auth', error: expect.stringMatching(/authentication failed/) });
   });
 
+  it('passes on what the provider said beside the key hint', async () => {
+    upstream(401, { error: { message: 'User not found.' } });
+    const res = await post({ provider: 'openrouter', apiKey: 'sk-or-x', model: 'a/b' });
+    await expect(res.json()).resolves.toMatchObject({ code: 'auth', error: expect.stringContaining('User not found.') });
+  });
+
+  it('marks an OpenRouter 403 as a refused request and passes on its reason, not a key hint', async () => {
+    // OpenRouter's documented moderation body: a 403 whose metadata names the reasons.
+    upstream(403, { error: { message: 'm requires moderation on OpenAI. Your input was flagged for "harassment"', metadata: { reasons: ['harassment'], flagged_input: 'x', provider_name: 'OpenAI', model_slug: 'm' } } });
+    const res = await post({ provider: 'openrouter', apiKey: 'sk-or-x', model: 'a/b' });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body).toMatchObject({ code: 'blocked' });
+    expect(body.error).toContain('Your input was flagged');
+    expect(body.error).toContain('(harassment)');
+    expect(body.error).not.toMatch(/authentication failed|API key/);
+  });
+
   it('marks spent OpenRouter credit, with the reset the provider gave', async () => {
     upstream(402, { error: { message: 'Insufficient credits' } }, { 'X-RateLimit-Reset': '1900000000000' });
     const res = await post({ provider: 'openrouter', apiKey: 'sk-or-x', model: 'a/b' });

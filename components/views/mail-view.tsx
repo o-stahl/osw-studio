@@ -69,6 +69,7 @@ import {
   type SmtpForm,
   type TestPresentation,
 } from './mail-logic';
+import { apiFetch } from '@/lib/api/backend-status';
 
 /**
  * Mirrors MAX_MAIL_DISPLAY_NAME in lib/api/mail-route.ts, which is server-only and so cannot be
@@ -605,7 +606,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
     }
     setLoading(true);
     try {
-      const meRes = await fetch('/api/auth/me', { signal });
+      const meRes = await apiFetch('/api/auth/me', { signal });
       if (meRes.status === 401) {
         window.location.href = getLoginUrl();
         return;
@@ -619,8 +620,8 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
       // so a plain owner is not left guessing at it.
       if (isAdmin) {
         const [settingsRes, queueRes] = await Promise.all([
-          fetch('/api/admin/mail', { signal }),
-          fetch('/api/admin/mail/queue', { signal }),
+          apiFetch('/api/admin/mail', { signal }),
+          apiFetch('/api/admin/mail/queue', { signal }),
         ]);
         if (settingsRes.ok) applyInstance((await settingsRes.json()) as InstanceMailSettings);
         if (queueRes.ok) setInstQueue((await queueRes.json()) as QueueStats);
@@ -628,8 +629,8 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
 
       if (workspaceId) {
         const [settingsRes, queueRes] = await Promise.all([
-          fetch(`${apiBase}/mail`, { signal }),
-          fetch(`${apiBase}/mail/queue`, { signal }),
+          apiFetch(`${apiBase}/mail`, { signal }),
+          apiFetch(`${apiBase}/mail/queue`, { signal }),
         ]);
         if (settingsRes.status === 403) {
           setWsForbidden(true);
@@ -657,11 +658,11 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
   const reloadQueues = useCallback(async () => {
     try {
       if (workspaceId) {
-        const res = await fetch(`${apiBase}/mail/queue`);
+        const res = await apiFetch(`${apiBase}/mail/queue`);
         if (res.ok) setWsQueue((await res.json()) as QueueStats);
       }
       if (viewer.isAdmin) {
-        const res = await fetch('/api/admin/mail/queue');
+        const res = await apiFetch('/api/admin/mail/queue');
         if (res.ok) setInstQueue((await res.json()) as QueueStats);
       }
     } catch (error) {
@@ -697,7 +698,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
 
     setWsSaving(true);
     try {
-      const res = await fetch(`${apiBase}/mail`, {
+      const res = await apiFetch(`${apiBase}/mail`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -727,7 +728,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
     setWsTesting(true);
     setWsTest(null);
     try {
-      const res = await fetch(`${apiBase}/mail/test`, { method: 'POST' });
+      const res = await apiFetch(`${apiBase}/mail/test`, { method: 'POST' });
       const data = await res.json().catch(() => null);
       setWsTest(
         presentTestResult(t, {
@@ -762,7 +763,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
 
     setInstSaving(true);
     try {
-      const res = await fetch('/api/admin/mail', {
+      const res = await apiFetch('/api/admin/mail', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...smtp.body, enabled: instDraft.enabled }),
@@ -792,7 +793,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
     setInstTesting(true);
     setInstTest(null);
     try {
-      const res = await fetch('/api/admin/mail/test', { method: 'POST' });
+      const res = await apiFetch('/api/admin/mail/test', { method: 'POST' });
       const data = await res.json().catch(() => null);
       setInstTest(
         presentTestResult(t, {
@@ -813,7 +814,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
   const flushQueue = async () => {
     setInstFlushing(true);
     try {
-      const res = await fetch('/api/admin/mail/queue/flush', { method: 'POST' });
+      const res = await apiFetch('/api/admin/mail/queue/flush', { method: 'POST' });
       if (res.status === 401) {
         window.location.href = getLoginUrl();
         return;

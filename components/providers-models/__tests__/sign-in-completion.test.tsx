@@ -8,7 +8,7 @@ import { createRoot, type Root } from 'react-dom/client';
  * it with `apiKeyUpdated`, and the drawer finishes only for the sign-in it started.
  */
 const mocks = vi.hoisted(() => ({ startSignIn: vi.fn() }));
-vi.mock('@/lib/auth/provider-sign-in', () => ({ startSignIn: mocks.startSignIn }));
+vi.mock('@/lib/auth/provider-sign-in', () => ({ startSignIn: mocks.startSignIn, prepareSignIn: async () => {} }));
 vi.mock('@/lib/telemetry', () => ({ track: vi.fn() }));
 
 import { ConnectConfigBody } from '../connections-pane';

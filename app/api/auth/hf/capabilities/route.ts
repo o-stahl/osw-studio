@@ -11,5 +11,7 @@ export async function GET() {
     clientId: process.env.OAUTH_CLIENT_ID || null,
     scopes: process.env.OAUTH_SCOPES || 'openid profile inference-api contribute-repos',
     codexAvailable: !isHFSpaces,
+    // The Space's page on huggingface.co, where a provider sign-in from the embedded app returns.
+    spaceId: isHFSpaces && /^[\w.-]+\/[\w.-]+$/.test(process.env.SPACE_ID ?? '') ? process.env.SPACE_ID : null,
   });
 }

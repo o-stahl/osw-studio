@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { setLocale } from './actions';
-import type { Locale } from './config';
+import { isEmbedded, type Locale } from './config';
 
 /**
  * Switching the interface language from a control. The choice shows as `current` straight away and
@@ -25,7 +25,7 @@ export function useLocaleSwitch(): { current: Locale; pending: boolean; change: 
   const change = async (next: Locale) => {
     setPendingLocale(next);
     try {
-      await setLocale(next);
+      await setLocale(next, { embedded: isEmbedded() });
     } catch {
       setPendingLocale(null);
       toast.error(t('languageChangeFailed'));

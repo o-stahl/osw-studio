@@ -351,15 +351,15 @@ export class TemplateService {
   async deleteCustomTemplate(id: string): Promise<void> {
     try {
       await this.init();
+      const { autoDeleteTemplate } = await import('./auto-sync');
+      await autoDeleteTemplate(id);
       await this.getAdapter().deleteCustomTemplate(id);
-
-      // Background sync to server
-      import('./auto-sync').then(({ autoDeleteTemplate }) => autoDeleteTemplate(id)).catch(() => {});
       this.emitTemplatesChanged();
 
       logger.info('[TemplateService] Template deleted', { id });
     } catch (error) {
       logger.error('[TemplateService] Failed to delete template:', error);
+      if (error instanceof Error && error.name === 'ServerDeleteRefused') throw error;
       throw new Error('Failed to delete template');
     }
   }

@@ -25,6 +25,8 @@ import { getProvider, getModelContextLength } from '@/lib/llm/providers/registry
 import { boundCompactionLimit, resolveLocalContextLength } from '@/lib/llm/local-context';
 import type { ProviderId } from '@/lib/llm/providers/types';
 import { isFreeModels, FREE_MODELS_FALLBACK, FREE_MODELS_PROVIDERS, FREE_MODELS_ID } from './suggestions/free-models';
+import { outcomeForStop } from './suggestions/observed';
+import { CONTINUE_AFTER_STOP_PROMPT } from './continue-prompt';
 import { CostCalculator } from './cost-calculator';
 import { ToolCall, UsageInfo, ContentBlock } from './types';
 import { logger } from '@/lib/utils';
@@ -142,10 +144,12 @@ export interface MultiAgentResult {
 // ---------------------------------------------------------------------------
 
 /** Categories where an identical resend cannot succeed, whatever the user does meanwhile. */
-const TERMINAL_CATEGORIES = new Set(['tool_not_supported', 'invalid_request', 'context_too_long']);
+// `blocked`: the same request to the same model is refused the same way.
+const TERMINAL_CATEGORIES = new Set(['tool_not_supported', 'invalid_request', 'context_too_long', 'blocked']);
 
 /** The model is the problem, so "Free models" can move on to another one. */
-const SWITCHABLE_CATEGORIES = new Set(['model_busy', 'model_not_found']);
+const SWITCHABLE_CATEGORIES = new Set(['model_busy', 'model_not_found', 'blocked']);
+
 
 /**
  * Whether resending the same request on the same model is pointless, so the stopped task offers
@@ -194,6 +198,8 @@ export class MultiAgentOrchestrator {
    * models". Null until worked out, when requests go to OpenRouter's own free router.
    */
   private freeModelPick: string | null = null;
+  /** Candidates a server run on "Free models" has used, so a rotation never goes back to one. */
+  private freeModelsTried = new Set<string>();
 
   private totalCost = 0;
   private totalUsage: UsageInfo = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 };
@@ -284,6 +290,14 @@ export class MultiAgentOrchestrator {
       } else {
         break;
       }
+    }
+
+    // A message whose run stopped before any reply (a refused or failed request) is an instruction
+    // nobody answered. Continue takes it up as the task; a new message replaces it, so the model does
+    // not read both as what to do. The thread keeps showing it; only the model's history drops it,
+    // through the same event compaction uses, so a later run rebuilds without it.
+    if (userPrompt !== CONTINUE_AFTER_STOP_PROMPT && this.dropUnansweredMessages(conversation)) {
+      this.onProgress?.('conversation_replaced', { messages: [...conversation.messages] });
     }
 
     try {
@@ -538,7 +552,7 @@ export class MultiAgentOrchestrator {
         return agentMsg;
       });
       skipNextUserMessage = false;
-      this.onProgress?.('conversation_replaced', { messages: conversation.messages });
+      this.onProgress?.('conversation_replaced', { messages: [...conversation.messages] });
       // this.totalUsage.promptTokens reflects the context window size as of the
       // last recorded usage (see costTracker.record below) — the cheapest
       // available approximation of the pre-compaction token count.
@@ -687,10 +701,13 @@ export class MultiAgentOrchestrator {
       onProviderError: async (error: Error) => {
         this.apiErrorCount++;
         const apiError = error instanceof ProviderApiError ? error : null;
+        // Whichever way this ends, the model that failed is passed over by the next suggestion, so
+        // a stopped card does not offer straight back the model the person just moved away from.
+        if (apiError) await this.recordStop(apiError);
 
         // "Free models" is the one selection the app moves on its own: a busy or missing free
         // model is passed over for the next suggestion. A model the user picked stays picked.
-        if (apiError && SWITCHABLE_CATEGORIES.has(apiError.errorCategory) && isFreeModels(this.assignment?.agent.model)) {
+        if (apiError && SWITCHABLE_CATEGORIES.has(apiError.errorCategory) && this.onFreeModels()) {
           if (await this.rotateFreeModel(apiError)) return 'retry';
         }
         // A Stop pressed while the rotation was looking is the user's stop, not a provider stop.
@@ -968,10 +985,46 @@ export class MultiAgentOrchestrator {
       .catch(() => {});
   }
 
-  /** Work out which free model "Free models" means right now. Browser runs only. */
+  /** Note what a failed request says about its model. Browser runs only, as the record is per browser. */
+  private async recordStop(error: ProviderApiError): Promise<void> {
+    const outcome = outcomeForStop(error.errorCategory);
+    if (!outcome || this.serverContext || typeof window === 'undefined' || !error.model || error.model === FREE_MODELS_FALLBACK) return;
+    try {
+      const { recordModelOutcome } = await import('./suggestions/observed');
+      recordModelOutcome(error.provider, error.model, outcome);
+    } catch { /* suggestions fall back to the benchmark order */ }
+  }
+
+  /** Whether this run is on "Free models": the assignment in the browser, the configured model on the server. */
+  private onFreeModels(): boolean {
+    if (!this.serverContext) return isFreeModels(this.assignment?.agent.model);
+    const cfg = this.getConfig();
+    return isFreeModels(cfg.getProviderModel(cfg.getSelectedProvider()) || this.model);
+  }
+
+  /** The browser's ranked free models for a server run, checked: ids only, a bounded list. */
+  private serverFreeCandidates(): string[] {
+    const raw = this.serverContext?.config.freeModelCandidates;
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((id): id is string => typeof id === 'string' && /^[\w.\-/:]+$/.test(id) && !isFreeModels(id)).slice(0, 20);
+  }
+
+  /**
+   * Work out which free model "Free models" means right now, and say which in the thread: the
+   * selection names no model, so without this nobody can tell what is answering. Browser runs only.
+   */
   private async pickFreeModel(): Promise<void> {
+    if (this.serverContext) {
+      // The browser ranked the candidates when it started this run; none means the free router.
+      if (!this.onFreeModels()) return;
+      this.freeModelsTried.clear();
+      this.freeModelPick = this.serverFreeCandidates()[0] ?? null;
+      if (this.freeModelPick) this.freeModelsTried.add(this.freeModelPick);
+      this.onProgress?.('model_picked', { provider: this.getConfig().getSelectedProvider(), model: this.freeModelPick ?? FREE_MODELS_FALLBACK });
+      return;
+    }
     const agent = this.assignment?.agent;
-    if (!agent || !isFreeModels(agent.model) || this.serverContext || typeof window === 'undefined') return;
+    if (!agent || !isFreeModels(agent.model) || typeof window === 'undefined') return;
     try {
       const { rankProviderModels } = await import('./suggestions/suggest');
       const ranked = await rankProviderModels(agent.provider, { freeOnly: true });
@@ -979,14 +1032,28 @@ export class MultiAgentOrchestrator {
     } catch (err) {
       logger.warn('[MultiAgentOrchestrator] Could not pick a free model:', err);
     }
+    this.onProgress?.('model_picked', { provider: agent.provider, model: this.freeModelPick ?? FREE_MODELS_FALLBACK });
   }
 
   /** Pass over a busy or missing free model for the next suggestion, and say so in the thread. */
   private async rotateFreeModel(error: ProviderApiError): Promise<boolean> {
-    if (this.serverContext || typeof window === 'undefined' || !this.assignment) return false;
+    if (this.serverContext) {
+      // Down the browser's list, skipping what this run already tried; the browser records the
+      // model passed over when the switch reaches it.
+      const next = this.serverFreeCandidates().find((id) => !this.freeModelsTried.has(id) && id !== error.model);
+      if (!next || this.stopped) return false;
+      this.freeModelsTried.add(next);
+      this.freeModelPick = next;
+      this.onProgress?.('model_switched', {
+        provider: error.provider,
+        fromModel: error.model,
+        toModel: next,
+        reason: outcomeForStop(error.errorCategory) ?? 'unavailable',
+      });
+      return true;
+    }
+    if (typeof window === 'undefined' || !this.assignment) return false;
     try {
-      const { recordModelOutcome } = await import('./suggestions/observed');
-      recordModelOutcome(error.provider, error.model, error.errorCategory === 'model_busy' ? 'busy' : 'unavailable');
       // Free only, whatever the account could pay for: "Free models" never starts spending, and
       // OpenRouter's free router (the fallback before a pick) has no price to compare against.
       const { rankProviderModels } = await import('./suggestions/suggest');
@@ -999,7 +1066,7 @@ export class MultiAgentOrchestrator {
         provider: next.provider,
         fromModel: error.model,
         toModel: next.model.id,
-        reason: error.errorCategory === 'model_busy' ? 'busy' : 'unavailable',
+        reason: outcomeForStop(error.errorCategory) ?? 'unavailable',
       });
       return true;
     } catch (err) {
@@ -1054,7 +1121,7 @@ export class MultiAgentOrchestrator {
       const cfg = this.getConfig();
       const provider = cfg.getSelectedProvider();
       const serverModel = cfg.getProviderModel(provider) || this.model || 'default-model';
-      return { provider, apiKey: cfg.getProviderApiKey(provider) || '', model: isFreeModels(serverModel) ? FREE_MODELS_FALLBACK : serverModel, baseUrl: '' };
+      return { provider, apiKey: cfg.getProviderApiKey(provider) || '', model: isFreeModels(serverModel) ? (this.freeModelPick ?? FREE_MODELS_FALLBACK) : serverModel, baseUrl: '' };
     }
     const agent = this.assignment?.agent;
     const provider = (agent?.provider ?? configManager.getSelectedProvider()) as ProviderId;
@@ -1104,6 +1171,16 @@ export class MultiAgentOrchestrator {
 
   private drainErrors() {
     return this.serverContext ? [] : drainRuntimeErrors();
+  }
+
+  /** Remove trailing user messages that never got a reply. True when any were removed. */
+  private dropUnansweredMessages(conversation: ConversationNode): boolean {
+    let dropped = false;
+    while (conversation.messages.length > 0 && conversation.messages[conversation.messages.length - 1].role === 'user') {
+      conversation.messages.pop();
+      dropped = true;
+    }
+    return dropped;
   }
 
   private addMessage(conversationId: string, message: AgentMessage): void {

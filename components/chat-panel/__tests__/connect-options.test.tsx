@@ -31,7 +31,7 @@ vi.mock('@/lib/telemetry', () => ({ track: (...a: unknown[]) => track(...a) }));
 const checkHFCapabilities = vi.fn(async () => ({ oauthAvailable: true, clientId: 'hf-client', scopes: 'openid' }));
 vi.mock('@/lib/auth/hf-auth', () => ({ checkHFCapabilities: () => checkHFCapabilities(), loginHF: vi.fn(async () => {}) }));
 const startSignIn = vi.fn(async (..._a: unknown[]) => true);
-vi.mock('@/lib/auth/provider-sign-in', () => ({ startSignIn: (...a: unknown[]) => startSignIn(...a) }));
+vi.mock('@/lib/auth/provider-sign-in', () => ({ startSignIn: (...a: unknown[]) => startSignIn(...a), prepareSignIn: async () => {} }));
 const loadProviderModels = vi.fn(async (..._a: unknown[]) => {});
 vi.mock('@/lib/llm/models/model-catalog', () => ({ loadProviderModels: (...a: unknown[]) => loadProviderModels(...a) }));
 const activateProviderAsGlobalDefault = vi.fn(async (..._a: unknown[]) => {});

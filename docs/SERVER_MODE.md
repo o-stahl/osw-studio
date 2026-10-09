@@ -275,6 +275,7 @@ For bulk operations or troubleshooting, use the Sync button in the sidebar. This
 | `SECRETS_ENCRYPTION_KEY` | No | 256-bit key for encrypting secrets |
 | `SECURE_COOKIES` | No | Set to `false` to allow insecure cookies (pre-SSL only) |
 | `NEXT_PUBLIC_APP_URL` | No | Base URL for SEO/sitemaps |
+| `ALLOWED_ORIGINS` | No | Comma-separated origins allowed to send write requests to the API, for a reverse proxy that rewrites the `Host` header and passes no `X-Forwarded-Host` (requests from other sites are refused with 403) |
 | `REGISTRATION_MODE` | No | `open` to allow user self-registration, `closed` (default) for admin-only provisioning |
 | `NEXT_PUBLIC_REGISTRATION_MODE` | No | Client-side mirror of `REGISTRATION_MODE` |
 | `INSTANCE_API_KEY` | No | Shared secret for machine-to-machine admin API auth |

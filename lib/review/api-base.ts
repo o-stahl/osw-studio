@@ -10,3 +10,10 @@
 export function reviewApiBase(deploymentId: string): string {
   return `/review/${encodeURIComponent(deploymentId)}/osw-api`;
 }
+
+/**
+ * Sent by the studio's review panel, which only ever speaks as the team. Without it, a request whose
+ * account session has expired falls through to a participant cookie this browser may also hold, and
+ * a team reply would be posted as that client.
+ */
+export const REVIEW_AS_TEAM_HEADER = 'X-OSW-Review-As';

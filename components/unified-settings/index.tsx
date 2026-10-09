@@ -29,6 +29,7 @@ import {
 import { MailView } from '@/components/views/mail-view';
 import { UsersView } from '@/components/views/users-view';
 import { Users as UsersIcon } from 'lucide-react';
+import { apiFetch } from '@/lib/api/backend-status';
 
 // ---------------------------------------------------------------------------
 // Pane registry
@@ -299,7 +300,7 @@ export function UnifiedSettings({
       setIsOwner(false);
       return;
     }
-    fetch('/api/auth/me')
+    apiFetch('/api/auth/me')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         const roles = data?.user?.workspaceRoles as Record<string, string> | undefined;

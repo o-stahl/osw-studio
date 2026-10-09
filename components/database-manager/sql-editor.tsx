@@ -8,6 +8,7 @@ import { useTheme } from 'next-themes';
 import { useTranslations } from 'next-intl';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { cn } from '@/lib/utils';
+import { apiFetch } from '@/lib/api/backend-status';
 
 interface SqlEditorProps {
   deploymentId?: string;
@@ -69,7 +70,7 @@ export function SqlEditor({ deploymentId, queryEndpoint, workspaceId }: SqlEdito
 
     try {
       const endpoint = queryEndpoint || `${apiBase}/admin/deployments/${deploymentId}/database/query`;
-      const res = await fetch(endpoint, {
+      const res = await apiFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sql: sql.trim() }),

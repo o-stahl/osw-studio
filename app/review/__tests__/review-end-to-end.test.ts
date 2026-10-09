@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto';
 import { NextRequest } from 'next/server';
 
 import { REVIEW_WIDGET_MARKER } from '@/lib/publishing/review-widget';
-import { reviewApiBase } from '@/lib/review/api-base';
+import { REVIEW_AS_TEAM_HEADER, reviewApiBase } from '@/lib/review/api-base';
 import {
   reviewAssetRateLimitKey,
   reviewAssetRateLimiter,
@@ -336,6 +336,27 @@ describe('review mode — comments', () => {
     expect(comment.body).toBe('The hero image is stretched');
     expect(comment.page_path).toBe('/index.html');
     expect(comment.is_team).toBe(false);
+  });
+
+  it('refuses a team reply whose account session expired instead of posting it as the client', async () => {
+    // The browser also holds a participant cookie, from opening the review copy as a client once.
+    const cookie = await admitted();
+
+    const response = await createComment(
+      request(`${ORIGIN}${reviewApiBase(deploymentId)}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ body: 'Fixed in the next build', page_path: '/index.html' }),
+        headers: { 'content-type': 'application/json', origin: ORIGIN, [REVIEW_AS_TEAM_HEADER]: 'team' },
+        cookie,
+      }),
+      { params: Promise.resolve({ deploymentId }) }
+    );
+
+    expect(response.status).toBe(401);
+    const listed = await listComments(request(`${ORIGIN}${reviewApiBase(deploymentId)}/comments`, { cookie }), {
+      params: Promise.resolve({ deploymentId }),
+    });
+    expect((await listed.json()).comments).toEqual([]);
   });
 
   it('carries the session on the widget call a browser would actually make', async () => {

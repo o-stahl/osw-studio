@@ -7,8 +7,9 @@ import { NextIntlClientProvider } from 'next-intl';
 import en from '@/messages/en.json';
 import fi from '@/messages/fi.json';
 
-const mocks = vi.hoisted(() => ({ setLocale: vi.fn(), refresh: vi.fn() }));
+const mocks = vi.hoisted(() => ({ setLocale: vi.fn(), refresh: vi.fn(), embedded: false }));
 vi.mock('@/lib/i18n/actions', () => ({ setLocale: mocks.setLocale }));
+vi.mock('@/lib/i18n/config', async (orig) => ({ ...(await orig<object>()), isEmbedded: () => mocks.embedded }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.refresh }) }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
 
@@ -40,6 +41,7 @@ beforeEach(() => {
   root = createRoot(container);
   mocks.setLocale.mockReset();
   mocks.refresh.mockReset();
+  mocks.embedded = false;
 });
 
 afterEach(() => {
@@ -48,6 +50,17 @@ afterEach(() => {
 });
 
 describe('useLocaleSwitch', () => {
+  it('tells the server whether the page is in a frame, which decides the cookie it can keep', async () => {
+    mocks.setLocale.mockResolvedValue(undefined);
+    mount('en');
+    await act(async () => { await state.change('fi'); });
+    expect(mocks.setLocale).toHaveBeenLastCalledWith('fi', { embedded: false });
+
+    mocks.embedded = true;
+    await act(async () => { await state.change('ko'); });
+    expect(mocks.setLocale).toHaveBeenLastCalledWith('ko', { embedded: true });
+  });
+
   it('shows the picked language as current and pending while it is saved, and settles once it arrives', async () => {
     let finish: () => void = () => {};
     mocks.setLocale.mockReturnValue(new Promise<void>((r) => { finish = r; }));

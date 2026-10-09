@@ -25,8 +25,16 @@ interface PendingSignIn {
   redirectUri: string;
   /** The project open when sign-in started, restored on return. */
   returnProject: string | null;
+  /**
+   * The return lands on another page than the one that started it (the HuggingFace Space's page,
+   * in a popup), which hands the result back over `SIGN_IN_CHANNEL` rather than to an opener.
+   */
+  relay?: boolean;
   startedAt: number;
 }
+
+/** Where a relayed sign-in announces itself to the page that started it. */
+export const SIGN_IN_CHANNEL = 'osw-provider-sign-in';
 
 function readPending(): Record<string, PendingSignIn> {
   try {
@@ -111,17 +119,53 @@ export function authorizeUrl(params: { challenge: string; nonce: string; redirec
   return url.toString();
 }
 
+/** A PKCE pair made ahead of the click. */
+let ready: { verifier: string; challenge: string } | null = null;
+let preparing: Promise<void> | null = null;
+
+/**
+ * Make the next sign-in's PKCE pair before it is needed, so a popup can open straight at the
+ * provider. The challenge is computed with `await`, and a popup opened blank to be pointed at the
+ * provider afterwards cannot be pointed anywhere when the embedding page severs it from its opener
+ * (huggingface.co sends `Cross-Origin-Opener-Policy: same-origin`): it stays on about:blank.
+ */
+export function prepareSignIn(): Promise<void> {
+  if (ready) return Promise.resolve();
+  preparing ??= (async () => {
+    const verifier = randomString();
+    ready = { verifier, challenge: await codeChallenge(verifier) };
+  })()
+    .catch(() => { /* no crypto.subtle: startSignIn reports it */ })
+    .finally(() => { preparing = null; });
+  return preparing;
+}
+
 /**
  * Go to the provider's sign-in page. With `popup`, it opens in a separate window and this page
  * stays as it is, so whatever was waiting on the connection (a stopped task's card that continues
  * once a provider connects) is still there when it lands. Returns false when the popup was blocked.
  *
+ * `returnTo` sends the provider back to another page than this app's root. On the HuggingFace Space
+ * that is the Space's page on huggingface.co: it shows the app in a frame with this frame's storage,
+ * so the popup's copy of the app finds the pending sign-in, which a return to the Space's own
+ * address, a top-level page with storage of its own, would not. A popup severed from its opener
+ * reports null whether or not it opened, so a relayed sign-in never reports it blocked.
+ *
  * The popup is opened before anything is awaited, while the click still counts as the user's.
  */
-export async function startSignIn(provider: SignInProvider, options: { popup?: boolean } = {}): Promise<boolean> {
-  const verifier = randomString();
+export async function startSignIn(
+  provider: SignInProvider,
+  options: { popup?: boolean; returnTo?: string } = {},
+): Promise<boolean> {
+  const pair = options.popup ? ready : null;
+  if (pair) {
+    ready = null;
+    void prepareSignIn();
+  }
+  const verifier = pair?.verifier ?? randomString();
   const nonce = randomString(16);
-  const redirectUri = appRoot();
+  const relay = Boolean(options.popup && options.returnTo);
+  const redirectUri = relay ? options.returnTo! : appRoot();
   writePending({
     ...readPending(),
     [nonce]: {
@@ -129,6 +173,7 @@ export async function startSignIn(provider: SignInProvider, options: { popup?: b
       verifier,
       redirectUri,
       returnProject: options.popup ? null : new URLSearchParams(window.location.search).get('project'),
+      ...(relay ? { relay: true } : {}),
       startedAt: Date.now(),
     },
   });
@@ -137,6 +182,14 @@ export async function startSignIn(provider: SignInProvider, options: { popup?: b
     delete all[nonce];
     writePending(all);
   };
+  if (pair) {
+    const opened = window.open(authorizeUrl({ challenge: pair.challenge, nonce, redirectUri }), 'osw-sign-in', 'popup,width=520,height=720');
+    if (!opened && !relay) {
+      forget();
+      return false;
+    }
+    return true;
+  }
   const popup = options.popup ? window.open('', 'osw-sign-in', 'popup,width=520,height=720') : null;
   if (options.popup && !popup) {
     forget();
@@ -161,6 +214,16 @@ export async function startSignIn(provider: SignInProvider, options: { popup?: b
 export function pendingSignIn(search: URLSearchParams = new URLSearchParams(window.location.search)): PendingSignIn | null {
   const nonce = nonceFrom(search);
   return nonce ? readPending()[nonce] ?? null : null;
+}
+
+/**
+ * Whether this page is a relayed sign-in's return: the HuggingFace Space's page in the popup, whose
+ * frame finishes the sign-in for the page that started it and shows nothing else.
+ */
+export function isRelayedReturn(search: URLSearchParams = new URLSearchParams(window.location.search)): boolean {
+  const params = returnParams(search);
+  if (!params.has('code') && !params.has('error')) return false;
+  return pendingSignIn(params)?.relay === true;
 }
 
 /**

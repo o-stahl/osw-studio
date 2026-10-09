@@ -100,7 +100,8 @@ interface DeploymentDetailProps {
   projects: Project[];
   isPublishing: boolean;
   onBack: () => void;
-  onSave: (settings: DeploymentSettingsUpdate) => Promise<void>;
+  /** Resolves false when the save was handed to a dialog and has not happened yet. */
+  onSave: (settings: DeploymentSettingsUpdate) => Promise<boolean | void>;
   onPublish: (deploymentId: string) => void;
   workspaceId?: string;
   /**
@@ -194,7 +195,7 @@ export function DeploymentDetail({
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await onSave({
+      const saved = await onSave({
         projectId,
         underConstruction,
         customDomain,
@@ -206,7 +207,7 @@ export function DeploymentDetail({
         compliance,
         review,
       });
-      setIsDirty(false);
+      if (saved !== false) setIsDirty(false);
     } catch (error) {
       console.error('[DeploymentDetail] Failed to save settings:', error);
       alert(t('saveFailed'));

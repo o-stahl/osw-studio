@@ -53,3 +53,33 @@ describe('the locale cookie', () => {
     expect(await secureWith('development', 'true')).toBe(false);
   });
 });
+
+describe('the locale cookie in a cross-site frame', () => {
+  const options = () => jar.set.mock.calls[0][2] as Record<string, unknown>;
+
+  it('is partitioned and SameSite=None when the page is embedded over HTTPS', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    await setLocale('fi', { embedded: true });
+    expect(options()).toMatchObject({ sameSite: 'none', secure: true, partitioned: true });
+  });
+
+  it('stays Lax and unpartitioned on a page that is not embedded', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    await setLocale('fi', { embedded: false });
+    expect(options()).toMatchObject({ sameSite: 'lax', secure: true });
+    expect(options()).not.toHaveProperty('partitioned');
+  });
+
+  it('stays Lax where the cookie cannot be Secure, since SameSite=None requires it', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    await setLocale('fi', { embedded: true });
+    expect(options()).toMatchObject({ sameSite: 'lax', secure: false });
+    expect(options()).not.toHaveProperty('partitioned');
+  });
+
+  it('treats anything but a literal true as not embedded', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    await setLocale('fi', { embedded: 'yes' } as never);
+    expect(options()).toMatchObject({ sameSite: 'lax' });
+  });
+});

@@ -31,7 +31,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { MIN_REVIEW_PASSWORD_LENGTH } from '@/lib/api/deployment-review-merge';
-import { reviewApiBase } from '@/lib/review/api-base';
+import { REVIEW_AS_TEAM_HEADER, reviewApiBase } from '@/lib/review/api-base';
 import type { WireComment, WireParticipant } from '@/lib/review/comment-view';
 import { cn, logger } from '@/lib/utils';
 
@@ -53,6 +53,21 @@ import {
   reviewExpiryKey,
   emptyThreadsKey,
 } from './review-logic';
+import { apiFetch, markAuthExpired } from '@/lib/api/backend-status';
+
+/**
+ * Review traffic from this panel always speaks as the team. The review routes sit outside the
+ * auth-gated `/api/w/` paths, so their 401 (account session expired) raises the banner here.
+ */
+async function reviewFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const response = await apiFetch(url, {
+    ...init,
+    credentials: 'same-origin',
+    headers: { ...(init.headers as Record<string, string> | undefined), [REVIEW_AS_TEAM_HEADER]: 'team' },
+  });
+  if (response.status === 401) markAuthExpired();
+  return response;
+}
 
 /**
  * The review block as the studio edits it.
@@ -150,7 +165,7 @@ export function ReviewTab({
 
     (async () => {
       try {
-        const res = await fetch(`/api/w/${workspaceId}/mail/sending`, {
+        const res = await apiFetch(`/api/w/${workspaceId}/mail/sending`, {
           signal: controller.signal,
         });
         if (!res.ok) {
@@ -486,9 +501,7 @@ function ReviewComments({
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${reviewApiBase(deploymentId)}/comments`, {
-        credentials: 'same-origin',
-      });
+      const response = await reviewFetch(`${reviewApiBase(deploymentId)}/comments`);
       // 404 is the review layer's answer for "this deployment has no review copy open right now" —
       // review switched off in the stored record, or the round expired. It is a state, not a
       // failure, and reporting it as one sent people looking for a broken server.
@@ -522,9 +535,8 @@ function ReviewComments({
   const setStatus = async (commentId: string, status: 'open' | 'resolved') => {
     setBusyId(commentId);
     try {
-      const response = await fetch(`${reviewApiBase(deploymentId)}/comments/${commentId}`, {
+      const response = await reviewFetch(`${reviewApiBase(deploymentId)}/comments/${commentId}`, {
         method: 'PATCH',
-        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       });
@@ -546,9 +558,8 @@ function ReviewComments({
     try {
       // Only content travels: authorship is derived server-side from the account session, so a
       // reply from here carries the team badge without this asking for it.
-      const response = await fetch(`${reviewApiBase(deploymentId)}/comments`, {
+      const response = await reviewFetch(`${reviewApiBase(deploymentId)}/comments`, {
         method: 'POST',
-        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           body,

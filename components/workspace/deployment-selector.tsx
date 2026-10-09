@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { apiFetch } from '@/lib/api/backend-status';
 
 interface DeploymentSelectorProps {
   projectId: string;
@@ -47,7 +48,7 @@ export function DeploymentSelector({
         setLoading(true);
         setError(null);
 
-        const response = await fetch(`${apiBase}/projects/${projectId}/deployments`);
+        const response = await apiFetch(`${apiBase}/projects/${projectId}/deployments`);
         if (!response.ok) {
           throw new Error('Failed to fetch deployments');
         }

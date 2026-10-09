@@ -327,6 +327,9 @@ class SkillsService {
       throw new Error(translator()('skills.errors.builtInUndeletable'));
     }
 
+    const { autoDeleteSkill } = await import('../auto-sync');
+    await autoDeleteSkill(id);
+
     this.customSkills.delete(id);
     this.saveCustomSkills();
 
@@ -341,9 +344,6 @@ class SkillsService {
       }
     }
     if (groupsChanged) this.saveGroupsState();
-
-    // Background sync to server
-    import('../auto-sync').then(({ autoDeleteSkill }) => autoDeleteSkill(id)).catch(() => {});
 
     logger.info(`[SkillsService] Deleted skill: ${id}`);
   }

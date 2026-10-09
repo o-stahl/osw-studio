@@ -947,6 +947,101 @@ describe('limit notices', () => {
   });
 });
 
+describe('EventProcessor — where a turn\'s Restore and Retry go', () => {
+  const turnsOf = (events: DebugEvent[]) => new EventProcessor().process(events);
+
+  it('leaves the snapshot a server run takes before it starts off the user\'s message', () => {
+    const turns = turnsOf([
+      userMsg('build it'),
+      evt('checkpoint_created', { checkpointId: 'before' }),
+      evt('iteration', { iteration: 1 }),
+      evt('assistant_delta', { text: 'Done' }),
+      evt('checkpoint_created', { checkpointId: 'after' }),
+    ]);
+    expect(turns.map((t) => t.checkpointId)).toEqual([undefined, 'after']);
+  });
+
+  it('puts the checkpoint taken at the end on the response, not on the next message', () => {
+    // The order saved from a real run: the last step opens a turn and ends empty, the run
+    // completes, then the end checkpoint arrives, then the next prompt.
+    const turns = turnsOf([
+      userMsg('build it'),
+      evt('waiting'),
+      evt('checkpoint_created', { checkpointId: 'before' }),
+      evt('iteration', { iteration: 1 }),
+      evt('assistant_delta', { text: 'Done' }),
+      evt('iteration', { iteration: 2 }),
+      evt('waiting'),
+      evt('task_complete', {}),
+      evt('checkpoint_created', { checkpointId: 'after' }),
+      userMsg('next thing'),
+    ]);
+    const withButtons = turns.filter((t) => t.checkpointId);
+    expect(withButtons).toHaveLength(1);
+    expect(withButtons[0].checkpointId).toBe('after');
+    expect(withButtons[0].items.some((i) => i.type === 'user')).toBe(false);
+    expect(turns.at(-1)?.items.some((i) => i.type === 'user')).toBe(true);
+    expect(turns.at(-1)?.checkpointId).toBeUndefined();
+  });
+
+  it('shows no checkpoint for a response older than the events kept, rather than on the next prompt', () => {
+    // The kept events can begin after a run's end, with its checkpoint as the first thing in view.
+    const turns = turnsOf([
+      evt('task_complete', {}),
+      evt('checkpoint_created', { checkpointId: 'older' }),
+      userMsg('next thing'),
+      evt('iteration', { iteration: 1 }),
+      evt('assistant_delta', { text: 'ok' }),
+    ]);
+    expect(turns.some((t) => t.checkpointId)).toBe(false);
+  });
+
+  it('puts the checkpoint on the stopped card when a run stops before any reply', () => {
+    const turns = turnsOf([
+      userMsg('build it'),
+      evt('checkpoint_created', { checkpointId: 'before' }),
+      evt('iteration', { iteration: 1 }),
+      evt('api_stopped', { errorCategory: 'blocked', provider: 'openrouter' }),
+      evt('checkpoint_created', { checkpointId: 'after' }),
+    ]);
+    expect(turns.at(-1)?.checkpointId).toBe('after');
+    expect(turns[0].checkpointId).toBeUndefined();
+  });
+});
+
+describe('EventProcessor — the model "Free models" picked', () => {
+  it('puts the pick in the thread as a notice', () => {
+    const list = new EventProcessor().process([evt('model_picked', { provider: 'openrouter', model: 'a:free' })]).flatMap((t) => t.items);
+    expect(list.find((i) => i.type === 'notice')?.data).toEqual({ kind: 'picked', provider: 'openrouter', toModel: 'a:free' });
+  });
+
+  it('notes the free router\'s model where it changed, and not again while it stays the same', () => {
+    const list = new EventProcessor().process([
+      userMsg('go'),
+      evt('iteration', { iteration: 1 }),
+      evt('model_resolved', { provider: 'openrouter', model: 'a:free' }),
+      evt('assistant_delta', { text: 'step one' }),
+      evt('iteration', { iteration: 2 }),
+      evt('model_resolved', { provider: 'openrouter', model: 'a:free' }),
+      evt('assistant_delta', { text: 'step two' }),
+      evt('iteration', { iteration: 3 }),
+      evt('model_resolved', { provider: 'openrouter', model: 'b:free' }),
+    ]).flatMap((t) => t.items);
+    expect(list.filter((i) => i.type === 'notice').map((i) => i.data.toModel)).toEqual(['a:free', 'b:free']);
+  });
+
+  it('notes it again at the start of the next response', () => {
+    const list = new EventProcessor().process([
+      userMsg('go'),
+      evt('model_resolved', { provider: 'openrouter', model: 'a:free' }),
+      evt('assistant_delta', { text: 'done' }),
+      userMsg('again'),
+      evt('model_resolved', { provider: 'openrouter', model: 'a:free' }),
+    ]).flatMap((t) => t.items);
+    expect(list.filter((i) => i.type === 'notice')).toHaveLength(2);
+  });
+});
+
 describe('EventProcessor — a run that stops with a tool in flight', () => {
   const tools = (turns: ReturnType<EventProcessor['process']>) =>
     turns.flatMap((t) => t.items).filter((i) => i.type === 'tool').map((i) => i.data.status);
