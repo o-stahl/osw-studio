@@ -4,7 +4,7 @@
  * Returns a base64 data URL -- caller is responsible for persisting.
  */
 
-import { captureIframeScreenshot, waitForResources } from './screenshot';
+import { captureIframeScreenshot } from './screenshot';
 
 export interface DeploymentCaptureOptions {
   captureWidth?: number;
@@ -66,14 +66,6 @@ export async function captureDeploymentScreenshot(
         if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
         timeoutId = window.setTimeout(() => done(null), 12000);
 
-        try {
-          const doc = iframe.contentDocument || iframe.contentWindow?.document;
-          if (doc) await waitForResources(doc, 2500, 8000);
-          else await new Promise(r => setTimeout(r, 2500));
-        } catch {
-          await new Promise(r => setTimeout(r, 2500));
-        }
-
         const screenshot = await captureIframeScreenshot(
           iframe,
           opts.captureWidth,
@@ -81,7 +73,9 @@ export async function captureDeploymentScreenshot(
           opts.outputWidth,
           opts.outputHeight,
           opts.quality,
-          false
+          false,
+          true,
+          2500
         );
 
         done(screenshot);

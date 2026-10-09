@@ -8,6 +8,7 @@ import { vfs } from '@/lib/vfs';
 import { VirtualServer } from '@/lib/preview/virtual-server';
 import { captureIframeScreenshot } from './screenshot';
 import { injectVfsBlobMap } from '@/lib/preview/inject-vfs-blob-map';
+import { previewBridgeScript } from '@/lib/preview/preview-bridge';
 
 export async function captureProjectScreenshot(projectId: string): Promise<string | null> {
   await vfs.init();
@@ -58,6 +59,11 @@ export async function captureProjectScreenshot(projectId: string): Promise<strin
   // The rewrites above cover the references present in the markup; this covers the ones the page
   // asks for while it renders.
   html = injectVfsBlobMap(html, compiled.blobUrls);
+  // The frame paints itself on request (`captureIframeScreenshot`), through the same bridge the
+  // live preview carries.
+  html = /<head[^>]*>/i.test(html)
+    ? html.replace(/<head[^>]*>/i, (head) => head + previewBridgeScript(0))
+    : previewBridgeScript(0) + html;
 
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';

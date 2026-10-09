@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "cp node_modules/esbuild-wasm/esbuild.wasm public/esbuild.wasm 2>/dev/null || true"
+    "postinstall": "cp node_modules/esbuild-wasm/esbuild.wasm public/esbuild.wasm 2>/dev/null || true; mkdir -p public/preview-capture && cp node_modules/modern-screenshot/dist/index.js public/preview-capture/modern-screenshot.js && cp node_modules/html2canvas/dist/html2canvas.min.js public/preview-capture/html2canvas.js || true"
   },
   "dependencies": {
     "@huggingface/hub": "^2.9.0",
