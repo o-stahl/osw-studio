@@ -7,12 +7,12 @@ import { TOOLBAR_HOST_ATTR } from '../toolbar-dom';
  * The screenshot runtime runs inside the preview frame, which the host cannot read. These run it
  * against stub painters: what it paints, what it leaves out, and what it posts back.
  *
- * The selection toolbar is the reason the filter and `prepareClone` exist. It lives inside the
- * previewed document and stays visible while an element is selected, so without them a capture
- * taken with a selection bakes the toolbar into the thumbnail.
+ * The selection toolbar is the reason for the filter. It lives inside the previewed document and stays
+ * visible while an element is selected, so without it a capture taken with a selection bakes the
+ * toolbar into the thumbnail.
  */
 
-type Win = Window & { modernScreenshot?: unknown; html2canvas?: unknown; __oswCaptureLibs?: unknown };
+type Win = Window & { modernScreenshot?: unknown; __oswCaptureLibs?: unknown };
 const win = window as Win;
 
 const msg = (opts: Partial<{ fullPage: boolean }> = {}) => ({
@@ -32,6 +32,29 @@ function run(m = msg()): Promise<{ reply: Record<string, unknown>; transfer: unk
 
 const canvas = { width: 1280, height: 720 };
 
+interface Context {
+  root: Element;
+  options: { filter: (n: Node) => boolean; height: number; autoDestruct: boolean };
+  sandbox?: {
+    contentWindow: { document: { body: Element; createElement: (t: string) => Element }; getComputedStyle: typeof getComputedStyle };
+    remove: () => void;
+  };
+}
+
+/** modern-screenshot, as far as the runtime uses it: a context it can hand a sandbox to, and a painter. */
+function stubPainter(paint: (context: Context) => Promise<unknown> = async () => canvas) {
+  const contexts: Context[] = [];
+  win.modernScreenshot = {
+    createContext: vi.fn(async (root: Element, options: Context['options']) => {
+      const context: Context = { root, options };
+      contexts.push(context);
+      return context;
+    }),
+    domToCanvas: vi.fn(paint),
+  };
+  return contexts;
+}
+
 beforeEach(() => {
   document.body.innerHTML = '<main>page</main>';
   const toolbar = document.createElement('div');
@@ -42,78 +65,90 @@ beforeEach(() => {
 
 afterEach(() => {
   delete win.modernScreenshot;
-  delete win.html2canvas;
   delete win.__oswCaptureLibs;
   vi.unstubAllGlobals();
   document.head.innerHTML = '';
 });
 
 describe('CAPTURE_RUNTIME_JS', () => {
-  it('paints the document with the browser painter and posts the bitmap back, transferred', async () => {
-    const domToCanvas = vi.fn(async () => canvas);
-    win.modernScreenshot = { domToCanvas };
-    win.html2canvas = vi.fn();
+  it('paints the document and posts the bitmap back, transferred', async () => {
+    const contexts = stubPainter();
 
     const { reply, transfer } = await run();
 
     expect(reply).toEqual({ type: 'preview:capture-result', reqId: 7, bitmap: { from: canvas } });
     expect(transfer).toEqual([{ from: canvas }]);
-    const [root, options] = domToCanvas.mock.calls[0] as unknown as [Element, { filter: (n: Node) => boolean; height: number }];
+    const [{ root, options }] = contexts;
     expect(root).toBe(document.documentElement);
     expect(options.height).toBe(720);
-    expect(options.filter(document.querySelector('main')!)).toBe(true);
-    expect(options.filter(document.querySelector(`[${TOOLBAR_HOST_ATTR}]`)!)).toBe(false);
+    expect(options.autoDestruct).toBe(true);
   });
 
-  it('falls back to html2canvas, which paints a clone without the toolbar', async () => {
-    win.modernScreenshot = { domToCanvas: vi.fn(async () => { throw new Error('no foreignObject'); }) };
-    let cloneHadToolbar: boolean | null = null;
-    win.html2canvas = vi.fn(async (_body: Element, o: { onclone: (d: Document) => void }) => {
-      const frame = document.createElement('iframe');
-      document.body.appendChild(frame);
-      const clone = frame.contentDocument!;
-      clone.body.innerHTML = document.body.innerHTML;
-      o.onclone(clone);
-      cloneHadToolbar = !!clone.querySelector(`[${TOOLBAR_HOST_ATTR}]`);
-      frame.remove();
+  it('leaves the selection toolbar and its own sandbox out of the picture', async () => {
+    let filtered: Record<string, boolean> = {};
+    const contexts = stubPainter(async (context: Context) => {
+      const host = document.querySelector('[data-osw-capture]')!;
+      filtered = {
+        page: context.options.filter(document.querySelector('main')!),
+        toolbar: context.options.filter(document.querySelector(`[${TOOLBAR_HOST_ATTR}]`)!),
+        sandbox: context.options.filter(host),
+      };
       return canvas;
     });
 
-    const { reply } = await run();
+    await run();
 
-    expect(cloneHadToolbar).toBe(false);
-    expect(reply.bitmap).toEqual({ from: canvas });
+    expect(contexts).toHaveLength(1);
+    expect(filtered).toEqual({ page: true, toolbar: false, sandbox: false });
   });
 
-  it('reports why when neither painter manages', async () => {
-    win.modernScreenshot = { domToCanvas: vi.fn(async () => { throw new Error('a'); }) };
-    win.html2canvas = vi.fn(async () => { throw new Error('html2canvas broke'); });
+  it('gives the painter a sandbox in this document, not a frame it could not read', async () => {
+    let seen: { inShadow: boolean; display: string } | null = null;
+    stubPainter(async (context: Context) => {
+      // What modern-screenshot does with it: make an element, attach it, read its default style.
+      const { document: doc, getComputedStyle: styleOf } = context.sandbox!.contentWindow;
+      const probe = doc.createElement('div');
+      doc.body.appendChild(probe);
+      seen = { inShadow: probe.getRootNode() instanceof ShadowRoot, display: styleOf(probe).display };
+      return canvas;
+    });
+
+    await run();
+
+    expect(seen).toEqual({ inShadow: true, display: 'block' });
+  });
+
+  it('removes its sandbox when the painter destroys the context', async () => {
+    stubPainter(async (context: Context) => {
+      context.sandbox!.remove();
+      return canvas;
+    });
+    await run();
+    expect(document.querySelector('[data-osw-capture]')).toBeNull();
+  });
+
+  it('reports why when painting fails', async () => {
+    stubPainter(async () => { throw new Error('no foreignObject'); });
 
     const { reply } = await run();
 
-    expect(reply).toEqual({ type: 'preview:capture-result', reqId: 7, error: 'html2canvas broke' });
+    expect(reply).toEqual({ type: 'preview:capture-result', reqId: 7, error: 'no foreignObject' });
   });
 
-  it('loads the painters from the app when the frame does not have them', async () => {
+  it('loads the painter from the app when the frame does not have it', async () => {
     const appended: string[] = [];
     const append = document.head.appendChild.bind(document.head);
     vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T): T => {
-      const src = (node as unknown as HTMLScriptElement).src;
-      appended.push(src);
+      appended.push((node as unknown as HTMLScriptElement).src);
       append(node);
-      // Stand in for the script having run.
-      if (src.endsWith('modern-screenshot.js')) win.modernScreenshot = { domToCanvas: async () => canvas };
-      if (src.endsWith('html2canvas.js')) win.html2canvas = vi.fn();
+      stubPainter(); // stands in for the script having run
       queueMicrotask(() => (node as unknown as HTMLScriptElement).onload?.(new Event('load')));
       return node;
     });
 
     const { reply } = await run();
 
-    expect(appended).toEqual([
-      'http://app.test/preview-capture/modern-screenshot.js',
-      'http://app.test/preview-capture/html2canvas.js',
-    ]);
+    expect(appended).toEqual(['http://app.test/preview-capture/modern-screenshot.js']);
     expect(reply.bitmap).toEqual({ from: canvas });
   });
 });

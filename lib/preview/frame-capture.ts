@@ -6,9 +6,12 @@ import { PREVIEW_BRIDGE_ATTR, previewBridgeJs } from './preview-bridge';
  *
  * The host cannot read the preview's DOM: project code runs there, so the frame is kept off the
  * app's origin. The host sends this runtime with a `preview:capture` request; the frame's bridge
- * runs it, it loads the two painters from `/preview-capture/` (copied there from node_modules by
+ * runs it, it loads modern-screenshot from `/preview-capture/` (copied there from node_modules by
  * `postinstall`), paints `document`, and posts the canvas back as an `ImageBitmap`. Scaling and
  * JPEG encoding stay with the host.
+ *
+ * There is no html2canvas fallback: it renders by cloning the page into a nested frame and reading
+ * it, and in this sandbox a nested frame cannot be read.
  *
  * Plain JavaScript in a string, like `STYLE_QUERY_JS`: it runs in a frame the bundler never sees,
  * so it may not depend on anything the bundler would add or rename.
@@ -25,7 +28,7 @@ export interface FrameCaptureOptions {
 }
 
 export const CAPTURE_RUNTIME_JS = `
-var opts = msg.opts, toolbarAttr = msg.toolbarAttr;
+var opts = msg.opts, toolbarAttr = msg.toolbarAttr, CAPTURE_ATTR = 'data-osw-capture';
 function reply(m, transfer) { post(Object.assign({ type: 'preview:capture-result', reqId: msg.reqId }, m), transfer); }
 function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 function load(src) {
@@ -38,11 +41,8 @@ function load(src) {
   });
 }
 function libs() {
-  if (!window.__oswCaptureLibs) {
-    window.__oswCaptureLibs = Promise.all([
-      window.modernScreenshot ? null : load(msg.libBase + 'modern-screenshot.js'),
-      window.html2canvas ? null : load(msg.libBase + 'html2canvas.js')
-    ]);
+  if (!window.modernScreenshot && !window.__oswCaptureLibs) {
+    window.__oswCaptureLibs = load(msg.libBase + 'modern-screenshot.js');
   }
   return window.__oswCaptureLibs;
 }
@@ -60,25 +60,28 @@ function waitForResources(minDelay, timeout) {
   }));
   return Promise.race([Promise.all(waits), delay(timeout)]);
 }
-function prepareClone(doc) {
-  Array.prototype.forEach.call(doc.querySelectorAll('[' + toolbarAttr + ']'), function (el) { el.remove(); });
-  Array.prototype.forEach.call(doc.querySelectorAll('link[rel="stylesheet"]'), function (link) {
-    var href = link.getAttribute('href');
-    if (href && /^https?:\\/\\//.test(href)) link.remove();
-  });
-  var view = doc.defaultView;
-  if (!view) return;
-  Array.prototype.forEach.call(doc.querySelectorAll('*'), function (el) {
-    var cs = view.getComputedStyle(el);
-    if (cs.backgroundImage && cs.backgroundImage.indexOf('gradient') !== -1) {
-      el.style.backgroundImage = 'none';
-      var bg = cs.backgroundColor;
-      el.style.backgroundColor = bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent' ? bg : '#64748b';
-    }
-  });
-}
-function timeout(p, ms, label) {
-  return Promise.race([p, delay(ms).then(function () { throw new Error(label + ' timed out'); })]);
+// modern-screenshot reads browser-default styles out of an iframe it creates. In this sandbox a
+// nested frame gets an origin of its own and cannot be read, so it is handed a shadow root in this
+// document instead: \`all: initial\` on the host keeps the page's styles out, and the user-agent
+// stylesheet still applies inside it.
+function shadowSandbox() {
+  var host = document.createElement('div');
+  host.setAttribute(CAPTURE_ATTR, '');
+  host.style.cssText = 'all:initial;position:fixed;width:0;height:0;overflow:hidden;visibility:hidden';
+  var body = document.createElement('div');
+  host.attachShadow({ mode: 'open' }).appendChild(body);
+  (document.body || document.documentElement).appendChild(host);
+  return {
+    contentWindow: {
+      document: {
+        body: body,
+        createElement: function (tag) { return document.createElement(tag); },
+        createElementNS: function (ns, tag) { return document.createElementNS(ns, tag); }
+      },
+      getComputedStyle: function (el, pseudo) { return window.getComputedStyle(el, pseudo); }
+    },
+    remove: function () { host.remove(); }
+  };
 }
 function paint() {
   var root = document.documentElement, body = document.body;
@@ -87,29 +90,26 @@ function paint() {
     : opts.captureHeight;
   var width = Math.max(root.clientWidth, body.scrollWidth, 1);
   var scale = width < opts.captureWidth ? Math.min(2, opts.captureWidth / width) : 1;
-  return timeout(window.modernScreenshot.domToCanvas(root, {
-    width: width, height: height, scale: scale, backgroundColor: '#ffffff', timeout: 3000,
-    filter: function (node) { return !(node instanceof Element && node.hasAttribute(toolbarAttr)); }
-  }), 6000, 'foreignObject render').then(function (canvas) {
+  var ms = window.modernScreenshot;
+  return ms.createContext(root, {
+    width: width, height: height, scale: scale, backgroundColor: '#ffffff', timeout: 3000, autoDestruct: true,
+    filter: function (node) {
+      return !(node instanceof Element && (node.hasAttribute(toolbarAttr) || node.hasAttribute(CAPTURE_ATTR)));
+    }
+  }).then(function (context) {
+    context.sandbox = shadowSandbox();
+    return Promise.race([
+      ms.domToCanvas(context),
+      delay(6000).then(function () { throw new Error('render timed out'); })
+    ]);
+  }).then(function (canvas) {
     if (!canvas.width || !canvas.height) throw new Error('empty canvas');
     return canvas;
-  }).catch(function () {
-    return timeout(window.html2canvas(body, {
-      width: opts.captureWidth, height: height, scale: 1, useCORS: true, allowTaint: true,
-      logging: false, windowWidth: opts.captureWidth, windowHeight: height, scrollX: 0, scrollY: 0,
-      imageTimeout: 3000, backgroundColor: '#ffffff', removeContainer: true, onclone: prepareClone
-    }), 4000, 'html2canvas');
-  });
-}
-function paintWithRetry() {
-  return paint().catch(function (err) {
-    if (/non-finite|addColorStop|CanvasGradient/.test(String(err))) return delay(500).then(paint);
-    throw err;
   });
 }
 (opts.waitForContent ? waitForResources(opts.minWaitDelay, 8000) : Promise.resolve())
   .then(libs)
-  .then(paintWithRetry)
+  .then(paint)
   .then(function (canvas) { return createImageBitmap(canvas); })
   .then(function (bitmap) { reply({ bitmap: bitmap }, [bitmap]); })
   .catch(function (err) { reply({ error: String(err && err.message || err) }); });

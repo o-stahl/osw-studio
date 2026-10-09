@@ -13,6 +13,8 @@ import { vfs } from '@/lib/vfs';
 import { PreviewLifecycle } from '@/lib/preview/preview-lifecycle';
 import { FrameScrollMemory, type FrameScroll } from '@/lib/preview/scroll-memory';
 import { previewBridgeScript } from '@/lib/preview/preview-bridge';
+import { previewShellHtml, sendShellContent } from '@/lib/preview/preview-shell';
+import { runFunctionCall } from '@/lib/preview/function-proxy';
 import { PreviewCompileGate, mergeCompileRequests, observePreviewRoot } from '@/lib/preview/compile-gate';
 import type { CompileRequest } from '@/lib/preview/compile-gate';
 import { STRIP_PROVENANCE_JS } from '@/lib/preview/provenance';
@@ -1409,6 +1411,13 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
   const ackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The outgoing document's scroll position, as last reported by the frame itself.
   const frameScrollRef = useRef<FrameScroll | null>(null);
+  // The page waiting for its shell to ask for it (`lib/preview/preview-shell.ts`).
+  // Read by the message handler, which is not re-registered when the deployment changes.
+  const deploymentIdRef = useRef(deploymentId);
+  deploymentIdRef.current = deploymentId;
+  const pendingShellRef = useRef<{ loadId: number; html: string; blobUrls: string[]; cache: Map<string, Blob> } | null>(null);
+  // Blobs already read for a compile, so a reload of the same compile does not read them again.
+  const shellCacheRef = useRef(new WeakMap<object, Map<string, Blob>>());
 
   // Respond to a confident escape signal (the load-event marker check found the frame is no longer
   // our document): one bounded auto-reload, then the recovery overlay. Stable — safe to call from
@@ -1592,14 +1601,31 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     };
   }, [iframeReady, postMessageToIframe, handleEscapeSignal]);
 
-  /** A document we wrote reached its load event. Any loadId counts as ours; only the current one is ready. */
-  const handleReadyAck = useCallback((loadId: number) => {
+  /** One of our documents loaded: pair it with the iframe load event it belongs to. */
+  const pairAck = useCallback(() => {
     if (ackTimerRef.current) {
       clearTimeout(ackTimerRef.current);
       ackTimerRef.current = null;
     } else {
       unpairedAcksRef.current += 1;
     }
+  }, []);
+
+  /** A shell we wrote is asking for its page. */
+  const handleShellReady = useCallback((loadId: number) => {
+    pairAck();
+    const pending = pendingShellRef.current;
+    const target = iframeRef.current?.contentWindow;
+    if (!pending || pending.loadId !== loadId || loadId !== lifecycleRef.current.loadId || !target) return;
+    pendingShellRef.current = null;
+    sendShellContent(target, loadId, pending.html, pending.blobUrls, pending.cache).catch((err) => {
+      logger.error('[Preview] Could not send the page to the preview frame:', err);
+    });
+  }, [pairAck]);
+
+  /** A document we wrote reached its load event. Any loadId counts as ours; only the current one is ready. */
+  const handleReadyAck = useCallback((loadId: number) => {
+    pairAck();
     if (!lifecycleRef.current.onAck(loadId)) return;
     setEscaped(false);
     // Before the consumer, deliberately. Frame-ready is answered with a `selection-resolve`,
@@ -1619,7 +1645,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     // at all until they are sent again, and the selection the consumer is about to re-resolve
     // is what mounts the toolbar that reads them.
     postToolbarThemeRef.current();
-  }, [postMessageToIframe]);
+  }, [pairAck, postMessageToIframe]);
 
   useEffect(() => {
     activePathRef.current = activePath;
@@ -2005,7 +2031,15 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     // Clear stale runtime errors before loading new content —
     // only errors from this compilation should be in the buffer.
     clearRuntimeErrors();
-    iframeRef.current.srcdoc = processedHtml;
+    // The frame is first given the shell, which asks for this page and makes its own URLs for the
+    // project's files: see `lib/preview/preview-shell.ts`.
+    let cache = shellCacheRef.current.get(projectToUse);
+    if (!cache) {
+      cache = new Map();
+      shellCacheRef.current.set(projectToUse, cache);
+    }
+    pendingShellRef.current = { loadId, html: processedHtml, blobUrls: [...projectToUse.blobUrls.values()], cache };
+    iframeRef.current.srcdoc = previewShellHtml(loadId);
     setActivePath(normalizedPath);
     activePathRef.current = normalizedPath;
     // The resolved file, not the requested path. A link to "/" and one to "/index.html" are the
@@ -2076,6 +2110,24 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
       }
       const data = event.data;
       if (!data || typeof data !== 'object') {
+        return;
+      }
+
+      if (data.type === 'preview:shell-ready' && typeof data.loadId === 'number') {
+        handleShellReady(data.loadId);
+        return;
+      }
+
+      if (data.type === 'preview:function-call') {
+        const target = event.source as Window;
+        runFunctionCall(data, deploymentIdRef.current).then((reply) => {
+          target.postMessage(reply, '*', reply.body ? [reply.body] : []);
+        });
+        return;
+      }
+
+      if (data.type === 'preview:shell-error') {
+        logger.error('[Preview] The preview frame could not build the page:', data.error);
         return;
       }
 
@@ -2201,7 +2253,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     return () => {
       window.removeEventListener('message', handleMessage);
     };
-  }, [handleNavigation, handleReadyAck, onFocusSelection, onPlacementComplete, onTreeLevel, onTreeLevels, onTreeStale,
+  }, [handleNavigation, handleReadyAck, handleShellReady, onFocusSelection, onPlacementComplete, onTreeLevel, onTreeLevels, onTreeStale,
       onStyleComputed, onStyleProbeResult, onSelectionResolved, onToolbarAction, onToolbarHover, t, tc]);
 
 
@@ -2565,7 +2617,8 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
           <iframe
             ref={setIframeEl}
             className={cn("w-full h-full", !isFullscreen && "rounded-lg")}
-            sandbox="allow-scripts allow-same-origin allow-forms"
+            // No allow-same-origin: project code runs here, and must not reach the app's origin.
+            sandbox="allow-scripts allow-forms"
             title={tw('tabs.preview')}
             style={draggingBlock ? { pointerEvents: 'none' } : undefined}
           />

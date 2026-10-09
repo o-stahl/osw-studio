@@ -434,8 +434,39 @@ export class VirtualServer {
 // VFS Asset Interceptor - Auto-injected by OSW Studio
 (function() {
   const deploymentId = ${JSON.stringify(deploymentIdForScript)};
-  // The app's origin, written in rather than read off window.parent: the preview cannot read it.
-  const apiOrigin = ${JSON.stringify(this.baseUrl)};
+
+  // Edge functions are called by the host on the preview's behalf (lib/preview/function-proxy.ts):
+  // the preview runs on an opaque origin, and the function route answers no other origin.
+  const hostCalls = {};
+  let hostCallSeq = 0;
+  window.addEventListener('message', function(e) {
+    if (e.source !== window.parent) return;
+    const d = e.data;
+    if (!d || d.type !== 'preview:function-response' || !hostCalls[d.id]) return;
+    const call = hostCalls[d.id];
+    delete hostCalls[d.id];
+    if (d.error) call.reject(new TypeError('Failed to fetch: ' + d.error));
+    else call.resolve(new Response(d.body, { status: d.status, statusText: d.statusText, headers: d.headers }));
+  });
+  function hostFetch(apiPath, input, init) {
+    let request;
+    try {
+      request = input instanceof Request ? new Request(input, init) : new Request('http://preview.invalid' + apiPath, init);
+    } catch (err) {
+      return Promise.reject(err);
+    }
+    const method = request.method.toUpperCase();
+    const read = method === 'GET' || method === 'HEAD' ? Promise.resolve(null) : request.arrayBuffer();
+    return read.then(function(body) {
+      return new Promise(function(resolve, reject) {
+        const id = ++hostCallSeq;
+        hostCalls[id] = { resolve: resolve, reject: reject };
+        const headers = [];
+        request.headers.forEach(function(value, name) { headers.push([name, value]); });
+        window.parent.postMessage({ type: 'preview:function-call', id: id, path: apiPath, method: method, headers: headers, body: body }, '*', body ? [body] : []);
+      });
+    });
+  }
 
   // Helper function to resolve VFS paths to blob URLs
   function resolveVfsUrl(url) {
@@ -582,9 +613,7 @@ export class VirtualServer {
 
     // First check if this is an edge function call
     if (isEdgeFunctionUrl(url)) {
-      const apiUrl = toEdgeFunctionApiUrl(url);
-      const fullApiUrl = apiOrigin + apiUrl;
-      return originalFetch(fullApiUrl, init);
+      return hostFetch(toEdgeFunctionApiUrl(url), input, init);
     }
 
     // Then check for VFS asset resolution
@@ -596,24 +625,63 @@ export class VirtualServer {
     return originalFetch(input, init);
   };
   
-  // Intercept XMLHttpRequest for older code and edge functions
+  // Intercept XMLHttpRequest for older code and edge functions. An edge-function request is made
+  // through the host like fetch, and its outcome is set on this XHR and announced with its events.
   const OriginalXHR = window.XMLHttpRequest;
   window.XMLHttpRequest = function() {
     const xhr = new OriginalXHR();
     const originalOpen = xhr.open;
+    const originalSend = xhr.send;
+    const originalSetRequestHeader = xhr.setRequestHeader;
+    let edge = null;
+    let edgeResponseHeaders = null;
+
+    function settle(fields) {
+      Object.keys(fields).forEach(function(key) {
+        Object.defineProperty(xhr, key, { value: fields[key], configurable: true });
+      });
+    }
+    function fire(type) {
+      xhr.dispatchEvent(type === 'readystatechange' ? new Event(type) : new ProgressEvent(type));
+    }
 
     xhr.open = function(method, url, ...args) {
-      let finalUrl = url;
-
-      // Check for edge function first
       if (isEdgeFunctionUrl(url)) {
-        const apiUrl = toEdgeFunctionApiUrl(url);
-        finalUrl = apiOrigin + apiUrl;
-      } else {
-        finalUrl = resolveVfsUrl(url);
+        edge = { method: method, path: toEdgeFunctionApiUrl(url), headers: [] };
+        return;
       }
-
-      return originalOpen.call(this, method, finalUrl, ...args);
+      edge = null;
+      return originalOpen.call(this, method, resolveVfsUrl(url), ...args);
+    };
+    xhr.setRequestHeader = function(name, value) {
+      if (edge) { edge.headers.push([name, value]); return; }
+      return originalSetRequestHeader.call(this, name, value);
+    };
+    xhr.getResponseHeader = function(name) {
+      return edgeResponseHeaders ? edgeResponseHeaders.get(name) : OriginalXHR.prototype.getResponseHeader.call(this, name);
+    };
+    xhr.getAllResponseHeaders = function() {
+      if (!edgeResponseHeaders) return OriginalXHR.prototype.getAllResponseHeaders.call(this);
+      let all = '';
+      edgeResponseHeaders.forEach(function(value, name) { all += name + ': ' + value + '\\r\\n'; });
+      return all;
+    };
+    xhr.send = function(body) {
+      if (!edge) return originalSend.call(this, body);
+      const call = edge;
+      hostFetch(call.path, call.path, { method: call.method, headers: call.headers, body: body })
+        .then(function(res) {
+          return res.text().then(function(text) {
+            edgeResponseHeaders = res.headers;
+            let response = text;
+            if (xhr.responseType === 'json') { try { response = JSON.parse(text); } catch (e) { response = null; } }
+            settle({ readyState: 4, status: res.status, statusText: res.statusText, responseText: text, response: response });
+            fire('readystatechange'); fire('load'); fire('loadend');
+          });
+        }, function() {
+          settle({ readyState: 4, status: 0, statusText: '', responseText: '', response: null });
+          fire('readystatechange'); fire('error'); fire('loadend');
+        });
     };
 
     return xhr;
@@ -631,7 +699,6 @@ export class VirtualServer {
         e.stopPropagation();
 
         const apiUrl = toEdgeFunctionApiUrl(action);
-        const fullApiUrl = apiOrigin + apiUrl;
         const method = (form.method || 'GET').toUpperCase();
 
         // Collect form data
@@ -643,8 +710,8 @@ export class VirtualServer {
           data[key] = value;
         });
 
-        // Make the fetch request
-        fetch(fullApiUrl, {
+        // Made through the host, like every edge-function call from the preview
+        hostFetch(apiUrl, apiUrl, {
           method: method,
           headers: {
             'Content-Type': 'application/json'

@@ -9,6 +9,7 @@ import { VirtualServer } from '@/lib/preview/virtual-server';
 import { captureIframeScreenshot } from './screenshot';
 import { injectVfsBlobMap } from '@/lib/preview/inject-vfs-blob-map';
 import { previewBridgeScript } from '@/lib/preview/preview-bridge';
+import { loadIntoShell } from '@/lib/preview/preview-shell';
 
 export async function captureProjectScreenshot(projectId: string): Promise<string | null> {
   await vfs.init();
@@ -66,6 +67,9 @@ export async function captureProjectScreenshot(projectId: string): Promise<strin
     : previewBridgeScript(0) + html;
 
   const iframe = document.createElement('iframe');
+  // Project code runs in this frame, so it gets the preview's sandbox: an opaque origin, with the
+  // page delivered through the shell (`lib/preview/preview-shell.ts`).
+  iframe.setAttribute('sandbox', 'allow-scripts');
   iframe.style.position = 'fixed';
   iframe.style.top = '-10000px';
   iframe.style.left = '-10000px';
@@ -76,10 +80,7 @@ export async function captureProjectScreenshot(projectId: string): Promise<strin
   document.body.appendChild(iframe);
 
   try {
-    await new Promise<void>((resolve) => {
-      iframe.onload = () => resolve();
-      iframe.srcdoc = html;
-    });
+    await loadIntoShell(iframe, html, compiled.blobUrls.values(), 15000);
 
     // Let the page render
     await new Promise(r => setTimeout(r, 1500));

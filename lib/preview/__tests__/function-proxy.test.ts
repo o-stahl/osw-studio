@@ -1,0 +1,153 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import 'fake-indexeddb/auto';
+import { IDBFactory } from 'fake-indexeddb';
+import { functionCallPath, runFunctionCall, type FunctionCall } from '../function-proxy';
+
+vi.mock('@/lib/utils', () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
+/**
+ * Edge-function calls from the sandboxed preview go through the host: the frame's origin is `null`
+ * and the function route answers no other origin. The host side must make only this deployment's
+ * function calls; the frame side must turn fetch, XHR and form posts into those calls.
+ */
+
+const ORIGIN = 'http://app.test';
+
+describe('functionCallPath', () => {
+  it("accepts this deployment's functions, query included", () => {
+    expect(functionCallPath('/api/deployments/d1/functions/contact?x=1', 'd1', ORIGIN)).toBe('/api/deployments/d1/functions/contact?x=1');
+  });
+
+  it('refuses anything else the frame might ask the host to fetch', () => {
+    for (const path of [
+      '/api/deployments/d2/functions/contact',       // another deployment
+      '/api/deployments/d1/functions/../../../w/ws/sync/status', // climbs out
+      '/api/w/ws/sync/status',
+      '/api/deployments/d1/functions/',               // no function named
+      'http://evil.test/api/deployments/d1/functions/x',
+      '//evil.test/api/deployments/d1/functions/x',
+      'api/deployments/d1/functions/x',
+    ]) {
+      expect(functionCallPath(path, 'd1', ORIGIN), path).toBeNull();
+    }
+    expect(functionCallPath('/api/deployments/d1/functions/x', null, ORIGIN)).toBeNull();
+  });
+});
+
+describe('runFunctionCall', () => {
+  const call = (over: Partial<FunctionCall> = {}): FunctionCall => ({
+    type: 'preview:function-call', id: 3, path: '/api/deployments/d1/functions/echo', method: 'POST',
+    headers: [['content-type', 'application/json']], body: new TextEncoder().encode('{"a":1}').buffer, ...over,
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('makes the call same-origin and answers with the response', async () => {
+    const fetchMock = vi.fn(async () => new Response('{"ok":true}', { status: 201, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const reply = await runFunctionCall(call(), 'd1', ORIGIN);
+
+    expect(fetchMock).toHaveBeenCalledWith(`${ORIGIN}/api/deployments/d1/functions/echo`, expect.objectContaining({ method: 'POST', credentials: 'same-origin' }));
+    expect(reply).toMatchObject({ type: 'preview:function-response', id: 3, status: 201 });
+    expect(new TextDecoder().decode(reply.body!)).toBe('{"ok":true}');
+  });
+
+  it('refuses a path outside the deployment without fetching', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const reply = await runFunctionCall(call({ path: '/api/w/ws/sync/status' }), 'd1', ORIGIN);
+    expect(reply.error).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('the frame side, in the compiled page', () => {
+  let posted: Array<{ message: Record<string, unknown> }>;
+
+  async function interceptor(): Promise<string> {
+    globalThis.indexedDB = new IDBFactory();
+    let n = 0;
+    URL.createObjectURL = (() => `blob:http://localhost/${++n}`) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+    const { vfs } = await import('@/lib/vfs');
+    const { VirtualServer } = await import('../virtual-server');
+    await vfs.init();
+    const project = await vfs.createProject('Fn', 'fixture');
+    await vfs.createFile(project.id, '/index.html', '<html><head></head><body></body></html>', { silent: true });
+    const compiled = await new VirtualServer(vfs as never, project.id, { runtime: 'static', deploymentId: 'd1' }).compileProject();
+    const page = String(compiled.files.find((f: { path: string }) => f.path === '/index.html')!.content);
+    return page.match(/<script>(\s*\/\/ VFS Asset Interceptor[\s\S]*?)<\/script>/)![1];
+  }
+
+  function answer(id: unknown, body: string, status = 200) {
+    window.dispatchEvent(Object.assign(new Event('message'), {
+      source: window.parent,
+      data: { type: 'preview:function-response', id, status, statusText: 'OK', headers: [['content-type', 'application/json']], body: new TextEncoder().encode(body).buffer },
+    }));
+  }
+
+  beforeEach(() => {
+    posted = [];
+    vi.spyOn(window, 'postMessage').mockImplementation(((message: Record<string, unknown>) => { posted.push({ message }); }) as never);
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('hands fetch, XHR and form posts to a function to the host', async () => {
+    const realFetch = vi.fn();
+    window.fetch = realFetch as never;
+    const RealXHR = window.XMLHttpRequest;
+    new Function(await interceptor())();
+
+    // fetch
+    const pending = window.fetch('/contact', { method: 'POST', body: '{"a":1}', headers: { 'content-type': 'application/json' } });
+    await vi.waitFor(() => expect(posted).toHaveLength(1));
+    const first = posted[0].message;
+    expect(first).toMatchObject({ type: 'preview:function-call', path: '/api/deployments/d1/functions/contact', method: 'POST' });
+    expect(new TextDecoder().decode(first.body as ArrayBuffer)).toBe('{"a":1}');
+    answer(first.id, '{"sent":true}', 201);
+    const res = await pending;
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ sent: true });
+    expect(realFetch).not.toHaveBeenCalled();
+
+    // XHR
+    const xhr = new window.XMLHttpRequest();
+    const loaded = new Promise<void>((resolve) => { xhr.onload = () => resolve(); });
+    xhr.open('GET', '/stats');
+    xhr.send();
+    await vi.waitFor(() => expect(posted).toHaveLength(2));
+    expect(posted[1].message).toMatchObject({ path: '/api/deployments/d1/functions/stats', method: 'GET' });
+    answer(posted[1].message.id, '{"n":3}');
+    await loaded;
+    expect([xhr.readyState, xhr.status, xhr.responseText]).toEqual([4, 200, '{"n":3}']);
+    expect(xhr.getResponseHeader('content-type')).toBe('application/json');
+
+    // form post
+    document.body.innerHTML = '<form action="/subscribe" method="post"><input name="email" value="a@b.c"></form>';
+    const form = document.querySelector('form')!;
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(posted).toHaveLength(3));
+    expect(posted[2].message).toMatchObject({ path: '/api/deployments/d1/functions/subscribe', method: 'POST' });
+    expect(new TextDecoder().decode(posted[2].message.body as ArrayBuffer)).toBe('{"email":"a@b.c"}');
+
+    window.XMLHttpRequest = RealXHR;
+  });
+
+  it('ignores a forged response from inside the frame', async () => {
+    new Function(await interceptor())();
+    const pending = window.fetch('/contact');
+    await vi.waitFor(() => expect(posted).toHaveLength(1));
+    let settled = false;
+    pending.then(() => { settled = true; }, () => { settled = true; });
+    window.dispatchEvent(Object.assign(new Event('message'), {
+      source: {}, data: { type: 'preview:function-response', id: posted[0].message.id, status: 200, body: null },
+    }));
+    await new Promise(r => setTimeout(r, 10));
+    expect(settled).toBe(false);
+  });
+});

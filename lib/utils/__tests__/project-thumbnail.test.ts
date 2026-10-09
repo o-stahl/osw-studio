@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   compileProject: vi.fn(),
   cleanupBlobUrls: vi.fn(),
   captureIframeScreenshot: vi.fn(),
+  loadIntoShell: vi.fn(),
   getProject: vi.fn(),
   init: vi.fn(),
 }));
@@ -28,28 +29,24 @@ vi.mock('@/lib/preview/virtual-server', () => ({
   },
 }));
 vi.mock('../screenshot', () => ({ captureIframeScreenshot: mocks.captureIframeScreenshot }));
+// jsdom cannot run a sandboxed frame; the shell's own behaviour is covered in the browser.
+vi.mock('@/lib/preview/preview-shell', () => ({ loadIntoShell: mocks.loadIntoShell }));
 
-/** srcdoc as the capture set it, taken at the moment the screenshot is requested. */
+/** The page the capture handed to the frame, and the frame's sandbox when it did. */
 let renderedHtml = '';
+let sandbox: string | null = null;
 
 beforeEach(() => {
   vi.clearAllMocks();
   renderedHtml = '';
+  sandbox = null;
   mocks.init.mockResolvedValue(undefined);
   mocks.getProject.mockResolvedValue({ id: 'p1', settings: { runtime: 'static' } });
-  mocks.captureIframeScreenshot.mockImplementation((iframe: HTMLIFrameElement) => {
-    renderedHtml = iframe.srcdoc;
-    return Promise.resolve('data:image/jpeg;base64,x');
+  mocks.loadIntoShell.mockImplementation(async (iframe: HTMLIFrameElement, html: string) => {
+    renderedHtml = html;
+    sandbox = iframe.getAttribute('sandbox');
   });
-
-  // jsdom does not load srcdoc, so the capture would wait on an onload that never fires.
-  vi.spyOn(HTMLIFrameElement.prototype, 'srcdoc', 'set').mockImplementation(function (
-    this: HTMLIFrameElement,
-    value: string
-  ) {
-    Object.defineProperty(this, 'srcdoc', { value, configurable: true, writable: true });
-    setTimeout(() => this.onload?.(new Event('load')), 0);
-  });
+  mocks.captureIframeScreenshot.mockResolvedValue('data:image/jpeg;base64,x');
 });
 
 describe('capturing a project thumbnail', () => {
@@ -66,6 +63,19 @@ describe('capturing a project thumbnail', () => {
     expect(renderedHtml).toContain('window.__oswVfsBlobUrls');
     expect(renderedHtml).toContain('/img/hero.png');
     expect(renderedHtml).toContain('blob:http://localhost/hero');
+  });
+
+  it('renders the project in a frame that cannot reach the app', async () => {
+    mocks.compileProject.mockResolvedValue({
+      files: [{ path: '/index.html', content: '<html><head></head><body></body></html>' }],
+      blobUrls: new Map(),
+    });
+
+    const { captureProjectScreenshot } = await import('../project-thumbnail');
+    await captureProjectScreenshot('p1');
+
+    expect(sandbox).toBe('allow-scripts');
+    expect(renderedHtml).toContain('data-osw-bridge');
   });
 
   it('returns nothing when the project has no index page to capture', async () => {

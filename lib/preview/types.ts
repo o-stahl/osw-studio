@@ -87,6 +87,11 @@ export type ConsoleLevel = 'log' | 'warn' | 'error' | 'info' | 'debug';
 export type PreviewMessage =
   /** The document stamped with `loadId` reached its load event. See `previewBridgeScript`. */
   | { type: 'preview:ready'; loadId: number }
+  /** The shell written for `loadId` is asking for its page. See `lib/preview/preview-shell.ts`. */
+  | { type: 'preview:shell-ready'; loadId: number }
+  | { type: 'preview:shell-error'; loadId: number; error: string }
+  /** An edge-function call the host makes for the frame. See `lib/preview/function-proxy.ts`. */
+  | import('./function-proxy').FunctionCall
   /** Where that document is scrolled to, sent trailing after scrolling stops. */
   | { type: 'preview:scroll'; loadId: number; x: number; y: number }
   | { type: 'navigate'; path: string }
