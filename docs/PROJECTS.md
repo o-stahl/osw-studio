@@ -123,7 +123,6 @@ See your website in real-time:
 - Click links to navigate
 - Test responsive design with mobile/tablet/desktop size presets
 - Click **Maximize** to fill the whole screen with the preview (hides all other panels)
-- Open in new tab for full testing
 - Use the **focus tool** to select specific elements and add them to message context for targeted AI edits
 - Drag **semantic blocks** from the Blocks palette onto the preview — the AI writes code that fits your project
 
