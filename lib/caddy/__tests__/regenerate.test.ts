@@ -166,7 +166,16 @@ describe('wwwCounterpart', () => {
     });
     for (const [host, id] of [['sunny.inst-1.oswstudio.com', 'abc'], ['example.com', 'xyz']]) {
       const block = result.split(`\n${host} {`)[1].split('\n}\n')[0];
-      expect(block, host).toContain(`@platform path /api/deployments/${id}/functions/* /api/analytics/track /api/analytics/interaction /review/${id} /review/${id}/*`);
+      // Each path on its own, in any order, and no path besides them.
+      const matcher = block.match(/^\s*@platform path (.+)$/m);
+      expect(matcher, host).not.toBeNull();
+      expect(matcher![1].trim().split(/\s+/).sort(), host).toEqual([
+        `/api/deployments/${id}/functions/*`,
+        '/api/analytics/track',
+        '/api/analytics/interaction',
+        `/review/${id}`,
+        `/review/${id}/*`,
+      ].sort());
       // The platform paths are matched before the static handler rewrites everything into the site.
       expect(block.indexOf('handle @platform'), host).toBeLessThan(block.indexOf(`rewrite * /deployments/${id}{uri}`));
     }

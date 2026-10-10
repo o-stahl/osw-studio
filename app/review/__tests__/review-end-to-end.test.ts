@@ -540,6 +540,58 @@ describe('review mode — comments', () => {
   });
 });
 
+describe('review mode — on a sites address', () => {
+  // With SITES_ORIGIN set, the review copy is served from the sites address, not the studio. The
+  // account session is never consulted there (on desktop it answers for anyone), so a client is
+  // admitted on the cookie alone and comments as a participant.
+  const SITES = 'http://localhost:3001';
+  const onSites = (url: string, init: TestRequestInit = {}) =>
+    request(`${SITES}${url}`, { ...init, headers: { ...init.headers as Record<string, string>, host: 'localhost:3001' } });
+
+  beforeEach(() => {
+    vi.stubEnv('SITES_ORIGIN', SITES);
+    // Signed in, as the desktop app always is: none of it may turn the visitor into the team here.
+    mocks.getSession.mockResolvedValue({ userId: 'user-1', email: 'a@b.c', isAdmin: false, exp: 0 });
+  });
+
+  it('admits a client, takes their comment and reads it back', async () => {
+    await publish({ enabled: true });
+    const params = { params: Promise.resolve({ deploymentId }) };
+
+    const admission = await reviewEntry(onSites(`/review/${deploymentId}`), params);
+    expect(admission.status).toBe(200);
+    const cookie = cookieFrom(admission);
+
+    const created = await createComment(
+      onSites(`${reviewApiBase(deploymentId)}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ body: 'Logo is too small', page_path: '/index.html' }),
+        headers: { 'content-type': 'application/json', origin: SITES },
+        cookie,
+      }),
+      params
+    );
+    expect(created.status).toBe(201);
+    expect((await created.json()).comment.is_team).toBe(false);
+
+    const listed = await listComments(onSites(`${reviewApiBase(deploymentId)}/comments`, { cookie }), params);
+    expect(listed.status).toBe(200);
+    const { comments } = await listed.json();
+    expect(comments.map((comment: { body: string }) => comment.body)).toEqual(['Logo is too small']);
+  });
+
+  it('refuses the same visitor without the cookie, signed in or not', async () => {
+    await publish({ enabled: true });
+
+    const response = await reviewAsset(
+      onSites(`/review/${deploymentId}/styles/main.css`),
+      { params: Promise.resolve({ deploymentId, path: ['styles', 'main.css'] }) }
+    );
+
+    expect(response.status).toBe(404);
+  });
+});
+
 /**
  * Roles, against a real system database.
  *
@@ -597,6 +649,54 @@ describe('review mode — team authority', () => {
     listComments(request(`${ORIGIN}${reviewApiBase(deploymentId)}/comments`, { cookie }), {
       params: Promise.resolve({ deploymentId }),
     });
+
+  describe('a request that asks to act as the team but can only be a client', () => {
+    // The studio's review panel sends REVIEW_AS_TEAM_HEADER. If its account session has lapsed, or
+    // the account has no claim here, the browser's participant cookie would otherwise quietly turn
+    // the panel into a client: listing as one, and failing a resolve as if the team may not.
+    const asTeam = { [REVIEW_AS_TEAM_HEADER]: 'team' };
+
+    const listAsTeam = (cookie: string) =>
+      listComments(
+        request(`${ORIGIN}${reviewApiBase(deploymentId)}/comments`, { headers: asTeam, cookie }),
+        { params: Promise.resolve({ deploymentId }) }
+      );
+
+    const resolveAsTeam = (id: string, cookie: string) =>
+      patchComment(
+        request(`${ORIGIN}${reviewApiBase(deploymentId)}/comments/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: 'resolved' }),
+          headers: { 'content-type': 'application/json', origin: ORIGIN, ...asTeam },
+          cookie,
+        }),
+        { params: Promise.resolve({ deploymentId, id }) }
+      );
+
+    it('is told 401 when there is no account session', async () => {
+      const { id, cookie } = await clientComment();
+
+      expect((await listAsTeam(cookie)).status).toBe(401);
+      expect((await resolveAsTeam(id, cookie)).status).toBe(401);
+      // Control: without the header the same cookie lists as the client it is.
+      expect((await list(cookie)).status).toBe(200);
+    });
+
+    it('is told 403 when the account has no claim on the deployment', async () => {
+      const { id, cookie } = await clientComment();
+      const ownerId = createUser(`owner-${randomUUID()}@example.com`, 'not-a-real-hash');
+      routedWorkspaceId = createWorkspace('Agency', ownerId);
+      const outsider = createUser(`outsider-${randomUUID()}@example.com`, 'not-a-real-hash');
+      mocks.getSession.mockResolvedValue({
+        userId: outsider, email: 'outsider@example.com', isAdmin: false, exp: 253402300799,
+      });
+
+      expect((await listAsTeam(cookie)).status).toBe(403);
+      const refused = await resolveAsTeam(id, cookie);
+      expect(refused.status).toBe(403);
+      expect(await refused.json()).toEqual({ error: 'Forbidden' });
+    });
+  });
 
   it('refuses a resolve from a workspace member who may only view', async () => {
     const { id } = await clientComment();

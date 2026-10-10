@@ -194,3 +194,27 @@ describe('validateOrigin — localhost development', () => {
     expect(getAllowedOrigins(DEPLOYMENT).some(entry => entry.includes('*'))).toBe(false);
   });
 });
+
+describe('validateOrigin — a sites address', () => {
+  // Sites served on their own origin (SITES_ORIGIN, the desktop's second port) post their analytics
+  // from there; without it on the list every pageview from such a site is refused.
+  it('accepts the sites address the deployment is served from', () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'http://localhost:30011');
+    vi.stubEnv('SITES_ORIGIN', 'http://localhost:30012');
+    const allowed = getAllowedOrigins(DEPLOYMENT);
+
+    expect(validateOrigin(requestWith({ origin: 'http://localhost:30012' }), allowed)).toBe(true);
+    expect(
+      validateOrigin(requestWith({ referer: `http://localhost:30012/deployments/${DEPLOYMENT}/` }), allowed)
+    ).toBe(true);
+    // Control: another port on the same host is a different origin.
+    expect(validateOrigin(requestWith({ origin: 'http://localhost:30013' }), allowed)).toBe(false);
+  });
+
+  it('adds nothing when the sites address is the app itself', () => {
+    const without = getAllowedOrigins(DEPLOYMENT);
+    vi.stubEnv('SITES_ORIGIN', `${APP_URL}/`);
+
+    expect(getAllowedOrigins(DEPLOYMENT)).toEqual(without);
+  });
+});

@@ -9,9 +9,9 @@ import { NextRequest } from 'next/server';
 const resolve = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/vfs/adapters/deployment-adapter', () => ({ resolveDeploymentByIdOrSlug: resolve }));
 
-const ask = async (path: string) => {
+const ask = async (path: string, base = 'https://inst-1.oswstudio.com') => {
   const { GET } = await import('../route');
-  return GET(new NextRequest(`https://inst-1.oswstudio.com/api/site-location${path}`));
+  return GET(new NextRequest(`${base}/api/site-location${path}`));
 };
 
 beforeEach(() => {
@@ -45,6 +45,17 @@ describe('with a proxy', () => {
     resolve.mockResolvedValue(null);
     expect((await ask('/deployments/nope/')).status).toBe(404);
     expect((await ask('/api/w/ws/deployments')).status).toBe(404);
+  });
+
+  it('never sends a loopback request to the studio either', async () => {
+    // Caddy and the server itself reach the studio on loopback, so the request's own origin is not
+    // the studio's public one: the app URL is what catches a deployment with nowhere else to go.
+    resolve.mockResolvedValue({ deployment: { id: 'd1' } });
+    expect((await ask('/deployments/d1/', 'http://localhost:3000')).status).toBe(404);
+    // Control: one that has a host of its own is still sent there from loopback.
+    resolve.mockResolvedValue({ deployment: { id: 'd1', slug: 'pale-plum-place' } });
+    expect((await ask('/deployments/d1/', 'http://localhost:3000')).headers.get('location'))
+      .toBe('https://pale-plum-place.inst-1.oswstudio.com/');
   });
 
   it('answers 404 when the lookup fails, instead of an error page', async () => {

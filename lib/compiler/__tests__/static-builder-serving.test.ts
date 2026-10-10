@@ -55,6 +55,40 @@ describe('resolveDeploymentServing (issue #14)', () => {
   });
 });
 
+describe('resolveDeploymentServing with a sites address', () => {
+  const SITES = 'https://sites.oswstudio.com';
+
+  it('serves under /deployments/{id}/ on the sites address rather than the app', () => {
+    const r = resolveDeploymentServing(
+      { slug: 'fine-bird-flame' },
+      ID,
+      { staticProxyEnabled: false, appUrl: APP, sitesOrigin: SITES }
+    );
+    expect(r.servedAtRoot).toBe(false);
+    expect(r.baseUrl).toBe(`${SITES}/deployments/${ID}`);
+  });
+
+  it('leaves a slug with the static proxy on its subdomain', () => {
+    const r = resolveDeploymentServing(
+      { slug: 'fine-bird-flame' },
+      ID,
+      { staticProxyEnabled: true, appUrl: APP, sitesOrigin: SITES }
+    );
+    expect(r.servedAtRoot).toBe(true);
+    expect(r.baseUrl).toBe('https://fine-bird-flame.inst-1.oswstudio.com');
+  });
+
+  it('leaves a custom domain at its root', () => {
+    const r = resolveDeploymentServing(
+      { customDomain: 'sweets.com', slug: 'fine-bird-flame' },
+      ID,
+      { staticProxyEnabled: false, appUrl: APP, sitesOrigin: SITES }
+    );
+    expect(r.servedAtRoot).toBe(true);
+    expect(r.baseUrl).toBe('https://sweets.com');
+  });
+});
+
 describe('servedAtRoot flips asset path style (issue #14)', () => {
   const html = '<link href="/styles/style.css"><script src="/scripts/main.js"></script>';
 

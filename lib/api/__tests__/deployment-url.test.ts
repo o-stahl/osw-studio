@@ -14,17 +14,25 @@ import { deploymentPublicUrl, withPublicUrl } from '@/lib/api/deployment-url';
  * API hands the UI, for the environments the UI runs in.
  */
 
-const ORIGINAL = { proxy: process.env.STATIC_PROXY, url: process.env.NEXT_PUBLIC_APP_URL };
+const ORIGINAL = {
+  proxy: process.env.STATIC_PROXY,
+  url: process.env.NEXT_PUBLIC_APP_URL,
+  sites: process.env.SITES_ORIGIN,
+};
 
-function env(proxy: string | undefined, appUrl: string | undefined) {
-  if (proxy === undefined) delete process.env.STATIC_PROXY;
-  else process.env.STATIC_PROXY = proxy;
-  if (appUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
-  else process.env.NEXT_PUBLIC_APP_URL = appUrl;
+function setOrDelete(key: string, value: string | undefined) {
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+}
+
+function env(proxy: string | undefined, appUrl: string | undefined, sitesOrigin?: string) {
+  setOrDelete('STATIC_PROXY', proxy);
+  setOrDelete('NEXT_PUBLIC_APP_URL', appUrl);
+  setOrDelete('SITES_ORIGIN', sitesOrigin);
 }
 
 beforeEach(() => env(undefined, undefined));
-afterEach(() => env(ORIGINAL.proxy, ORIGINAL.url));
+afterEach(() => env(ORIGINAL.proxy, ORIGINAL.url, ORIGINAL.sites));
 
 const deployment = { id: 'dep-1', slug: 'wide-reef-bend' };
 
@@ -58,6 +66,28 @@ describe('the URL the API gives the UI', () => {
   it('prefers a custom domain wherever it is running', () => {
     expect(deploymentPublicUrl({ ...deployment, customDomain: 'shop.example' }))
       .toBe('https://shop.example');
+  });
+});
+
+describe('the URL the API gives the UI with a sites address', () => {
+  it('is the id path on the sites address, not on the studio', () => {
+    env(undefined, 'http://localhost:30011', 'http://localhost:30012');
+    expect(deploymentPublicUrl(deployment)).toBe('http://localhost:30012/deployments/dep-1');
+  });
+
+  it('is the slug subdomain when the static proxy is on as well', () => {
+    env('true', 'https://oswstudio.com', 'https://sites.oswstudio.com');
+    expect(deploymentPublicUrl(deployment)).toBe('https://wide-reef-bend.oswstudio.com');
+  });
+
+  it('is the custom domain over either', () => {
+    env(undefined, 'http://localhost:30011', 'http://localhost:30012');
+    expect(deploymentPublicUrl({ ...deployment, customDomain: 'shop.example' })).toBe('https://shop.example');
+  });
+
+  it('stays on the studio when the sites address is the studio itself', () => {
+    env(undefined, 'http://localhost:3000', 'http://localhost:3000/');
+    expect(deploymentPublicUrl(deployment)).toBe('http://localhost:3000/deployments/dep-1');
   });
 });
 

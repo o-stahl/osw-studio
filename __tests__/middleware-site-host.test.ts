@@ -58,7 +58,11 @@ describe('with a separate sites origin (SITES_ORIGIN)', () => {
     const site = await call('https://shop.example.org/deployments/d1/');
     expect(site.status).toBe(200);
     expect(rewrittenTo(site)).toBeNull();
-    expect((await call('https://203.0.113.5/w/ws-1/projects')).status).not.toBe(404);
+    // The studio's pages answer there as anywhere: signed out, that is the login redirect, not a 404.
+    vi.stubEnv('NEXT_PUBLIC_GATEWAY_URL', '');
+    const page = await call('https://203.0.113.5/w/ws-1/projects');
+    expect(page.status).toBe(307);
+    expect(page.headers.get('location')).toBe('https://203.0.113.5/admin/login');
   });
 
   it('ignores an X-Forwarded-Host claiming to be the studio', async () => {

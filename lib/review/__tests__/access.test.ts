@@ -178,6 +178,27 @@ describe('resolveReviewAccess', () => {
     expect((await resolveReviewAccess(DEPLOYMENT_A, onStudio)).kind).toBe('team');
   });
 
+  it.each([
+    ['a sites address', { SITES_ORIGIN: 'http://localhost:30012', NEXT_PUBLIC_APP_URL: 'http://localhost:30011' }, 'localhost:30012'],
+    ['a proxied slug host', { STATIC_PROXY: 'true', NEXT_PUBLIC_APP_URL: 'https://studio.example.com' }, 'shop.studio.example.com'],
+  ])('admits a cookie holder as a participant on %s, where the copy is actually served', async (_label, env, host) => {
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+    const { resolveReviewAccess, mintReviewCookie } = await load();
+    mocks.resolveDeployment.mockResolvedValue(deploymentWithReview(OPEN));
+    // Signed in as well (the desktop session always answers): the site host still reads only the cookie.
+    signedInAsTeam();
+
+    const cookie = await mintReviewCookie(DEPLOYMENT_A, OPEN);
+    const onSites = {
+      ...requestWithCookies({ [cookie.name]: cookie.value }),
+      headers: new Headers({ host }),
+    };
+
+    expect(await resolveReviewAccess(DEPLOYMENT_A, onSites)).toEqual({
+      kind: 'participant', participantId: cookie.participantId,
+    });
+  });
+
   it('prefers the account over a participant cookie when both are present', async () => {
     const { resolveReviewAccess, mintReviewCookie } = await load();
     mocks.resolveDeployment.mockResolvedValue(deploymentWithReview(OPEN));
