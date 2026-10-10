@@ -69,4 +69,9 @@ describe('with a sites origin', () => {
     resolve.mockResolvedValue({ deployment: { id: 'd1', customDomain: 'shop.example.org' } });
     expect((await ask('/deployments/d1/about.html')).headers.get('location')).toBe('https://shop.example.org/about.html');
   });
+
+  it("keeps that deployment's review copy on the sites address, since only Caddy serves /review/ on a domain", async () => {
+    resolve.mockResolvedValue({ deployment: { id: 'd1', customDomain: 'shop.example.org' } });
+    expect((await ask('/review/d1/')).headers.get('location')).toBe('https://sites.example.com/review/d1/');
+  });
 });

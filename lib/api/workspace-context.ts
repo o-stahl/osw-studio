@@ -42,6 +42,14 @@ export async function getWorkspaceContext(
 }
 
 /**
+ * Check a higher role once the request is known to need one, for a route that first answers what
+ * any member may know (a delete reports 404 for something never synced before asking for editor).
+ */
+export function requireWorkspaceRole(context: WorkspaceContext, role: 'owner' | 'editor' | 'viewer'): void {
+  verifyWorkspaceAccess(context.session.userId, context.workspaceId, role);
+}
+
+/**
  * Owner-only guard for a workspace route that has no adapter to open.
  *
  * Separate from `getWorkspaceContext` because the settings surfaces this guards, mail and members,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getIdentifier } from '@/lib/analytics/rate-limiter';
 import { checkRateLimit } from '@/lib/web/rate-limit';
-import { workspaceFromRequest } from '@/lib/web/workspace-cookie';
+import { getSession } from '@/lib/auth/session';
 
 export function isSameOrigin(request: NextRequest): boolean {
   const host = request.headers.get('host') || '';
@@ -15,24 +15,25 @@ export function isSameOrigin(request: NextRequest): boolean {
 }
 
 /**
- * Shared preflight for the web proxy routes: kill-switch, same-origin,
- * server-mode session presence, and rate limiting. Returns either an rlKey
- * (all checks passed) or a ready-to-return error response.
+ * Shared preflight for the web proxy routes: kill-switch, same-origin, a signed-in session in
+ * server mode, and rate limiting. Returns either an rlKey (all checks passed) or a ready-to-return
+ * error response. The same-origin check reads headers a non-browser client writes itself, so in
+ * server mode it is the session that keeps the proxy to signed-in users.
  */
-export function webRequestPreflight(
+export async function webRequestPreflight(
   request: NextRequest,
-): { ok: true; rlKey: string } | { ok: false; response: NextResponse } {
+): Promise<{ ok: true; rlKey: string } | { ok: false; response: NextResponse }> {
   if (process.env.OSW_DISABLE_WEB_PROXY === '1') {
     return { ok: false, response: NextResponse.json({ error: 'web access is disabled on this instance' }, { status: 403 }) };
   }
   if (!isSameOrigin(request)) {
     return { ok: false, response: NextResponse.json({ error: 'origin not allowed' }, { status: 403 }) };
   }
-  const workspace = workspaceFromRequest(request) ?? null;
-  if (process.env.NEXT_PUBLIC_SERVER_MODE === 'true' && !workspace) {
+  const session = process.env.NEXT_PUBLIC_SERVER_MODE === 'true' ? await getSession() : null;
+  if (process.env.NEXT_PUBLIC_SERVER_MODE === 'true' && !session) {
     return { ok: false, response: NextResponse.json({ error: 'authentication required' }, { status: 401 }) };
   }
-  const rlKey = workspace || getIdentifier(request);
+  const rlKey = session ? `user:${session.userId}` : getIdentifier(request);
   if (!checkRateLimit(rlKey)) {
     return { ok: false, response: NextResponse.json({ error: 'rate limit exceeded, slow down' }, { status: 429 }) };
   }

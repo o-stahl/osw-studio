@@ -9,7 +9,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveDeploymentByIdOrSlug } from '@/lib/vfs/adapters/deployment-adapter';
-import { appUrl, siteOriginFor, sitesMode } from '@/lib/web/site-origin';
+import { appUrl, reviewOriginFor, siteOriginFor, sitesMode } from '@/lib/web/site-origin';
 
 const NOT_FOUND = () => new NextResponse('Not found', { status: 404 });
 const PREFIX = '/api/site-location';
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   }
   if (!resolved) return NOT_FOUND();
   const { deployment } = resolved;
-  const origin = siteOriginFor(deployment);
+  const origin = kind === 'review' ? reviewOriginFor(deployment) : siteOriginFor(deployment);
   // Never back to the studio itself: a deployment with no host of its own has nowhere else to go.
   if (origin === new URL(request.url).origin || origin === new URL(appUrl()).origin) return NOT_FOUND();
   // A site on its own host (custom domain, or a slug with the proxy) is served at the root; on a

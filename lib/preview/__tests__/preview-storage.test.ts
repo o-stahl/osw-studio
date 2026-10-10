@@ -73,13 +73,22 @@ describe('the stand-ins in the frame', () => {
     expect(document.cookie).toBe('theme=dark');
     expect((window as unknown as { __oswStorageSeed?: unknown }).__oswStorageSeed).toBeUndefined();
 
-    // At once, not after a pause: a write made just before a link click has to reach the host
-    // before the navigation it asks for starts the next page.
     localStorage.setItem('todos', '["milk","eggs"]');
     sessionStorage.setItem('step', '2');
+    vi.advanceTimersByTime(60);
 
     expect(posted).toContainEqual({ type: 'preview:storage', loadId: 4, area: 'local', data: { todos: '["milk","eggs"]' } });
     expect(posted).toContainEqual({ type: 'preview:storage', loadId: 4, area: 'session', data: { step: '2' } });
+  });
+
+  it('reports a burst of writes once, and at once when flushed before a navigation', () => {
+    runBridge();
+    for (let i = 0; i < 500; i++) localStorage.setItem(`k${i}`, 'v');
+    expect(posted.filter((m) => (m as { type?: string }).type === 'preview:storage')).toHaveLength(0);
+    (window as unknown as { __oswFlushStorage: () => void }).__oswFlushStorage();
+    const reports = posted.filter((m) => (m as { type?: string }).type === 'preview:storage');
+    expect(reports).toHaveLength(1);
+    expect(Object.keys((reports[0] as { data: object }).data)).toHaveLength(500);
   });
 
   it('behaves like Storage for the ways code usually reaches it', () => {

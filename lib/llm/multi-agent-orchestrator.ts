@@ -319,8 +319,10 @@ export class MultiAgentOrchestrator {
         this.addMessage(this.currentConversationId, { role: 'system', content: systemPrompt });
       }
 
+      // The project context rides on the first user message. A first message dropped as unanswered
+      // took it along, so a conversation with no user message left gets it again.
       let projectContext = '';
-      if (!hasExistingSystemMessage) {
+      if (!hasExistingSystemMessage || !conversation.messages.some((m) => m.role === 'user')) {
         projectContext = await buildProjectContext(fileTreeStr, serverCtxMeta);
       }
 

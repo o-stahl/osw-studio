@@ -465,6 +465,8 @@ export class VirtualServer {
     const read = method === 'GET' || method === 'HEAD' ? Promise.resolve(null) : request.arrayBuffer();
     return read.then(function(body) {
       return new Promise(function(resolve, reject) {
+        // Aborted while the body was read: an abort before the listener below is never heard.
+        if (signal && signal.aborted) { reject(aborted()); return; }
         const id = ++hostCallSeq;
         const onAbort = function() { done(); reject(aborted()); };
         const timer = setTimeout(function() { done(); reject(new TypeError('Failed to fetch: no answer')); }, HOST_CALL_TIMEOUT_MS);

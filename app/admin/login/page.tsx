@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { Logo } from '@/components/ui/logo';
 import { LanguagePill } from '@/components/language-menu';
 import { writeWorkspaceCookie } from '@/lib/web/workspace-cookie';
+import { sanitizeRedirect } from '@/lib/auth/safe-redirect';
 
 /**
  * `useSearchParams` opts a client component out of static prerendering, which the production build
@@ -28,7 +29,8 @@ function LoginForm() {
   // Where to land after signing in. Only same-origin paths are honoured, so a crafted link
   // cannot turn the login page into an open redirect.
   const nextParam = useSearchParams().get('next');
-  const next = nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : null;
+  const safeNext = nextParam ? sanitizeRedirect(nextParam) : '/';
+  const next = safeNext !== '/' ? safeNext : null;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);

@@ -100,11 +100,34 @@ describe('a review copy on its own site host', () => {
     expect(isReviewOriginAllowed(post(`${APP_URL}/review/dep-1/osw-api/comments`, APP_URL), deployment)).toBe(true);
   });
 
+  it('takes a custom-domain review copy on the sites address without the proxy, where it is served', () => {
+    vi.stubEnv('STATIC_PROXY', '');
+    vi.stubEnv('SITES_ORIGIN', 'https://sites.example.com');
+    const shared = 'https://sites.example.com';
+    const withDomain = { customDomain: 'shop.example.org' };
+    expect(isReviewOriginAllowed(post(`${shared}/review/dep-1/osw-api/comments`, shared), withDomain)).toBe(true);
+  });
+
   it('refuses the shared sites address on the studio host', () => {
     vi.stubEnv('STATIC_PROXY', '');
     vi.stubEnv('SITES_ORIGIN', 'https://sites.example.com');
     const shared = 'https://sites.example.com';
     expect(isReviewOriginAllowed(post(`${APP_URL}/review/dep-1/osw-api/comments`, shared), {})).toBe(false);
     expect(isReviewOriginAllowed(post(`${shared}/review/dep-1/osw-api/comments`, shared), {})).toBe(true);
+  });
+});
+
+/** Desktop: the sites port is loopback like the studio's, and only its port tells them apart. */
+describe('a review copy on a loopback sites port', () => {
+  beforeEach(() => {
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'http://localhost:30011');
+    vi.stubEnv('SITES_ORIGIN', 'http://localhost:30012');
+  });
+  const post = (url: string, origin: string) =>
+    new Request(url, { method: 'POST', headers: { origin, host: new URL(url).host } });
+
+  it("accepts the sites port's origin there, and not on the studio port", () => {
+    expect(isReviewOriginAllowed(post('http://localhost:30012/review/d/osw-api/comments', 'http://localhost:30012'), {})).toBe(true);
+    expect(isReviewOriginAllowed(post('http://localhost:30011/review/d/osw-api/comments', 'http://localhost:30012'), {})).toBe(false);
   });
 });

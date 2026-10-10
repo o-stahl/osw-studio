@@ -11,7 +11,7 @@
  */
 
 import { validateOrigin } from '@/lib/analytics/security';
-import { appUrl, isStudioHost, originOf, requestHost, siteOriginFor, sitesMode } from '@/lib/web/site-origin';
+import { appUrl, isSiteHost, originOf, requestHost, reviewOriginFor } from '@/lib/web/site-origin';
 
 /**
  * Normalised through URL, so a trailing slash in `NEXT_PUBLIC_APP_URL` still matches a header.
@@ -26,8 +26,8 @@ export function reviewAllowedOrigins(
 ): string[] {
   // An unparseable app URL is kept as written: it matches no header, which refuses rather than widens.
   const origins = [originOf(appUrl()) ?? appUrl()];
-  if (deployment && host && !isStudioHost(host) && sitesMode() !== 'same-origin') {
-    const site = siteOriginFor(deployment);
+  if (deployment && host && isSiteHost(host)) {
+    const site = reviewOriginFor(deployment);
     if (!origins.includes(site)) origins.push(site);
   }
   return origins;

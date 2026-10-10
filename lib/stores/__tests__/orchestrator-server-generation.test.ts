@@ -123,6 +123,35 @@ describe('orchestrator slice — startServerGeneration model resolution', () => 
     expect(body.conversationHistory.map((m: { content: string }) => m.content)).toEqual(['sys', 'earlier', 'done']);
   });
 
+  it('drops an unanswered message before the new one, so later runs keep the new one', async () => {
+    store.setState({ projectId: 'proj1' });
+    const add = store.getState().addDebugEvent;
+    add('conversation_message', { message: { role: 'system', content: 'sys' } }, 'proj1');
+    add('conversation_message', { message: { role: 'user', content: 'refused ask' } }, 'proj1');
+    await store.getState().startServerGeneration('proj1', 'new ask', false);
+    const first = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(first.conversationHistory.map((m: { content: string }) => m.content)).toEqual(['sys']);
+
+    // The server's echo settles the local message, and the run answers it.
+    store.setState({
+      debugEvents: store.getState().debugEvents.map((e) =>
+        e.data?.message?.content === 'new ask' ? { ...e, data: { message: { role: 'user', content: 'new ask' } } } : e),
+    });
+    add('conversation_message', { message: { role: 'assistant', content: 'answer' } }, 'proj1');
+    await store.getState().startServerGeneration('proj1', 'third ask', false);
+    const second = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
+    expect(second.conversationHistory.map((m: { content: string }) => m.content)).toEqual(['sys', 'new ask', 'answer']);
+  });
+
+  it('keeps an unanswered message for Continue, which takes it up', async () => {
+    store.setState({ projectId: 'proj1' });
+    store.getState().addDebugEvent('conversation_message', { message: { role: 'user', content: 'refused ask' } }, 'proj1');
+    const { CONTINUE_AFTER_STOP_PROMPT } = await import('@/lib/llm/continue-prompt');
+    await store.getState().startServerGeneration('proj1', CONTINUE_AFTER_STOP_PROMPT, false);
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.conversationHistory.map((m: { content: string }) => m.content)).toEqual(['refused ask']);
+  });
+
   it('sends no candidates for a model the user picked', async () => {
     await store.getState().startServerGeneration('proj1', 'build it', false);
     const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);

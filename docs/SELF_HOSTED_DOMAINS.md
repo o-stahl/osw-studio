@@ -29,5 +29,5 @@ GET /api/resolve-domain?list=true                  → { domains: [...] } (all r
 
 ### Notes
 
-- Deployments published with a custom domain use root-relative asset paths. With `STATIC_PROXY` or `SITES_ORIGIN`, `/deployments/{id}/` on the studio's address redirects to the domain; without either, open the site on its domain, since the assets do not load under the path.
+- Deployments published with a custom domain use root-relative asset paths. With `STATIC_PROXY` or `SITES_ORIGIN`, `/deployments/{id}/` on the studio's address redirects to the domain; without either, open the site on its domain, since the assets do not load under the path. Without `STATIC_PROXY`, the deployment's review copy stays on the sites address (or the studio's), since only the generated Caddyfile serves `/review/` on a custom domain.
 - The domain is registered in the routing table on publish. If a domain is removed and republished, the routing entry is cleared.

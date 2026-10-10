@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('server-only', () => ({}));
-vi.mock('@/lib/api/workspace-context', () => ({ getWorkspaceContext: mocks.getWorkspaceContext }));
+vi.mock('@/lib/api/workspace-context', () => ({ getWorkspaceContext: mocks.getWorkspaceContext, requireWorkspaceRole: () => {} }));
 vi.mock('@/lib/auth/system-database', () => ({
   removeDeploymentRoute: mocks.removeDeploymentRoute,
   getWorkspaceById: () => ({ id: WS, max_storage_mb: 500 }),

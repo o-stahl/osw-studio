@@ -12,7 +12,7 @@ import type { WebSearchProviderId } from '@/lib/web-search';
 export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
-  const pre = webRequestPreflight(request);
+  const pre = await webRequestPreflight(request);
   if (!pre.ok) return pre.response;
 
   let payload: { provider?: string; query?: string; count?: number; markdown?: boolean; auth?: { key?: string; searxngUrl?: string } };

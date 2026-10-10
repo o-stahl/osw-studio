@@ -44,7 +44,7 @@ async function readCapped(resp: Response): Promise<{ bytes: Uint8Array; truncate
 }
 
 export async function POST(request: NextRequest) {
-  const pre = webRequestPreflight(request);
+  const pre = await webRequestPreflight(request);
   if (!pre.ok) return pre.response;
 
   let payload: { url?: string; method?: string; headers?: string[]; body?: string };

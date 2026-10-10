@@ -161,6 +161,15 @@ describe('the frame side, in the compiled page', () => {
     answer(posted[0].message.id, '{}');
   });
 
+  it('sends nothing for a fetch aborted straight after it was made', async () => {
+    new Function(await interceptor())();
+    const controller = new AbortController();
+    const pending = window.fetch('/contact', { method: 'POST', body: 'x', signal: controller.signal });
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(posted).toHaveLength(0);
+  });
+
   it('gives XHR the body in the responseType asked for, and aborts and times out like XHR', async () => {
     const RealXHR = window.XMLHttpRequest;
     new Function(await interceptor())();

@@ -33,6 +33,7 @@ import type { InterviewTemplate } from '@/lib/interview/types';
 import type { ApprovalRequest, ApprovalOutcome } from '@/lib/llm/permissions';
 import { translator } from '@/lib/i18n/runtime';
 import type { AgentMessage } from '@/lib/llm/multi-agent-orchestrator';
+import { CONTINUE_AFTER_STOP_PROMPT } from '@/lib/llm/continue-prompt';
 
 /**
  * The free models a server run on "Free models" should use, best first, minus those cooling down.
@@ -1414,6 +1415,18 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       toast.error(translator()('orchestrator.setApiKey', { provider: providerConfig.name }));
       abandonClaim();
       return false;
+    }
+
+    // A message whose run stopped before any reply is dropped from the model's history when a new
+    // one replaces it, as a browser run does. Recorded here, ahead of the new message, so a later run
+    // rebuilds the history with the new message in it; dropped by the server instead, the record
+    // would land after it and leave it out.
+    if (prompt !== CONTINUE_AFTER_STOP_PROMPT) {
+      const history = conversationFromEvents(get().debugEvents);
+      if (history.at(-1)?.role === 'user') {
+        while (history.at(-1)?.role === 'user') history.pop();
+        get().addDebugEvent('conversation_replaced', { messages: history }, projectId);
+      }
     }
 
     // The message goes up before the slow work, not after it: everything above this point is

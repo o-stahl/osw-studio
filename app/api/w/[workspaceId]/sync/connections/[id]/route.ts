@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getWorkspaceContext } from '@/lib/api/workspace-context';
+import { getWorkspaceContext, requireWorkspaceRole } from '@/lib/api/workspace-context';
 import type { CustomConnection } from '@/lib/llm/providers/connection-record';
 import { assertPublicHttpUrl } from '@/lib/llm/providers/url-safety';
 import { logger } from '@/lib/utils';
@@ -70,7 +70,10 @@ export async function DELETE(
   { params }: { params: Promise<{ workspaceId: string; id: string }> }
 ) {
   try {
-    const { adapter } = await getWorkspaceContext(params);
+    // A viewer may learn that something never reached the server (404, or success for a project),
+    // so its local-only copy can still be deleted; deleting what is there needs editor.
+    const context = await getWorkspaceContext(params, 'viewer');
+    const { adapter } = context;
     const { id } = await params;
 
     const existing = await adapter.getConnection(id);
@@ -79,6 +82,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Connection not found' }, { status: 404 });
     }
 
+    requireWorkspaceRole(context, 'editor');
     await adapter.deleteConnection(id);
 
     return NextResponse.json({ success: true });

@@ -22,13 +22,16 @@ export const PREVIEW_BRIDGE_ATTR = 'data-osw-bridge';
 /**
  * In-memory `localStorage`, `sessionStorage` and `document.cookie`, installed only where the real
  * ones throw (the preview's opaque origin). Seeded from `window.__oswStorageSeed`, which the shell
- * sets before writing the page; every change is reported as `preview:storage` with the whole area,
- * and kept by the host per project (`lib/preview/preview-storage.ts`).
+ * sets before writing the page; changes are reported as `preview:storage` with the whole area, at
+ * most every 50 ms, and kept by the host per project (`lib/preview/preview-storage.ts`). An in-page
+ * link click flushes them first (`__oswFlushStorage`), since the host starts the next page at once.
  */
 const STORAGE_SHIM_JS = `
 var seed=window.__oswStorageSeed||{};try{delete window.__oswStorageSeed;}catch(e){}
-var LIMIT=${PREVIEW_STORAGE_LIMIT};
-function report(area,data){post({type:'preview:storage',loadId:id,area:area,data:Object.assign({},data)});}
+var LIMIT=${PREVIEW_STORAGE_LIMIT},pending={},timer=0;
+function flush(){clearTimeout(timer);timer=0;for(var a in pending)post({type:'preview:storage',loadId:id,area:a,data:Object.assign({},pending[a])});pending={};}
+function report(area,data){pending[area]=data;if(!timer)timer=setTimeout(flush,50);}
+window.__oswFlushStorage=flush;addEventListener('pagehide',flush);
 function throws(read){try{read();return false;}catch(e){return true;}}
 function makeStorage(area){
 var data=Object.assign(Object.create(null),seed[area]||{});

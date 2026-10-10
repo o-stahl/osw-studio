@@ -70,6 +70,17 @@ export function siteOriginFor(deployment: { slug?: string | null; customDomain?:
 }
 
 /**
+ * The origin a deployment's review copy is served from. On its custom domain only where the
+ * generated Caddyfile serves that domain (proxy mode): elsewhere a custom domain is the operator's
+ * own proxy onto the site's pages, with nothing behind `/review/`, so the copy stays on the sites
+ * address, or the studio's.
+ */
+export function reviewOriginFor(deployment: { slug?: string | null; customDomain?: string | null }): string {
+  if (sitesMode() === 'proxy') return siteOriginFor(deployment);
+  return siteOriginFor({ slug: deployment.slug });
+}
+
+/**
  * The host a request was addressed to: the Host header, which Caddy and the desktop forwarder pass
  * through unchanged. Not X-Forwarded-Host, which a page can set itself on a same-origin request
  * (a DNS-rebinding page is same-origin with the server it rebinds to).

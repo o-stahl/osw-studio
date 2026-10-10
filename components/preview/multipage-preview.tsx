@@ -648,8 +648,10 @@ export function generateNavigationScript(normalizedPath: string, directEdit: boo
               window.parent.postMessage({ type: 'preview:external', href: href }, '*');
               return;
             }
-            // Internal, not app-handled → host serves the file (no server behind srcdoc).
+            // Internal, not app-handled → host serves the file (no server behind srcdoc). Storage
+            // written just before the click goes first, or the next page starts without it.
             e.preventDefault();
+            if (window.__oswFlushStorage) window.__oswFlushStorage();
             window.parent.postMessage({ type: 'navigate', path: resolveInternalPath(href) }, '*');
           });
 
@@ -1616,6 +1618,9 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
 
   /** A shell we wrote is asking for its page. */
   const handleShellReady = useCallback((loadId: number) => {
+    // Only the current load's acks pair with load events: an outgoing document's late one would
+    // leave a surplus that hides the next real escape.
+    if (loadId !== lifecycleRef.current.loadId) return;
     pairAck();
     const page = shellPageRef.current;
     const target = iframeRef.current?.contentWindow;
@@ -1625,8 +1630,9 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     });
   }, [pairAck]);
 
-  /** A document we wrote reached its load event. Any loadId counts as ours; only the current one is ready. */
+  /** The current document reached its load event. */
   const handleReadyAck = useCallback((loadId: number) => {
+    if (loadId !== lifecycleRef.current.loadId) return;
     pairAck();
     if (!lifecycleRef.current.onAck(loadId)) return;
     setEscaped(false);
@@ -2126,7 +2132,12 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
 
       if (data.type === 'preview:function-call') {
         const target = event.source as Window;
+        // Call ids restart with every document, so an answer that outlives its page would settle
+        // the next page's call of the same id. The frame is the same window across loads; the
+        // load is what tells them apart.
+        const loadId = lifecycleRef.current.loadId;
         runFunctionCall(data, deploymentIdRef.current).then((reply) => {
+          if (lifecycleRef.current.loadId !== loadId) return;
           target.postMessage(reply, '*', reply.body ? [reply.body] : []);
         }).catch((err) => {
           logger.error('[Preview] Could not answer a function call from the preview frame:', err);

@@ -357,6 +357,21 @@ describe('MultiAgentOrchestrator result propagation and lifecycle', () => {
     expect(replaced.map((m) => m.content)).toEqual(['sys', 'first task', 'done']);
   });
 
+  it('gives the project context again when the dropped request was the first, which carried it', async () => {
+    const sent: AgentMessage[] = [];
+    const orchestrator = new MultiAgentOrchestrator('test-p1', 'orchestrator', (event, data) => {
+      if (event === 'conversation_message') sent.push((data as { message: AgentMessage }).message);
+    });
+    orchestrator.importConversation([
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'PROJECT CTX\n\nrefused first request' },
+    ]);
+    await orchestrator.execute('new request');
+    const prompt = sent.find((m) => m.role === 'user');
+    expect(String(prompt?.content)).toContain('PROJECT CTX');
+    expect(String(prompt?.content)).toContain('new request');
+  });
+
   it('keeps an unanswered request when Continue picks it up', async () => {
     let captured: Message[] = [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
