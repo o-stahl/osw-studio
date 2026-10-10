@@ -55,8 +55,14 @@ describe('the middleware matcher', () => {
     }
   });
 
-  it('keeps excluding the build output and published deployments', () => {
+  it('keeps excluding the build output', () => {
     expect(reachesMiddleware('/_next/static/chunks/main.js')).toBe(false);
-    expect(reachesMiddleware('/deployments/abc/index.html')).toBe(false);
+  });
+
+  it('never skips a published site or review copy, so the studio host can send it to its own host', () => {
+    // An .svg skipped here would be served on the studio's origin, where opening it runs its script.
+    for (const path of ['/deployments/abc/index.html', '/deployments/abc/logo.svg', '/deployments/abc/app.js', '/review/abc/x.svg']) {
+      expect(reachesMiddleware(path), path).toBe(true);
+    }
   });
 });

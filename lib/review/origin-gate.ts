@@ -1,31 +1,40 @@
 /**
- * Where a review write may be posted from: the app origin, and nothing else.
+ * Where a review write may be posted from: the studio's origin (its review panel) and the origin
+ * the review copy itself is served from, and nothing else.
  *
  * The analytics allowlist (`getAllowedOrigins`) must not be reused here. It names every slug
  * subdomain and custom domain; those serve tenant-authored HTML and are same-site with the app, so
- * SameSite=Lax does not withhold the review cookie from a request one of them makes. On a write
- * endpoint that would let one tenant forge comments for any visitor holding a review cookie.
- *
- * Nothing legitimate is refused by the narrower list: the generated Caddyfile rewrites `/review/...`
- * on a subdomain or custom domain into the published build, so those hosts never reach this route.
+ * SameSite=Lax does not withhold a review cookie from a request one of them makes. On a write
+ * endpoint that would let one tenant forge comments for any visitor holding a review cookie. Only
+ * the deployment's own site origin is added (`siteOriginFor`, lib/web/site-origin.ts): when sites
+ * are served away from the studio, its review copy is served there too.
  */
 
 import { validateOrigin } from '@/lib/analytics/security';
+import { appUrl, siteOriginFor, sitesMode } from '@/lib/web/site-origin';
 
-const DEFAULT_APP_URL = 'http://localhost:3000';
-
-/** Normalised through URL, so a trailing slash in `NEXT_PUBLIC_APP_URL` still matches a header. */
-export function reviewAllowedOrigins(): string[] {
-  const configured = process.env.NEXT_PUBLIC_APP_URL || DEFAULT_APP_URL;
-
+function originOf(url: string): string {
   try {
-    return [new URL(configured).origin];
+    return new URL(url).origin;
   } catch {
     // An unparseable entry matches nothing, which refuses everything rather than widening the gate.
-    return [configured];
+    return url;
   }
 }
 
-export function isReviewOriginAllowed(request: Request): boolean {
-  return validateOrigin(request, reviewAllowedOrigins());
+/** Normalised through URL, so a trailing slash in `NEXT_PUBLIC_APP_URL` still matches a header. */
+export function reviewAllowedOrigins(deployment?: { slug?: string | null; customDomain?: string | null } | null): string[] {
+  const origins = [originOf(appUrl())];
+  if (deployment && sitesMode() !== 'same-origin') {
+    const site = siteOriginFor(deployment);
+    if (!origins.includes(site)) origins.push(site);
+  }
+  return origins;
+}
+
+export function isReviewOriginAllowed(
+  request: Request,
+  deployment?: { slug?: string | null; customDomain?: string | null } | null
+): boolean {
+  return validateOrigin(request, reviewAllowedOrigins(deployment));
 }

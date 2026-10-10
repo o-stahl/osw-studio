@@ -14,7 +14,8 @@ import path from 'path';
  */
 
 vi.mock('server-only', () => ({}));
-const mocks = vi.hoisted(() => ({ slugs: vi.fn(() => []), domains: vi.fn(() => []) }));
+// One site, since only a site block names a root: the studio's own block only proxies.
+const mocks = vi.hoisted(() => ({ slugs: vi.fn(() => [{ deployment_id: 'd1', slug: 'sunny-oak' }]), domains: vi.fn(() => []) }));
 vi.mock('@/lib/auth/system-database', () => ({
   getAllSlugRoutes: mocks.slugs,
   getAllDomainRoutes: mocks.domains,

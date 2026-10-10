@@ -6,6 +6,7 @@
  * drifted again, which is why nothing client-side may compute this.
  */
 import { resolveDeploymentServing } from '@/lib/compiler/deployment-paths';
+import { sitesOrigin } from '@/lib/web/site-origin';
 
 export function deploymentPublicUrl(
   deployment: { id: string; slug?: string; customDomain?: string }
@@ -13,6 +14,7 @@ export function deploymentPublicUrl(
   return resolveDeploymentServing(deployment, deployment.id, {
     staticProxyEnabled: process.env.STATIC_PROXY === 'true',
     appUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+    sitesOrigin: sitesOrigin(),
   }).baseUrl;
 }
 

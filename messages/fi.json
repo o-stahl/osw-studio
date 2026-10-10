@@ -230,7 +230,8 @@
     "deleteDeployment": "Poista julkaisu",
     "confirmDelete": "Poistetaanko julkaisu \"{name}\"? Tätä ei voi perua.",
     "firstDeploymentHint": "Luo ensimmäinen julkaisusi painamalla yllä olevaa \"Uusi\"-painiketta. Julkaisujen avulla voit julkaista projekteja ja hallita niiden julkisia asetuksia erikseen.",
-    "noFilesToPublish": "Tällä projektilla ei ole selaimessa tiedostoja julkaistavaksi. Avaa projekti, tarkista että tiedostot ovat siellä, tallenna ja julkaise sitten uudelleen."
+    "noFilesToPublish": "Tällä projektilla ei ole selaimessa tiedostoja julkaistavaksi. Avaa projekti, tarkista että tiedostot ovat siellä, tallenna ja julkaise sitten uudelleen.",
+    "sameOriginWarning": "Julkaistut sivustot tarjoillaan studion omasta osoitteesta, joten sivuston skriptit voivat käyttää studiota avaajansa nimissä ja lukea myös tämän tallentamat API-avaimet. Aseta <code>SITES_ORIGIN</code>, niin sivustot tarjoillaan erillisestä osoitteesta. <link>Server Mode -ohjeet</link>"
   },
   "workspace": {
     "tabs": {

@@ -230,7 +230,8 @@
     "deleteDeployment": "배포 삭제",
     "confirmDelete": "배포 \"{name}\"을(를) 삭제할까요? 되돌릴 수 없어요.",
     "firstDeploymentHint": "위의 \"새로 만들기\" 버튼을 눌러 첫 배포를 만들어 보세요. 배포로 프로젝트를 배포하고 공개 설정을 따로 관리할 수 있어요.",
-    "noFilesToPublish": "이 프로젝트에는 브라우저에 배포할 파일이 없어요. 프로젝트를 열어 파일이 있는지 확인하고 저장한 다음 다시 배포하세요."
+    "noFilesToPublish": "이 프로젝트에는 브라우저에 배포할 파일이 없어요. 프로젝트를 열어 파일이 있는지 확인하고 저장한 다음 다시 배포하세요.",
+    "sameOriginWarning": "배포한 사이트가 스튜디오와 같은 주소에서 제공되고 있어요. 그래서 사이트의 스크립트가 사이트를 연 사람의 권한으로 스튜디오를 쓰고, 저장된 API 키도 읽을 수 있어요. <code>SITES_ORIGIN</code>을 설정하면 사이트를 별도 주소에서 제공해요. <link>Server Mode 문서</link>"
   },
   "workspace": {
     "tabs": {

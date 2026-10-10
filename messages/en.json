@@ -230,7 +230,8 @@
     "deleteDeployment": "Delete Deployment",
     "confirmDelete": "Delete deployment \"{name}\"? This cannot be undone.",
     "firstDeploymentHint": "Create your first deployment by clicking the \"New\" button above. Deployments let you publish projects and manage their public settings independently.",
-    "noFilesToPublish": "This project has no files in the browser to publish. Open it, check the files are there, save, then publish again."
+    "noFilesToPublish": "This project has no files in the browser to publish. Open it, check the files are there, save, then publish again.",
+    "sameOriginWarning": "Published sites are served from the studio's own address, so a site's scripts can use the studio as whoever opens them, including reading their stored API keys. Set <code>SITES_ORIGIN</code> to serve sites from a separate address. <link>Server Mode docs</link>"
   },
   "workspace": {
     "tabs": {

@@ -18,6 +18,7 @@ import { verifySession, maybeRefreshSession, SESSION_COOKIE_NAME, SESSION_DURATI
 import type { SessionData } from '@/lib/auth/session';
 import { PENDING_MCP_COOKIE, pendingAuthorizationIsWellFormed } from '@/lib/mcp/pending';
 import { isCrossOriginWrite } from '@/lib/web/origin-guard';
+import { isRelocatedSitePath, isSiteHost, isSitePath, requestHost, sitesMode } from '@/lib/web/site-origin';
 
 async function nextWithRefreshedSession(session: SessionData): Promise<NextResponse> {
   const response = NextResponse.next();
@@ -54,8 +55,27 @@ export async function middleware(request: NextRequest) {
     return NextResponse.json({ error: 'Cross-origin request refused' }, { status: 403 });
   }
 
+  // Sites served away from the studio (lib/web/site-origin.ts). A site host answers only what a
+  // site needs, which matters most on desktop, whose API has no session to check. On the studio
+  // host, a site document is sent to where it lives instead of being served on this origin.
+  const host = requestHost(request.headers);
+  if (isSiteHost(host)) {
+    return isSitePath(pathname) ? NextResponse.next() : new NextResponse('Not found', { status: 404 });
+  }
+  if (sitesMode() !== 'same-origin' && isRelocatedSitePath(pathname)) {
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      return new NextResponse('Not found', { status: 404 });
+    }
+    return NextResponse.rewrite(new URL(`/api/site-location${pathname}${request.nextUrl.search}`, request.url));
+  }
+
   // Desktop app: skip auth but still handle workspace routing
   if (isDesktop) {
+    // Only ever addressed by loopback. Any other Host is a page that resolved its own name to this
+    // machine (DNS rebinding), and the desktop API has no session to stop it.
+    if (!/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host)) {
+      return new NextResponse('Not found', { status: 404 });
+    }
     // Legacy redirect: /admin/{view} -> /w/{workspaceId}/{view}
     if (pathname.startsWith('/admin')) {
       for (const view of WORKSPACE_VIEWS) {
@@ -274,11 +294,15 @@ export async function middleware(request: NextRequest) {
  * (`/api/w/{id}/sync/projects/{id}`) can be sent one ending in `.js`, and the cross-origin write
  * check here is the only one those routes have. Preview misses resolve against page paths, not `/api/`.
  *
+ * Nor are `/deployments/` and `/review/` paths: they are where a published site lives, and on the
+ * studio host they are redirected to the site's own host (`lib/web/site-origin.ts`). Skipping an
+ * `.svg` there would serve it on the studio's origin, and an SVG opened as a page runs its script.
+ *
  * Written out rather than composed from a constant: Next has to statically analyse this value at
  * build time and ignores one it cannot, which would leave every route above unguarded.
  */
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|deployments/|(?!api/).*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|avif|js|mjs|cjs|css|map|woff|woff2|ttf|otf|eot)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|(?!api/|deployments/|review/).*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|avif|js|mjs|cjs|css|map|woff|woff2|ttf|otf|eot)$).*)',
   ],
 };

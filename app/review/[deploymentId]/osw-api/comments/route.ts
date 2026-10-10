@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { RATE_LIMIT_CONFIG } from '@/lib/analytics/rate-limiter';
 import { actsAsTeam, resolveReviewAccess, teamAccessRefusal } from '@/lib/review/access';
 import { isReviewOriginAllowed } from '@/lib/review/origin-gate';
+import { resolveDeployment } from '@/lib/vfs/adapters/deployment-adapter';
 import {
   resolveCommentAuthorship,
   resolveParentComment,
@@ -168,7 +169,7 @@ export async function POST(
 
     // The review copy is reachable only at the app origin, so that is the whole allowlist — not the
     // analytics one, which names every tenant's published subdomain. See lib/review/origin-gate.ts.
-    if (!isReviewOriginAllowed(request)) {
+    if (!isReviewOriginAllowed(request, (await resolveDeployment(deploymentId))?.deployment)) {
       logger.warn('[Review Comments] Invalid origin (rejected):', {
         origin: request.headers.get('origin'),
         deploymentId,

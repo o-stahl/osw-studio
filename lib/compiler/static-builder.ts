@@ -20,6 +20,7 @@ import { extractBackendFeatures } from './backend-feature-extractor';
 import { deploymentStaticDir } from './deployment-static-dir';
 import { deploymentReviewDir } from './deployment-review-dir';
 import { resolveDeploymentServing, replaceAssetPathsWithPrefix } from './deployment-paths';
+import { sitesOrigin } from '@/lib/web/site-origin';
 
 export interface BuildResult {
   success: boolean;
@@ -185,6 +186,7 @@ async function prepareBuild(
   const { servedAtRoot, baseUrl } = resolveDeploymentServing(deployment, deploymentId, {
     staticProxyEnabled: process.env.STATIC_PROXY === 'true',
     appUrl,
+    sitesOrigin: sitesOrigin(),
   });
 
   const publishSettings = toPublishSettings(deployment);

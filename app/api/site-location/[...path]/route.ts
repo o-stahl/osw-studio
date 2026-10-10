@@ -1,0 +1,42 @@
+/**
+ * Where a site document now lives, as a permanent redirect.
+ *
+ * Middleware sends here the studio-host requests for a published site (`/deployments/{id}/...`) or
+ * its review copy (`/review/{id}/...`) when sites are served elsewhere (`lib/web/site-origin.ts`).
+ * Old links keep working; the document is never served on the studio's origin. A route rather than
+ * middleware because the target depends on the deployment's slug or custom domain.
+ */
+import { NextRequest, NextResponse } from 'next/server';
+import { resolveDeploymentByIdOrSlug } from '@/lib/vfs/adapters/deployment-adapter';
+import { appUrl, siteOriginFor, sitesMode, sitesOrigin } from '@/lib/web/site-origin';
+
+const NOT_FOUND = () => new NextResponse('Not found', { status: 404 });
+const PREFIX = '/api/site-location';
+
+// The original path arrives as this route's own path (`/api/site-location/deployments/{id}/...`):
+// a query parameter added by a middleware rewrite does not reliably reach the handler. Depending on
+// how the rewrite is surfaced, the URL here is the rewritten one or the original; both are accepted.
+export async function GET(request: NextRequest) {
+  const { pathname, search } = request.nextUrl;
+  const original = pathname.startsWith(PREFIX) ? pathname.slice(PREFIX.length) : pathname;
+  const url = new URL(`${original}${search}`, 'http://placeholder');
+  const match = url.pathname.match(/^\/(deployments|review)\/([^/]+)(\/.*)?$/);
+  if (!match || sitesMode() === 'same-origin') return NOT_FOUND();
+  const [, kind, id, rest = '/'] = match;
+
+  if (sitesMode() === 'host') {
+    return NextResponse.redirect(`${sitesOrigin()}${url.pathname}${url.search}`, 308);
+  }
+
+  const resolved = await resolveDeploymentByIdOrSlug(id);
+  if (!resolved) return NOT_FOUND();
+  const { deployment } = resolved;
+  const origin = siteOriginFor(deployment);
+  // Never back to the studio itself: a deployment with no host of its own has nowhere else to go.
+  if (origin === new URL(request.url).origin || origin === new URL(appUrl()).origin) return NOT_FOUND();
+  // A site on its own host is served at the root; its review copy keeps its /review/{id}/ path.
+  const path = kind === 'deployments' ? rest : `/review/${deployment.id}${rest}`;
+  return NextResponse.redirect(`${origin}${path}${url.search}`, 308);
+}
+
+export const HEAD = GET;

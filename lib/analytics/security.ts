@@ -6,6 +6,7 @@
  */
 
 import crypto from 'crypto';
+import { sitesOrigin } from '@/lib/web/site-origin';
 
 const TOKEN_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000; // 30 days (for static sites)
 
@@ -230,6 +231,10 @@ export function getAllowedOrigins(
     origins.push('http://localhost:3000');
     origins.push('http://127.0.0.1:3000');
   }
+
+  // Sites served on their own origin (lib/web/site-origin.ts)
+  const sites = sitesOrigin();
+  if (sites) origins.push(sites);
 
   // Add custom domain if configured
   if (customDomain) {

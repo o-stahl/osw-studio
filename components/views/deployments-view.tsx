@@ -87,10 +87,22 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
     pendingSettings: DeploymentSettingsUpdate;
   } | null>(null);
   const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
+  // How the install serves published sites; 'same-origin' gets a warning (lib/web/site-origin.ts).
+  const [sitesMode, setSitesMode] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!isServerMode || !workspaceId) return;
+    let cancelled = false;
+    apiFetch(`${apiBase}/hosting`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setSitesMode(data.sitesMode); })
+      .catch(() => { /* the warning is advisory */ });
+    return () => { cancelled = true; };
+  }, [apiBase, isServerMode, workspaceId]);
 
   const loadData = async () => {
     try {
@@ -822,6 +834,16 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
 
         {/* Deployments Grid/List */}
         <PageBody fill bodyRef={listScrollRef}>
+            {sitesMode === 'same-origin' && (
+              <div role="note" className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:text-amber-400">
+                {t.rich('sameOriginWarning', {
+                  code: (chunks) => <code className="font-mono">{chunks}</code>,
+                  link: (chunks) => (
+                    <a className="underline" href={workspaceId ? `/w/${workspaceId}/docs?doc=server-mode` : '/admin/docs?doc=server-mode'}>{chunks}</a>
+                  ),
+                })}
+              </div>
+            )}
             {filteredAndSortedDeployments.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <Globe className="h-16 w-16 text-muted-foreground mb-4" />

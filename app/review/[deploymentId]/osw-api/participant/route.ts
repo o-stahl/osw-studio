@@ -13,6 +13,7 @@ import { RATE_LIMIT_CONFIG } from '@/lib/analytics/rate-limiter';
 import { actsAsTeam, resolveReviewAccess } from '@/lib/review/access';
 import { toWireParticipant } from '@/lib/review/comment-view';
 import { isReviewOriginAllowed } from '@/lib/review/origin-gate';
+import { resolveDeployment } from '@/lib/vfs/adapters/deployment-adapter';
 import { validateParticipantProfile } from '@/lib/review/participant-input';
 import { consumeReviewWriteAttempt } from '@/lib/review/write-gate';
 import { ReviewDatabase } from '@/lib/vfs/adapters/review-database';
@@ -55,7 +56,7 @@ export async function PATCH(
 
     // The app origin only — see lib/review/origin-gate.ts for why the analytics allowlist is the
     // wrong one on a write.
-    if (!isReviewOriginAllowed(request)) {
+    if (!isReviewOriginAllowed(request, (await resolveDeployment(deploymentId))?.deployment)) {
       logger.warn('[Review Participant] Invalid origin (rejected):', {
         origin: request.headers.get('origin'),
         deploymentId,

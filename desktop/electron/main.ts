@@ -14,6 +14,7 @@ import { app, BrowserWindow, Menu, dialog, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { migrateLegacyDir } from './migrate-legacy';
 import { choosePort, movedPortWarning } from './server-port';
+import { chooseSitePort, startSiteProxy } from './site-proxy';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as http from 'http';
@@ -62,6 +63,11 @@ async function startNextServer(host: string = 'localhost'): Promise<number> {
   process.env.HOSTNAME = host;
   process.env.NEXT_PUBLIC_APP_URL = `http://${host}:${port}`;
   process.env.OSW_DESKTOP = 'true';
+
+  // Published sites on a second port, a different origin from the studio (see site-proxy.ts).
+  const sitePort = await chooseSitePort(port, async (candidate) => (await checkPort(candidate, host)) !== false);
+  await startSiteProxy(host, sitePort, port);
+  process.env.SITES_ORIGIN = `http://${host}:${sitePort}`;
 
   // Platform-appropriate writable locations. The install dir is read-only on
   // Linux (AppImage squashfs) and often on Windows — every server-side path

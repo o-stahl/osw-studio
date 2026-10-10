@@ -54,29 +54,17 @@ export function generateCaddyfile(config: CaddyConfig): string {
   lines.push('}');
   lines.push('');
 
-  // Main instance domain
+  // Main instance domain: the studio. Published sites are not served here; the app redirects
+  // /deployments/{id}/ and /review/{id}/ to the site's own host (lib/web/site-origin.ts), so a
+  // site's script never runs on the studio's origin.
   lines.push(`${domain} {`);
-  lines.push('  handle /deployments/* {');
-  lines.push(`    root * ${publicRoot}`);
-  lines.push('    try_files {path} {path}.html {path}/index.html');
-  lines.push('    file_server');
-  lines.push('    header Cache-Control "public, max-age=3600"');
-  lines.push('  }');
-  lines.push('');
   lines.push('  reverse_proxy localhost:3000');
   lines.push('}');
   lines.push('');
 
   // Subdomain routes — specific blocks before the wildcard
   for (const route of slugRoutes) {
-    lines.push(`${route.slug}.${domain} {`);
-    lines.push(`  root * ${publicRoot}`);
-    lines.push(`  rewrite * /deployments/${route.deployment_id}{uri}`);
-    lines.push('  try_files {path} {path}.html {path}/index.html');
-    lines.push('  file_server');
-    lines.push('  header Cache-Control "public, max-age=3600"');
-    lines.push('}');
-    lines.push('');
+    lines.push(...siteBlock(`${route.slug}.${domain}`, route.deployment_id, publicRoot));
   }
 
   // Wildcard subdomain block: terminates TLS for any *.domain host without an
@@ -97,17 +85,7 @@ export function generateCaddyfile(config: CaddyConfig): string {
 
   // Custom domain routes
   for (const route of customDomainRoutes) {
-    lines.push(`${route.custom_domain} {`);
-    lines.push('  tls {');
-    lines.push('    on_demand');
-    lines.push('  }');
-    lines.push(`  root * ${publicRoot}`);
-    lines.push(`  rewrite * /deployments/${route.deployment_id}{uri}`);
-    lines.push('  try_files {path} {path}.html {path}/index.html');
-    lines.push('  file_server');
-    lines.push('  header Cache-Control "public, max-age=3600"');
-    lines.push('}');
-    lines.push('');
+    lines.push(...siteBlock(route.custom_domain, route.deployment_id, publicRoot, ['  tls {', '    on_demand', '  }']));
 
     // www counterpart → permanent redirect to the stored (canonical) name
     lines.push(`${wwwCounterpart(route.custom_domain)} {`);
@@ -192,4 +170,29 @@ export async function regenerateInstanceCaddy(): Promise<void> {
   } catch (err) {
     console.error('[Caddy] Config regeneration failed:', err);
   }
+}
+
+/**
+ * One published site on its own host. Its edge functions, the analytics collector and its review
+ * copy are passed to the app, which answers only those paths on a site host; everything else is
+ * the site's files, served at the host's root.
+ */
+function siteBlock(host: string, deploymentId: string, publicRoot: string, preamble: string[] = []): string[] {
+  return [
+    `${host} {`,
+    ...preamble,
+    `  @platform path /api/deployments/${deploymentId}/functions/* /api/analytics/track /api/analytics/interaction /review/${deploymentId} /review/${deploymentId}/*`,
+    '  handle @platform {',
+    '    reverse_proxy localhost:3000',
+    '  }',
+    '  handle {',
+    `    root * ${publicRoot}`,
+    `    rewrite * /deployments/${deploymentId}{uri}`,
+    '    try_files {path} {path}.html {path}/index.html',
+    '    file_server',
+    '    header Cache-Control "public, max-age=3600"',
+    '  }',
+    '}',
+    '',
+  ];
 }

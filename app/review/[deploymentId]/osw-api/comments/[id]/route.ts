@@ -14,6 +14,7 @@ import { resolveReviewAccess, teamAccessRefusal } from '@/lib/review/access';
 import { authorizeStatusChange } from '@/lib/review/comment-status';
 import { toWireComment } from '@/lib/review/comment-view';
 import { isReviewOriginAllowed } from '@/lib/review/origin-gate';
+import { resolveDeployment } from '@/lib/vfs/adapters/deployment-adapter';
 import { ReviewDatabase } from '@/lib/vfs/adapters/review-database';
 import { logger } from '@/lib/utils';
 
@@ -49,7 +50,7 @@ export async function PATCH(
     // member's account session is SameSite=Lax like the participant cookie, so a page on a tenant's
     // published subdomain — same-site with the app — would otherwise be able to close a client's
     // comments in their name. See lib/review/origin-gate.ts.
-    if (!isReviewOriginAllowed(request)) {
+    if (!isReviewOriginAllowed(request, (await resolveDeployment(deploymentId))?.deployment)) {
       logger.warn('[Review Comments] Invalid origin (rejected):', {
         origin: request.headers.get('origin'),
         deploymentId,

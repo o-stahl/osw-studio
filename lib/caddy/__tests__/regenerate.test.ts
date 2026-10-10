@@ -13,7 +13,9 @@ describe('generateCaddyfile', () => {
     const result = generateCaddyfile(BASE_CONFIG);
 
     expect(result).toContain('inst-1.oswstudio.com {');
-    expect(result).toContain('handle /deployments/*');
+    // The studio's block only proxies: published sites are never served on its origin.
+    expect(result).not.toContain('/deployments/');
+    expect(result).not.toContain('file_server');
     expect(result).toContain('reverse_proxy localhost:3000');
     expect(result).toContain('admin localhost:2019');
     // No wildcard block without slugs
@@ -100,8 +102,8 @@ describe('generateCaddyfile', () => {
     });
 
     const rootMatches = result.match(/root \* \/custom\/path\/public/g) || [];
-    // Main block + subdomain block = 2 occurrences
-    expect(rootMatches.length).toBe(2);
+    // The subdomain block only; the studio's block serves no files
+    expect(rootMatches.length).toBe(1);
   });
 
   it('includes try_files for clean URLs in all serving blocks', () => {
@@ -112,8 +114,8 @@ describe('generateCaddyfile', () => {
     });
 
     const tryFilesMatches = result.match(/try_files \{path\} \{path\}\.html \{path\}\/index\.html/g) || [];
-    // Main + subdomain + custom domain = 3 (the www redirect block serves nothing)
-    expect(tryFilesMatches.length).toBe(3);
+    // Subdomain + custom domain = 2 (the studio and the www redirect blocks serve nothing)
+    expect(tryFilesMatches.length).toBe(2);
   });
 
   it('adds a www redirect block for an apex custom domain', () => {
@@ -154,5 +156,19 @@ describe('wwwCounterpart', () => {
   it('handles multi-label TLDs and subdomains by prefix only', () => {
     expect(wwwCounterpart('example.co.uk')).toBe('www.example.co.uk');
     expect(wwwCounterpart('shop.example.com')).toBe('www.shop.example.com');
+  });
+
+  it("passes a site's own functions, analytics and review copy to the app, and nothing else", () => {
+    const result = generateCaddyfile({
+      ...BASE_CONFIG,
+      slugRoutes: [{ deployment_id: 'abc', slug: 'sunny' }],
+      customDomainRoutes: [{ deployment_id: 'xyz', custom_domain: 'example.com' }],
+    });
+    for (const [host, id] of [['sunny.inst-1.oswstudio.com', 'abc'], ['example.com', 'xyz']]) {
+      const block = result.split(`\n${host} {`)[1].split('\n}\n')[0];
+      expect(block, host).toContain(`@platform path /api/deployments/${id}/functions/* /api/analytics/track /api/analytics/interaction /review/${id} /review/${id}/*`);
+      // The platform paths are matched before the static handler rewrites everything into the site.
+      expect(block.indexOf('handle @platform'), host).toBeLessThan(block.indexOf(`rewrite * /deployments/${id}{uri}`));
+    }
   });
 });
