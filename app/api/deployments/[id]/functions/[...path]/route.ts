@@ -196,9 +196,25 @@ async function handleRequest(
   }
 }
 
+/**
+ * Every response, refusals included. A function may answer `text/html`; opened as a page, that
+ * document must not run with the origin it was served from, which can be the studio's. Callers
+ * using fetch are unaffected: a CSP sandbox applies only to documents.
+ */
+function withDocumentGuard(
+  handler: (request: NextRequest, context: RouteParams) => Promise<NextResponse>
+) {
+  return async (request: NextRequest, context: RouteParams) => {
+    const response = await handler(request, context);
+    response.headers.set('Content-Security-Policy', 'sandbox');
+    response.headers.set('X-Content-Type-Options', 'nosniff');
+    return response;
+  };
+}
+
 // Export handlers for all HTTP methods
-export const GET = handleRequest;
-export const POST = handleRequest;
-export const PUT = handleRequest;
-export const DELETE = handleRequest;
-export const PATCH = handleRequest;
+export const GET = withDocumentGuard(handleRequest);
+export const POST = withDocumentGuard(handleRequest);
+export const PUT = withDocumentGuard(handleRequest);
+export const DELETE = withDocumentGuard(handleRequest);
+export const PATCH = withDocumentGuard(handleRequest);

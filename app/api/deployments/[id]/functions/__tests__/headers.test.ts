@@ -140,7 +140,9 @@ describe('the response a function sends', () => {
     expect(h.get('etag')).toBe('"1"');
     expect(h.get('last-modified')).toBe('Wed, 01 Oct 2026 00:00:00 GMT');
     expect(h.get('x-request-id')).toBe('r1');
-    for (const name of ['content-security-policy', 'access-control-allow-origin', 'access-control-allow-credentials', 'strict-transport-security', 'refresh', 'x-accel-redirect', 'x-sendfile', 'x-middleware-rewrite', 'x-nextjs-redirect']) {
+    // The function's own policy is dropped; the route's sandbox is what the response carries.
+    expect(h.get('content-security-policy')).toBe('sandbox');
+    for (const name of ['access-control-allow-origin', 'access-control-allow-credentials', 'strict-transport-security', 'refresh', 'x-accel-redirect', 'x-sendfile', 'x-middleware-rewrite', 'x-nextjs-redirect']) {
       expect(h.get(name), name).toBeNull();
     }
   });
@@ -155,5 +157,22 @@ describe('the response a function sends', () => {
       params: Promise.resolve({ id: 'd1', path: ['echo'] }),
     });
     expect(response.headers.get('set-cookie')).toBeNull();
+  });
+});
+
+describe('a function response opened as a page', () => {
+  it('cannot run with the origin it was served from', async () => {
+    const { response } = await call({ responseHeaders: { 'Content-Type': 'text/html' } });
+    expect(response.headers.get('content-security-policy')).toBe('sandbox');
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+
+  it('is guarded on a refusal too', async () => {
+    mocks.resolveDeploymentByIdOrSlug.mockResolvedValue(null);
+    const response = await GET(new NextRequest('http://localhost:3000/api/deployments/d1/functions/echo'), {
+      params: Promise.resolve({ id: 'd1', path: ['echo'] }),
+    });
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(response.headers.get('content-security-policy')).toBe('sandbox');
   });
 });
