@@ -1,90 +1,93 @@
 /**
- * Deployment Thumbnail Capture Utility
- * Captures a screenshot of a published deployment via a hidden iframe.
- * Returns a base64 data URL -- caller is responsible for persisting.
+ * Screenshots of a published page, for deployment thumbnails and the heatmap.
+ *
+ * Published sites are served away from the studio's origin (lib/web/site-origin.ts), and the page
+ * runs code the studio does not control, so it is not loaded in a frame the studio can read.
+ * Instead the page's HTML comes from the build (`/api/deployment-pages/{id}`), gets a `<base>` at
+ * the site's own URL so its assets load from there, and is rendered in a sandboxed shell, the same
+ * as the editor preview (lib/preview/preview-shell.ts). The frame paints itself on request.
+ *
+ * Returns a JPEG data URL, or null. The caller persists it.
  */
 
 import { captureIframeScreenshot } from './screenshot';
+import { apiFetch } from '@/lib/api/backend-status';
+import { previewBridgeScript } from '@/lib/preview/preview-bridge';
+import { loadIntoShell } from '@/lib/preview/preview-shell';
 
 export interface DeploymentCaptureOptions {
+  /** The page as a visitor addresses it. Defaults to the site's home page. */
+  pagePath?: string;
   captureWidth?: number;
   captureHeight?: number;
   outputWidth?: number;
   outputHeight?: number;
   quality?: number;
-  timeout?: number;
+  fullPage?: boolean;
 }
 
-const DEFAULTS: Required<DeploymentCaptureOptions> = {
+const DEFAULTS = {
+  pagePath: '/',
   captureWidth: 1280,
   captureHeight: 720,
   outputWidth: 640,
   outputHeight: 360,
   quality: 0.8,
-  timeout: 15000,
+  fullPage: false,
 };
 
-/**
- * Capture a screenshot of a published deployment URL.
- * @returns base64 data URL, or null on failure
- */
-export async function captureDeploymentScreenshot(
-  deploymentUrl: string,
+function escapeAttribute(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+/** The page's HTML with a `<base>` at its public URL and the preview bridge, first in `<head>`. */
+export function pageForCapture(html: string, url: string): string {
+  const head = `<base href="${escapeAttribute(url)}">${previewBridgeScript(0)}`;
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (tag) => tag + head);
+  if (/<html[^>]*>/i.test(html)) return html.replace(/<html[^>]*>/i, (tag) => `${tag}<head>${head}</head>`);
+  return head + html;
+}
+
+export async function captureDeploymentPage(
+  deploymentId: string,
   options: DeploymentCaptureOptions = {}
 ): Promise<string | null> {
   const opts = { ...DEFAULTS, ...options };
+  let page: { html: string; url: string };
+  try {
+    const res = await apiFetch(`/api/deployment-pages/${encodeURIComponent(deploymentId)}?path=${encodeURIComponent(opts.pagePath)}`);
+    if (!res.ok) return null;
+    page = await res.json();
+  } catch {
+    return null;
+  }
 
-  return new Promise((resolve) => {
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.top = '-10000px';
-    iframe.style.left = '-10000px';
-    iframe.style.width = `${opts.captureWidth}px`;
-    iframe.style.height = `${opts.captureHeight}px`;
-    iframe.style.border = 'none';
-    iframe.src = deploymentUrl;
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('sandbox', 'allow-scripts');
+  iframe.style.position = 'fixed';
+  iframe.style.top = '-10000px';
+  iframe.style.left = '-10000px';
+  iframe.style.width = `${opts.captureWidth}px`;
+  iframe.style.height = `${opts.captureHeight}px`;
+  iframe.style.border = 'none';
+  document.body.appendChild(iframe);
 
-    let timeoutId: number | null = null;
-    let resolved = false;
-
-    const cleanup = () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (iframe.parentElement) document.body.removeChild(iframe);
-    };
-
-    const done = (result: string | null) => {
-      if (resolved) return;
-      resolved = true;
-      cleanup();
-      resolve(result);
-    };
-
-    timeoutId = window.setTimeout(() => done(null), opts.timeout);
-
-    iframe.onload = async () => {
-      try {
-        if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
-        timeoutId = window.setTimeout(() => done(null), 12000);
-
-        const screenshot = await captureIframeScreenshot(
-          iframe,
-          opts.captureWidth,
-          opts.captureHeight,
-          opts.outputWidth,
-          opts.outputHeight,
-          opts.quality,
-          false,
-          true,
-          2500
-        );
-
-        done(screenshot);
-      } catch {
-        done(null);
-      }
-    };
-
-    iframe.onerror = () => done(null);
-    document.body.appendChild(iframe);
-  });
+  try {
+    await loadIntoShell(iframe, pageForCapture(page.html, page.url), [], 15000);
+    return await captureIframeScreenshot(
+      iframe,
+      opts.captureWidth,
+      opts.captureHeight,
+      opts.outputWidth,
+      opts.outputHeight,
+      opts.quality,
+      opts.fullPage,
+      true,
+      2500
+    );
+  } catch {
+    return null;
+  } finally {
+    iframe.remove();
+  }
 }

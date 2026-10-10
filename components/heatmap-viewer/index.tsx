@@ -46,7 +46,6 @@ interface HeatmapViewerProps {
 
 export function HeatmapViewer({ deploymentId, pages }: HeatmapViewerProps) {
   const tc = useTranslations('common');
-  const tt = useTranslations('tooltips');
   const t = useTranslations('heatmap');
   const tb = useTranslations('backend');
   const [selectedPage, setSelectedPage] = useState<string>(pages[0] || '/');
@@ -58,7 +57,6 @@ export function HeatmapViewer({ deploymentId, pages }: HeatmapViewerProps) {
   // Cache screenshots by page to avoid re-capturing
   const [screenshotCache, setScreenshotCache] = useState<Record<string, string>>({});
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Fetch heatmap data
   const fetchHeatmapData = async () => {
@@ -101,16 +99,13 @@ export function HeatmapViewer({ deploymentId, pages }: HeatmapViewerProps) {
     }
   }, [selectedPage, deviceFilter, deploymentId]);
 
-  // Capture screenshot - use same approach as thumbnail capture
+  // Rendered from the build in a sandboxed frame, like the deployment thumbnail: the published page
+  // lives on the site's own origin (lib/web/site-origin.ts) and is never loaded where the studio
+  // could be reached from it.
   const captureScreenshot = async () => {
-    if (!iframeRef.current) return;
-
     setScreenshotLoading(true);
     try {
-      // Dynamically import screenshot utility
-      const { captureIframeScreenshot } = await import('@/lib/utils/screenshot');
-
-      const iframe = iframeRef.current;
+      const { captureDeploymentPage } = await import('@/lib/utils/deployment-thumbnail');
 
       // Determine capture dimensions based on device filter
       let captureWidth = 1280;
@@ -125,34 +120,12 @@ export function HeatmapViewer({ deploymentId, pages }: HeatmapViewerProps) {
       }
       // 'all' and 'desktop' use default 1280x720
 
-      // Set iframe size to match capture dimensions
-      iframe.style.width = `${captureWidth}px`;
-      iframe.style.height = `${captureHeight}px`;
-
-      // Load the published page URL directly (same as thumbnail capture)
-      // This avoids CORS issues since it's same-origin
-      iframe.src = selectedPage;
-
-      // Wait for iframe to fully load
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Timeout')), 5000);
-
-        iframe.onload = () => {
-          clearTimeout(timeout);
-          resolve(null);
-        };
-
-        iframe.onerror = () => {
-          clearTimeout(timeout);
-          reject(new Error('Failed to load page'));
-        };
+      const dataUrl = await captureDeploymentPage(deploymentId, {
+        pagePath: selectedPage,
+        captureWidth,
+        captureHeight,
+        fullPage: true,
       });
-
-      // Wait for any dynamic content to render (match thumbnail behavior)
-      await new Promise(r => setTimeout(r, 500));
-
-      // Capture screenshot at device-specific dimensions
-      const dataUrl = await captureIframeScreenshot(iframe, captureWidth, captureHeight);
 
       if (dataUrl) {
         setScreenshotDataUrl(dataUrl);
@@ -344,18 +317,6 @@ export function HeatmapViewer({ deploymentId, pages }: HeatmapViewerProps) {
             </>
           )}
 
-          {/* Hidden iframe for screenshot capture - positioned off-screen with dynamic dimensions */}
-          <iframe
-            ref={iframeRef}
-            style={{
-              position: 'fixed',
-              top: '-10000px',
-              left: '-10000px',
-              border: 'none'
-              // Width and height set dynamically in captureScreenshot()
-            }}
-            title={tt('pageForScreenshot')}
-          />
         </div>
       )}
 

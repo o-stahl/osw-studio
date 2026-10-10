@@ -67,6 +67,8 @@ export async function GET(
       headers: {
         'Content-Type': mimeType,
         'Cache-Control': 'public, max-age=3600',
+        // Public files; see the /deployments headers in next.config.ts.
+        'Access-Control-Allow-Origin': '*',
       },
     });
   } catch (error) {

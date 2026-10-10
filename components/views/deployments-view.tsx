@@ -38,7 +38,7 @@ import { track } from '@/lib/telemetry';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { Pagination, PaginationRange } from '@/components/ui/pagination';
 import { ThumbnailArea } from '@/components/ui/thumbnail-area';
-import { captureDeploymentScreenshot } from '@/lib/utils/deployment-thumbnail';
+import { captureDeploymentPage } from '@/lib/utils/deployment-thumbnail';
 import { ReviewBadge } from '@/components/ui/review-badge';
 import { useNarrowContainer } from '@/lib/hooks/use-narrow-container';
 import { COMPACT_ROW_WIDTH } from '@/lib/constants/layout';
@@ -911,7 +911,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
                                 <ThumbnailArea
                                   size="xs"
                                   image={deployment.previewImage || project?.previewImage}
-                                  onCapture={isPublished ? async () => captureDeploymentScreenshot(publicUrl) : undefined}
+                                  onCapture={isPublished ? async () => captureDeploymentPage(deployment.id) : undefined}
                                   onImageChange={(img) => handleDeploymentThumbnailChange(deployment.id, img)}
                                 />
                               </td>

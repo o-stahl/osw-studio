@@ -191,6 +191,8 @@ function siteBlock(host: string, deploymentId: string, publicRoot: string, pream
     '    try_files {path} {path}.html {path}/index.html',
     '    file_server',
     '    header Cache-Control "public, max-age=3600"',
+    // Public files, readable without credentials, so the studio's capture can inline them.
+    '    header Access-Control-Allow-Origin "*"',
     '  }',
     '}',
     '',

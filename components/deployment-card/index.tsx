@@ -31,7 +31,7 @@ import {
   FileBox,
 } from 'lucide-react';
 import { ThumbnailArea } from '@/components/ui/thumbnail-area';
-import { captureDeploymentScreenshot } from '@/lib/utils/deployment-thumbnail';
+import { captureDeploymentPage } from '@/lib/utils/deployment-thumbnail';
 import { ReviewBadge } from '@/components/ui/review-badge';
 
 interface DeploymentCardProps {
@@ -88,7 +88,7 @@ export function DeploymentCard({
         <ThumbnailArea
           image={deployment.previewImage || project?.previewImage}
           onCapture={isPublished ? async () => {
-            return captureDeploymentScreenshot(publicUrl);
+            return captureDeploymentPage(deployment.id);
           } : undefined}
           onImageChange={(img) => onThumbnailChange?.(deployment.id, img)}
           size="md"

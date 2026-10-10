@@ -64,6 +64,9 @@ const nextConfig: NextConfig = {
         source: '/deployments/:path*',
         headers: [
           { key: 'Cache-Control', value: 'public, max-age=3600' },
+          // Public files, readable from anywhere without credentials, so the studio's sandboxed
+          // capture of a page (lib/utils/deployment-thumbnail.ts) can inline its images and fonts.
+          { key: 'Access-Control-Allow-Origin', value: '*' },
         ],
       },
       {
