@@ -1,8 +1,9 @@
 /**
  * A published page's HTML, read from the build, for the studio to render and capture.
  *
- * Published sites are served away from the studio's origin (lib/web/site-origin.ts), so the studio
- * cannot load one in a frame and read it. Thumbnails and the heatmap instead render the page in a
+ * A published site may share the studio's origin or live elsewhere (lib/web/site-origin.ts); either
+ * way the studio does not load one in a frame it can read, since the page runs code the studio does
+ * not control. Thumbnails and the heatmap instead render the page in a
  * sandboxed shell (lib/utils/deployment-thumbnail.ts) from this HTML, with its assets loaded from
  * the site's own URL, returned here as `url`.
  *

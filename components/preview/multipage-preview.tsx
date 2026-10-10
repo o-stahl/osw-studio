@@ -541,7 +541,7 @@ export function generatePlacementScript(): string {
     });
 
     window.addEventListener('message', function(event) {
-      // Only the host drives the preview; project code in this frame, or a page it opened, does not.
+      // Messages from any window but the host (a page project code opened) are ignored.
       if (event.source !== window.parent) return;
       var data = event.data;
       if (!data || typeof data !== 'object') return;
@@ -1009,7 +1009,7 @@ export function generateNavigationScript(normalizedPath: string, directEdit: boo
           }
 
           window.addEventListener('message', function(event) {
-            // Only the host drives the preview; project code in this frame, or a page it opened, does not.
+            // Messages from any window but the host (a page project code opened) are ignored.
             if (event.source !== window.parent) {
               return;
             }
@@ -1326,7 +1326,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
   const [navigationHistory, setNavigationHistory] = useState<string[]>(['/']);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [iframeReady, setIframeReady] = useState(false);
-  // The preview "escaped": the frame navigated somewhere that isn't the document we wrote (a form
+  // The preview "escaped": the frame navigated somewhere that isn't the document the host wrote (a form
   // submit, window.location, meta refresh, etc.). Drives the recovery overlay.
   const [escaped, setEscaped] = useState(false);
   /** The element picker, read out of the layout slice rather than held here. */
@@ -1406,7 +1406,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
   // read would re-apply it on every recompile and yank the preview back off the page the user
   // navigated to.
   const pendingInitialPathRef = useRef<string | null>(initialPath ?? null);
-  // Each document we write posts `preview:ready` from its own load event, and the iframe element
+  // Each document the host writes posts `preview:ready` from its own load event, and the iframe element
   // fires `load` in this window. The two arrive in either order (a cross-origin frame runs in its
   // own process), so they are paired by count: a load with no ack inside ACK_TIMEOUT_MS is a
   // document that is not ours, the frame having navigated to an external site.
@@ -1425,7 +1425,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
   const shellCacheRef = useRef(new WeakMap<object, Map<string, Blob>>());
 
   // Respond to a confident escape signal (a frame load with no `preview:ready` to pair it with: the
-  // frame is no longer our document): one bounded auto-reload, then the recovery overlay. Stable — safe to call from
+  // frame is no longer the host's document): one bounded auto-reload, then the recovery overlay. Stable — safe to call from
   // the load handler.
   const handleEscapeSignal = useCallback((loadId: number) => {
     const action = lifecycleRef.current.onEscapeSignal(loadId);
@@ -1606,7 +1606,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     };
   }, [iframeReady, postMessageToIframe, handleEscapeSignal]);
 
-  /** One of our documents loaded: pair it with the iframe load event it belongs to. */
+  /** One of the host's documents loaded: pair it with the iframe load event it belongs to. */
   const pairAck = useCallback(() => {
     if (ackTimerRef.current) {
       clearTimeout(ackTimerRef.current);
@@ -1616,7 +1616,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     }
   }, []);
 
-  /** A shell we wrote is asking for its page. */
+  /** A shell the host wrote is asking for its page. */
   const handleShellReady = useCallback((loadId: number) => {
     // Only the current load's acks pair with load events: an outgoing document's late one would
     // leave a surplus that hides the next real escape.
@@ -1646,7 +1646,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
       postMessageToIframe({ type: 'scroll-restore', scrollX: restore.x, scrollY: restore.y });
     }
     // Only here: this is the first moment a message posted into the frame reaches the document
-    // we wrote. Announced on every load, because each one invalidates whatever the consumer knows
+    // the host wrote. Announced on every load, because each one invalidates whatever the consumer knows
     // about the old document.
     onFrameReadyRef.current?.();
     // After the consumer, not before: this document is brand new and has no toolbar colours

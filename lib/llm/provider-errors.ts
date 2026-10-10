@@ -17,9 +17,9 @@ export type ApiErrorCode =
   /** No credit or allowance left. Nothing succeeds until it is topped up or renews. */
   | 'credit_exhausted'
   | 'auth'
-  /** The provider refused this request's content (moderation, a guardrail). Another model may take it; the key is fine. */
+  /** The provider refused this request's content (moderation, a guardrail). Another model may take it. */
   | 'blocked'
-  /** The model refuses this app or key whatever is sent: a model OpenRouter serves only to listed apps, or one an account guardrail excludes. */
+  /** OpenRouter refused the model whatever was sent: `permission_denied` (a model served only to listed apps, or a guardrail on the account or key), or any other 403 it gave no content reason for. */
   | 'model_refused'
   /** The model is gone, renamed, or has no provider serving it right now. */
   | 'model_unavailable'
@@ -93,9 +93,9 @@ export function classifyProviderError(input: ProviderErrorInput): ProviderErrorC
   if (status === 401) return { code: 'auth' };
   if (status === 403) {
     // OpenRouter answers 403 for what was sent (a moderation flag: `reasons`, `flagged_input`) or
-    // for the model itself (`permission_denied`: a model it serves only to listed apps, an account
-    // guardrail), never for a bad key (401). Elsewhere 403 is usually a key without access, unless
-    // it says it was the content.
+    // for the model (`permission_denied`: a model served only to listed apps, or a guardrail on the
+    // account or key); a bad key is 401. An OpenRouter 403 with neither is treated as the model, the
+    // closest fit. Elsewhere 403 is usually a key without access, unless it says it was the content.
     const type = typeof input.metadata?.error_type === 'string' ? input.metadata.error_type : '';
     if (CONTENT_ERROR_TYPES.has(type) || Array.isArray(input.metadata?.reasons) || typeof input.metadata?.flagged_input === 'string') {
       return { code: 'blocked' };

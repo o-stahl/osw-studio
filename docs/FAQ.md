@@ -45,9 +45,8 @@ The application itself is **free and open source** (MIT license). However:
 ### Is my data private?
 
 **Browser Mode** (default):
-- All data stays in your browser (IndexedDB)
-- Code never sent to OSW Studio servers (we don't have servers!)
-- Only sent to AI provider when you generate
+- Projects are stored in your browser (IndexedDB), not on a server
+- When you generate, the request goes to your AI provider through the app's own server (`/api/generate`), which passes it on without storing it
 
 **Server Mode** (optional):
 - Data stored locally on your server

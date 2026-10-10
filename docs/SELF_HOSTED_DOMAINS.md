@@ -4,9 +4,9 @@ Guide for OSW Studio operators running their own instances.
 
 ## Deployment Serving
 
-Published deployments are served by Node.js route handlers by default, under `/deployments/{id}/`. For better performance and for isolation, set `STATIC_PROXY=true` in `.env` and use Caddy with the generated Caddyfile: each deployment is served from its own subdomain (`{slug}.{your instance domain}`) or custom domain, straight from disk. Only the deployment's own edge functions, `/api/analytics/track`, `/api/analytics/interaction` and its review copy (`/review/{id}/`) are passed to Node.js from those hosts.
+Published deployments are served by Node.js route handlers by default, under `/deployments/{id}/`. For better performance and for isolation, set `STATIC_PROXY=true` in `.env` and use Caddy with the generated Caddyfile ([requirements](SERVER_MODE.md#setting-up-subdomains)): each deployment is served from its own subdomain (`{slug}.{your instance domain}`) or custom domain, straight from disk. Only the deployment's own edge functions, `/api/analytics/track`, `/api/analytics/interaction` and its review copy (`/review/{id}/`) are passed to Node.js from those hosts.
 
-The studio's own domain does not serve deployments in this set-up: `/deployments/{id}/` and `/review/{id}/` there redirect to the deployment's subdomain or custom domain, so a site's scripts never run on the studio's origin. Without `STATIC_PROXY`, set `SITES_ORIGIN` to serve every deployment from a separate address instead; see [Where Published Sites Are Served](?doc=server-mode).
+The studio's own domain does not serve deployments in this set-up: `/deployments/{id}/` and `/review/{id}/` there redirect to the deployment's subdomain or custom domain, so a site's scripts never run on the studio's origin. Without `STATIC_PROXY`, set `SITES_ORIGIN` to serve every deployment from a separate address instead; see [Where Published Sites Are Served](SERVER_MODE.md#where-published-sites-are-served).
 
 When `STATIC_PROXY=true`, publishing or deleting a deployment with a custom domain automatically regenerates the proxy config and reloads it.
 

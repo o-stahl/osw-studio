@@ -10,7 +10,7 @@
  *   not ours.
  * - `preview:scroll` while scrolling, at most every 100 ms, so a recompile can put the reader back.
  * - `preview:capture`: runs the screenshot runtime the host sends (`lib/preview/frame-capture.ts`)
- *   and posts the result back. Only the host may ask.
+ *   and posts the result back. Messages from any window but the host are ignored.
  * - Storage: see `STORAGE_SHIM_JS`.
  */
 

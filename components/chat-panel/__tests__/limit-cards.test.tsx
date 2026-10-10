@@ -121,27 +121,26 @@ describe('StoppedCard', () => {
     expect(button(/^Continue$/)).toBeUndefined();
   });
 
-  it('says a refused request is not the key, shows the provider\'s reason, and offers no plain Continue', () => {
+  it('says the request was refused, shows the provider\'s reason, and offers no plain Continue', () => {
     working('openrouter', 'm');
     render(<StoppedCard live onContinue={() => {}} data={{
       errorCategory: 'blocked', provider: 'openrouter', model: 'm', canRetrySame: false,
       message: 'm requires moderation on OpenAI. Your input was flagged',
     }} />);
     expect(container.textContent).toContain('OpenRouter refused this request');
-    expect(container.textContent).toContain('Your key is fine');
     expect(container.textContent).not.toContain('flagged the request');
     expect(container.textContent).not.toContain('did not accept the key');
     expect(container.textContent).toContain('Your input was flagged');
     expect(button(/^Continue$/)).toBeUndefined();
   });
 
-  it('says a model that refuses the app is about the model, with the provider\'s words, and offers no plain Continue', () => {
+  it('says the provider refused the model, with its words, and offers no plain Continue', () => {
     working('openrouter', 'gated:free');
     render(<StoppedCard live onContinue={() => {}} data={{
       errorCategory: 'model_refused', provider: 'openrouter', model: 'gated:free', canRetrySame: false,
       message: 'gated:free is only available on agentic harnesses.',
     }} />);
-    expect(container.textContent).toContain('does not serve');
+    expect(container.textContent).toContain('refused to serve');
     expect(container.textContent).toContain('only available on agentic harnesses');
     expect(container.textContent).not.toContain('refused this request');
     expect(button(/^Continue$/)).toBeUndefined();

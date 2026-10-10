@@ -101,7 +101,7 @@ export interface Deployment {
   openReviewThreads?: number;
   /**
    * Set by the deployments list endpoint when the project behind the deployment no longer exists on
-   * the server. The deployment keeps serving its last build; it needs another project to republish.
+   * the server. A published deployment keeps serving its last build; it needs another project to republish.
    */
   projectMissing?: boolean;
 

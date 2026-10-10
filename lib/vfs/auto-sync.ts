@@ -800,7 +800,7 @@ export async function reconcileProjectsToServer(
 
 type ServerDeleteReason = 'auth' | 'forbidden' | 'in_use' | 'failed';
 
-/** The server did not delete the item. Its message is ready to show; nothing was deleted. */
+/** The server did not confirm the delete. Its message is ready to show; the local copy is kept. */
 export class ServerDeleteRefused extends Error {
   constructor(public readonly reason: ServerDeleteReason) {
     super(translator()(`sync.deleteRefused.${reason}`));

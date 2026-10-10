@@ -92,7 +92,7 @@ describe('autoDelete* server outcomes', () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ code: 'in_use', deployments: ['Site'] }), { status: 409 }));
     const err = await autoSync.autoDeleteProject('x').catch((e) => e);
     expect(err).toMatchObject({ reason: 'in_use' });
-    expect(err.message).toContain('A deployment publishes this project');
+    expect(err.message).toContain('A deployment uses this project');
   });
 
   it('encodes the id, so one with a slash cannot miss the route and read as deleted', async () => {

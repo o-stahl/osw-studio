@@ -1,8 +1,8 @@
 /**
  * Screenshots of a published page, for deployment thumbnails and the heatmap.
  *
- * Published sites are served away from the studio's origin (lib/web/site-origin.ts), and the page
- * runs code the studio does not control, so it is not loaded in a frame the studio can read.
+ * The page runs code the studio does not control, so it is not loaded in a frame the studio can read,
+ * whether the site shares the studio's origin or lives elsewhere (lib/web/site-origin.ts).
  * Instead the page's HTML comes from the build (`/api/deployment-pages/{id}`), gets a `<base>` at
  * the site's own URL so its assets load from there, and is rendered in a sandboxed shell, the same
  * as the editor preview (lib/preview/preview-shell.ts). The frame paints itself on request.

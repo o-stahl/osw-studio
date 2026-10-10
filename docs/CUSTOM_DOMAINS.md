@@ -24,7 +24,7 @@ When you publish a deployment with a custom domain:
 4. Requests are routed to your deployment's static files
 5. The deployment's own edge functions, the analytics collector and its review copy are passed to OSW Studio; other `/api/` paths are not served on your domain
 
-When the install serves sites away from the studio (`STATIC_PROXY`, as on hosted instances, or `SITES_ORIGIN`), a link to `/deployments/{id}/` on the studio's address redirects to your domain. See [Where Published Sites Are Served](?doc=server-mode).
+When the install serves sites away from the studio (`STATIC_PROXY`, as on hosted instances, or `SITES_ORIGIN`), a link to `/deployments/{id}/` on the studio's address redirects to your domain. See [Where Published Sites Are Served](?doc=server-mode#where-published-sites-are-served).
 
 ## What OSW Studio Handles
 

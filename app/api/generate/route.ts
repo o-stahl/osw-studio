@@ -601,9 +601,8 @@ Habits:
       // providers echo the key they were given, so it is masked, and the text is bounded.
       const providerSaid = providerMessageForDisplay(cleanError, apiKey);
 
-      // A request the provider refused for its content (moderation) or a model that refuses this
-      // app: its own words say why, and the key is fine, so they are passed on rather than an
-      // authentication hint.
+      // A request the provider refused for its content (moderation) or a model it refused to serve:
+      // its own words say why, so they are passed on rather than an authentication hint.
       if (errorClass.code === 'blocked' || errorClass.code === 'model_refused') {
         const reasons = Array.isArray(errorMetadata?.reasons) ? (errorMetadata.reasons as unknown[]).filter((r) => typeof r === 'string') : [];
         const said = providerMessageForDisplay(`${cleanError}${reasons.length ? ` (${reasons.join(', ')})` : ''}`, apiKey);

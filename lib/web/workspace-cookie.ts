@@ -1,8 +1,9 @@
 /**
  * The selected-workspace cookie, read and written by both the browser and the server.
  *
- * `__Host-osw_workspace` on HTTPS, so a published site on a sibling subdomain cannot plant a
- * workspace for the studio (cookie tossing), matching the session and ChatGPT cookies. The browser
+ * `__Host-osw_workspace` on HTTPS, so a published site on a sibling subdomain cannot override a
+ * workspace selected here (cookie tossing). Readers still fall back to the unprefixed name, which
+ * such a site can set, when no prefixed one exists; only an id-shaped value is taken from it. The browser
  * cannot see the server's `SECURE_COOKIES`, so it decides by protocol; plain HTTP (local dev, the
  * desktop app) keeps `osw_workspace`.
  *

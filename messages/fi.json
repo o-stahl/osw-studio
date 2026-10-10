@@ -148,7 +148,6 @@
       "backend-features": "Backend",
       "mcp-server": "MCP-palvelin",
       "multitenancy": "Multitenancy",
-      "security-model": "Tietoturvamalli",
       "faq": "FAQ",
       "troubleshooting": "Vianetsintä"
     },
@@ -1083,7 +1082,7 @@
       "auth": "Istuntosi on vanhentunut, joten mitään ei poistettu. Kirjaudu sisään ja yritä uudelleen.",
       "forbidden": "Roolisi tässä workspacessa ei salli tämän poistamista, joten mitään ei poistettu.",
       "in_use": "Julkaisu käyttää tätä projektia, joten mitään ei poistettu. Vaihda ensin julkaisun projekti tai poista julkaisu.",
-      "failed": "Palvelin ei vahvistanut poistoa, joten mitään ei poistettu. Yritä uudelleen."
+      "failed": "Palvelin ei vahvistanut poistoa, joten tämä kopio säilytettiin. Yritä uudelleen."
     }
   },
   "models": {
@@ -1739,7 +1738,7 @@
     }
   },
   "publishSettings": {
-    "projectMissingDetail": "Sivusto näyttää edelleen viimeisimmän julkaisunsa. Valitse toinen projekti, tallenna ja julkaise uudelleen.",
+    "projectMissingDetail": "Jos sivusto on julkaistu, se näyttää edelleen viimeisimmän julkaisunsa. Valitse toinen projekti, tallenna ja julkaise uudelleen.",
     "projectMissingTitle": "Tämän julkaisun projekti on poistettu",
     "publishingStatus": "Julkaisun tila",
     "underConstruction": "Työn alla",
@@ -2197,8 +2196,8 @@
     "analyzeSwapFailed": "Vaihdon analysointi epäonnistui",
     "analyzingChanges": "Analysoidaan muutoksia...",
     "noBackendChanges": "Backend-ominaisuuksissa ei havaittu muutoksia.",
-    "swapConflictWarning": "Joitakin backend-ominaisuuksia poistetaan tai korvataan. Analytiikkatiedot säilytetään.",
-    "secretValueReplaced": "{name} (arvo korvataan, kun julkaiset uudelleen)",
+    "swapConflictWarning": "Joitakin backend-ominaisuuksia poistetaan tai korvataan, kun julkaiset uudelleen. Analytiikkatiedot säilyvät.",
+    "secretValueReplaced": "{name} (saa uuden projektin arvon, kun julkaiset uudelleen)",
     "swapConfirm": "Vaihda projekti",
     "loadSchemaFailed": "Skeeman lataus epäonnistui",
     "databaseTables": "Tietokantataulut",
@@ -3468,7 +3467,7 @@
     "titleModel": "{model}: ei juuri nyt käytettävissä.",
     "titleAuth": "{provider} ei hyväksynyt avainta.",
     "titleBlocked": "{provider} hylkäsi pyynnön.",
-    "titleModelRefused": "{provider} ei tarjoa mallia {model} tälle sovellukselle.",
+    "titleModelRefused": "{provider} ei suostunut tarjoamaan mallia {model}.",
     "titleOther": "Pyyntö palveluun {provider} epäonnistui.",
     "dailyCount": "{used, number}/{limit, number} käytetty. Ne nollautuvat {when}.",
     "dailyReset": "Ne nollautuvat {when}.",
@@ -3479,8 +3478,8 @@
     "rateBody": "Odota hetki ja jatka sitten.",
     "modelBody": "Valitse toinen malli ja jatka sitten.",
     "authBody": "Vaihda avain asetuksissa ja jatka sitten.",
-    "blockedBody": "Malli ei ottanut pyyntöä vastaan; syy on kohdassa Tiedot. Avaimesi on kunnossa. Kokeile toista mallia.",
-    "modelRefusedBody": "Syy on mallissa, ei pyynnössäsi tai avaimessasi; tarkempi syy on kohdassa Tiedot. Valitse toinen malli ja jatka sitten.",
+    "blockedBody": "Malli ei ottanut pyyntöä vastaan; syy on kohdassa Tiedot. Kokeile toista mallia.",
+    "modelRefusedBody": "Syy on kohdassa Tiedot. Valitse toinen malli ja jatka sitten.",
     "continueWith": "Jatka palvelulla {provider}",
     "yourModel": "{model}, valitsemasi malli palvelulle {provider}",
     "continue": "Jatka",

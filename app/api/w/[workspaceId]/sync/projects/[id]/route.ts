@@ -236,8 +236,8 @@ export async function DELETE(
       return NextResponse.json({ success: true });
     }
 
-    // A deployment serves its project's build; deleting the project out from under it leaves a
-    // live site nobody can republish. Point the deployment elsewhere, or delete it, first.
+    // A deployment builds from its project; deleting the project out from under it leaves the
+    // deployment nothing to republish from. Point the deployment elsewhere, or delete it, first.
     const deployments = (await adapter.listDeployments?.()) ?? [];
     const usedBy = deployments.filter((d) => d.projectId === id).map((d) => d.name);
     if (usedBy.length > 0) {

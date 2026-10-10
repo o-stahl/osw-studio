@@ -126,7 +126,7 @@ See your website in real-time:
 - Use the **focus tool** to select specific elements and add them to message context for targeted AI edits
 - Drag **semantic blocks** from the Blocks palette onto the preview — the AI writes code that fits your project
 
-The preview runs isolated from the studio: a project's `localStorage`, `sessionStorage` and cookies are kept per project until you close the tab, and IndexedDB is not available. Test IndexedDB on the published site.
+The preview runs isolated from the studio: a project's `localStorage`, `sessionStorage` and cookies are kept in memory per project until you reload or close the studio, and IndexedDB is not available. Test IndexedDB on a published or exported copy.
 
 ### Console (Python/Lua)
 

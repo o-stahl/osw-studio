@@ -99,9 +99,8 @@ export function HeatmapViewer({ deploymentId, pages }: HeatmapViewerProps) {
     }
   }, [selectedPage, deviceFilter, deploymentId]);
 
-  // Rendered from the build in a sandboxed frame, like the deployment thumbnail: the published page
-  // lives on the site's own origin (lib/web/site-origin.ts) and is never loaded where the studio
-  // could be reached from it.
+  // Rendered from the build in a sandboxed frame, like the deployment thumbnail, so the published
+  // page's code never runs where the studio could be reached from it.
   const captureScreenshot = async () => {
     setScreenshotLoading(true);
     try {

@@ -13,7 +13,6 @@ import {
   Database,
   Upload,
   ServerCog,
-  Shield,
 } from 'lucide-react';
 
 export interface DocItem {
@@ -44,7 +43,6 @@ export const DOCS_ITEMS: DocItem[] = [
   { id: 'backend-features', title: 'Backend', icon: Database, file: 'BACKEND_FEATURES.md' },
   { id: 'mcp-server', title: 'MCP Server', icon: Code, file: 'MCP_SERVER.md' },
   { id: 'multitenancy', title: 'Multitenancy', icon: Users, file: 'MULTITENANCY.md' },
-  { id: 'security-model', title: 'Security Model', icon: Shield, file: 'SECURITY_MODEL.md' },
 
   // Help & Advanced
   { id: 'faq', title: 'FAQ', icon: HelpCircle, file: 'FAQ.md' },

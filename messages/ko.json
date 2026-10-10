@@ -148,7 +148,6 @@
       "backend-features": "백엔드",
       "mcp-server": "MCP 서버",
       "multitenancy": "멀티테넌시",
-      "security-model": "보안 모델",
       "faq": "FAQ",
       "troubleshooting": "문제 해결"
     },
@@ -1083,7 +1082,7 @@
       "auth": "세션이 만료되어 아무것도 삭제하지 않았어요. 다시 로그인한 뒤 시도해 주세요.",
       "forbidden": "이 워크스페이스에서 내 역할로는 삭제할 수 없어서 아무것도 삭제하지 않았어요.",
       "in_use": "배포가 이 프로젝트를 쓰고 있어서 아무것도 삭제하지 않았어요. 먼저 배포의 프로젝트를 바꾸거나 배포를 삭제해 주세요.",
-      "failed": "서버가 삭제를 확인하지 않아서 아무것도 삭제하지 않았어요. 다시 시도해 주세요."
+      "failed": "서버가 삭제를 확인하지 않아서 이 기기의 사본은 그대로 두었어요. 다시 시도해 주세요."
     }
   },
   "models": {
@@ -1739,7 +1738,7 @@
     }
   },
   "publishSettings": {
-    "projectMissingDetail": "사이트는 마지막 빌드를 계속 보여 줘요. 다른 프로젝트를 고르고 저장한 뒤 다시 배포하세요.",
+    "projectMissingDetail": "사이트가 배포되어 있다면 마지막 빌드를 계속 보여 줘요. 다른 프로젝트를 고르고 저장한 뒤 다시 배포하세요.",
     "projectMissingTitle": "이 배포의 프로젝트가 삭제되었어요",
     "publishingStatus": "배포 상태",
     "underConstruction": "공사 중",
@@ -2197,8 +2196,8 @@
     "analyzeSwapFailed": "교체를 분석할 수 없었어요",
     "analyzingChanges": "변경 사항을 분석하는 중...",
     "noBackendChanges": "백엔드 기능 변경이 없어요.",
-    "swapConflictWarning": "일부 백엔드 기능이 제거되거나 교체돼요. 분석 데이터는 보존돼요.",
-    "secretValueReplaced": "{name} (다음 배포 때 값이 바뀌어요)",
+    "swapConflictWarning": "다시 배포하면 일부 백엔드 기능이 제거되거나 교체돼요. 분석 데이터는 그대로 남아요.",
+    "secretValueReplaced": "{name} (다음 배포 때 새 프로젝트의 값을 써요)",
     "swapConfirm": "프로젝트 교체",
     "loadSchemaFailed": "스키마를 불러올 수 없었어요",
     "databaseTables": "데이터베이스 테이블",
@@ -3468,7 +3467,7 @@
     "titleModel": "지금은 {model}을(를) 쓸 수 없어요.",
     "titleAuth": "{provider}에서 키를 받지 않았어요.",
     "titleBlocked": "{provider}에서 요청을 거부했어요.",
-    "titleModelRefused": "{provider}에서 이 앱에는 {model}을(를) 제공하지 않아요.",
+    "titleModelRefused": "{provider}에서 {model} 제공을 거부했어요.",
     "titleOther": "{provider} 요청이 실패했어요.",
     "dailyCount": "{limit, number}개 중 {used, number}개를 썼어요. {when} 다시 채워져요.",
     "dailyReset": "{when} 다시 채워져요.",
@@ -3479,8 +3478,8 @@
     "rateBody": "잠시 기다린 뒤 계속하세요.",
     "modelBody": "다른 모델을 고른 뒤 계속하세요.",
     "authBody": "설정에서 키를 바꾼 뒤 계속하세요.",
-    "blockedBody": "모델이 이 요청을 받지 않았어요. 이유는 '자세히'에서 볼 수 있어요. 키는 문제없어요. 다른 모델을 써 보세요.",
-    "modelRefusedBody": "요청이나 키가 아니라 모델 문제예요. 이유는 '자세히'에서 볼 수 있어요. 다른 모델을 고른 뒤 계속하세요.",
+    "blockedBody": "모델이 이 요청을 받지 않았어요. 이유는 '자세히'에서 볼 수 있어요. 다른 모델을 써 보세요.",
+    "modelRefusedBody": "이유는 '자세히'에서 볼 수 있어요. 다른 모델을 고른 뒤 계속하세요.",
     "continueWith": "{provider}에서 계속하기",
     "yourModel": "{provider}에서 고른 모델 {model}",
     "continue": "계속하기",

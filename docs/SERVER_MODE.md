@@ -47,7 +47,7 @@ Server Mode adds:
 - Local persistence (no external database)
 - Admin authentication
 - Multiple deployments per project
-- Static site publishing at `/deployments/{id}/`
+- Static site publishing at `/deployments/{id}/`, or on its own address (see [Where Published Sites Are Served](?doc=server-mode#where-published-sites-are-served))
 - Built-in analytics
 - Project sync (browser <-> server)
 - Server-side generation (close browser, AI keeps working)
@@ -208,7 +208,7 @@ For bulk operations or troubleshooting, use the Sync button in the sidebar. This
 
 1. Download the installer for your platform from [GitHub Releases](https://github.com/o-stahl/osw-studio/releases)
 2. Install and launch — authentication is bypassed for the single local user
-3. Published sites are served on a second local port, e.g. `http://localhost:30012/deployments/{id}/`, so their scripts never run on the studio's address
+3. Published sites are served on a second local port, e.g. `http://127.0.0.1:30012/deployments/{id}/`, so their scripts do not run on the studio's address
 
 **Best for**: Personal use, local development, and evaluating Server Mode features without provisioning a server.
 
@@ -270,16 +270,16 @@ For bulk operations or troubleshooting, use the Sync button in the sidebar. This
 
 ## Where Published Sites Are Served
 
-A published site runs code you did not write line by line: what the AI wrote, an imported template, a widget a client asked for. If it is served from the same address as the studio, its scripts run with the access of whoever opens it. They can call the studio's API with that person's session and read the API keys the studio keeps in their browser. So OSW Studio serves published sites from a different address than the studio whenever the install has one.
+A published site runs code you did not write line by line: what the AI wrote, an imported template, a widget a client asked for. If it is served from the same address as the studio, its scripts run with the access of whoever opens it. They can call the studio's API with that person's session and read the API keys the studio keeps in their browser. OSW Studio can serve published sites from a different address than the studio, and does so when the install is set up for it.
 
 | Set-up | Where sites are served | What to configure |
 |--------|-----------------------|-------------------|
-| Desktop app | A second local port, e.g. `http://localhost:30012/deployments/{id}/` | Nothing |
-| Server with subdomains (`STATIC_PROXY=true` and Caddy) | Each site on its own subdomain or custom domain | See [Custom Domains](?doc=custom-domains) |
+| Server with neither of the below (the default) | The studio's own address, at `/deployments/{id}/` | Nothing, but the Deployments view shows a warning |
 | Server with a sites address (`SITES_ORIGIN`) | `https://sites.example.com/deployments/{id}/` | One DNS record, a certificate and one setting |
-| Server with neither | The studio's own address | Nothing, but the Deployments view shows a warning |
+| Server with subdomains (`STATIC_PROXY=true` and Caddy) | Each site on its own subdomain or custom domain | Caddy with the generated Caddyfile (see below) |
+| Desktop app | A second local port, e.g. `http://127.0.0.1:30012/deployments/{id}/` | Nothing; the port is chosen when the app starts |
 
-On the studio's address, links to `/deployments/{id}/` and `/review/{id}/` redirect to where the site now lives, so links shared before keep working. The site's address answers only what a site needs: its pages, its review copy, its edge functions and the analytics collector. Other paths return 404, apart from the studio's public static files (icons, scripts) and the empty studio shell for a path ending in a file extension; neither holds anything private, and the studio's API is never answered there.
+When sites have their own address, links to `/deployments/{id}/` and `/review/{id}/` on the studio's address redirect to it, so links shared before keep working. The site's address answers only site paths: its pages, its review copy, its edge functions and the analytics collector. The studio's API is not answered there; its public static files (icons, scripts) are.
 
 ### Setting up a sites address
 
@@ -287,22 +287,33 @@ With the Nginx set-up from the [VPS Deployment guide](?doc=vps-deployment):
 
 1. Add a DNS record for the sites address (for example `sites.example.com`) pointing at the same server.
 2. Add a certificate for it: `sudo certbot --nginx -d sites.example.com`.
-3. Add `SITES_ORIGIN=https://sites.example.com` to `.env`, check that `NEXT_PUBLIC_APP_URL` is the address you open the studio on (redirects apply there), and restart the app.
+3. Add `SITES_ORIGIN=https://sites.example.com` to `.env`, and set `NEXT_PUBLIC_APP_URL` to the address you open the studio on. Without it the studio's address keeps serving sites. `NEXT_PUBLIC_APP_URL` is read when the app is built, so run `npm run build` before restarting if you set or change it.
 4. Republish your sites, so their sitemaps and canonical URLs use the new address.
 
-The guide's Nginx configuration already answers any host name and passes the `Host` header through. Any proxy in front of OSW Studio must do the same (`proxy_set_header Host $host;` in Nginx). Otherwise the app cannot tell the two addresses apart and the redirect loops.
+The guide's Nginx configuration answers any host name and passes the `Host` header through. Any proxy in front of OSW Studio must do the same (`proxy_set_header Host $host;` in Nginx). Otherwise the app cannot tell the two addresses apart and the redirect loops.
 
-A separate domain (such as `example-sites.com`) isolates the studio more fully than a subdomain of the studio's own domain. Browsers treat subdomains of one domain as the same site for cookies, so a subdomain relies on the browser's cross-origin rules and the studio's origin checks rather than on cookies staying apart.
+A separate domain (such as `example-sites.com`) keeps sites further from the studio than a subdomain of the studio's own domain. Browsers treat subdomains of one domain as the same site for cookies, so a subdomain relies on the browser's cross-origin rules and the studio's origin checks rather than on cookies staying apart.
 
-All sites on one sites address share it, review copies included. In a visitor's browser, one site's scripts can read another site's storage. Use subdomains (`STATIC_PROXY`) when the sites on an instance belong to different people.
+### Setting up subdomains
+
+With `STATIC_PROXY=true`, OSW Studio writes a Caddyfile that serves each deployment from its own subdomain (`{slug}.{your instance domain}`) or custom domain, and reloads Caddy when it changes. It needs:
+
+- `NEXT_PUBLIC_APP_URL` set to the studio's address, which the subdomains hang off
+- wildcard DNS for `*.{your instance domain}` pointing at the server
+- a Caddy build with the Cloudflare DNS module and `CLOUDFLARE_API_TOKEN`, for the wildcard certificate
+- Caddy's admin API on `localhost:2019`
+- a Caddyfile the app can write (`CADDYFILE_PATH`, default `/etc/caddy/Caddyfile`)
 
 ### Review copies
 
-A site's review copy is served from the site's address too. Clients use it as before. Team members reply from the Review tab in the studio, which shows the team badge. On the review copy itself they are visitors like anyone else.
+A site's review copy is served from the site's address too, or from the sites address for a site whose custom domain is not served by Caddy. Clients use it as before. Workspace members reply from the Review tab in the studio, which shows the team badge. On the review copy itself they are visitors like anyone else.
 
-### Without a separate address
+### Limits of each set-up
 
-If neither `STATIC_PROXY` nor `SITES_ORIGIN` is set, sites are served from the studio's own address, as in earlier versions. That is a reasonable choice when you write or check every site you host, and you are the only person who uses the studio. The Deployments view says when this applies.
+- **The default shares the studio's address.** A site's scripts can act as whoever opens it in the studio. That is a reasonable choice when you write or check every site you host and you are the only person using the studio.
+- **A sites address is shared by every site on it.** In a visitor's browser, one site's scripts can read another site's storage, and can post review comments as a visitor who has a review copy open. The desktop app's sites port is shared the same way. Use subdomains when the sites on an instance belong to different people.
+- **The wildcard subdomain answers any deployment by path.** With `STATIC_PROXY`, a subdomain no deployment uses still answers `/deployments/{id}/` for any deployment, on its own address.
+- **The desktop app has no login.** While it is open, any program on the same computer can use its local API.
 
 ---
 

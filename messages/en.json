@@ -148,7 +148,6 @@
       "backend-features": "Backend",
       "mcp-server": "MCP Server",
       "multitenancy": "Multitenancy",
-      "security-model": "Security Model",
       "faq": "FAQ",
       "troubleshooting": "Troubleshooting"
     },
@@ -1085,8 +1084,8 @@
     "deleteRefused": {
       "auth": "Your session has expired, so nothing was deleted. Log in and try again.",
       "forbidden": "Your role in this workspace cannot delete this, so nothing was deleted.",
-      "in_use": "A deployment publishes this project, so nothing was deleted. Point the deployment at another project, or delete the deployment, first.",
-      "failed": "The server did not confirm the delete, so nothing was deleted. Try again."
+      "in_use": "A deployment uses this project, so nothing was deleted. Point the deployment at another project, or delete the deployment, first.",
+      "failed": "The server did not confirm the delete, so the copy here was kept. Try again."
     }
   },
   "models": {
@@ -1742,7 +1741,7 @@
     }
   },
   "publishSettings": {
-    "projectMissingDetail": "The site keeps serving its last build. Choose another project, save, then republish.",
+    "projectMissingDetail": "If the site is published, it keeps serving its last build. Choose another project, save, then republish.",
     "projectMissingTitle": "The project behind this deployment was deleted",
     "publishingStatus": "Publishing status",
     "underConstruction": "Under construction",
@@ -2200,8 +2199,8 @@
     "analyzeSwapFailed": "Failed to analyze swap",
     "analyzingChanges": "Analyzing changes...",
     "noBackendChanges": "No backend feature changes detected.",
-    "swapConflictWarning": "Some backend features will be removed or replaced. Analytics data will be preserved.",
-    "secretValueReplaced": "{name} (value replaced on the next publish)",
+    "swapConflictWarning": "Some backend features will be removed or replaced when you republish. Analytics data is kept.",
+    "secretValueReplaced": "{name} (takes the new project's value on the next publish)",
     "swapConfirm": "Swap Project",
     "loadSchemaFailed": "Failed to load schema",
     "databaseTables": "Database Tables",
@@ -3471,7 +3470,7 @@
     "titleModel": "{model} is not available right now.",
     "titleAuth": "{provider} did not accept the key.",
     "titleBlocked": "{provider} refused this request.",
-    "titleModelRefused": "{provider} does not serve {model} to this app.",
+    "titleModelRefused": "{provider} refused to serve {model}.",
     "titleOther": "The request to {provider} failed.",
     "dailyCount": "{used, number} of {limit, number} used. They reset {when}.",
     "dailyReset": "They reset {when}.",
@@ -3482,8 +3481,8 @@
     "rateBody": "Wait a moment, then continue.",
     "modelBody": "Choose another model, then continue.",
     "authBody": "Replace the key in Settings, then continue.",
-    "blockedBody": "The model would not take this request; the reason is under Details. Your key is fine. Try another model.",
-    "modelRefusedBody": "This is about the model, not your request or your key; the reason is under Details. Choose another model, then continue.",
+    "blockedBody": "The model would not take this request; the reason is under Details. Try another model.",
+    "modelRefusedBody": "The reason is under Details. Choose another model, then continue.",
     "continueWith": "Continue with {provider}",
     "yourModel": "{model}, your model for {provider}",
     "continue": "Continue",
