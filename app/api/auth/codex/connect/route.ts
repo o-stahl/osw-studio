@@ -2,10 +2,11 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  CODEX_COOKIE_NAME,
+  codexCookieName,
   CODEX_LOGIN_COOKIE_MAX_AGE,
-  CODEX_LOGIN_COOKIE_NAME,
+  codexLoginCookieName,
   codexCookieOptions,
+  legacyCodexCookieNames,
 } from '../cookie';
 
 const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
@@ -107,7 +108,7 @@ function ensureCallbackServer(): Promise<void> {
 }
 
 function clearLoginCookie(response: NextResponse): NextResponse {
-  response.cookies.set(CODEX_LOGIN_COOKIE_NAME, '', codexCookieOptions(0));
+  response.cookies.set(codexLoginCookieName(), '', codexCookieOptions(0));
   return response;
 }
 
@@ -140,7 +141,7 @@ export async function POST(request: NextRequest) {
     url.searchParams.set('originator', 'osw-studio');
 
     const response = NextResponse.json({ authorizationUrl: url.toString(), manualCallback });
-    response.cookies.set(CODEX_LOGIN_COOKIE_NAME, state, codexCookieOptions(CODEX_LOGIN_COOKIE_MAX_AGE));
+    response.cookies.set(codexLoginCookieName(), state, codexCookieOptions(CODEX_LOGIN_COOKIE_MAX_AGE));
     return response;
   } catch (error) {
     const message = error instanceof Error && 'code' in error && error.code === 'EADDRINUSE'
@@ -151,7 +152,7 @@ export async function POST(request: NextRequest) {
 }
 
 function getFlow(request: NextRequest) {
-  const state = request.cookies.get(CODEX_LOGIN_COOKIE_NAME)?.value;
+  const state = request.cookies.get(codexLoginCookieName())?.value;
   const flow = state ? flows.get(state) : undefined;
   return state && flow && Date.now() < flow.expiresAt ? { state, flow } : null;
 }
@@ -162,7 +163,8 @@ function tokenResponse(state: string, result: { accessToken: string; refreshToke
     access_token: result.accessToken,
     expires_at: Math.floor(Date.now() / 1000) + result.expiresIn,
   });
-  response.cookies.set(CODEX_COOKIE_NAME, result.refreshToken, codexCookieOptions());
+  response.cookies.set(codexCookieName(), result.refreshToken, codexCookieOptions());
+  for (const name of legacyCodexCookieNames()) response.cookies.delete(name);
   return clearLoginCookie(response);
 }
 

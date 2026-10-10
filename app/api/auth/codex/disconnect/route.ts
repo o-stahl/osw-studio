@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
-import { CODEX_COOKIE_NAME, CODEX_LOGIN_COOKIE_NAME, codexCookieOptions } from '../cookie';
+import { codexCookieName, codexLoginCookieName, codexCookieOptions, legacyCodexCookieNames } from '../cookie';
 
 /**
  * Deletes the HttpOnly refresh token cookie.
  */
 export async function POST() {
   const response = NextResponse.json({ success: true });
-  response.cookies.set(CODEX_COOKIE_NAME, '', codexCookieOptions(0));
-  response.cookies.set(CODEX_LOGIN_COOKIE_NAME, '', codexCookieOptions(0));
+  response.cookies.set(codexCookieName(), '', codexCookieOptions(0));
+  response.cookies.set(codexLoginCookieName(), '', codexCookieOptions(0));
+  for (const name of legacyCodexCookieNames()) response.cookies.delete(name);
   return response;
 }

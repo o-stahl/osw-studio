@@ -1,7 +1,7 @@
 /**
  * Codex OAuth — Interactive login and token management for ChatGPT subscription access
  *
- * The long-lived refresh_token is stored in an HttpOnly cookie (osw_codex_rt)
+ * The long-lived refresh_token is stored in an HttpOnly cookie (`codexCookieName`: osw_codex_rt, `__Host-` prefixed where cookies are Secure)
  * and never exposed to JavaScript. Only the short-lived access_token (~1 hour)
  * is kept in localStorage.
  */

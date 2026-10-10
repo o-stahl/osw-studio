@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { CODEX_COOKIE_NAME, codexCookieOptions } from '../cookie';
+import { codexCookieName, codexCookieOptions, legacyCodexCookieNames } from '../cookie';
 
 const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 
@@ -9,7 +9,7 @@ const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
  */
 export async function POST(request: NextRequest) {
   try {
-    const refreshToken = request.cookies.get(CODEX_COOKIE_NAME)?.value;
+    const refreshToken = request.cookies.get(codexCookieName())?.value;
 
     if (!refreshToken) {
       return NextResponse.json(
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
           { error: data.error_description || 'Refresh token revoked' },
           { status: 401 },
         );
-        errResponse.cookies.set(CODEX_COOKIE_NAME, '', codexCookieOptions(0));
+        errResponse.cookies.set(codexCookieName(), '', codexCookieOptions(0));
         return errResponse;
       }
       return NextResponse.json(data, { status: res.status });
@@ -52,7 +52,8 @@ export async function POST(request: NextRequest) {
 
     // If OpenAI rotated the refresh token, update the cookie
     if (data.refresh_token && data.refresh_token !== refreshToken) {
-      response.cookies.set(CODEX_COOKIE_NAME, data.refresh_token, codexCookieOptions());
+      response.cookies.set(codexCookieName(), data.refresh_token, codexCookieOptions());
+      for (const name of legacyCodexCookieNames()) response.cookies.delete(name);
     }
 
     return response;

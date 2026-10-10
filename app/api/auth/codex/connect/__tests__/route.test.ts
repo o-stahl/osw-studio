@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { PATCH, POST, PUT } from '../route';
-import { CODEX_COOKIE_NAME, CODEX_LOGIN_COOKIE_NAME } from '../../cookie';
+import { codexCookieName, codexLoginCookieName } from '../../cookie';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -24,7 +24,7 @@ afterEach(() => {
 // binding the localhost callback server (remote host => manualCallback === true).
 async function startRemoteFlow() {
   const start = await POST(new NextRequest('https://host.example/api/auth/codex/connect', { method: 'POST' }));
-  const flowCookie = start.cookies.get(CODEX_LOGIN_COOKIE_NAME)?.value as string;
+  const flowCookie = start.cookies.get(codexLoginCookieName())?.value as string;
   const state = new URL((await start.json()).authorizationUrl).searchParams.get('state') as string;
   return { flowCookie, state };
 }
@@ -33,7 +33,7 @@ function patchWith(flowCookie: string | undefined, redirectUrl: string) {
   return PATCH(new NextRequest('https://host.example/api/auth/codex/connect', {
     method: 'PATCH',
     headers: {
-      ...(flowCookie ? { cookie: `${CODEX_LOGIN_COOKIE_NAME}=${flowCookie}` } : {}),
+      ...(flowCookie ? { cookie: `${codexLoginCookieName()}=${flowCookie}` } : {}),
       'content-type': 'application/json',
     },
     body: JSON.stringify({ redirectUrl }),
@@ -59,7 +59,7 @@ describe('Codex interactive login', () => {
     ));
 
     const start = await POST(new NextRequest('https://example.hf.space/api/auth/codex/connect', { method: 'POST' }));
-    const flowCookie = start.cookies.get(CODEX_LOGIN_COOKIE_NAME)?.value;
+    const flowCookie = start.cookies.get(codexLoginCookieName())?.value;
     const login = await start.json();
     const state = new URL(login.authorizationUrl).searchParams.get('state');
     expect(login.manualCallback).toBe(true);
@@ -67,14 +67,14 @@ describe('Codex interactive login', () => {
     const complete = await PATCH(new NextRequest('https://example.hf.space/api/auth/codex/connect', {
       method: 'PATCH',
       headers: {
-        cookie: `${CODEX_LOGIN_COOKIE_NAME}=${flowCookie}`,
+        cookie: `${codexLoginCookieName()}=${flowCookie}`,
         'content-type': 'application/json',
       },
       body: JSON.stringify({ redirectUrl: `http://localhost:1455/auth/callback?code=remote-code&state=${state}` }),
     }));
 
     expect(await complete.json()).toMatchObject({ access_token: 'remote-access' });
-    expect(complete.cookies.get(CODEX_COOKIE_NAME)?.value).toBe('remote-refresh');
+    expect(complete.cookies.get(codexCookieName())?.value).toBe('remote-refresh');
   });
 });
 
@@ -111,7 +111,7 @@ describe('Codex login rejects invalid completions', () => {
   it('none of the rejected completions issue a refresh-token cookie', async () => {
     const { flowCookie, state } = await startRemoteFlow();
     const res = await patchWith(flowCookie, `http://evil.example:1455/auth/callback?code=c&state=${state}`);
-    expect(res.cookies.get(CODEX_COOKIE_NAME)?.value).toBeFalsy();
+    expect(res.cookies.get(codexCookieName())?.value).toBeFalsy();
   });
 
   it('PUT without a login cookie is unauthorized', async () => {
@@ -123,7 +123,7 @@ describe('Codex login rejects invalid completions', () => {
     const { flowCookie } = await startRemoteFlow();
     const res = await PUT(new NextRequest('https://host.example/api/auth/codex/connect', {
       method: 'PUT',
-      headers: { cookie: `${CODEX_LOGIN_COOKIE_NAME}=${flowCookie}` },
+      headers: { cookie: `${codexLoginCookieName()}=${flowCookie}` },
     }));
     expect(res.status).toBe(202);
   });
