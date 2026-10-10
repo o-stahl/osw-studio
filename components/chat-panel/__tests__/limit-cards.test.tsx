@@ -127,9 +127,9 @@ describe('StoppedCard', () => {
       errorCategory: 'blocked', provider: 'openrouter', model: 'm', canRetrySame: false,
       message: 'm requires moderation on OpenAI. Your input was flagged',
     }} />);
-    expect(container.textContent).toContain('OpenRouter refused this request');
-    expect(container.textContent).not.toContain('flagged the request');
-    expect(container.textContent).not.toContain('did not accept the key');
+    const limits = createTranslator({ locale: 'en', messages: en, namespace: 'limits' });
+    expect(container.textContent).toContain(limits('titleBlocked', { provider: 'OpenRouter' }));
+    expect(container.textContent).not.toContain(limits('titleAuth', { provider: 'OpenRouter' }));
     expect(container.textContent).toContain('Your input was flagged');
     expect(button(/^Continue$/)).toBeUndefined();
   });
@@ -140,9 +140,10 @@ describe('StoppedCard', () => {
       errorCategory: 'model_refused', provider: 'openrouter', model: 'gated:free', canRetrySame: false,
       message: 'gated:free is only available on agentic harnesses.',
     }} />);
-    expect(container.textContent).toContain('refused to serve');
+    const limits = createTranslator({ locale: 'en', messages: en, namespace: 'limits' });
+    expect(container.textContent).toContain(limits('titleModelRefused', { provider: 'OpenRouter', model: 'gated:free' }));
     expect(container.textContent).toContain('only available on agentic harnesses');
-    expect(container.textContent).not.toContain('refused this request');
+    expect(container.textContent).not.toContain(limits('titleBlocked', { provider: 'OpenRouter' }));
     expect(button(/^Continue$/)).toBeUndefined();
   });
 

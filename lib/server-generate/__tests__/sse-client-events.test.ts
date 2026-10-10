@@ -6,7 +6,8 @@ import { SSEClient } from '../sse-client';
  * The client subscribes to named event types, one `addEventListener` per name, so an event the
  * list does not carry is delivered by the server and dropped by the browser with no error
  * anywhere. Two MCP events were added to the server and to the store's handler, and arrived
- * nowhere until they were named here as well.
+ * nowhere until they were named here as well; the "Free models" notices are named for the same
+ * reason.
  */
 
 class FakeEventSource {
@@ -38,6 +39,15 @@ describe('SSEClient event subscriptions', () => {
 
     const subscribed = FakeEventSource.last!.listeners;
     for (const name of ['files_changed', 'build_requested', 'task_complete', 'conversation_message']) {
+      expect(subscribed.has(name), name).toBe(true);
+    }
+  });
+
+  it('subscribes to the events that say which model "Free models" is on, so a server run shows it too', () => {
+    new SSEClient({ onEvent: vi.fn() }).connect();
+
+    const subscribed = FakeEventSource.last!.listeners;
+    for (const name of ['model_picked', 'model_switched', 'model_resolved']) {
       expect(subscribed.has(name), name).toBe(true);
     }
   });

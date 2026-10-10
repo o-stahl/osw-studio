@@ -84,6 +84,18 @@ describe('the code /api/generate attaches to an error', () => {
     expect((await failure()).errorCategory).toBe('invalid_request');
   });
 
+  it.each(['blocked', 'model_refused'])('types a 403 coded %s as a refusal, not a key problem', async (code) => {
+    respondWith(403, { error: 'no', code });
+    const err = await failure();
+    expect(err.errorCategory).toBe(code);
+    expect(err.errorType).toBe('refused');
+  });
+
+  it('types a 403 with no refusal code as an authentication failure', async () => {
+    respondWith(403, { error: 'no', code: 'auth' });
+    expect((await failure()).errorType).toBe('auth');
+  });
+
   it('carries the timing the body gives into the error', async () => {
     respondWith(400, { error: 'spent', code: 'daily_limit', retryAfterMs: 5000, resetAt: 1_800_000_000_000 });
     expect((await failure()).timing).toEqual({ retryAfterMs: 5000, resetAt: 1_800_000_000_000 });

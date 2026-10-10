@@ -109,6 +109,18 @@ describe('orchestrator slice — startServerGeneration model resolution', () => 
     expect(body.generationParams.freeModelCandidates).toEqual(['best:free', 'next:free']);
   });
 
+  it('sends at most twenty candidates, the best ones', async () => {
+    rankProviderModels.mockResolvedValue(Array.from({ length: 25 }, (_, i) => (
+      { provider: 'openrouter', model: { id: `m${i}:free` }, coolingDown: false })));
+    vi.mocked(getProjectAssignment).mockResolvedValue({
+      agent: { provider: 'openrouter', model: 'osw/free-models' },
+      imageGen: null, voiceInput: null, autoCompact: false, compactLimit: null,
+    } as any);
+    await store.getState().startServerGeneration('proj1', 'build it', false);
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.generationParams.freeModelCandidates).toEqual(Array.from({ length: 20 }, (_, i) => `m${i}:free`));
+  });
+
   it('sends the history from the last replaced conversation, without the new prompt', async () => {
     // The server's execute adds the prompt itself, and a dropped or compacted history is replaced
     // by `conversation_replaced`, as a browser run rebuilds it.

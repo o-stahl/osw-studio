@@ -84,6 +84,30 @@ describe('POST /api/generate — error class on the error body', () => {
     expect(body.error.length).toBeLessThan(450);
   });
 
+  it('masks the key and bounds the length of a refusal, in its message and its reasons alike', async () => {
+    const key = 'sk-or-v1-0123456789abcdef';
+    upstream(403, { error: {
+      message: `Your input was flagged: ${key} ${'x'.repeat(1000)}`,
+      metadata: { reasons: [`echo ${key}`, 'harassment'], flagged_input: 'x' },
+    } });
+    const res = await post({ provider: 'openrouter', apiKey: key, model: 'a/b' });
+    const body = await res.json();
+    expect(body.code).toBe('blocked');
+    expect(body.error).not.toContain(key);
+    expect(body.error).toContain('Your input was flagged');
+    expect(body.error.length).toBeLessThan(450);
+  });
+
+  it('masks the key in a refusal\'s reasons even when its message is short', async () => {
+    const key = 'sk-or-v1-0123456789abcdef';
+    upstream(403, { error: { message: 'Your input was flagged', metadata: { reasons: [`echo ${key}`], flagged_input: 'x' } } });
+    const res = await post({ provider: 'openrouter', apiKey: key, model: 'a/b' });
+    const body = await res.json();
+    expect(body.code).toBe('blocked');
+    expect(body.error).not.toContain(key);
+    expect(body.error).toContain('echo ***');
+  });
+
   it('marks spent OpenRouter credit, with the reset the provider gave', async () => {
     upstream(402, { error: { message: 'Insufficient credits' } }, { 'X-RateLimit-Reset': '1900000000000' });
     const res = await post({ provider: 'openrouter', apiKey: 'sk-or-x', model: 'a/b' });
