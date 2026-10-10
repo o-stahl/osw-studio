@@ -78,6 +78,16 @@ describe('resolveDeploymentServing with a sites address', () => {
     expect(r.baseUrl).toBe('https://fine-bird-flame.inst-1.oswstudio.com');
   });
 
+  it('keeps a slugless deployment on the app when the static proxy is on, as the proxy mode serves it there', () => {
+    const r = resolveDeploymentServing(
+      {},
+      ID,
+      { staticProxyEnabled: true, appUrl: APP, sitesOrigin: SITES }
+    );
+    expect(r.servedAtRoot).toBe(false);
+    expect(r.baseUrl).toBe(`${APP}/deployments/${ID}`);
+  });
+
   it('leaves a custom domain at its root', () => {
     const r = resolveDeploymentServing(
       { customDomain: 'sweets.com', slug: 'fine-bird-flame' },

@@ -20,8 +20,9 @@ export interface DeploymentServing {
  * - static proxy (Caddy subdomains) active AND a slug → served at the slug
  *   subdomain root (root-relative paths)
  * - otherwise → served under /deployments/{id}/ by the Next route (prefixed
- *   paths), on `sitesOrigin` when one is configured and on the app's own origin
- *   when not (see lib/web/site-origin.ts). A slug alone doesn't imply root
+ *   paths), on `sitesOrigin` when one is configured without the static proxy
+ *   and on the app's own origin otherwise, as `sitesMode()` in
+ *   lib/web/site-origin.ts decides. A slug alone doesn't imply root
  *   serving, since publish always assigns one.
  */
 export function resolveDeploymentServing(
@@ -36,7 +37,7 @@ export function resolveDeploymentServing(
     ? `https://${deployment.customDomain}`
     : servedViaSubdomain
     ? `https://${deployment.slug}.${instanceDomain}`
-    : `${opts.sitesOrigin || opts.appUrl}/deployments/${deploymentId}`;
+    : `${(!opts.staticProxyEnabled && opts.sitesOrigin) || opts.appUrl}/deployments/${deploymentId}`;
   return { servedAtRoot, baseUrl };
 }
 
