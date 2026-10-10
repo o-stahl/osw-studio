@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { FrameScrollMemory } from '../scroll-memory';
+import { FrameScrollMemory, frameScrollReport } from '../scroll-memory';
 
 /**
  * Keeping the preview frame's scroll position across the recompile that replaces its document.
@@ -103,5 +103,19 @@ describe('FrameScrollMemory', () => {
     // Sub-pixel offsets are real (a zoomed frame reports them) and a negative one is what an
     // overscroll bounce reports on macOS. Neither is a position worth restoring literally.
     expect(memory.take('/index.html')).toEqual({ x: 0, y: 500 });
+  });
+});
+
+describe('frameScrollReport', () => {
+  it("takes the position from the current document's report", () => {
+    expect(frameScrollReport({ loadId: 4, x: 12, y: 500 }, 4)).toEqual({ x: 12, y: 500 });
+  });
+
+  it('drops a report from the document being replaced, or one that is not a position', () => {
+    // The outgoing page's last report would put the new one at the old one's offset.
+    expect(frameScrollReport({ loadId: 3, x: 12, y: 500 }, 4)).toBeNull();
+    for (const [x, y] of [[NaN, 0], [0, Infinity], ['12', 500], [12, undefined]]) {
+      expect(frameScrollReport({ loadId: 4, x, y }, 4), `${x}, ${y}`).toBeNull();
+    }
   });
 });

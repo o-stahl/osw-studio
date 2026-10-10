@@ -71,3 +71,21 @@ export async function runFunctionCall(
     return { type: 'preview:function-response', id: call.id, error: err instanceof Error ? err.message : String(err) };
   }
 }
+
+/**
+ * Make the call and post the answer into `target`, unless the document that asked has been replaced
+ * meanwhile. Call ids restart with every document, so an answer that outlives its page would settle
+ * the next page's call of the same id. The frame is the same window across loads; the load is what
+ * tells them apart.
+ */
+export async function answerFunctionCall(
+  call: FunctionCall,
+  deploymentId: string | null | undefined,
+  target: Window,
+  currentLoadId: () => number,
+): Promise<void> {
+  const loadId = currentLoadId();
+  const reply = await runFunctionCall(call, deploymentId);
+  if (currentLoadId() !== loadId) return;
+  target.postMessage(reply, '*', reply.body ? [reply.body] : []);
+}

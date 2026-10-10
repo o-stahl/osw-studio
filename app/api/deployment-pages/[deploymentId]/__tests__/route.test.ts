@@ -57,6 +57,9 @@ describe('GET /api/deployment-pages/{id}', () => {
   });
 
   it('answers only someone with access to the deployment', async () => {
+    await page('/');
+    // Viewing is enough: the page is what the site already shows its visitors.
+    expect(access).toHaveBeenCalledWith('d1', 'viewer');
     access.mockResolvedValue({ ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) });
     expect((await page('/')).status).toBe(401);
   });

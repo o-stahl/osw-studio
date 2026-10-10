@@ -43,3 +43,16 @@ export class FrameScrollMemory {
     return { x: held.x, y: held.y };
   }
 }
+
+/**
+ * The position a `preview:scroll` report carries, when it is the current document's and a real
+ * position; otherwise null. A late report from the page being replaced would be remembered for
+ * the new one.
+ */
+export function frameScrollReport(
+  data: { loadId?: unknown; x?: unknown; y?: unknown },
+  currentLoadId: number,
+): FrameScroll | null {
+  if (data.loadId !== currentLoadId || !Number.isFinite(data.x) || !Number.isFinite(data.y)) return null;
+  return { x: data.x as number, y: data.y as number };
+}

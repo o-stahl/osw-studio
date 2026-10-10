@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { blobUrlPrefix, collectShellAssets, previewShellHtml, SHELL_CONTENT } from '../preview-shell';
+import { blobUrlPrefix, collectShellAssets, loadIntoShell, previewShellHtml, SHELL_CONTENT } from '../preview-shell';
 
 /**
  * The preview frame cannot load the host's `blob:` URLs, so it is given a shell that makes its own
  * and writes the page. These run the shell's script in jsdom with `createObjectURL` and
- * `document.write` stubbed: what it swaps, in what order, and who it listens to.
+ * `document.write` stubbed: what it swaps, in what order, and who it listens to. The host side
+ * (`loadIntoShell`, which the thumbnails use) runs against a stand-in frame window.
  */
 
 const ORIGIN = 'http://app.test';
@@ -66,6 +67,7 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const [type, fn] of listeners) window.removeEventListener(type, fn);
+  delete (window as unknown as { __oswStorageSeed?: unknown }).__oswStorageSeed;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -110,6 +112,36 @@ describe('previewShellHtml', () => {
     expect(texts).toContain(`import "${depUrl}";`);
   });
 
+  it('still writes the page when two text assets name each other', async () => {
+    // Neither can wait for the other's URL; without a way out the shell loops and the frame hangs
+    // (and so would this run: the loop is synchronous).
+    runShell(5);
+    const a = new Blob([`@import url(${host(6)});`], { type: 'text/css' });
+    const b = new Blob([`@import url(${host(5)});`], { type: 'text/css' });
+    deliver({
+      type: SHELL_CONTENT, loadId: 5, prefix: blobUrlPrefix(ORIGIN),
+      html: `<link href="${host(5)}"><link href="${host(6)}">`,
+      assets: [{ url: host(5), blob: a, text: true }, { url: host(6), blob: b, text: true }],
+    });
+    await settle();
+
+    expect(minted).toHaveLength(2);
+    expect(written).toEqual([`<link href="${minted[0].url}"><link href="${minted[1].url}">`]);
+  });
+
+  it("hands the page the project's storage before writing it", async () => {
+    const seen: unknown[] = [];
+    vi.mocked(document.write).mockImplementation(() => {
+      seen.push((window as unknown as { __oswStorageSeed?: unknown }).__oswStorageSeed);
+    });
+    runShell(5);
+    const storage = { local: { todos: '["milk"]' }, session: {}, cookie: { theme: 'dark' } };
+    deliver({ type: SHELL_CONTENT, loadId: 5, prefix: blobUrlPrefix(ORIGIN), html: '<p>x</p>', assets: [], storage });
+    await settle();
+
+    expect(seen).toEqual([storage]);
+  });
+
   it('ignores content from anyone but the host, or for another load', async () => {
     runShell(5);
     const page = { type: SHELL_CONTENT, prefix: blobUrlPrefix(ORIGIN), html: '<p>x</p>', assets: [] };
@@ -152,5 +184,113 @@ describe('collectShellAssets', () => {
     fetched.length = 0;
     await collectShellAssets(`<link href="${host(1)}">`, [host(2)], ORIGIN, cache);
     expect(fetched).toEqual([]);
+  });
+
+  it('leaves out a blob that can no longer be read, and sends the rest', async () => {
+    // A newer compile revoked it; the page shows one missing asset rather than none at all.
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === host(2)) throw new TypeError('Failed to fetch');
+      return { blob: async () => new Blob(['x'], { type: 'image/png' }) };
+    }));
+    const cache = new Map<string, Blob>();
+
+    const assets = await collectShellAssets(`<img src="${host(1)}"><img src="${host(2)}">`, [], ORIGIN, cache);
+
+    expect(assets.map(a => a.url)).toEqual([host(1)]);
+    expect([...cache.keys()]).toEqual([host(1)]);
+  });
+});
+
+describe('loadIntoShell', () => {
+  const origin = window.location.origin;
+  const asset = `${blobUrlPrefix(origin)}00000001-aaaa-bbbb-cccc-dddddddddddd`;
+  const image = new Blob(['png'], { type: 'image/png' });
+
+  function fakeFrame() {
+    const contentWindow = { postMessage: vi.fn() };
+    const iframe = { contentWindow, srcdoc: '' } as unknown as HTMLIFrameElement;
+    return { iframe, contentWindow };
+  }
+  const from = (source: unknown, data: Record<string, unknown>) =>
+    window.dispatchEvent(Object.assign(new Event('message'), { source, data }));
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ blob: async () => image })));
+  });
+
+  it('writes the shell, answers it with the page, and resolves when the page has loaded', async () => {
+    const { iframe, contentWindow } = fakeFrame();
+    const storage = { local: { a: '1' }, session: {}, cookie: {} };
+    let loaded = false;
+    const pending = loadIntoShell(iframe, `<img src="${asset}">`, [asset], 1000, storage).then(() => { loaded = true; });
+    expect(iframe.srcdoc).toBe(previewShellHtml(0));
+
+    from(contentWindow, { type: 'preview:shell-ready', loadId: 0 });
+    await settle();
+    expect(contentWindow.postMessage).toHaveBeenCalledWith({
+      type: SHELL_CONTENT, loadId: 0, html: `<img src="${asset}">`, prefix: blobUrlPrefix(origin), storage,
+      assets: [{ url: asset, blob: image, text: false }],
+    }, '*');
+    expect(loaded).toBe(false);
+
+    from(contentWindow, { type: 'preview:ready', loadId: 0 });
+    await pending;
+    expect(loaded).toBe(true);
+  });
+
+  it('listens only to its own frame, for its own load', async () => {
+    const { iframe, contentWindow } = fakeFrame();
+    let loaded = false;
+    const pending = loadIntoShell(iframe, '<p>x</p>', [], 1000).then(() => { loaded = true; });
+
+    from({}, { type: 'preview:shell-ready', loadId: 0 });
+    from({}, { type: 'preview:ready', loadId: 0 });
+    from(contentWindow, { type: 'preview:ready', loadId: 1 });
+    await settle();
+    expect(contentWindow.postMessage).not.toHaveBeenCalled();
+    expect(loaded).toBe(false);
+
+    from(contentWindow, { type: 'preview:ready', loadId: 0 });
+    await pending;
+    expect(loaded).toBe(true);
+  });
+
+  it("rejects with the shell's reason when it cannot build the page", async () => {
+    const { iframe, contentWindow } = fakeFrame();
+    const pending = loadIntoShell(iframe, '<p>x</p>', [], 1000);
+    from(contentWindow, { type: 'preview:shell-error', loadId: 0, error: 'blob is gone' });
+    await expect(pending).rejects.toThrow('blob is gone');
+  });
+
+  it('rejects when the page cannot be handed to the frame', async () => {
+    const { iframe, contentWindow } = fakeFrame();
+    contentWindow.postMessage.mockImplementation(() => { throw new DOMException('could not be cloned', 'DataCloneError'); });
+    const pending = loadIntoShell(iframe, '<p>x</p>', [], 1000);
+    from(contentWindow, { type: 'preview:shell-ready', loadId: 0 });
+    await expect(pending).rejects.toThrow('could not be cloned');
+  });
+
+  it('gives up on a page that never loads', async () => {
+    vi.useFakeTimers();
+    try {
+      const { iframe } = fakeFrame();
+      const pending = loadIntoShell(iframe, '<p>x</p>', [], 500);
+      const outcome = expect(pending).rejects.toThrow('within 500ms');
+      vi.advanceTimersByTime(500);
+      await outcome;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops listening once settled', async () => {
+    const { iframe, contentWindow } = fakeFrame();
+    const pending = loadIntoShell(iframe, '<p>x</p>', [], 1000);
+    from(contentWindow, { type: 'preview:ready', loadId: 0 });
+    await pending;
+
+    from(contentWindow, { type: 'preview:shell-ready', loadId: 0 });
+    await settle();
+    expect(contentWindow.postMessage).not.toHaveBeenCalled();
   });
 });

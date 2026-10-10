@@ -54,3 +54,16 @@ export function clearPreviewStorage(projectId?: string): void {
   if (projectId) store.delete(projectId);
   else store.clear();
 }
+
+/**
+ * The project a frame's storage report is to be kept for, or null. Only the document on screen
+ * writes: a late report from the page being replaced would otherwise overwrite what the new one
+ * starts from. The project is the page's own, whatever the preview has moved on to since.
+ */
+export function storageReportProject(
+  reportLoadId: unknown,
+  currentLoadId: number,
+  page: { loadId: number; projectId: string } | null,
+): string | null {
+  return page && reportLoadId === currentLoadId && reportLoadId === page.loadId ? page.projectId : null;
+}

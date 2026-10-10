@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { previewBridgeJs } from '../preview-bridge';
-import { clearPreviewStorage, getPreviewStorage, PREVIEW_STORAGE_LIMIT, setPreviewStorageArea } from '../preview-storage';
+import { clearPreviewStorage, getPreviewStorage, PREVIEW_STORAGE_LIMIT, setPreviewStorageArea, storageReportProject } from '../preview-storage';
 
 /**
  * A project's own storage in the preview. The frame runs on an opaque origin, where the real
@@ -29,10 +29,23 @@ describe('the host store', () => {
     expect(setPreviewStorageArea('p1', 'local', { big: 'x'.repeat(PREVIEW_STORAGE_LIMIT + 1) })).toBe(false);
     expect(getPreviewStorage('p1').local).toEqual({});
   });
+
+  it("keeps a report only from the document on screen, for that document's project", () => {
+    const page = { loadId: 7, projectId: 'p1' };
+    expect(storageReportProject(7, 7, page)).toBe('p1');
+    // The page being replaced reports late: it would overwrite what the new one starts from.
+    expect(storageReportProject(6, 7, page)).toBeNull();
+    // A newer load has begun and its page is not in place yet.
+    expect(storageReportProject(7, 8, page)).toBeNull();
+    expect(storageReportProject(8, 8, page)).toBeNull();
+    expect(storageReportProject(7, 7, null)).toBeNull();
+    expect(storageReportProject('7', 7, page)).toBeNull();
+  });
 });
 
 describe('the stand-ins in the frame', () => {
   let posted: Array<Record<string, unknown>>;
+  let listeners: Array<[string, EventListenerOrEventListenerObject]>;
   const real: Record<string, PropertyDescriptor | undefined> = {};
 
   function opaqueOrigin() {
@@ -54,11 +67,20 @@ describe('the stand-ins in the frame', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     posted = [];
+    listeners = [];
+    // Each bridge run listens on the window; they are removed after each test, so a pagehide
+    // reaches only the bridge that test ran.
+    const add = window.addEventListener.bind(window);
+    vi.spyOn(window, 'addEventListener').mockImplementation((type: string, fn: EventListenerOrEventListenerObject, opts?: unknown) => {
+      listeners.push([type, fn]);
+      add(type, fn, opts as AddEventListenerOptions);
+    });
     vi.spyOn(window, 'postMessage').mockImplementation(((m: Record<string, unknown>) => { posted.push(m); }) as never);
     opaqueOrigin();
   });
 
   afterEach(() => {
+    for (const [type, fn] of listeners) window.removeEventListener(type, fn);
     delete (window as unknown as Record<string, unknown>).localStorage;
     delete (window as unknown as Record<string, unknown>).sessionStorage;
     delete (document as unknown as Record<string, unknown>).cookie;
@@ -112,6 +134,22 @@ describe('the stand-ins in the frame', () => {
     expect(localStorage.getItem('big')).toBeNull();
   });
 
+  it('keeps the old value of a key whose new value does not fit', () => {
+    runBridge({ local: { draft: 'kept' } });
+    expect(() => localStorage.setItem('draft', 'x'.repeat(PREVIEW_STORAGE_LIMIT))).toThrow(/quota/i);
+    expect(localStorage.getItem('draft')).toBe('kept');
+    vi.advanceTimersByTime(60);
+    expect(posted.filter((m) => m.type === 'preview:storage')).toEqual([]);
+  });
+
+  it('reports pending changes at once when the page goes away', () => {
+    runBridge();
+    localStorage.setItem('cart', '[3]');
+    expect(posted.filter((m) => m.type === 'preview:storage')).toEqual([]);
+    window.dispatchEvent(new Event('pagehide'));
+    expect(posted).toContainEqual({ type: 'preview:storage', loadId: 4, area: 'local', data: { cart: '[3]' } });
+  });
+
   it('keeps cookies by name and lets an expired one go', () => {
     runBridge();
     document.cookie = 'a=1; path=/';
@@ -120,6 +158,8 @@ describe('the stand-ins in the frame', () => {
     expect(document.cookie).toBe('a=3; b=2');
     document.cookie = 'b=; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     expect(document.cookie).toBe('a=3');
+    document.cookie = 'a=4; Max-Age=0';
+    expect(document.cookie).toBe('');
   });
 
   it('leaves real storage alone where the frame can use it', () => {

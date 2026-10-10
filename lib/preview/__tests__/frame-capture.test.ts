@@ -34,7 +34,7 @@ const canvas = { width: 1280, height: 720 };
 
 interface Context {
   root: Element;
-  options: { filter: (n: Node) => boolean; height: number; autoDestruct: boolean };
+  options: { filter: (n: Node) => boolean; width: number; height: number; scale: number; autoDestruct: boolean };
   sandbox?: {
     contentWindow: { document: { body: Element; createElement: (t: string) => Element }; getComputedStyle: typeof getComputedStyle };
     remove: () => void;
@@ -125,6 +125,49 @@ describe('CAPTURE_RUNTIME_JS', () => {
     });
     await run();
     expect(document.querySelector('[data-osw-capture]')).toBeNull();
+  });
+
+  describe('page size', () => {
+    // jsdom does no layout; these give the document the measurements a browser would.
+    const measured: Array<[Element, string]> = [];
+    function measure(el: Element, sizes: Record<string, number>) {
+      for (const [name, value] of Object.entries(sizes)) {
+        Object.defineProperty(el, name, { configurable: true, value });
+        measured.push([el, name]);
+      }
+    }
+    afterEach(() => {
+      for (const [el, name] of measured.splice(0)) delete (el as unknown as Record<string, unknown>)[name];
+    });
+
+    it('paints the whole page when asked for the full page, and the viewport otherwise', async () => {
+      measure(document.documentElement, { clientWidth: 1280, clientHeight: 720, scrollHeight: 2400, offsetHeight: 2400 });
+      measure(document.body, { scrollHeight: 3100, offsetHeight: 3000 });
+      const contexts = stubPainter();
+
+      await run(msg({ fullPage: true }));
+      await run(msg({ fullPage: false }));
+
+      expect(contexts.map(c => c.options.height)).toEqual([3100, 720]);
+    });
+
+    it('paints a narrow page at a higher scale, up to twice, so the thumbnail stays sharp', async () => {
+      const contexts = stubPainter();
+      measure(document.documentElement, { clientWidth: 800 });
+      await run();
+      measure(document.documentElement, { clientWidth: 375 });
+      await run();
+      measure(document.documentElement, { clientWidth: 1600 });
+      await run();
+
+      expect(contexts.map(c => [c.options.width, c.options.scale])).toEqual([[800, 1.6], [375, 2], [1600, 1]]);
+    });
+
+    it('reports a page that painted nothing', async () => {
+      stubPainter(async () => ({ width: 1280, height: 0 }));
+      const { reply } = await run();
+      expect(reply).toEqual({ type: 'preview:capture-result', reqId: 7, error: 'empty canvas' });
+    });
   });
 
   it('reports why when painting fails', async () => {

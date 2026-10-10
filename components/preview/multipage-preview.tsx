@@ -11,11 +11,12 @@ import {
 } from '@/lib/preview/types';
 import { vfs } from '@/lib/vfs';
 import { PreviewLifecycle } from '@/lib/preview/preview-lifecycle';
-import { FrameScrollMemory, type FrameScroll } from '@/lib/preview/scroll-memory';
+import { FrameScrollMemory, frameScrollReport, type FrameScroll } from '@/lib/preview/scroll-memory';
+import { AckPairer } from '@/lib/preview/ack-pairing';
 import { prependToHead, previewBridgeScript } from '@/lib/preview/preview-bridge';
 import { previewShellHtml, sendShellContent } from '@/lib/preview/preview-shell';
-import { runFunctionCall } from '@/lib/preview/function-proxy';
-import { getPreviewStorage, setPreviewStorageArea } from '@/lib/preview/preview-storage';
+import { answerFunctionCall } from '@/lib/preview/function-proxy';
+import { getPreviewStorage, setPreviewStorageArea, storageReportProject } from '@/lib/preview/preview-storage';
 import { PreviewCompileGate, mergeCompileRequests, observePreviewRoot } from '@/lib/preview/compile-gate';
 import type { CompileRequest } from '@/lib/preview/compile-gate';
 import { STRIP_PROVENANCE_JS } from '@/lib/preview/provenance';
@@ -1406,12 +1407,9 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
   // read would re-apply it on every recompile and yank the preview back off the page the user
   // navigated to.
   const pendingInitialPathRef = useRef<string | null>(initialPath ?? null);
-  // Each document the host writes posts `preview:ready` from its own load event, and the iframe element
-  // fires `load` in this window. The two arrive in either order (a cross-origin frame runs in its
-  // own process), so they are paired by count: a load with no ack inside ACK_TIMEOUT_MS is a
-  // document that is not ours, the frame having navigated to an external site.
-  const unpairedAcksRef = useRef(0);
-  const ackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Pairs each document's acks with the iframe's load events; a load with no ack inside
+  // ACK_TIMEOUT_MS is a document that is not ours (`lib/preview/ack-pairing.ts`).
+  const ackPairerRef = useRef(new AckPairer(ACK_TIMEOUT_MS));
   // The outgoing document's scroll position, as last reported by the frame itself.
   const frameScrollRef = useRef<FrameScroll | null>(null);
   // Read by the message handler, which is not re-registered when the deployment changes.
@@ -1580,60 +1578,34 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     if (!iframe) {
       return;
     }
+    const ackPairer = ackPairerRef.current;
     const handleLoad = () => {
       postMessageToIframe({ type: 'selector-toggle', active: selectorActiveRef.current });
       const expected = lifecycleRef.current.loadId;
       if (expected === 0) return; // initial about:blank load, before we've written any document
-
-      if (unpairedAcksRef.current > 0) {
-        unpairedAcksRef.current -= 1;
-        return;
-      }
-      if (ackTimerRef.current) clearTimeout(ackTimerRef.current);
-      ackTimerRef.current = setTimeout(() => {
-        ackTimerRef.current = null;
-        if (unpairedAcksRef.current > 0) {
-          unpairedAcksRef.current -= 1;
-          return;
-        }
-        handleEscapeSignal(expected);
-      }, ACK_TIMEOUT_MS);
+      ackPairer.onFrameLoad(() => handleEscapeSignal(expected));
     };
     iframe.addEventListener('load', handleLoad);
     return () => {
       iframe.removeEventListener('load', handleLoad);
-      if (ackTimerRef.current) clearTimeout(ackTimerRef.current);
+      ackPairer.stop();
     };
   }, [iframeReady, postMessageToIframe, handleEscapeSignal]);
 
-  /** One of the host's documents loaded: pair it with the iframe load event it belongs to. */
-  const pairAck = useCallback(() => {
-    if (ackTimerRef.current) {
-      clearTimeout(ackTimerRef.current);
-      ackTimerRef.current = null;
-    } else {
-      unpairedAcksRef.current += 1;
-    }
-  }, []);
-
   /** A shell the host wrote is asking for its page. */
   const handleShellReady = useCallback((loadId: number) => {
-    // Only the current load's acks pair with load events: an outgoing document's late one would
-    // leave a surplus that hides the next real escape.
-    if (loadId !== lifecycleRef.current.loadId) return;
-    pairAck();
+    if (!ackPairerRef.current.onAck(loadId)) return;
     const page = shellPageRef.current;
     const target = iframeRef.current?.contentWindow;
     if (!page || page.loadId !== loadId || loadId !== lifecycleRef.current.loadId || !target) return;
     sendShellContent(target, loadId, page.html, page.blobUrls, page.cache, getPreviewStorage(page.projectId)).catch((err) => {
       logger.error('[Preview] Could not send the page to the preview frame:', err);
     });
-  }, [pairAck]);
+  }, []);
 
   /** The current document reached its load event. */
   const handleReadyAck = useCallback((loadId: number) => {
-    if (loadId !== lifecycleRef.current.loadId) return;
-    pairAck();
+    if (!ackPairerRef.current.onAck(loadId)) return;
     if (!lifecycleRef.current.onAck(loadId)) return;
     setEscaped(false);
     // Before the consumer, deliberately. Frame-ready is answered with a `selection-resolve`,
@@ -1653,7 +1625,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     // at all until they are sent again, and the selection the consumer is about to re-resolve
     // is what mounts the toolbar that reads them.
     postToolbarThemeRef.current();
-  }, [pairAck, postMessageToIframe]);
+  }, [postMessageToIframe]);
 
   useEffect(() => {
     activePathRef.current = activePath;
@@ -2027,11 +1999,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     // fresh loadId (runs during parse, before app JS). See `previewBridgeScript`.
     const loadId = ++loadIdCounterRef.current;
     lifecycleRef.current.beginLoad(loadId, isRecovery);
-    unpairedAcksRef.current = 0;
-    if (ackTimerRef.current) {
-      clearTimeout(ackTimerRef.current);
-      ackTimerRef.current = null;
-    }
+    ackPairerRef.current.begin(loadId);
     const bridgeScript = previewBridgeScript(loadId);
     const headInject = bridgeScript + vfsMapScript;
     processedHtml = prependToHead(processedHtml, headInject);
@@ -2127,27 +2095,15 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
       }
 
       if (data.type === 'preview:function-call') {
-        const target = event.source as Window;
-        // Call ids restart with every document, so an answer that outlives its page would settle
-        // the next page's call of the same id. The frame is the same window across loads; the
-        // load is what tells them apart.
-        const loadId = lifecycleRef.current.loadId;
-        runFunctionCall(data, deploymentIdRef.current).then((reply) => {
-          if (lifecycleRef.current.loadId !== loadId) return;
-          target.postMessage(reply, '*', reply.body ? [reply.body] : []);
-        }).catch((err) => {
+        answerFunctionCall(data, deploymentIdRef.current, event.source as Window, () => lifecycleRef.current.loadId).catch((err) => {
           logger.error('[Preview] Could not answer a function call from the preview frame:', err);
         });
         return;
       }
 
       if (data.type === 'preview:storage') {
-        // Only the document on screen writes: a late report from the page being replaced would
-        // otherwise overwrite what the new one starts from.
-        const page = shellPageRef.current;
-        if (page && data.loadId === lifecycleRef.current.loadId && data.loadId === page.loadId) {
-          setPreviewStorageArea(page.projectId, data.area, data.data);
-        }
+        const reportFor = storageReportProject(data.loadId, lifecycleRef.current.loadId, shellPageRef.current);
+        if (reportFor !== null) setPreviewStorageArea(reportFor, data.area, data.data);
         return;
       }
 
@@ -2161,9 +2117,9 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
         return;
       }
 
-      if (data.type === 'preview:scroll' && data.loadId === lifecycleRef.current.loadId
-        && Number.isFinite(data.x) && Number.isFinite(data.y)) {
-        frameScrollRef.current = { x: data.x, y: data.y };
+      const scroll = data.type === 'preview:scroll' ? frameScrollReport(data, lifecycleRef.current.loadId) : null;
+      if (scroll) {
+        frameScrollRef.current = scroll;
         return;
       }
 

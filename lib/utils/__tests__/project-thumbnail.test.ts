@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { clearPreviewStorage, setPreviewStorageArea } from '@/lib/preview/preview-storage';
 
 /**
  * The thumbnail capture has to supply the blob-URL map itself.
@@ -29,7 +30,7 @@ vi.mock('@/lib/preview/virtual-server', () => ({
   },
 }));
 vi.mock('../screenshot', () => ({ captureIframeScreenshot: mocks.captureIframeScreenshot }));
-// jsdom cannot run a sandboxed frame; the shell's own behaviour is covered in the browser.
+// jsdom cannot run a sandboxed frame; the shell itself is covered in lib/preview/__tests__/preview-shell.test.ts.
 vi.mock('@/lib/preview/preview-shell', () => ({ loadIntoShell: mocks.loadIntoShell }));
 
 /** The page the capture handed to the frame, and the frame's sandbox when it did. */
@@ -76,6 +77,26 @@ describe('capturing a project thumbnail', () => {
 
     expect(sandbox).toBe('allow-scripts');
     expect(renderedHtml).toContain('data-osw-bridge');
+  });
+
+  it("starts the page from the project's own preview storage, and captures it at thumbnail size", async () => {
+    // A page that reads its state from localStorage renders the same as it does in the preview.
+    clearPreviewStorage();
+    setPreviewStorageArea('p1', 'local', { theme: 'dark' });
+    setPreviewStorageArea('p2', 'local', { theme: 'light' });
+    mocks.compileProject.mockResolvedValue({
+      files: [{ path: '/index.html', content: '<html><head></head><body></body></html>' }],
+      blobUrls: new Map(),
+    });
+
+    const { captureProjectScreenshot } = await import('../project-thumbnail');
+    await captureProjectScreenshot('p1');
+
+    expect(mocks.loadIntoShell.mock.calls[0][4]).toEqual({ local: { theme: 'dark' }, session: {}, cookie: {} });
+    const [frame, ...size] = mocks.captureIframeScreenshot.mock.calls[0];
+    expect(frame).toBe(mocks.loadIntoShell.mock.calls[0][0]);
+    expect(size).toEqual([1280, 720, 640, 0.8, false]);
+    clearPreviewStorage();
   });
 
   it('returns nothing when the project has no index page to capture', async () => {

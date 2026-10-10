@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
-import { functionCallPath, runFunctionCall, type FunctionCall } from '../function-proxy';
+import { answerFunctionCall, functionCallPath, runFunctionCall, type FunctionCall } from '../function-proxy';
 
 vi.mock('@/lib/utils', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -63,10 +63,81 @@ describe('runFunctionCall', () => {
     expect(reply.error).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('answers a no-content status with no body, which the frame can turn back into a Response', async () => {
+    // `new Response(body, { status: 204 })` throws for any body but null, so the frame's fetch would fail.
+    for (const status of [204, 304]) {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status })));
+      const reply = await runFunctionCall(call(), 'd1', ORIGIN);
+      expect(reply.body, String(status)).toBeNull();
+      expect(() => new Response(reply.body, { status: reply.status })).not.toThrow();
+    }
+  });
+
+  it('answers with the reason when the call cannot be made', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network down'); }));
+    expect(await runFunctionCall(call(), 'd1', ORIGIN)).toEqual({ type: 'preview:function-response', id: 3, error: 'network down' });
+  });
+
+  it('sends no body with GET or HEAD, as fetch would refuse one', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response('{}'));
+    vi.stubGlobal('fetch', fetchMock);
+    await runFunctionCall(call({ method: 'get' }), 'd1', ORIGIN);
+    await runFunctionCall(call({ method: 'HEAD' }), 'd1', ORIGIN);
+    expect(fetchMock.mock.calls.map(([, init]) => [init.method, init.body])).toEqual([['GET', undefined], ['HEAD', undefined]]);
+  });
+});
+
+describe('answerFunctionCall', () => {
+  const call: FunctionCall = {
+    type: 'preview:function-call', id: 1, path: '/api/deployments/d1/functions/echo', method: 'GET', headers: [], body: null,
+  };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('posts the answer to the frame, handing over its body', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('ok')));
+    const target = { postMessage: vi.fn() };
+
+    await answerFunctionCall(call, 'd1', target as unknown as Window, () => 4);
+
+    const [reply, origin, transfer] = target.postMessage.mock.calls[0];
+    expect(reply).toMatchObject({ type: 'preview:function-response', id: 1, status: 200 });
+    expect([origin, transfer]).toEqual(['*', [reply.body]]);
+  });
+
+  it("drops the answer when the page that asked was replaced meanwhile, since the next page's call ids start over", async () => {
+    let respond!: (r: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { respond = resolve; })));
+    const target = { postMessage: vi.fn() };
+    let loadId = 4;
+
+    const answered = answerFunctionCall(call, 'd1', target as unknown as Window, () => loadId);
+    await vi.waitFor(() => expect(respond).toBeDefined());
+    loadId = 5;
+    respond(new Response('late'));
+    await answered;
+
+    expect(target.postMessage).not.toHaveBeenCalled();
+  });
 });
 
 describe('the frame side, in the compiled page', () => {
   let posted: Array<{ message: Record<string, unknown> }>;
+  // Each test installs the interceptor, which replaces fetch and XMLHttpRequest and listens on the
+  // window and document; all of it is put back after each test, so no test runs on another's.
+  let saved: { fetch: typeof window.fetch; XMLHttpRequest: typeof window.XMLHttpRequest };
+  let listeners: Array<[EventTarget, string, EventListenerOrEventListenerObject, unknown]>;
+  let pageErrors: unknown[];
+  const onPageError = (event: ErrorEvent) => { pageErrors.push(event.error); };
+
+  function recordListeners(target: Window | Document) {
+    const add = target.addEventListener.bind(target);
+    vi.spyOn(target, 'addEventListener').mockImplementation((type: string, fn: EventListenerOrEventListenerObject, opts?: unknown) => {
+      if (type === 'message' || type === 'submit') listeners.push([target, type, fn, opts]);
+      add(type, fn, opts as AddEventListenerOptions);
+    });
+  }
 
   async function interceptor(): Promise<string> {
     globalThis.indexedDB = new IDBFactory();
@@ -92,15 +163,27 @@ describe('the frame side, in the compiled page', () => {
 
   beforeEach(() => {
     posted = [];
+    listeners = [];
+    pageErrors = [];
+    saved = { fetch: window.fetch, XMLHttpRequest: window.XMLHttpRequest };
+    recordListeners(window);
+    recordListeners(document);
+    window.addEventListener('error', onPageError);
     vi.spyOn(window, 'postMessage').mockImplementation(((message: Record<string, unknown>) => { posted.push({ message }); }) as never);
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    window.removeEventListener('error', onPageError);
+    // With the options it was added with: the form listener is a capturing one.
+    for (const [target, type, fn, opts] of listeners) target.removeEventListener(type, fn, opts as EventListenerOptions);
+    window.fetch = saved.fetch;
+    window.XMLHttpRequest = saved.XMLHttpRequest;
+    vi.restoreAllMocks();
+  });
 
   it('hands fetch, XHR and form posts to a function to the host', async () => {
     const realFetch = vi.fn();
     window.fetch = realFetch as never;
-    const RealXHR = window.XMLHttpRequest;
     new Function(await interceptor())();
 
     // fetch
@@ -134,8 +217,6 @@ describe('the frame side, in the compiled page', () => {
     await vi.waitFor(() => expect(posted).toHaveLength(3));
     expect(posted[2].message).toMatchObject({ path: '/api/deployments/d1/functions/subscribe', method: 'POST' });
     expect(new TextDecoder().decode(posted[2].message.body as ArrayBuffer)).toBe('{"email":"a@b.c"}');
-
-    window.XMLHttpRequest = RealXHR;
   });
 
   it('ignores a forged response from inside the frame', async () => {
@@ -158,7 +239,10 @@ describe('the frame side, in the compiled page', () => {
     await vi.waitFor(() => expect(posted).toHaveLength(1));
     controller.abort();
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    // The call is gone, so the answer reaches nothing and raises nothing in the page.
     answer(posted[0].message.id, '{}');
+    await new Promise(r => setTimeout(r, 10));
+    expect(pageErrors).toEqual([]);
   });
 
   it('sends nothing for a fetch aborted straight after it was made', async () => {
@@ -171,7 +255,6 @@ describe('the frame side, in the compiled page', () => {
   });
 
   it('gives XHR the body in the responseType asked for, and aborts and times out like XHR', async () => {
-    const RealXHR = window.XMLHttpRequest;
     new Function(await interceptor())();
 
     const binary = new window.XMLHttpRequest();
@@ -204,12 +287,36 @@ describe('the frame side, in the compiled page', () => {
     slow.send();
     await timedOut;
     expect(slow.readyState).toBe(4);
+  });
 
-    window.XMLHttpRequest = RealXHR;
+  it('drops an XHR answer whose body was still being read when the request was aborted', async () => {
+    new Function(await interceptor())();
+    const xhr = new window.XMLHttpRequest();
+    const events: string[] = [];
+    xhr.onabort = () => events.push('abort');
+    xhr.onload = () => events.push('load');
+    xhr.open('GET', '/stream');
+    xhr.send();
+    await vi.waitFor(() => expect(posted).toHaveLength(1));
+
+    // The answer arrives with a body that is still streaming in.
+    let stream!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({ start(controller) { stream = controller; } });
+    window.dispatchEvent(Object.assign(new Event('message'), {
+      source: window.parent,
+      data: { type: 'preview:function-response', id: posted[0].message.id, status: 200, statusText: 'OK', headers: [], body },
+    }));
+    await new Promise(r => setTimeout(r, 10));
+    xhr.abort();
+    stream.enqueue(new TextEncoder().encode('{"late":true}'));
+    stream.close();
+    await new Promise(r => setTimeout(r, 10));
+
+    expect(events).toEqual(['abort']);
+    expect([xhr.readyState, xhr.status, xhr.responseText]).toEqual([4, 0, '']);
   });
 
   it("lets a reused XHR report the real request's outcome after an edge call, and ignores a GET body", async () => {
-    const RealXHR = window.XMLHttpRequest;
     new Function(await interceptor())();
     const xhr = new window.XMLHttpRequest();
     const loaded = new Promise<void>((resolve) => { xhr.onload = () => resolve(); });
@@ -224,6 +331,5 @@ describe('the frame side, in the compiled page', () => {
     xhr.open('GET', 'https://example.test/data.json');
     expect(Object.getOwnPropertyNames(xhr)).not.toContain('status');
     expect(xhr.status).toBe(0);
-    window.XMLHttpRequest = RealXHR;
   });
 });
