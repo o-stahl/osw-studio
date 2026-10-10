@@ -16,14 +16,22 @@ const vfsMock = vi.hoisted(() => ({
 vi.mock('@/lib/vfs', () => ({ vfs: vfsMock }));
 const track = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/telemetry', () => ({ track }));
-const pushSkill = vi.hoisted(() => vi.fn());
+const pushes = vi.hoisted(() => ({
+  pushSkill: vi.fn(),
+  pushTemplate: vi.fn(),
+  pushModelTemplate: vi.fn(),
+  pushConnection: vi.fn(),
+  pushInterviewTemplate: vi.fn(),
+}));
+const { pushSkill } = pushes;
 vi.mock('@/lib/vfs/sync-manager', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/vfs/sync-manager')>()),
-  getSyncManager: () => ({ pushSkill }),
+  getSyncManager: () => pushes,
 }));
+const logger = vi.hoisted(() => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }));
 vi.mock('@/lib/utils', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/utils')>()),
-  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+  logger,
 }));
 
 import * as autoSync from '@/lib/vfs/auto-sync';
@@ -99,6 +107,32 @@ describe('autoSyncSkill', () => {
   it('does not count an accepted push', async () => {
     pushSkill.mockResolvedValue({ success: true });
     await autoSync.autoSyncSkill({ id: 's1', isBuiltIn: false } as never);
+    expect(track).not.toHaveBeenCalled();
+  });
+});
+
+describe('auto-sync of the other item kinds', () => {
+  // A connection is not counted in telemetry; its failure shows only in the log.
+  const kinds: [string, () => Promise<void>, keyof typeof pushes, string | null][] = [
+    ['autoSyncTemplate', () => autoSync.autoSyncTemplate({ id: 't1' } as never), 'pushTemplate', 'template'],
+    ['autoSyncModelTemplate', () => autoSync.autoSyncModelTemplate({ id: 'mt1', builtin: false } as never), 'pushModelTemplate', 'modelTemplate'],
+    ['autoSyncInterviewTemplate', () => autoSync.autoSyncInterviewTemplate({ id: 'i1', isBuiltIn: false } as never), 'pushInterviewTemplate', 'interviewTemplate'],
+    ['autoSyncConnection', () => autoSync.autoSyncConnection({ id: 'c1', name: 'C', apiKeyRequired: false } as never), 'pushConnection', null],
+  ];
+
+  it.each(kinds)('%s counts a refused push as a failure', async (_name, sync, push, itemType) => {
+    pushes[push].mockResolvedValue({ success: false, error: 'Unauthorized' });
+    await sync();
+    expect(pushes[push]).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalled();
+    if (itemType) expect(track).toHaveBeenCalledWith('sync_fail', { item_type: itemType, direction: 'push' });
+  });
+
+  it.each(kinds)('%s does not count an accepted push', async (_name, sync, push) => {
+    pushes[push].mockResolvedValue({ success: true });
+    await sync();
+    expect(pushes[push]).toHaveBeenCalledTimes(1);
+    expect(logger.error).not.toHaveBeenCalled();
     expect(track).not.toHaveBeenCalled();
   });
 });

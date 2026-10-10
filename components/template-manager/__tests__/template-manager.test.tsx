@@ -13,6 +13,9 @@ import { deepMerge } from '@/lib/i18n/merge';
  * and a project made from it is named in the person's language. An exported `.oswt` file is a
  * template other people install, so it carries the template's English source copy whatever
  * language the exporter was using.
+ *
+ * A delete the server refused says why (the refusal's own message); any other failure says the
+ * delete failed, in the interface language.
  */
 
 const vfsMock = vi.hoisted(() => ({
@@ -21,7 +24,8 @@ const vfsMock = vi.hoisted(() => ({
   deleteProject: vi.fn(async () => {}),
 }));
 const service = vi.hoisted(() => ({
-  listCustomTemplates: vi.fn(async () => []),
+  listCustomTemplates: vi.fn(async (): Promise<unknown[]> => []),
+  deleteCustomTemplate: vi.fn(async () => {}),
   exportProjectAsTemplate: vi.fn(async () => new Blob(['x'])),
 }));
 const builtIns = vi.hoisted(() => ({
@@ -34,27 +38,32 @@ vi.mock('@/lib/vfs', () => ({ vfs: vfsMock }));
 vi.mock('@/lib/vfs/template-service', () => ({ templateService: service }));
 vi.mock('@/lib/vfs/project-templates', () => builtIns);
 vi.mock('@/lib/vfs/provision-backend-features', () => ({ provisionBackendFeatures: vi.fn() }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() } }));
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() }));
+vi.mock('sonner', () => ({ toast }));
 vi.mock('@/components/ui/view-mode-toggle', () => ({ useViewMode: () => ['grid', () => {}], ViewModeToggle: () => null }));
 vi.mock('@/lib/hooks/use-narrow-container', () => ({ useNarrowContainer: () => [false, () => {}] }));
 vi.mock('@/components/template-browser/template-preview-dialog', () => ({ TemplatePreviewDialog: () => null }));
 // The card is a separate component; here it only has to hand its template to the manager's actions.
 vi.mock('../template-card', () => ({
-  TemplateCard: ({ template, onSelect, onExport }: {
+  TemplateCard: ({ template, onSelect, onExport, onDelete }: {
     template: { id: string; name: string };
     onSelect: (t: unknown) => void;
     onExport?: (t: unknown) => void;
+    onDelete?: (id: string) => void;
   }) => (
     <div data-card={template.id}>
       <span data-name>{template.name}</span>
       <button data-export onClick={() => onExport?.(template)} />
       <button data-create onClick={() => onSelect(template)} />
+      <button data-delete onClick={() => onDelete?.(template.id)} />
     </div>
   ),
 }));
 
 import { TemplateManager } from '..';
 import { BUILT_IN_TEMPLATES } from '@/lib/vfs/templates';
+import { ServerDeleteRefused } from '@/lib/vfs/auto-sync';
+import { registerEnglishTranslator } from '@/lib/i18n/__tests__/test-helpers';
 
 const source = (id: string) => BUILT_IN_TEMPLATES.find((t) => t.id === id)!;
 
@@ -83,9 +92,13 @@ afterEach(() => {
 });
 
 async function mountFinnish() {
+  await mount('fi', deepMerge(en, fi));
+}
+
+async function mount(locale: 'en' | 'fi', messages: typeof en) {
   await act(async () => {
     root.render(
-      <NextIntlClientProvider locale="fi" messages={deepMerge(en, fi)}>
+      <NextIntlClientProvider locale={locale} messages={messages}>
         <TemplateManager />
       </NextIntlClientProvider>,
     );
@@ -131,5 +144,34 @@ describe('a built-in template in another language', () => {
     const name = vfsMock.createProject.mock.calls[0][0];
     expect(name).toContain(fi.templateCatalog.blank.name);
     expect(name).not.toBe(fi.templateCatalog.blank.name);
+  });
+});
+
+describe('deleting a custom template', () => {
+  const custom = {
+    id: 'mine', name: 'Mine', description: 'd', version: '1', files: [], directories: [],
+    metadata: { license: 'personal' }, updatedAt: new Date(),
+  };
+
+  beforeEach(() => {
+    registerEnglishTranslator();
+    vi.stubGlobal('confirm', () => true);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    service.listCustomTemplates.mockResolvedValue([custom]);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("shows the server's refusal", async () => {
+    service.deleteCustomTemplate.mockRejectedValue(new ServerDeleteRefused('auth'));
+    await mount('en', en);
+    await press(card('mine').querySelector('[data-delete]')!);
+    expect(toast.error).toHaveBeenCalledWith(en.sync.deleteRefused.auth);
+  });
+
+  it('says the delete failed on any other error', async () => {
+    service.deleteCustomTemplate.mockRejectedValue(new Error('disk full'));
+    await mountFinnish();
+    await press(card('mine').querySelector('[data-delete]')!);
+    expect(toast.error).toHaveBeenCalledWith(fi.templatesUi.deleteFailed);
   });
 });

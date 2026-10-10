@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { registerEnglishTranslator } from '@/lib/i18n/__tests__/test-helpers';
+import en from '@/messages/en.json';
 
 /**
  * In server mode a delete goes to the server first and touches the local copy only once the server
@@ -69,7 +70,7 @@ describe('autoDelete* server outcomes', () => {
     const err = await del('x').catch(e => e);
     expect(err).toBeInstanceOf(ServerDeleteRefused);
     expect(err.reason).toBe('auth');
-    expect(err.message).toBe('Your session has expired, so nothing was deleted. Log in and try again.');
+    expect(err.message).toBe(en.sync.deleteRefused.auth);
     expect(fetchMock).toHaveBeenCalledWith(url, { method: 'DELETE' });
   });
 
@@ -92,7 +93,7 @@ describe('autoDelete* server outcomes', () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ code: 'in_use', deployments: ['Site'] }), { status: 409 }));
     const err = await autoSync.autoDeleteProject('x').catch((e) => e);
     expect(err).toMatchObject({ reason: 'in_use' });
-    expect(err.message).toContain('A deployment uses this project');
+    expect(err.message).toBe(en.sync.deleteRefused.in_use);
   });
 
   it('encodes the id, so one with a slash cannot miss the route and read as deleted', async () => {
