@@ -14,7 +14,7 @@ import 'server-only';
 import { getSQLiteAdapter, getWorkspaceAdapter } from '@/lib/vfs/adapters/server';
 import { RuntimeDatabase } from '@/lib/vfs/adapters/runtime-database';
 import { ProjectDatabase } from '@/lib/vfs/adapters/project-database';
-import { projectDatabaseExists, getProjectDatabasePath } from '@/lib/vfs/adapters/sqlite-connection';
+import { projectDatabaseExists, getProjectDatabasePath, runtimeDatabaseExists } from '@/lib/vfs/adapters/sqlite-connection';
 import { encryptSecret, isEncryptionConfigured } from '@/lib/edge-functions/secrets-crypto';
 
 export interface ExtractionSummary {
@@ -61,9 +61,11 @@ export async function extractBackendFeatures(
   const secrets = adapter.listSecrets ? await adapter.listSecrets(projectId) : [];
   const scheduledFunctions = adapter.listScheduledFunctions ? await adapter.listScheduledFunctions(projectId) : [];
 
-  // If no backend features, nothing to do
+  // A project with no backend features still clears what an earlier publish left in the runtime
+  // database (another project's, or functions since deleted). Only a deployment that never had one
+  // has nothing to do.
   if (edgeFunctions.length === 0 && serverFunctions.length === 0 &&
-      secrets.length === 0 && scheduledFunctions.length === 0) {
+      secrets.length === 0 && scheduledFunctions.length === 0 && !runtimeDatabaseExists(deploymentId)) {
     return summary;
   }
 

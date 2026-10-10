@@ -437,6 +437,12 @@ export function getProjectDatabasePath(projectId: string, baseDir?: string): str
   return path.join(dataDir, 'projects', projectId, 'database.sqlite');
 }
 
+/** Whether a deployment has a runtime database yet (its functions, secrets and schedules). */
+export function runtimeDatabaseExists(deploymentId: string): boolean {
+  validateIdFormat(deploymentId, 'deployment ID');
+  return fs.existsSync(path.join(getDeploymentsDir(), deploymentId, 'runtime.sqlite'));
+}
+
 /**
  * Check if a project database exists
  */

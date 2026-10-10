@@ -56,4 +56,29 @@ describe('extractBackendFeatures in a workspace', () => {
     runtime.close();
     await adapter.close?.();
   });
+
+  it('clears what an earlier publish provisioned when the project has no backend features left', async () => {
+    const { getWorkspaceAdapter } = await import('@/lib/vfs/adapters/server');
+    const { extractBackendFeatures } = await import('../backend-feature-extractor');
+    const { RuntimeDatabase } = await import('@/lib/vfs/adapters/runtime-database');
+
+    const adapter = getWorkspaceAdapter(WS);
+    await adapter.init();
+    await adapter.createProject({ id: PROJECT, name: 'Blog', createdAt: new Date(), updatedAt: new Date(), settings: {} } as never);
+    await adapter.createEdgeFunction!({
+      id: 'f1', projectId: PROJECT, name: 'hello', code: 'Response.json({})', method: 'GET',
+      enabled: true, timeoutMs: 5000, createdAt: new Date(), updatedAt: new Date(),
+    } as never);
+    await extractBackendFeatures(PROJECT, DEPLOYMENT, WS);
+
+    await adapter.deleteEdgeFunction!('f1');
+    await extractBackendFeatures(PROJECT, DEPLOYMENT, WS);
+
+    const runtime = new RuntimeDatabase(DEPLOYMENT);
+    runtime.init();
+    expect(runtime.listFunctions()).toEqual([]);
+    runtime.close();
+    await adapter.close?.();
+  });
 });
+

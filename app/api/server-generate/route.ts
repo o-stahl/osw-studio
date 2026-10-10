@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
+import { verifyWorkspaceAccess } from '@/lib/auth/system-database';
 import { taskManager, eventBus } from '@/lib/server-generate/singleton';
 import { runServerGeneration } from '@/lib/server-generate/server-orchestrator-runner';
 import type { StartGenerationRequest } from '@/lib/server-generate/types';
@@ -34,6 +35,19 @@ export async function POST(request: NextRequest) {
 
   const sessionId = session.userId;
   const workspaceId = body.workspaceId;
+
+  // The run reads and writes the project's files, so the caller needs editor access to the
+  // workspace it names. Without one, only the instance's own principals (admin, desktop) may use
+  // the unscoped database.
+  if (workspaceId) {
+    try {
+      verifyWorkspaceAccess(session.userId, workspaceId, 'editor');
+    } catch {
+      return NextResponse.json({ error: 'Workspace access denied' }, { status: 403 });
+    }
+  } else if (session.userId !== 'admin' && session.userId !== 'desktop') {
+    return NextResponse.json({ error: 'Missing workspaceId' }, { status: 400 });
+  }
 
   await taskManager.initialize();
 
