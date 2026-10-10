@@ -33,10 +33,6 @@ export class AckPairer {
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.timer = null;
-      if (this.unpaired > 0) {
-        this.unpaired -= 1;
-        return;
-      }
       onEscape();
     }, this.timeoutMs);
   }
