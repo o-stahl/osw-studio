@@ -359,6 +359,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
       setSelectedDeployment({
         ...selectedDeployment,
         ...settings,
+        ...(projectIdChanged ? { projectMissing: false } : {}),
         review: savedReview,
         settingsVersion: result.settingsVersion,
         lastPublishedVersion: result.lastPublishedVersion,
@@ -367,6 +368,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
       // Update the deployment in the main list (optimistic update - no full reload)
       updateDeploymentInState(selectedDeployment.id, {
         ...settings,
+        ...(projectIdChanged ? { projectMissing: false } : {}),
         review: savedReview,
         settingsVersion: result.settingsVersion,
         updatedAt: new Date(),
@@ -883,7 +885,11 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
                                     <div className="flex items-center gap-2 min-w-0">
                                       <span className="font-medium text-foreground text-[13px] truncate">{deployment.name}</span>
                                     </div>
-                                    <span className="block text-[11px] text-muted-foreground truncate">{deployment.slug || project?.name || ''}</span>
+                                    <span className="block text-[11px] text-muted-foreground truncate">
+                                      {deployment.projectMissing
+                                        ? <span className="text-destructive">{t('projectMissing')}</span>
+                                        : deployment.slug || project?.name || ''}
+                                    </span>
                                   </div>
                                   <ReviewBadge
                                     count={deployment.openReviewThreads ?? 0}

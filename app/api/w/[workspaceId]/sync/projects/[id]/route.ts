@@ -236,6 +236,17 @@ export async function DELETE(
       return NextResponse.json({ success: true });
     }
 
+    // A deployment serves its project's build; deleting the project out from under it leaves a
+    // live site nobody can republish. Point the deployment elsewhere, or delete it, first.
+    const deployments = (await adapter.listDeployments?.()) ?? [];
+    const usedBy = deployments.filter((d) => d.projectId === id).map((d) => d.name);
+    if (usedBy.length > 0) {
+      return NextResponse.json(
+        { error: 'Project is used by a deployment', code: 'in_use', deployments: usedBy },
+        { status: 409 }
+      );
+    }
+
     requireWorkspaceRole(context, 'editor');
     await adapter.deleteProject(id);
     forgetWorkspaceStorage(workspaceId);

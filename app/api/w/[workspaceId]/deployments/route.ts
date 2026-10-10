@@ -28,10 +28,17 @@ export async function GET(
     // deployment, and a second round trip per row would cost more than the counts do.
     const openThreads = openThreadCounts(deployments);
 
+    // Asked of the server, not the browser: a project another device has not pulled yet is not gone.
+    const missing = new Set<string>();
+    for (const projectId of new Set(deployments.map((d) => d.projectId))) {
+      if (!(await adapter.getProject(projectId))) missing.add(projectId);
+    }
+
     return NextResponse.json(
       deployments.map(d => ({
         ...toPublicDeployment(withPublicUrl(d)),
         openReviewThreads: openThreads[d.id],
+        ...(missing.has(d.projectId) ? { projectMissing: true } : {}),
       }))
     );
   } catch (error) {

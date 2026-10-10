@@ -417,6 +417,7 @@ export function DeploymentDetail({
                 publicUrl={deployment.publicUrl}
                 published={hasBeenPublished}
                 sitesMode={sitesMode}
+                projectMissing={deployment.projectMissing}
                 projects={projects}
                 onProjectChange={setProjectId}
               />

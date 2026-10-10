@@ -174,6 +174,7 @@
     "notSyncedAria": "{count, plural, one {# project not synced to the server} other {# projects not synced to the server}}"
   },
   "deployments": {
+    "projectMissing": "Project deleted",
     "none": "No deployment",
     "loading": "Loading deployments...",
     "serverModeOnly": "Deployments feature is only available in Server Mode",
@@ -1084,6 +1085,7 @@
     "deleteRefused": {
       "auth": "Your session has expired, so nothing was deleted. Log in and try again.",
       "forbidden": "Your role in this workspace cannot delete this, so nothing was deleted.",
+      "in_use": "A deployment publishes this project, so nothing was deleted. Point the deployment at another project, or delete the deployment, first.",
       "failed": "The server did not confirm the delete, so nothing was deleted. Try again."
     }
   },
@@ -1740,6 +1742,8 @@
     }
   },
   "publishSettings": {
+    "projectMissingDetail": "The site keeps serving its last build. Choose another project, save, then republish.",
+    "projectMissingTitle": "The project behind this deployment was deleted",
     "publishingStatus": "Publishing status",
     "underConstruction": "Under construction",
     "sourceProject": "Source project",

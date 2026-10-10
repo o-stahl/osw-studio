@@ -128,7 +128,12 @@ export function DeploymentCard({
         {/* Title and Description */}
         <div className="mb-3">
           <h3 className="font-semibold text-lg truncate mb-1">{deployment.name}</h3>
-          {project && (
+          {deployment.projectMissing ? (
+            <div className="flex items-center gap-1 text-xs text-destructive">
+              <Folder className="h-3 w-3" />
+              <span className="truncate">{td('projectMissing')}</span>
+            </div>
+          ) : project && (
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <Folder className="h-3 w-3" />
               <span className="truncate">{project.name}</span>

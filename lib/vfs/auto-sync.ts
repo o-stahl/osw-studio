@@ -798,7 +798,7 @@ export async function reconcileProjectsToServer(
   }
 }
 
-type ServerDeleteReason = 'auth' | 'forbidden' | 'failed';
+type ServerDeleteReason = 'auth' | 'forbidden' | 'in_use' | 'failed';
 
 /** The server did not delete the item. Its message is ready to show; nothing was deleted. */
 export class ServerDeleteRefused extends Error {
@@ -826,6 +826,10 @@ async function deleteOnServer(path: string): Promise<void> {
   }
   if (res.ok || res.status === 404) return;
   logger.error(`[AutoSync] DELETE ${path} refused: ${res.status}`);
+  if (res.status === 409) {
+    const body = await res.json().catch(() => null) as { code?: string } | null;
+    if (body?.code === 'in_use') throw new ServerDeleteRefused('in_use');
+  }
   throw new ServerDeleteRefused(res.status === 401 ? 'auth' : res.status === 403 ? 'forbidden' : 'failed');
 }
 

@@ -26,9 +26,11 @@ interface GeneralTabProps {
   onProjectChange?: (projectId: string) => void;
   /** Where sites live elsewhere, the studio's own path only redirects there, so it is not shown. */
   sitesMode?: SitesMode | null;
+  /** The project behind the deployment no longer exists on the server. */
+  projectMissing?: boolean;
 }
 
-export function GeneralTab({ settings, onChange, projectId, deploymentId, publicUrl: resolvedUrl, published, projects, onProjectChange, sitesMode }: GeneralTabProps) {
+export function GeneralTab({ settings, onChange, projectId, deploymentId, publicUrl: resolvedUrl, published, projects, onProjectChange, sitesMode, projectMissing }: GeneralTabProps) {
   const t = useTranslations('publishSettings');
   const tc = useTranslations('common');
   const td = useTranslations('deploymentDetail');
@@ -87,6 +89,16 @@ export function GeneralTab({ settings, onChange, projectId, deploymentId, public
                 {t('sourceProjectHelp')}
               </p>
             </div>
+
+            {projectMissing && projectId === originalProjectId && (
+              <div className="flex items-start gap-3 p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
+                <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+                <div className="text-sm">
+                  <p className="font-medium text-destructive">{t('projectMissingTitle')}</p>
+                  <p className="mt-1 text-muted-foreground">{t('projectMissingDetail')}</p>
+                </div>
+              </div>
+            )}
 
             {projectId !== originalProjectId && (
               <div className="flex items-start gap-3 p-3 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg">

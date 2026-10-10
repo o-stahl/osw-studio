@@ -99,6 +99,11 @@ export interface Deployment {
    * never stored: absent means none, or that review is off, or that no review copy has been built.
    */
   openReviewThreads?: number;
+  /**
+   * Set by the deployments list endpoint when the project behind the deployment no longer exists on
+   * the server. The deployment keeps serving its last build; it needs another project to republish.
+   */
+  projectMissing?: boolean;
 
   // Preview
   previewImage?: string; // base64 data URL of deployment screenshot

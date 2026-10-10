@@ -174,6 +174,7 @@
     "notSyncedAria": "{count, plural, other {서버에 동기화되지 않은 프로젝트 #개}}"
   },
   "deployments": {
+    "projectMissing": "프로젝트 삭제됨",
     "none": "배포 없음",
     "loading": "배포를 불러오는 중…",
     "serverModeOnly": "배포 기능은 서버 모드에서만 쓸 수 있어요",
@@ -1081,6 +1082,7 @@
     "deleteRefused": {
       "auth": "세션이 만료되어 아무것도 삭제하지 않았어요. 다시 로그인한 뒤 시도해 주세요.",
       "forbidden": "이 워크스페이스에서 내 역할로는 삭제할 수 없어서 아무것도 삭제하지 않았어요.",
+      "in_use": "배포가 이 프로젝트를 쓰고 있어서 아무것도 삭제하지 않았어요. 먼저 배포의 프로젝트를 바꾸거나 배포를 삭제해 주세요.",
       "failed": "서버가 삭제를 확인하지 않아서 아무것도 삭제하지 않았어요. 다시 시도해 주세요."
     }
   },
@@ -1737,6 +1739,8 @@
     }
   },
   "publishSettings": {
+    "projectMissingDetail": "사이트는 마지막 빌드를 계속 보여 줘요. 다른 프로젝트를 고르고 저장한 뒤 다시 배포하세요.",
+    "projectMissingTitle": "이 배포의 프로젝트가 삭제되었어요",
     "publishingStatus": "배포 상태",
     "underConstruction": "공사 중",
     "sourceProject": "원본 프로젝트",

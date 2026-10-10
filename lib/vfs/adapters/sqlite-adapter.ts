@@ -483,6 +483,32 @@ const MIGRATIONS: Migration[] = [
       }
     }
   },
+  {
+    id: 'deployments_outlive_projects_v13',
+    up: (db) => {
+      // A deployment row was declared `ON DELETE CASCADE` against its project, so deleting the
+      // project deleted the row while the built site stayed live and routed: a published site with
+      // nothing in the Deployments view to republish, repoint or unpublish it. SQLite cannot drop a
+      // constraint, so the table is rebuilt from its own current definition (every column added
+      // since included) with the foreign key left out. Nothing references `deployments`.
+      const table = db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'deployments'`)
+        .get() as { sql: string } | undefined;
+      if (!table) return;
+      const withoutCascade = table.sql.replace(
+        /,\s*FOREIGN KEY\s*\(\s*project_id\s*\)\s*REFERENCES\s+projects\s*\(\s*id\s*\)[^,)]*/i,
+        ''
+      );
+      if (withoutCascade === table.sql) return;
+      const indexes = db.prepare(
+        `SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'deployments' AND sql IS NOT NULL`
+      ).all() as Array<{ sql: string }>;
+      db.exec(withoutCascade.replace(/^CREATE TABLE\s+("?)deployments\1/i, 'CREATE TABLE deployments_v13'));
+      db.exec(`INSERT INTO deployments_v13 SELECT * FROM deployments`);
+      db.exec(`DROP TABLE deployments`);
+      db.exec(`ALTER TABLE deployments_v13 RENAME TO deployments`);
+      for (const index of indexes) db.exec(index.sql);
+    }
+  },
 ];
 
 /**
@@ -1057,12 +1083,9 @@ export class SQLiteAdapter implements StorageAdapter {
   async deleteProject(id: string): Promise<void> {
     const db = this.getDB();
 
-    // Delete from core database
+    // Delete from core database. Deployments are not touched: a deployment outlives its project,
+    // and its databases go when the deployment is deleted.
     db.prepare('DELETE FROM projects WHERE id = ?').run(id);
-
-    // Delete deployment database if it exists
-    this.deploymentDatabases.delete(id);
-    deleteDeploymentDatabase(id);
 
     // Delete project database if it exists
     this.projectDatabases.delete(id);
