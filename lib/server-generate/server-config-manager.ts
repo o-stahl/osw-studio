@@ -33,6 +33,11 @@ export class ServerConfigManager {
     return provider === this.params.provider ? this.params.model : null;
   }
 
+  /** The browser's ranked free models, sent for a run on "Free models"; unchecked client input. */
+  getFreeModelCandidates(): unknown {
+    return this.params.freeModelCandidates;
+  }
+
   getCachedModels(
     provider: ProviderId,
   ): { models: Array<{ id: string; name: string; context_length?: number }>; timestamp: number } | null {

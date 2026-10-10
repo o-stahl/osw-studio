@@ -77,3 +77,34 @@ describe('isReviewOriginAllowed', () => {
     ).toBe(true);
   });
 });
+
+/**
+ * With sites served away from the studio, the review copy posts from the site's own origin to the
+ * site's host. The studio's host acts as the team on the account session, which a same-site POST
+ * from any site would carry, so there only the studio's own origin is accepted.
+ */
+describe('a review copy on its own site host', () => {
+  const SITE = 'https://pale-plum.oswstudio.com';
+  const deployment = { slug: 'pale-plum' };
+  const post = (url: string, origin: string) =>
+    new Request(url, { method: 'POST', headers: { origin } });
+
+  beforeEach(() => vi.stubEnv('STATIC_PROXY', 'true'));
+
+  it("accepts the site's origin on the site's host", () => {
+    expect(isReviewOriginAllowed(post(`${SITE}/review/dep-1/osw-api/comments`, SITE), deployment)).toBe(true);
+  });
+
+  it("refuses the site's origin on the studio's host, where the account session acts as the team", () => {
+    expect(isReviewOriginAllowed(post(`${APP_URL}/review/dep-1/osw-api/comments`, SITE), deployment)).toBe(false);
+    expect(isReviewOriginAllowed(post(`${APP_URL}/review/dep-1/osw-api/comments`, APP_URL), deployment)).toBe(true);
+  });
+
+  it('refuses the shared sites address on the studio host', () => {
+    vi.stubEnv('STATIC_PROXY', '');
+    vi.stubEnv('SITES_ORIGIN', 'https://sites.example.com');
+    const shared = 'https://sites.example.com';
+    expect(isReviewOriginAllowed(post(`${APP_URL}/review/dep-1/osw-api/comments`, shared), {})).toBe(false);
+    expect(isReviewOriginAllowed(post(`${shared}/review/dep-1/osw-api/comments`, shared), {})).toBe(true);
+  });
+});

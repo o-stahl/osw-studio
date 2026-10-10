@@ -164,6 +164,20 @@ describe('resolveReviewAccess', () => {
     expect(mocks.requireDeploymentAccess).toHaveBeenCalledWith(DEPLOYMENT_A, 'viewer');
   });
 
+  it('never admits the team on a site host, where the desktop session would be anyone\'s', async () => {
+    // Desktop: no login, so getSession always answers, and every site shares the sites port.
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'http://localhost:30011');
+    vi.stubEnv('SITES_ORIGIN', 'http://localhost:30012');
+    const { resolveReviewAccess } = await load();
+    mocks.resolveDeployment.mockResolvedValue(deploymentWithReview(OPEN));
+    signedInAsTeam();
+
+    const onSites = { ...requestWithCookies({}), headers: new Headers({ host: 'localhost:30012' }) };
+    expect(await resolveReviewAccess(DEPLOYMENT_A, onSites)).toEqual({ kind: 'denied' });
+    const onStudio = { ...requestWithCookies({}), headers: new Headers({ host: 'localhost:30011' }) };
+    expect((await resolveReviewAccess(DEPLOYMENT_A, onStudio)).kind).toBe('team');
+  });
+
   it('prefers the account over a participant cookie when both are present', async () => {
     const { resolveReviewAccess, mintReviewCookie } = await load();
     mocks.resolveDeployment.mockResolvedValue(deploymentWithReview(OPEN));

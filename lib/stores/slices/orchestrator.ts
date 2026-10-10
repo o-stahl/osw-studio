@@ -32,6 +32,7 @@ import type { ProviderId } from '@/lib/llm/providers/types';
 import type { InterviewTemplate } from '@/lib/interview/types';
 import type { ApprovalRequest, ApprovalOutcome } from '@/lib/llm/permissions';
 import { translator } from '@/lib/i18n/runtime';
+import type { AgentMessage } from '@/lib/llm/multi-agent-orchestrator';
 
 /**
  * The free models a server run on "Free models" should use, best first, minus those cooling down.
@@ -46,6 +47,27 @@ async function freeModelCandidates(provider: ProviderId): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * The model's conversation as a thread's events record it: the last `conversation_replaced`
+ * (compaction, or unanswered messages dropped), then the messages after it.
+ */
+function conversationFromEvents(events: DebugEvent[]): AgentMessage[] {
+  let base: AgentMessage[] = [];
+  let replacedIdx = -1;
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (events[i].event === 'conversation_replaced') {
+      base = (events[i].data?.messages as AgentMessage[]) ?? [];
+      replacedIdx = i;
+      break;
+    }
+  }
+  const after = events
+    .slice(replacedIdx + 1)
+    .filter((event) => event.event === 'conversation_message')
+    .map((event) => event.data.message as AgentMessage);
+  return [...base, ...after];
 }
 
 const MAX_DEBUG_EVENTS = 2000;
@@ -731,25 +753,8 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
         );
 
         // Only bootstrap conversation if viewing this project.
-        // Compaction rewrites the conversation via a conversation_replaced
-        // event — rebuild from the last one so the compacted context (with its
-        // summary) is restored instead of the full pre-compaction history.
         if (get().projectId === projectId) {
-          const events = get().debugEvents;
-          let baseMessages: unknown[] = [];
-          let replacedIdx = -1;
-          for (let i = events.length - 1; i >= 0; i--) {
-            if (events[i].event === 'conversation_replaced') {
-              baseMessages = (events[i].data?.messages as unknown[]) ?? [];
-              replacedIdx = i;
-              break;
-            }
-          }
-          const subsequentMessages = events
-            .slice(replacedIdx + 1)
-            .filter(event => event.event === 'conversation_message')
-            .map(event => event.data.message);
-          const conversationMessages = [...baseMessages, ...subsequentMessages];
+          const conversationMessages = conversationFromEvents(get().debugEvents);
 
           if (conversationMessages.length > 0) {
             orchestrator.importConversation(conversationMessages);
@@ -1413,7 +1418,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
 
     // The message goes up before the slow work, not after it: everything above this point is
     // local and fast (a config read), while the sync and the checkpoint write below are neither.
-    // `conversationHistory` is built from the events further down, so it still includes this one.
+    // `conversationHistory`, built further down, leaves it out: the server's `execute` adds the prompt.
     // Build ui_metadata for the local user message (mirrors what the orchestrator produces)
     const displayPrompt = options?.displayPrompt ?? prompt;
     const uiMeta: Record<string, any> = { displayContent: displayPrompt, awaitingServerEcho: true };
@@ -1474,9 +1479,9 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     // Connect SSE before starting generation to avoid missing early events
     get().connectSSE();
 
-    const conversationHistory = get().debugEvents
-      .filter((e) => e.event === 'conversation_message')
-      .map((e) => e.data.message);
+    // The message added above is still awaiting the server's echo; any other message is history.
+    const conversationHistory = conversationFromEvents(get().debugEvents)
+      .filter((m) => !(m?.ui_metadata as { awaitingServerEcho?: boolean } | undefined)?.awaitingServerEcho);
 
     // Extract workspace ID from URL path (/w/{workspaceId}/...)
     const wsMatch = typeof window !== 'undefined' ? window.location.pathname.match(/^\/w\/([^/]+)/) : null;

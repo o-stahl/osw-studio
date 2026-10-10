@@ -133,6 +133,17 @@ describe('an error relayed inside the stream', () => {
     expect(err.errorCategory).toBe('model_busy');
   });
 
+  it("reads a relayed 403 by OpenRouter's metadata: a refusal of what was sent is not the model refusing the app", async () => {
+    vi.mocked(apiFetch).mockImplementation(async () => sse([
+      { error: { code: 403, message: 'Provider returned error', metadata: { error_type: 'refusal' } }, choices: [{ index: 0, delta: {}, finish_reason: 'error' }] },
+    ]));
+    expect((await failure()).errorCategory).toBe('blocked');
+    vi.mocked(apiFetch).mockImplementation(async () => sse([
+      { error: { code: 403, message: 'm:free is only available on agentic harnesses.' }, choices: [{ index: 0, delta: {}, finish_reason: 'error' }] },
+    ]));
+    expect((await failure()).errorCategory).toBe('model_refused');
+  });
+
   it('leaves any other relayed error as a midstream error', async () => {
     vi.mocked(apiFetch).mockImplementation(async () => sse([{ error: { code: 500, message: 'upstream exploded' } }]));
     expect((await failure()).errorCategory).toBe('midstream_error');

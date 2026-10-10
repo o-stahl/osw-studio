@@ -74,7 +74,7 @@ export function siteOriginFor(deployment: { slug?: string | null; customDomain?:
  * through unchanged. Not X-Forwarded-Host, which a page can set itself on a same-origin request
  * (a DNS-rebinding page is same-origin with the server it rebinds to).
  */
-export function requestHost(headers: Headers): string {
+export function requestHost(headers: { get(name: string): string | null }): string {
   return (headers.get('host') || '').trim().toLowerCase();
 }
 

@@ -209,7 +209,7 @@ export class OswsProviderAdapter implements ProviderAdapter {
       // A provider error relayed inside the stream still says what happened: a busy free model
       // arrives this way as often as on the status line.
       const midstreamCode = midstreamStatus === 429 || midstreamStatus === 403
-        ? classifyProviderError({ status: midstreamStatus, provider, message: result.midstreamError.message }).code
+        ? classifyProviderError({ status: midstreamStatus, provider, message: result.midstreamError.message, metadata: result.midstreamError.metadata }).code
         : undefined;
       const midstreamCategory = midstreamCode ? CODE_CATEGORIES[midstreamCode] : 'midstream_error';
       throw new ProviderApiError(

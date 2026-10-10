@@ -2193,6 +2193,7 @@
     "analyzingChanges": "Analysoidaan muutoksia...",
     "noBackendChanges": "Backend-ominaisuuksissa ei havaittu muutoksia.",
     "swapConflictWarning": "Joitakin backend-ominaisuuksia poistetaan tai korvataan. Analytiikkatiedot säilytetään.",
+    "secretValueReplaced": "{name} (arvo korvataan, kun julkaiset uudelleen)",
     "swapConfirm": "Vaihda projekti",
     "loadSchemaFailed": "Skeeman lataus epäonnistui",
     "databaseTables": "Tietokantataulut",

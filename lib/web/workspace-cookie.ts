@@ -58,11 +58,22 @@ export function setWorkspaceOnResponse(response: CookieResponse, workspaceId: st
     response.cookies.delete(WORKSPACE_COOKIE);
   } else {
     response.cookies.set(WORKSPACE_COOKIE, workspaceId, options);
+    // The browser chooses by protocol, so HTTPS with SECURE_COOKIES=false may hold the prefixed
+    // one, which every reader takes first.
+    clearSecureWorkspace(response);
   }
 }
 
-/** Server: clear the selection under both names; the prefixed one needs its attributes to be cleared. */
+/** The prefixed name is cleared only with its own attributes; over plain HTTP the browser ignores this. */
+function clearSecureWorkspace(response: CookieResponse): void {
+  response.cookies.set(SECURE_WORKSPACE_COOKIE, '', { secure: true, path: '/', maxAge: 0, sameSite: 'lax' });
+}
+
+/**
+ * Server: clear the selection under both names, whatever `SECURE_COOKIES` says, since the browser
+ * picked the name by protocol.
+ */
 export function clearWorkspaceOnResponse(response: CookieResponse): void {
-  if (secureCookies()) response.cookies.set(SECURE_WORKSPACE_COOKIE, '', { secure: true, path: '/', maxAge: 0, sameSite: 'lax' });
+  clearSecureWorkspace(response);
   response.cookies.delete(WORKSPACE_COOKIE);
 }

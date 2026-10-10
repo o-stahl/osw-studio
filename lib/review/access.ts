@@ -17,6 +17,7 @@ import { resolveDeployment } from '@/lib/vfs/adapters/deployment-adapter';
 import type { ReviewConfig } from '@/lib/vfs/types';
 import { reviewCookieName, verifyReviewSession } from './session';
 import { REVIEW_AS_TEAM_HEADER } from './api-base';
+import { isSiteHost, requestHost } from '@/lib/web/site-origin';
 
 export type ReviewAccess =
   | { kind: 'participant'; participantId: string }
@@ -54,8 +55,9 @@ const MAX_COOKIE_CANDIDATES = 8;
 /**
  * Every cookie of this name, not just the first.
  *
- * Published sites are attacker-authorable HTML on this same origin, so a script on one can set a
- * second `osw_review_{id}` cookie of its own. Duplicate names at equal path have no defined
+ * Published sites are attacker-authorable HTML that can share an origin with the review copy (the
+ * studio's, or a shared sites address), so a script on one can set a second `osw_review_{id}`
+ * cookie of its own. Duplicate names at equal path have no defined
  * precedence, so taking the first would let that script pin a visitor to its participant id. The
  * jar is read as well, since NextRequest collapses duplicates and may hold a value the header lacks.
  */
@@ -136,8 +138,11 @@ export async function resolveReviewAccess(
   if (!review?.enabled) return { kind: 'denied' };
 
   // Only worth the workspace lookup when an account session is actually present, an anonymous
-  // client is the common case here, and this runs on every asset of every page they open.
-  const account = await getSession();
+  // client is the common case here, and this runs on every asset of every page they open. Never on
+  // a site's host: the team acts from the studio, and the desktop app, which has no login, would
+  // otherwise hand the team role to every site on its shared sites port.
+  const host = request.headers ? requestHost(request.headers) : '';
+  const account = host && isSiteHost(host) ? null : await getSession();
   if (account) {
     const access = await requireDeploymentAccess(deploymentId, 'viewer');
     if (access.ok) {

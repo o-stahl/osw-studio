@@ -42,6 +42,7 @@ import {
   MessagesSquare,
 } from 'lucide-react';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger } from '@/components/ui/select';
+import type { SitesMode } from '@/lib/web/site-origin';
 
 type NavSection = 'deployment' | 'backend';
 
@@ -100,7 +101,7 @@ interface DeploymentDetailProps {
   projects: Project[];
   isPublishing: boolean;
   onBack: () => void;
-  /** Resolves false when the save was handed to a dialog and has not happened yet. */
+  /** Resolves false when nothing was saved: the swap dialog was cancelled. */
   onSave: (settings: DeploymentSettingsUpdate) => Promise<boolean | void>;
   onPublish: (deploymentId: string) => void;
   workspaceId?: string;
@@ -111,6 +112,8 @@ interface DeploymentDetailProps {
    * mounted would make this prop stop working with nothing to show for it.
    */
   initialSection?: string;
+  /** How the install serves sites (`/api/w/{id}/hosting`); null where it is not known. */
+  sitesMode?: SitesMode | null;
 }
 
 export function DeploymentDetail({
@@ -122,6 +125,7 @@ export function DeploymentDetail({
   onPublish,
   workspaceId,
   initialSection,
+  sitesMode,
 }: DeploymentDetailProps) {
   const t = useTranslations('deploymentDetail');
   const tc = useTranslations('common');
@@ -412,6 +416,7 @@ export function DeploymentDetail({
                 deploymentId={deployment.id}
                 publicUrl={deployment.publicUrl}
                 published={hasBeenPublished}
+                sitesMode={sitesMode}
                 projects={projects}
                 onProjectChange={setProjectId}
               />

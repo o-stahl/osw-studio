@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Section, SectionHeader, SectionBody } from '@/components/ui/section';
 import { SettingRow } from '@/components/ui/setting-row';
 import { Globe, AlertTriangle, FolderOpen, Link2, History } from 'lucide-react';
+import type { SitesMode } from '@/lib/web/site-origin';
 
 interface GeneralTabProps {
   settings: PublishSettings;
@@ -23,9 +24,11 @@ interface GeneralTabProps {
   published?: boolean;
   projects?: Project[];
   onProjectChange?: (projectId: string) => void;
+  /** Where sites live elsewhere, the studio's own path only redirects there, so it is not shown. */
+  sitesMode?: SitesMode | null;
 }
 
-export function GeneralTab({ settings, onChange, projectId, deploymentId, publicUrl: resolvedUrl, published, projects, onProjectChange }: GeneralTabProps) {
+export function GeneralTab({ settings, onChange, projectId, deploymentId, publicUrl: resolvedUrl, published, projects, onProjectChange, sitesMode }: GeneralTabProps) {
   const t = useTranslations('publishSettings');
   const tc = useTranslations('common');
   const td = useTranslations('deploymentDetail');
@@ -44,7 +47,7 @@ export function GeneralTab({ settings, onChange, projectId, deploymentId, public
   const publicUrl = settings.customDomain
     ? `https://${settings.customDomain}`
     : resolvedUrl || directUrl;
-  const servedElsewhere = publicUrl !== directUrl;
+  const showDirectPath = publicUrl !== directUrl && (sitesMode ?? 'same-origin') === 'same-origin';
 
   return (
     <div className="flex flex-col gap-4">
@@ -116,7 +119,7 @@ export function GeneralTab({ settings, onChange, projectId, deploymentId, public
           </div>
 
           {/* Show direct path when subdomain or custom domain is set */}
-          {servedElsewhere && (
+          {showDirectPath && (
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">{t('directPath')}</Label>
               <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg border border-dashed">

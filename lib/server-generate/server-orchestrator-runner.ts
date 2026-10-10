@@ -89,7 +89,7 @@ export async function runServerGeneration(
   const serverContext: ServerOrchestratorContext = {
     apiBaseUrl,
     vfs: serverVFS,
-    config: serverConfig as any,
+    config: serverConfig,
     onEvent: (event, data) => {
       eventBus.emit(taskId, request.projectId, event, data, task.sessionId);
     },

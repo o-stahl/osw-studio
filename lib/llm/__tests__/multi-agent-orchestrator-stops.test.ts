@@ -227,7 +227,8 @@ function serverContext(extra: Record<string, unknown> = {}) {
   return {
     apiBaseUrl: 'http://srv',
     vfs,
-    config: configManager,
+    // The browser's settings, with the one method only the server's config has.
+    config: Object.assign(Object.create(configManager), { getFreeModelCandidates: () => undefined }),
     onEvent: vi.fn(),
     dirtyPaths: new Set<string>(),
     ...extra,
@@ -437,11 +438,11 @@ describe('"Free models" moving on', () => {
 
   it('runs a server-side "Free models" task on the browser\'s best candidate and keeps it until one fails', async () => {
     const events: Array<{ event: string; data?: Record<string, unknown> }> = [];
-    const config = Object.assign(Object.create(configManager), {
-      getSelectedProvider: () => 'openrouter',
-      getProviderModel: () => FREE,
-      freeModelCandidates: ['best:free', 'next:free', 'third:free'],
-    });
+    // The real server config, so the candidates are read the way a server run reads them.
+    const { ServerConfigManager } = await import('@/lib/server-generate/server-config-manager');
+    const config = new ServerConfigManager({
+      provider: 'openrouter', model: FREE, apiKey: 'k', freeModelCandidates: ['best:free', 'next:free', 'third:free'],
+    } as never);
     const o = new MultiAgentOrchestrator('test-p1', 'orchestrator', (event, data) => events.push({ event, data: data as Record<string, unknown> }), { serverContext: serverContext({ config }) });
     // @ts-expect-error private
     await o.pickFreeModel();
@@ -464,11 +465,10 @@ describe('"Free models" moving on', () => {
   });
 
   it('ignores candidates that are not plain model ids', async () => {
-    const config = Object.assign(Object.create(configManager), {
-      getSelectedProvider: () => 'openrouter',
-      getProviderModel: () => FREE,
-      freeModelCandidates: ['bad id; rm', 42, 'osw/free-models', 'ok/model:free'],
-    });
+    const { ServerConfigManager } = await import('@/lib/server-generate/server-config-manager');
+    const config = new ServerConfigManager({
+      provider: 'openrouter', model: FREE, apiKey: 'k', freeModelCandidates: ['bad id; rm', 42, 'osw/free-models', 'ok/model:free'],
+    } as never);
     const o = new MultiAgentOrchestrator('test-p1', 'orchestrator', () => {}, { serverContext: serverContext({ config }) });
     // @ts-expect-error private
     await o.pickFreeModel();

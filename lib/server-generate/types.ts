@@ -1,4 +1,5 @@
 import type { PendingImageRequest } from './image-requests';
+import type { ServerConfigManager } from './server-config-manager';
 // lib/server-generate/types.ts
 import type { MultiAgentOrchestrator } from '@/lib/llm/multi-agent-orchestrator';
 import type { VirtualFileSystem } from '@/lib/vfs';
@@ -17,7 +18,7 @@ export interface ServerWebSearchConfig {
 export interface ServerOrchestratorContext {
   apiBaseUrl: string;
   vfs: VirtualFileSystem;
-  config: ServerGenerationParams;
+  config: ServerConfigManager;
   onEvent: (event: string, data: Record<string, unknown>) => void;
   /** Paths mutated since last flush — populated by VFS mutation proxy */
   dirtyPaths: Set<string>;

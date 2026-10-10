@@ -24,7 +24,7 @@ export interface StreamResponse {
   invalidToolName?: string;
   reasoningDetails?: ReasoningDetail[];  // Structured reasoning blocks (Gemini signatures, etc.) for multi-turn replay
   /** Midstream error surfaced via SSE chunk { choices: [], error: {...} }. */
-  midstreamError?: { code?: number | string; message: string };
+  midstreamError?: { code?: number | string; message: string; metadata?: Record<string, unknown> };
 }
 
 export interface StreamParserOptions {
@@ -161,7 +161,7 @@ export async function parseStreamingResponse(
   const STREAM_READ_TIMEOUT_MS = 45_000;
   let streamTimedOut = false;
   let readTimer: ReturnType<typeof setTimeout> | null = null;
-  let midstreamError: { code?: number | string; message: string } | undefined;
+  let midstreamError: { code?: number | string; message: string; metadata?: Record<string, unknown> } | undefined;
 
   try {
     while (true) {
@@ -217,15 +217,19 @@ export async function parseStreamingResponse(
             }
 
             // Midstream error: some providers (OpenRouter → Minimax, etc.) deliver
-            // upstream errors as a normal chunk with empty choices and an error field
-            // instead of an HTTP error. Capture the message so the orchestrator can
-            // surface it instead of bottoming out in stream_timeout.
-            if (json.error && (!json.choices || json.choices.length === 0)) {
+            // upstream errors as a normal chunk with an error field instead of an HTTP
+            // error, with empty choices or one finished with `finish_reason: "error"`.
+            // Capture it so the orchestrator can surface it instead of bottoming out in
+            // stream_timeout; OpenRouter's metadata says what kind of refusal it was.
+            const finishedWithError = Array.isArray(json.choices)
+              && json.choices.some((c: { finish_reason?: string } | null) => c?.finish_reason === 'error');
+            if (json.error && (!json.choices || json.choices.length === 0 || finishedWithError)) {
               const err = json.error;
               const message = typeof err === 'string'
                 ? err
                 : (err.message || JSON.stringify(err));
-              midstreamError = { code: err.code, message };
+              const metadata = err && typeof err === 'object' && err.metadata && typeof err.metadata === 'object' ? err.metadata : undefined;
+              midstreamError = { code: err.code, message, ...(metadata ? { metadata } : {}) };
               logger.warn(`[StreamParser] Midstream error: ${message}`);
               onProgress?.('stream_error', { code: err.code, message });
               continue;

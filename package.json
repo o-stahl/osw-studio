@@ -43,7 +43,6 @@
     "cron-parser": "^4.9.0",
     "esbuild-wasm": "^0.24.0",
     "handlebars": "^4.7.8",
-    "html2canvas": "^1.4.1",
     "jose": "^6.1.0",
     "jszip": "^3.10.1",
     "lucide-react": "^0.513.0",

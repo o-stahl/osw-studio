@@ -27,9 +27,8 @@ export const PREVIEW_BRIDGE_ATTR = 'data-osw-bridge';
  */
 const STORAGE_SHIM_JS = `
 var seed=window.__oswStorageSeed||{};try{delete window.__oswStorageSeed;}catch(e){}
-var LIMIT=${PREVIEW_STORAGE_LIMIT},timers={};
-function report(area,data){clearTimeout(timers[area]);timers[area]=setTimeout(function(){
-post({type:'preview:storage',loadId:id,area:area,data:Object.assign({},data)});},50);}
+var LIMIT=${PREVIEW_STORAGE_LIMIT};
+function report(area,data){post({type:'preview:storage',loadId:id,area:area,data:Object.assign({},data)});}
 function throws(read){try{read();return false;}catch(e){return true;}}
 function makeStorage(area){
 var data=Object.assign(Object.create(null),seed[area]||{});

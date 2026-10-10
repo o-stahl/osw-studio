@@ -998,7 +998,7 @@ export class MultiAgentOrchestrator {
 
   /** The browser's ranked free models for a server run, checked: ids only, a bounded list. */
   private serverFreeCandidates(): string[] {
-    const raw = this.serverContext?.config.freeModelCandidates;
+    const raw = this.serverContext?.config.getFreeModelCandidates();
     if (!Array.isArray(raw)) return [];
     return raw.filter((id): id is string => typeof id === 'string' && /^[\w.\-/:]+$/.test(id) && !isFreeModels(id)).slice(0, 20);
   }

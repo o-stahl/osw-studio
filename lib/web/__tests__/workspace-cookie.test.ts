@@ -37,7 +37,7 @@ describe('on a response', () => {
     vi.stubEnv('SECURE_COOKIES', 'false');
     const res = NextResponse.json({});
     setWorkspaceOnResponse(res, 'ws-1');
-    expect(res.headers.getSetCookie()).toEqual([expect.stringMatching(/^osw_workspace=ws-1/)]);
+    expect(res.headers.getSetCookie().filter((h) => !/=;/.test(h))).toEqual([expect.stringMatching(/^osw_workspace=ws-1/)]);
   });
 
   it('clears the prefixed cookie with Secure, which a bare delete would not', () => {
@@ -49,9 +49,19 @@ describe('on a response', () => {
     expect(prefixed).toMatch(/Path=\//i);
   });
 
-  it('clears only the plain name where cookies are not Secure, which cannot hold the prefix', () => {
-    const res = NextResponse.json({});
-    clearWorkspaceOnResponse(res);
-    expect(res.headers.getSetCookie()).toEqual([expect.stringMatching(/^osw_workspace=;/)]);
+  it('clears the prefixed cookie where the server does not mark cookies Secure, as HTTPS may still hold it', () => {
+    // SECURE_COOKIES=false behind TLS: the browser chose the prefix by protocol.
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('SECURE_COOKIES', 'false');
+    const cleared = NextResponse.json({});
+    clearWorkspaceOnResponse(cleared);
+    const names = cleared.headers.getSetCookie().map((h) => h.split('=')[0]);
+    expect(names.sort()).toEqual(['__Host-osw_workspace', 'osw_workspace']);
+
+    const set = NextResponse.json({});
+    setWorkspaceOnResponse(set, 'ws-2');
+    const headers = set.headers.getSetCookie();
+    expect(headers).toContainEqual(expect.stringMatching(/^osw_workspace=ws-2/));
+    expect(headers).toContainEqual(expect.stringMatching(/^__Host-osw_workspace=;.*Secure/i));
   });
 });

@@ -161,7 +161,7 @@ export function ProjectSwapDialog({
                     ))}
                     {diff.secrets.overlapping.map(name => (
                       <div key={name} className="flex items-center gap-1 text-yellow-600">
-                        <RefreshCw className="h-3 w-3" /> {name} (values will be replaced)
+                        <RefreshCw className="h-3 w-3" /> {tb('secretValueReplaced', { name })}
                       </div>
                     ))}
                   </div>

@@ -109,6 +109,20 @@ describe('orchestrator slice — startServerGeneration model resolution', () => 
     expect(body.generationParams.freeModelCandidates).toEqual(['best:free', 'next:free']);
   });
 
+  it('sends the history from the last replaced conversation, without the new prompt', async () => {
+    // The server's execute adds the prompt itself, and a dropped or compacted history is replaced
+    // by `conversation_replaced`, as a browser run rebuilds it.
+    store.setState({ projectId: 'proj1' });
+    const add = store.getState().addDebugEvent;
+    add('conversation_message', { message: { role: 'user', content: 'refused ask' } }, 'proj1');
+    add('conversation_replaced', { messages: [{ role: 'system', content: 'sys' }] }, 'proj1');
+    add('conversation_message', { message: { role: 'user', content: 'earlier' } }, 'proj1');
+    add('conversation_message', { message: { role: 'assistant', content: 'done' } }, 'proj1');
+    await store.getState().startServerGeneration('proj1', 'next ask', false);
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.conversationHistory.map((m: { content: string }) => m.content)).toEqual(['sys', 'earlier', 'done']);
+  });
+
   it('sends no candidates for a model the user picked', async () => {
     await store.getState().startServerGeneration('proj1', 'build it', false);
     const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);

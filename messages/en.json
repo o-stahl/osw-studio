@@ -2196,6 +2196,7 @@
     "analyzingChanges": "Analyzing changes...",
     "noBackendChanges": "No backend feature changes detected.",
     "swapConflictWarning": "Some backend features will be removed or replaced. Analytics data will be preserved.",
+    "secretValueReplaced": "{name} (value replaced on the next publish)",
     "swapConfirm": "Swap Project",
     "loadSchemaFailed": "Failed to load schema",
     "databaseTables": "Database Tables",

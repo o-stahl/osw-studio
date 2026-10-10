@@ -73,9 +73,10 @@ describe('the stand-ins in the frame', () => {
     expect(document.cookie).toBe('theme=dark');
     expect((window as unknown as { __oswStorageSeed?: unknown }).__oswStorageSeed).toBeUndefined();
 
+    // At once, not after a pause: a write made just before a link click has to reach the host
+    // before the navigation it asks for starts the next page.
     localStorage.setItem('todos', '["milk","eggs"]');
     sessionStorage.setItem('step', '2');
-    vi.advanceTimersByTime(60);
 
     expect(posted).toContainEqual({ type: 'preview:storage', loadId: 4, area: 'local', data: { todos: '["milk","eggs"]' } });
     expect(posted).toContainEqual({ type: 'preview:storage', loadId: 4, area: 'session', data: { step: '2' } });

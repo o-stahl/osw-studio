@@ -43,6 +43,7 @@ import { ReviewBadge } from '@/components/ui/review-badge';
 import { useNarrowContainer } from '@/lib/hooks/use-narrow-container';
 import { COMPACT_ROW_WIDTH } from '@/lib/constants/layout';
 import { apiFetch } from '@/lib/api/backend-status';
+import type { SitesMode } from '@/lib/web/site-origin';
 
 type SortOption = 'updated' | 'created' | 'name' | 'published';
 
@@ -89,7 +90,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
   } | null>(null);
   const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
   // How the install serves published sites; 'same-origin' gets a warning (lib/web/site-origin.ts).
-  const [sitesMode, setSitesMode] = useState<string | null>(null);
+  const [sitesMode, setSitesMode] = useState<SitesMode | null>(null);
 
   useEffect(() => {
     loadData();
@@ -716,6 +717,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
           onSave={handleSaveSettings}
           onPublish={handlePublish}
           workspaceId={workspaceId}
+          sitesMode={sitesMode}
         />
 
         <TemplateExportDialog
