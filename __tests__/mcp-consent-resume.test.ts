@@ -57,7 +57,7 @@ describe('middleware resuming a held authorization', () => {
   async function run(opts: { pending?: string; signedIn: boolean; path?: string; method?: string }) {
     const { middleware } = await import('@/middleware');
     const { NextRequest } = await import('next/server');
-    const { createSession, SESSION_COOKIE_NAME } = await import('@/lib/auth/session');
+    const { createSession, sessionCookieName } = await import('@/lib/auth/session');
     const { PENDING_MCP_COOKIE } = await import('@/lib/mcp/pending');
 
     const req = new NextRequest(`https://inst-1.oswstudio.com${opts.path ?? '/w/ws-1/dashboard'}`, {
@@ -65,7 +65,7 @@ describe('middleware resuming a held authorization', () => {
     });
     if (opts.pending !== undefined) req.cookies.set(PENDING_MCP_COOKIE, opts.pending);
     if (opts.signedIn) {
-      req.cookies.set(SESSION_COOKIE_NAME, await createSession('user-1', 'u@a.test', false));
+      req.cookies.set(sessionCookieName(), await createSession('user-1', 'u@a.test', false));
     }
     return middleware(req);
   }

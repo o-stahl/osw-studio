@@ -9,7 +9,8 @@ import { cookies } from 'next/headers';
 import { timingSafeEqual } from 'crypto';
 import type { NextRequest } from 'next/server';
 
-const SESSION_COOKIE_NAME = 'osw_session';
+/** The session cookie's name before it took the `__Host-` prefix, and wherever cookies are not Secure. */
+export const LEGACY_SESSION_COOKIE_NAME = 'osw_session';
 const SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
 function getSecretKey(): Uint8Array {
@@ -87,7 +88,45 @@ export async function maybeRefreshSession(session: SessionData): Promise<string 
   return createSession(session.userId, session.email, session.isAdmin);
 }
 
-export { SESSION_COOKIE_NAME, SESSION_DURATION };
+export { SESSION_DURATION };
+
+/** Cookies are Secure in production, unless `SECURE_COOKIES=false` (plain HTTP before a certificate). */
+export function secureCookies(): boolean {
+  return process.env.SECURE_COOKIES !== 'false' && process.env.NODE_ENV === 'production';
+}
+
+/**
+ * The session cookie's name. `__Host-` wherever cookies are Secure: the browser then accepts it only
+ * from this exact host, with `Path=/` and no `Domain`, so a published site on a subdomain of the same
+ * domain cannot plant one for the studio (cookie tossing). Plain HTTP cannot carry the prefix.
+ */
+export function sessionCookieName(): string {
+  return secureCookies() ? `__Host-${LEGACY_SESSION_COOKIE_NAME}` : LEGACY_SESSION_COOKIE_NAME;
+}
+
+/**
+ * Put a new session on a response. Also clears a session cookie still held under the old name,
+ * which the browser would otherwise keep sending until it expired.
+ */
+export function setSessionOnResponse(
+  response: { cookies: { set(name: string, value: string, options: object): unknown; delete(name: string): unknown } },
+  token: string
+): void {
+  const name = sessionCookieName();
+  response.cookies.set(name, token, sessionCookieOptions());
+  if (name !== LEGACY_SESSION_COOKIE_NAME) response.cookies.delete(LEGACY_SESSION_COOKIE_NAME);
+}
+
+/** The attributes every place that sets the session cookie uses. */
+export function sessionCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: secureCookies(),
+    sameSite: 'lax' as const,
+    maxAge: SESSION_DURATION / 1000,
+    path: '/',
+  };
+}
 
 /**
  * Get current session from cookies
@@ -99,7 +138,7 @@ export async function getSession(): Promise<SessionData | null> {
   }
 
   const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  const token = cookieStore.get(sessionCookieName())?.value;
 
   if (!token) {
     return null;
@@ -127,13 +166,7 @@ export async function getSession(): Promise<SessionData | null> {
  */
 export async function setSessionCookie(token: string): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: process.env.SECURE_COOKIES !== 'false' && process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: SESSION_DURATION / 1000,
-    path: '/',
-  });
+  cookieStore.set(sessionCookieName(), token, sessionCookieOptions());
 }
 
 /**
@@ -141,7 +174,8 @@ export async function setSessionCookie(token: string): Promise<void> {
  */
 export async function clearSessionCookie(): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.delete(SESSION_COOKIE_NAME);
+  cookieStore.delete(sessionCookieName());
+  cookieStore.delete(LEGACY_SESSION_COOKIE_NAME);
 }
 
 /**

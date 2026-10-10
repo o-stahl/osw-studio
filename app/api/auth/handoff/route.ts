@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyHandoffToken, createSession, SESSION_COOKIE_NAME, SESSION_DURATION } from '@/lib/auth/session';
+import { verifyHandoffToken, createSession, setSessionOnResponse } from '@/lib/auth/session';
 import { getUserById, getUserDefaultWorkspace } from '@/lib/auth/system-database';
 import { ensureDefaultWorkspace } from '@/lib/auth/default-workspace';
 
@@ -38,13 +38,7 @@ export async function GET(request: NextRequest) {
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.url;
   const response = NextResponse.redirect(new URL(redirect, baseUrl));
-  response.cookies.set(SESSION_COOKIE_NAME, sessionToken, {
-    httpOnly: true,
-    secure: process.env.SECURE_COOKIES !== 'false' && process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: SESSION_DURATION / 1000,
-    path: '/',
-  });
+  setSessionOnResponse(response, sessionToken);
 
   // Set osw_workspace cookie — extract workspace ID from redirect URL or use default
   const workspaceMatch = redirect.match(/\/w\/([^/]+)\//);

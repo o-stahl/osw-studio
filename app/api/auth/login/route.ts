@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual } from 'crypto';
-import { createSession } from '@/lib/auth/session';
+import { createSession, setSessionOnResponse } from '@/lib/auth/session';
 import { getUserByEmail, getUserDefaultWorkspace, getWorkspaceById, getUserCount } from '@/lib/auth/system-database';
 import { ensureDefaultWorkspace } from '@/lib/auth/default-workspace';
 import { verifyPassword } from '@/lib/auth/passwords';
@@ -41,13 +41,7 @@ export async function POST(request: NextRequest) {
       const defaultWorkspaceId = getUserDefaultWorkspace(user.id);
       const defaultWorkspaceName = defaultWorkspaceId ? getWorkspaceById(defaultWorkspaceId)?.name : undefined;
       const response = NextResponse.json({ success: true, defaultWorkspaceId, defaultWorkspaceName });
-      response.cookies.set('osw_session', token, {
-        httpOnly: true,
-        secure: process.env.SECURE_COOKIES !== 'false' && process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 24 * 60 * 60,
-        path: '/',
-      });
+      setSessionOnResponse(response, token);
       return response;
     }
 
@@ -82,13 +76,7 @@ export async function POST(request: NextRequest) {
     const token = await createSession('admin', 'admin@localhost', true);
     const adminWorkspaceName = getWorkspaceById(adminWorkspaceId)?.name;
     const response = NextResponse.json({ success: true, defaultWorkspaceId: adminWorkspaceId, defaultWorkspaceName: adminWorkspaceName });
-    response.cookies.set('osw_session', token, {
-      httpOnly: true,
-      secure: process.env.SECURE_COOKIES !== 'false' && process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 24 * 60 * 60,
-      path: '/',
-    });
+    setSessionOnResponse(response, token);
     return response;
   } catch (error) {
     logger.error('[API /api/auth/login] Error:', error);

@@ -14,7 +14,7 @@
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { verifySession, maybeRefreshSession, SESSION_COOKIE_NAME, SESSION_DURATION } from '@/lib/auth/session';
+import { verifySession, maybeRefreshSession, sessionCookieName, sessionCookieOptions } from '@/lib/auth/session';
 import type { SessionData } from '@/lib/auth/session';
 import { PENDING_MCP_COOKIE, pendingAuthorizationIsWellFormed } from '@/lib/mcp/pending';
 import { isCrossOriginWrite } from '@/lib/web/origin-guard';
@@ -24,13 +24,7 @@ async function nextWithRefreshedSession(session: SessionData): Promise<NextRespo
   const response = NextResponse.next();
   const refreshed = await maybeRefreshSession(session);
   if (refreshed) {
-    response.cookies.set(SESSION_COOKIE_NAME, refreshed, {
-      httpOnly: true,
-      secure: process.env.SECURE_COOKIES !== 'false' && process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: SESSION_DURATION / 1000,
-      path: '/',
-    });
+    response.cookies.set(sessionCookieName(), refreshed, sessionCookieOptions());
   }
   return response;
 }
@@ -102,7 +96,7 @@ export async function middleware(request: NextRequest) {
   if (isServerMode && request.method === 'GET' && !pathname.startsWith('/mcp/') && !pathname.startsWith('/api/')) {
     const pending = request.cookies.get(PENDING_MCP_COOKIE)?.value;
     if (pending) {
-      const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+      const token = request.cookies.get(sessionCookieName())?.value;
       const resumed = token ? await verifySession(token) : null;
       // Spent either way once a session exists: a value that fails validation is not going to start
       // passing, and leaving it would redirect every page view until it expires.
@@ -125,7 +119,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/', request.url));
     }
 
-    const token = request.cookies.get('osw_session')?.value;
+    const token = request.cookies.get(sessionCookieName())?.value;
     if (!token) {
       const response = loginRedirect(request);
       // Clear stale workspace cookie
@@ -137,7 +131,7 @@ export async function middleware(request: NextRequest) {
     if (!session) {
       const response = loginRedirect(request);
       // Clear stale cookies
-      response.cookies.delete('osw_session');
+      response.cookies.delete(sessionCookieName());
       response.cookies.delete('osw_workspace');
       return response;
     }
@@ -153,7 +147,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.json({ error: 'Not available in Browser mode' }, { status: 404 });
     }
 
-    const token = request.cookies.get('osw_session')?.value;
+    const token = request.cookies.get(sessionCookieName())?.value;
     if (!token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -173,7 +167,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.json({ error: 'Not available in Browser mode' }, { status: 404 });
     }
 
-    const token = request.cookies.get('osw_session')?.value;
+    const token = request.cookies.get(sessionCookieName())?.value;
     if (!token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -193,7 +187,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.json({ error: 'Not available in Browser mode' }, { status: 404 });
     }
     // Defense-in-depth: verify session for admin API routes
-    const token = request.cookies.get('osw_session')?.value;
+    const token = request.cookies.get(sessionCookieName())?.value;
     const apiKey = request.headers.get('x-instance-api-key');
     if (!token && !apiKey) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -228,7 +222,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
-    const token = request.cookies.get('osw_session')?.value;
+    const token = request.cookies.get(sessionCookieName())?.value;
     if (!token) return loginRedirect(request);
 
     const session = await verifySession(token);

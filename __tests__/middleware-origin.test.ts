@@ -22,13 +22,13 @@ const HOST = 'inst-1.oswstudio.com';
 
 async function call(path: string, opts: { method?: string; origin?: string | null; host?: string; headers?: Record<string, string> } = {}) {
   const { NextRequest } = await import('next/server');
-  const { createSession, SESSION_COOKIE_NAME } = await import('@/lib/auth/session');
+  const { createSession, sessionCookieName } = await import('@/lib/auth/session');
   const { middleware } = await import('@/middleware');
   const host = opts.host ?? HOST;
   const headers: Record<string, string> = { host, ...(opts.headers ?? {}) };
   if (opts.origin !== null) headers.origin = opts.origin ?? `https://${host}`;
   const req = new NextRequest(`https://${host}${path}`, { method: opts.method ?? 'POST', headers });
-  req.cookies.set(SESSION_COOKIE_NAME, await createSession('user-1', 'u@a.test', false));
+  req.cookies.set(sessionCookieName(), await createSession('user-1', 'u@a.test', false));
   return middleware(req);
 }
 

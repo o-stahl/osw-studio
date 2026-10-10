@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createSession } from '@/lib/auth/session';
+import { createSession, setSessionOnResponse } from '@/lib/auth/session';
 import { createUser, getUserByEmail, getUserCount, createWorkspace, setDefaultWorkspace } from '@/lib/auth/system-database';
 import { hashPassword } from '@/lib/auth/passwords';
 import { logger } from '@/lib/utils';
@@ -63,13 +63,7 @@ export async function POST(request: NextRequest) {
 
     const token = await createSession(userId, email, isFirstUser);
     const response = NextResponse.json({ success: true, userId, defaultWorkspaceId: workspaceId, defaultWorkspaceName: workspaceName });
-    response.cookies.set('osw_session', token, {
-      httpOnly: true,
-      secure: process.env.SECURE_COOKIES !== 'false' && process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 24 * 60 * 60,
-      path: '/',
-    });
+    setSessionOnResponse(response, token);
     return response;
   } catch (error) {
     logger.error('[API /api/auth/register] Error:', error);
