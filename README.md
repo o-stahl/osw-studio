@@ -44,6 +44,15 @@ Static sites have always been fast, cheap to host, and secure. The tradeoff was 
 
 **Two modes:** Browser Mode (build and export as ZIP) or [Server Mode](#server-mode-optional) (self-hosted platform with workspaces, databases, APIs, and publishing)
 
+## Help and contact
+
+- **Questions, ideas and things you've built:** [GitHub Discussions](https://github.com/o-stahl/osw-studio/discussions)
+- **Bugs and feature requests:** [GitHub Issues](https://github.com/o-stahl/osw-studio/issues)
+- **Security problems:** please report privately, see [SECURITY.md](SECURITY.md)
+- **Anything private:** hello@oswstudio.com
+
+OSW Studio is maintained by one person, so replies may take a while.
+
 ## 🚀 Quick Start
 
 Get started in **3 steps**:
@@ -266,10 +275,9 @@ NEXT_PUBLIC_DEBUG_TOOL_STREAM=0
 
 ## Privacy
 
-- **API keys** - Stored in browser `localStorage` (never sent to OSW Studio servers)
-- **Network calls** - Direct to AI providers or via optional proxy endpoints
+- **API keys** - Stored in the browser's `localStorage`. Each model request goes to your provider through the server the studio is loaded from (`/api/generate`), which passes the key on without saving it
 - **Data storage** - Projects stay in IndexedDB (browser mode) or SQLite (server mode)
-- **Complete privacy** - Use Ollama/LM Studio for 100% local operation
+- **Local models** - Run OSW Studio on your own machine with Ollama, LM Studio or llama.cpp, and model requests stay on it
 - **Anonymous telemetry** - Lightweight usage analytics (page views, provider/model selection, task success rates) help improve OSW Studio. No prompts, code, file names, or API keys are ever collected. A random anonymous ID in localStorage counts unique visitors — no cookies, no fingerprinting. Opt out anytime in Settings, or disable entirely with `NEXT_PUBLIC_TELEMETRY_ENABLED=false`
 
 **Note:** Remote LLM providers (OpenAI, Anthropic, etc.) will receive your code during generation. For complete privacy, use local models.
@@ -288,8 +296,6 @@ OSW Studio is a **solo-maintained, community-driven** project. Contributions wel
 - 💡 [Request features](https://github.com/o-stahl/osw-studio/issues)
 - 🔀 [Submit pull requests](https://github.com/o-stahl/osw-studio/pulls)
 - 📣 Share what you've built (open an issue or discussion!)
-
-Found a security problem? Please report it privately, not in an issue: see [SECURITY.md](SECURITY.md).
 
 **Built something cool?** I'd love to see it! Share your creations in [GitHub Discussions](https://github.com/o-stahl/osw-studio/discussions) or open an issue with screenshots.
 
