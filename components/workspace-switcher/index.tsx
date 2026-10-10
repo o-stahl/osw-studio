@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
+import { writeWorkspaceCookie } from '@/lib/web/workspace-cookie';
 
 interface WorkspaceInfo {
   id: string;
@@ -67,7 +68,7 @@ export function WorkspaceSwitcher({ workspaceId }: WorkspaceSwitcherProps) {
   const handleSwitch = (newWorkspaceId: string) => {
     const viewMatch = pathname?.match(/\/w\/[^/]+\/(.+)/);
     const currentView = viewMatch?.[1] || 'projects';
-    document.cookie = `osw_workspace=${newWorkspaceId};path=/;max-age=${60 * 60 * 24 * 365}`;
+    writeWorkspaceCookie(newWorkspaceId);
     const ws = workspaces.find(w => w.id === newWorkspaceId);
     if (ws) {
       try { localStorage.setItem('osw-workspace-name', ws.name); } catch {}

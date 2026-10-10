@@ -117,6 +117,17 @@ export function setSessionOnResponse(
   if (name !== LEGACY_SESSION_COOKIE_NAME) response.cookies.delete(LEGACY_SESSION_COOKIE_NAME);
 }
 
+/**
+ * Clear the session on a response. A `__Host-` cookie is cleared only by a Set-Cookie that carries
+ * the same attributes (Secure, Path=/): a bare delete is refused by the browser and leaves it set.
+ */
+export function clearSessionOnResponse(
+  response: { cookies: { set(name: string, value: string, options: object): unknown; delete(name: string): unknown } }
+): void {
+  response.cookies.set(sessionCookieName(), '', { ...sessionCookieOptions(), maxAge: 0 });
+  if (sessionCookieName() !== LEGACY_SESSION_COOKIE_NAME) response.cookies.delete(LEGACY_SESSION_COOKIE_NAME);
+}
+
 /** The attributes every place that sets the session cookie uses. */
 export function sessionCookieOptions() {
   return {
@@ -161,22 +172,6 @@ export async function getSession(): Promise<SessionData | null> {
   return session;
 }
 
-/**
- * Set session cookie
- */
-export async function setSessionCookie(token: string): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.set(sessionCookieName(), token, sessionCookieOptions());
-}
-
-/**
- * Clear session cookie
- */
-export async function clearSessionCookie(): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.delete(sessionCookieName());
-  cookieStore.delete(LEGACY_SESSION_COOKIE_NAME);
-}
 
 /**
  * Check if user is authenticated

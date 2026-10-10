@@ -44,7 +44,8 @@ async function registerClient() {
 describe('holding an authorization request', () => {
   it('parks a registered client\'s request and sends the visitor to the gateway', async () => {
     const client = await registerClient();
-    const { PENDING_MCP_COOKIE } = await import('@/lib/mcp/pending');
+    const { pendingMcpCookieName } = await import('@/lib/mcp/pending');
+    const PENDING_MCP_COOKIE = pendingMcpCookieName();
 
     const res = await call(`client_id=${client.client_id}&state=s1&code_challenge=xyz`);
 
@@ -57,7 +58,8 @@ describe('holding an authorization request', () => {
   });
 
   it('holds nothing for a client this instance does not know', async () => {
-    const { PENDING_MCP_COOKIE } = await import('@/lib/mcp/pending');
+    const { pendingMcpCookieName } = await import('@/lib/mcp/pending');
+    const PENDING_MCP_COOKIE = pendingMcpCookieName();
 
     const res = await call('client_id=not-registered&state=s1');
 
@@ -66,7 +68,8 @@ describe('holding an authorization request', () => {
   });
 
   it('holds nothing when the query is not an authorization request', async () => {
-    const { PENDING_MCP_COOKIE } = await import('@/lib/mcp/pending');
+    const { pendingMcpCookieName } = await import('@/lib/mcp/pending');
+    const PENDING_MCP_COOKIE = pendingMcpCookieName();
 
     const res = await call('state=s1&response_type=code');
 
@@ -82,11 +85,23 @@ describe('holding an authorization request', () => {
   it('falls back to the instance login when there is no external login', async () => {
     vi.stubEnv('NEXT_PUBLIC_GATEWAY_URL', '');
     const client = await registerClient();
-    const { PENDING_MCP_COOKIE } = await import('@/lib/mcp/pending');
+    const { pendingMcpCookieName } = await import('@/lib/mcp/pending');
+    const PENDING_MCP_COOKIE = pendingMcpCookieName();
 
     const res = await call(`client_id=${client.client_id}`);
 
     expect(res.headers.get('location')).toContain('/admin/login');
     expect(res.cookies.get(PENDING_MCP_COOKIE)?.value ?? '').toBe('');
+  });
+});
+
+describe('the held authorization cookie name', () => {
+  it('is __Host- prefixed exactly when cookies are Secure', async () => {
+    const { pendingMcpCookieName, pendingMcpCookieOptions } = await import('@/lib/mcp/pending');
+    vi.stubEnv('NODE_ENV', 'production');
+    expect([pendingMcpCookieName(), pendingMcpCookieOptions(0)]).toEqual(['__Host-osw_mcp_pending', { httpOnly: true, secure: true, sameSite: 'lax', maxAge: 0, path: '/' }]);
+    vi.stubEnv('SECURE_COOKIES', 'false');
+    expect(pendingMcpCookieName()).toBe('osw_mcp_pending');
+    vi.unstubAllEnvs();
   });
 });

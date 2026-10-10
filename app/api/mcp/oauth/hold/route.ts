@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { mcpEnabled } from '@/lib/mcp/auth';
 import { getMcpClient } from '@/lib/mcp/store';
-import { PENDING_MCP_COOKIE, PENDING_MCP_MAX_AGE, pendingAuthorizationIsWellFormed } from '@/lib/mcp/pending';
+import { pendingMcpCookieName, pendingMcpCookieOptions, pendingAuthorizationIsWellFormed } from '@/lib/mcp/pending';
 
 /**
  * Holding an authorization request across the gateway login.
@@ -43,14 +43,6 @@ export async function GET(request: NextRequest) {
   }
 
   const response = NextResponse.redirect(`${gatewayUrl.replace(/\/$/, '')}/login`);
-  response.cookies.set(PENDING_MCP_COOKIE, query, {
-    httpOnly: true,
-    secure: process.env.SECURE_COOKIES !== 'false' && process.env.NODE_ENV === 'production',
-    // Lax, not Strict: the browser arrives back here as a top-level navigation from the gateway,
-    // and Strict would withhold the cookie on exactly that request.
-    sameSite: 'lax',
-    maxAge: PENDING_MCP_MAX_AGE,
-    path: '/',
-  });
+  response.cookies.set(pendingMcpCookieName(), query, pendingMcpCookieOptions());
   return response;
 }

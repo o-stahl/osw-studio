@@ -18,6 +18,7 @@ import type { ScriptRuntime } from '@/lib/scripting/types';
 import { classifyGateKey, needsApproval, capabilityLabel, type ApprovalRequest, type ApprovalOutcome } from './permissions';
 import { configManager } from '@/lib/config/storage';
 import { apiFetch } from '@/lib/api/backend-status';
+import { readWorkspaceCookie } from '@/lib/web/workspace-cookie';
 
 export type ToolId = 'bash';
 
@@ -660,8 +661,8 @@ async function executeShellSegment(
     try {
       // Use workspace-scoped URL if in server mode with a workspace cookie
       const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
-      const wsMatch = isServerMode && typeof document !== 'undefined' && document.cookie.match(/osw_workspace=([^;]+)/);
-      const bashUrl = wsMatch ? `/api/w/${wsMatch[1]}/bash/execute` : '/api/bash/execute';
+      const workspaceId = isServerMode ? readWorkspaceCookie() : undefined;
+      const bashUrl = workspaceId ? `/api/w/${workspaceId}/bash/execute` : '/api/bash/execute';
       const response = await apiFetch(bashUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

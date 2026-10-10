@@ -5,10 +5,28 @@
  * cannot load the store (SQLite) or anything importing `server-only`.
  */
 
-export const PENDING_MCP_COOKIE = 'osw_mcp_pending';
-
 /** Ten minutes: long enough to sign in, short enough that an abandoned attempt expires unnoticed. */
 export const PENDING_MCP_MAX_AGE = 10 * 60;
+
+const secure = () => process.env.SECURE_COOKIES !== 'false' && process.env.NODE_ENV === 'production';
+
+/**
+ * `__Host-` wherever cookies are Secure, like the session cookie, so a site on a sibling subdomain
+ * cannot park an authorization for the studio to resume. A request held under the old name at
+ * upgrade is not resumed; the connector asks again.
+ */
+export function pendingMcpCookieName(): string {
+  return secure() ? '__Host-osw_mcp_pending' : 'osw_mcp_pending';
+}
+
+/**
+ * Lax, not Strict: the browser arrives back as a top-level navigation from the gateway, and Strict
+ * would withhold the cookie on exactly that request. `maxAge: 0` clears it, which a `__Host-` cookie
+ * only allows with these same attributes.
+ */
+export function pendingMcpCookieOptions(maxAge = PENDING_MCP_MAX_AGE) {
+  return { httpOnly: true, secure: secure(), sameSite: 'lax' as const, maxAge, path: '/' };
+}
 
 /** Cap before a cookie starts being dropped by the browser rather than by us. */
 const MAX_LENGTH = 2048;

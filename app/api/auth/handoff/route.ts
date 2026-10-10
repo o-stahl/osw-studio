@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyHandoffToken, createSession, setSessionOnResponse } from '@/lib/auth/session';
 import { getUserById, getUserDefaultWorkspace } from '@/lib/auth/system-database';
 import { ensureDefaultWorkspace } from '@/lib/auth/default-workspace';
+import { setWorkspaceOnResponse } from '@/lib/web/workspace-cookie';
 
 const UUID_REGEX = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
@@ -45,13 +46,7 @@ export async function GET(request: NextRequest) {
   const extractedId = workspaceMatch?.[1];
   const workspaceId = (extractedId && UUID_REGEX.test(extractedId)) ? extractedId : getUserDefaultWorkspace(user.id);
   if (workspaceId) {
-    response.cookies.set('osw_workspace', workspaceId, {
-      httpOnly: false, // Read client-side by VFS factory, workspace switcher, and tool registry
-      secure: process.env.SECURE_COOKIES !== 'false' && process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 365,
-      path: '/',
-    });
+    setWorkspaceOnResponse(response, workspaceId);
   }
 
   return response;

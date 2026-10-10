@@ -14,9 +14,10 @@
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { verifySession, maybeRefreshSession, sessionCookieName, sessionCookieOptions } from '@/lib/auth/session';
+import { verifySession, maybeRefreshSession, sessionCookieName, sessionCookieOptions, clearSessionOnResponse } from '@/lib/auth/session';
+import { clearWorkspaceOnResponse, workspaceFromRequest } from '@/lib/web/workspace-cookie';
 import type { SessionData } from '@/lib/auth/session';
-import { PENDING_MCP_COOKIE, pendingAuthorizationIsWellFormed } from '@/lib/mcp/pending';
+import { pendingMcpCookieName, pendingMcpCookieOptions, pendingAuthorizationIsWellFormed } from '@/lib/mcp/pending';
 import { isCrossOriginWrite } from '@/lib/web/origin-guard';
 import { isRelocatedSitePath, isSiteHost, isSitePath, isStudioHost, requestHost, sitesMode } from '@/lib/web/site-origin';
 
@@ -74,7 +75,7 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith('/admin')) {
       for (const view of WORKSPACE_VIEWS) {
         if (pathname === `/admin/${view}` || pathname.startsWith(`/admin/${view}/`)) {
-          const workspaceId = request.cookies.get('osw_workspace')?.value;
+          const workspaceId = workspaceFromRequest(request);
           if (workspaceId) {
             const newPath = pathname.replace(`/admin/${view}`, `/w/${workspaceId}/${view}`);
             return NextResponse.redirect(new URL(newPath + request.nextUrl.search, request.url));
@@ -94,7 +95,7 @@ export async function middleware(request: NextRequest) {
   // log in, because the gateway carries no destination of its own and lands them on a workspace.
   // The first page they open once signed in spends the cookie and puts them back on consent.
   if (isServerMode && request.method === 'GET' && !pathname.startsWith('/mcp/') && !pathname.startsWith('/api/')) {
-    const pending = request.cookies.get(PENDING_MCP_COOKIE)?.value;
+    const pending = request.cookies.get(pendingMcpCookieName())?.value;
     if (pending) {
       const token = request.cookies.get(sessionCookieName())?.value;
       const resumed = token ? await verifySession(token) : null;
@@ -105,7 +106,7 @@ export async function middleware(request: NextRequest) {
         const target = new URL(wellFormed ? '/mcp/authorize' : '/', request.url);
         if (wellFormed) target.search = `?${pending}`;
         const response = NextResponse.redirect(target);
-        response.cookies.delete(PENDING_MCP_COOKIE);
+        response.cookies.set(pendingMcpCookieName(), '', pendingMcpCookieOptions(0));
         return response;
       }
     }
@@ -123,7 +124,7 @@ export async function middleware(request: NextRequest) {
     if (!token) {
       const response = loginRedirect(request);
       // Clear stale workspace cookie
-      response.cookies.delete('osw_workspace');
+      clearWorkspaceOnResponse(response);
       return response;
     }
 
@@ -131,8 +132,8 @@ export async function middleware(request: NextRequest) {
     if (!session) {
       const response = loginRedirect(request);
       // Clear stale cookies
-      response.cookies.delete(sessionCookieName());
-      response.cookies.delete('osw_workspace');
+      clearSessionOnResponse(response);
+      clearWorkspaceOnResponse(response);
       return response;
     }
 
@@ -231,7 +232,7 @@ export async function middleware(request: NextRequest) {
     // Only admins can access user/workspace management
     if (!session.isAdmin && (pathname.startsWith('/admin/users') || pathname.startsWith('/admin/workspaces'))) {
       // Redirect non-admin to their default workspace
-      const workspaceId = request.cookies.get('osw_workspace')?.value;
+      const workspaceId = workspaceFromRequest(request);
       if (workspaceId) {
         return NextResponse.redirect(new URL(`/w/${workspaceId}/projects`, request.url));
       }
@@ -241,7 +242,7 @@ export async function middleware(request: NextRequest) {
     // Legacy redirect: /admin/{view} -> /w/{workspaceId}/{view}
     for (const view of WORKSPACE_VIEWS) {
       if (pathname === `/admin/${view}` || pathname.startsWith(`/admin/${view}/`)) {
-        const workspaceId = request.cookies.get('osw_workspace')?.value;
+        const workspaceId = workspaceFromRequest(request);
         if (workspaceId) {
           const newPath = pathname.replace(`/admin/${view}`, `/w/${workspaceId}/${view}`);
           return NextResponse.redirect(new URL(newPath + request.nextUrl.search, request.url));
@@ -253,7 +254,7 @@ export async function middleware(request: NextRequest) {
 
     // /admin root redirect
     if (pathname === '/admin' || pathname === '/admin/') {
-      const workspaceId = request.cookies.get('osw_workspace')?.value;
+      const workspaceId = workspaceFromRequest(request);
       if (workspaceId) {
         return NextResponse.redirect(new URL(`/w/${workspaceId}/projects`, request.url));
       }

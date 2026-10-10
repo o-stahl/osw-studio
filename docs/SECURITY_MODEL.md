@@ -37,7 +37,7 @@ Functions run in a QuickJS WebAssembly sandbox with a memory limit (64 MB) and a
 
 ### The studio's API
 
-The API authenticates with an HttpOnly session cookie. On HTTPS installs it is named `__Host-osw_session`, and the ChatGPT sign-in cookies are prefixed the same way. The browser accepts these only from the studio's own host, so a site on a sibling subdomain cannot plant a session or a ChatGPT token for the studio. A write (POST, PUT, PATCH, DELETE) from another site's page is refused, except on the endpoints other sites call by design: deployment functions, analytics collection and the MCP endpoints. The desktop app has no login; it answers only requests addressed to a loopback address (`localhost`, `127.0.0.1`), and serves published sites from a second port.
+The API authenticates with an HttpOnly session cookie. On HTTPS installs it is named `__Host-osw_session`, and the ChatGPT sign-in, selected-workspace and held MCP authorization cookies are prefixed the same way. The browser accepts these only from the studio's own host, so a site on a sibling subdomain cannot plant them for the studio. A write (POST, PUT, PATCH, DELETE) from another site's page is refused, except on the endpoints other sites call by design: deployment functions, analytics collection and the MCP endpoints. The desktop app has no login; it answers only requests addressed to a loopback address (`localhost`, `127.0.0.1`), and serves published sites from a second port.
 
 ### Review copies
 
@@ -51,7 +51,7 @@ Provider API keys are kept in the browser that entered them. Connections synced 
 
 - **Sites on the studio's address.** An install with neither `STATIC_PROXY` nor `SITES_ORIGIN` serves sites from the studio's own address, where a site's scripts can act as whoever views them in the studio. The Deployments view warns about it.
 - **Sites sharing a sites address.** With `SITES_ORIGIN`, all sites share one address, so in a visitor's browser one site's scripts can read another site's storage. Subdomains (`STATIC_PROXY`) keep sites apart.
-- **Subdomains are one site to the browser.** The browser sends the studio's cookies with requests a site on a subdomain of the studio's domain makes, and that site can set cookies for the parent domain. The studio's origin checks and the browser's cross-origin rules stop those requests from reading data or making changes, and the session and ChatGPT cookies cannot be planted that way (see above). The studio's other cookies (the selected workspace, the language) can be; a separate domain for sites removes the issue.
+- **Subdomains are one site to the browser.** The browser sends the studio's cookies with requests a site on a subdomain of the studio's domain makes, and that site can set cookies for the parent domain. The studio's origin checks and the browser's cross-origin rules stop those requests from reading data or making changes, and the studio's own cookies cannot be planted that way (see above), apart from the language choice and a review participant's cookie, which is scoped to its review copy's path and so cannot take the prefix. A separate domain for sites removes the issue.
 - **The admin is trusted.** Someone with admin access, or with access to the server, can read everything on the instance.
 
 ## Out of scope

@@ -20,6 +20,7 @@ import { getRuntimeConfig } from '@/lib/runtimes/registry';
 import { compileStaticSite } from '@/lib/publishing/compile-static-site';
 import { arrayBufferToBase64, base64ToArrayBuffer } from './binary-encoding';
 import { apiFetch } from '@/lib/api/backend-status';
+import { readWorkspaceCookie } from '@/lib/web/workspace-cookie';
 
 /**
  * A VirtualFile prepared for JSON export. Binary content is base64-encoded and
@@ -371,9 +372,9 @@ export class VirtualFileSystem {
         try {
           // Use workspace-scoped URL if in server mode with a workspace cookie
           const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
-          const wsCookie = isServerMode && typeof document !== 'undefined' && document.cookie.match(/osw_workspace=([^;]+)/);
-          const ctxUrl = wsCookie
-            ? `/api/w/${wsCookie[1]}/admin/deployments/${deploymentId}/server-context`
+          const workspaceId = isServerMode ? readWorkspaceCookie() : undefined;
+          const ctxUrl = workspaceId
+            ? `/api/w/${workspaceId}/admin/deployments/${deploymentId}/server-context`
             : `/api/admin/deployments/${deploymentId}/server-context`;
           const response = await apiFetch(ctxUrl);
           if (response.ok) {

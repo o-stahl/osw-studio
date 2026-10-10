@@ -7,6 +7,7 @@ import { StudioApp } from '@/components/studio-app';
 import { SignInRelay } from '@/components/sign-in-relay';
 import { isRelayedReturn } from '@/lib/auth/provider-sign-in';
 import { REPO_URL } from '@/lib/constants/links';
+import { writeWorkspaceCookie } from '@/lib/web/workspace-cookie';
 
 /**
  * Root page
@@ -43,7 +44,7 @@ export default function Home() {
         .then(async r => {
           const data = await r.json().catch(() => ({}));
           if (r.ok && data.workspaceId) {
-            document.cookie = `osw_workspace=${data.workspaceId}; path=/; max-age=${365 * 24 * 60 * 60}`;
+            writeWorkspaceCookie(data.workspaceId);
             // The query carries a provider sign-in's return, which the workspace page finishes.
             router.replace(`/w/${data.workspaceId}/projects${window.location.search}`);
           } else {

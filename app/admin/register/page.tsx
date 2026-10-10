@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Logo } from '@/components/ui/logo';
 import { LanguagePill } from '@/components/language-menu';
+import { writeWorkspaceCookie } from '@/lib/web/workspace-cookie';
 
 export default function RegisterPage() {
   const tc = useTranslations('common');
@@ -52,7 +53,7 @@ export default function RegisterPage() {
 
       // Registration successful - redirect to workspace or admin area
       if (data.defaultWorkspaceId) {
-        document.cookie = `osw_workspace=${data.defaultWorkspaceId};path=/;max-age=${60 * 60 * 24 * 365}`;
+        writeWorkspaceCookie(data.defaultWorkspaceId);
         if (data.defaultWorkspaceName) localStorage.setItem('osw-workspace-name', data.defaultWorkspaceName);
         router.push(`/w/${data.defaultWorkspaceId}/projects`);
       } else {

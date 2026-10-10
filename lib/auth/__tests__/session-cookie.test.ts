@@ -77,3 +77,20 @@ describe('middleware with Secure cookies', () => {
     expect((await call('osw_session')).status).toBe(401);
   });
 });
+
+describe('logout on a Secure install', () => {
+  it('clears the __Host- session with the attributes the browser requires, and the workspace under both names', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const { POST } = await import('@/app/api/auth/logout/route');
+    const headers = (await POST()).headers.getSetCookie();
+    const session = headers.find(h => h.startsWith('__Host-osw_session='))!;
+    // A bare delete (no Secure) is refused by the browser for a __Host- cookie, leaving the session set.
+    expect(session).toMatch(/Secure/i);
+    expect(session).toMatch(/Path=\//i);
+    expect(session).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/i);
+    const workspace = headers.find(h => h.startsWith('__Host-osw_workspace='))!;
+    expect(workspace).toMatch(/Secure/i);
+    expect(headers.some(h => h.startsWith('osw_workspace='))).toBe(true);
+  });
+});
+

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getIdentifier } from '@/lib/analytics/rate-limiter';
 import { checkRateLimit } from '@/lib/web/rate-limit';
+import { workspaceFromRequest } from '@/lib/web/workspace-cookie';
 
 function getCookie(request: NextRequest, name: string): string | null {
   return request.cookies.get(name)?.value ?? null;
@@ -31,7 +32,7 @@ export function webRequestPreflight(
   if (!isSameOrigin(request)) {
     return { ok: false, response: NextResponse.json({ error: 'origin not allowed' }, { status: 403 }) };
   }
-  const workspace = getCookie(request, 'osw_workspace');
+  const workspace = workspaceFromRequest(request) ?? null;
   if (process.env.NEXT_PUBLIC_SERVER_MODE === 'true' && !workspace) {
     return { ok: false, response: NextResponse.json({ error: 'authentication required' }, { status: 401 }) };
   }

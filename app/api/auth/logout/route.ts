@@ -5,14 +5,15 @@
  */
 
 import { NextResponse } from 'next/server';
-import { clearSessionCookie } from '@/lib/auth/session';
+import { clearSessionOnResponse } from '@/lib/auth/session';
 import { logger } from '@/lib/utils';
+import { clearWorkspaceOnResponse } from '@/lib/web/workspace-cookie';
 
 export async function POST() {
   try {
-    await clearSessionCookie();
     const response = NextResponse.json({ success: true });
-    response.cookies.delete('osw_workspace');
+    clearSessionOnResponse(response);
+    clearWorkspaceOnResponse(response);
     return response;
   } catch (error) {
     logger.error('[API /api/auth/logout] Error:', error);

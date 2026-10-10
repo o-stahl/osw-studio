@@ -8,15 +8,14 @@
 
 import { StorageAdapter } from './types';
 import { IndexedDBAdapter } from './indexeddb-adapter';
+import { readWorkspaceCookie } from '@/lib/web/workspace-cookie';
 
 /**
  * Read the workspace ID from the osw_workspace cookie (client-side).
  * Returns undefined if not in a browser or no workspace cookie set.
  */
 function getWorkspaceId(): string | undefined {
-  if (typeof document === 'undefined') return undefined;
-  const match = document.cookie.match(/(?:^|;\s*)osw_workspace=([^;]+)/);
-  return match?.[1] || undefined;
+  return readWorkspaceCookie();
 }
 
 /**

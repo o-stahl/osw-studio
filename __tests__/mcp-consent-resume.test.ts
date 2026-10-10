@@ -58,7 +58,8 @@ describe('middleware resuming a held authorization', () => {
     const { middleware } = await import('@/middleware');
     const { NextRequest } = await import('next/server');
     const { createSession, sessionCookieName } = await import('@/lib/auth/session');
-    const { PENDING_MCP_COOKIE } = await import('@/lib/mcp/pending');
+    const { pendingMcpCookieName } = await import('@/lib/mcp/pending');
+    const PENDING_MCP_COOKIE = pendingMcpCookieName();
 
     const req = new NextRequest(`https://inst-1.oswstudio.com${opts.path ?? '/w/ws-1/dashboard'}`, {
       method: opts.method ?? 'GET',
@@ -83,16 +84,17 @@ describe('middleware resuming a held authorization', () => {
   });
 
   it('spends the cookie, so it does not redirect every later page view', async () => {
-    const { PENDING_MCP_COOKIE } = await import('@/lib/mcp/pending');
+    const { pendingMcpCookieName } = await import('@/lib/mcp/pending');
+    const PENDING_MCP_COOKIE = pendingMcpCookieName();
     const res = await run({ pending: AUTH_QUERY, signedIn: true });
 
     // Explicitly deleted, not merely absent: an absent cookie on the response would leave the
     // browser's copy in place and redirect every page view until it expired.
-    // Deletion is an empty value with an expiry in the past, not a Max-Age.
+    // Cleared with Max-Age=0 and the cookie's own attributes, which a `__Host-` cookie requires.
     const cleared = res.cookies.get(PENDING_MCP_COOKIE);
     expect(cleared).toBeDefined();
     expect(cleared!.value).toBe('');
-    expect(new Date(cleared!.expires!).getTime()).toBeLessThan(Date.now());
+    expect(cleared!.maxAge === 0 || new Date(cleared!.expires!).getTime() < Date.now()).toBe(true);
   });
 
   it('leaves a signed-out visitor to the login they were already being sent to', async () => {
@@ -111,7 +113,8 @@ describe('middleware resuming a held authorization', () => {
   });
 
   it('drops a held value that fails validation instead of redirecting to it', async () => {
-    const { PENDING_MCP_COOKIE } = await import('@/lib/mcp/pending');
+    const { pendingMcpCookieName } = await import('@/lib/mcp/pending');
+    const PENDING_MCP_COOKIE = pendingMcpCookieName();
     const res = await run({ pending: 'no-client-id-here=1', signedIn: true });
 
     expect(res.headers.get('location') ?? '').not.toContain('/mcp/authorize');
