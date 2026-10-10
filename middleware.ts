@@ -18,7 +18,7 @@ import { verifySession, maybeRefreshSession, SESSION_COOKIE_NAME, SESSION_DURATI
 import type { SessionData } from '@/lib/auth/session';
 import { PENDING_MCP_COOKIE, pendingAuthorizationIsWellFormed } from '@/lib/mcp/pending';
 import { isCrossOriginWrite } from '@/lib/web/origin-guard';
-import { isRelocatedSitePath, isSiteHost, isSitePath, requestHost, sitesMode } from '@/lib/web/site-origin';
+import { isRelocatedSitePath, isSiteHost, isSitePath, isStudioHost, requestHost, sitesMode } from '@/lib/web/site-origin';
 
 async function nextWithRefreshedSession(session: SessionData): Promise<NextResponse> {
   const response = NextResponse.next();
@@ -62,7 +62,7 @@ export async function middleware(request: NextRequest) {
   if (isSiteHost(host)) {
     return isSitePath(pathname) ? NextResponse.next() : new NextResponse('Not found', { status: 404 });
   }
-  if (sitesMode() !== 'same-origin' && isRelocatedSitePath(pathname)) {
+  if (sitesMode() !== 'same-origin' && isStudioHost(host) && isRelocatedSitePath(pathname)) {
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       return new NextResponse('Not found', { status: 404 });
     }

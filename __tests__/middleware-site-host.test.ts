@@ -54,6 +54,13 @@ describe('with a separate sites origin (SITES_ORIGIN)', () => {
     expect((await call('https://studio.example.com/deployments/d1/', { method: 'POST', headers: { origin: 'https://studio.example.com' } })).status).toBe(404);
   });
 
+  it("serves another host (an operator's custom-domain proxy) as before: no redirect loop, no lockout", async () => {
+    const site = await call('https://shop.example.org/deployments/d1/');
+    expect(site.status).toBe(200);
+    expect(rewrittenTo(site)).toBeNull();
+    expect((await call('https://203.0.113.5/w/ws-1/projects')).status).not.toBe(404);
+  });
+
   it('ignores an X-Forwarded-Host claiming to be the studio', async () => {
     const res = await call('https://sites.example.com/api/w/ws-1/deployments', { headers: { 'x-forwarded-host': 'studio.example.com' } });
     expect(res.status).toBe(404);

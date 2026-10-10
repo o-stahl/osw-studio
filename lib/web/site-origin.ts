@@ -79,13 +79,13 @@ export function requestHost(headers: Headers): string {
 /**
  * Whether a request arrived on a host that serves sites rather than the studio.
  *
- * With a proxy, that is any host other than the app's own and loopback (which Caddy's own requests
- * and the server itself use): a slug subdomain or a custom domain, from which the generated
- * Caddyfile forwards only site paths.
+ * With a sites address, that address. With the proxy, any host that is not the studio's: a slug
+ * subdomain or a custom domain, from which the generated Caddyfile forwards only site paths.
  */
 export function isSiteHost(host: string): boolean {
   if (!host) return false;
   const mode = sitesMode();
+  // The sites address is matched with its port: on desktop it differs from the studio's only there.
   if (mode === 'host') {
     try {
       return new URL(sitesOrigin()!).host === host;
@@ -93,11 +93,19 @@ export function isSiteHost(host: string): boolean {
       return false;
     }
   }
-  if (mode === 'proxy') {
-    const name = host.replace(/:\d+$/, '');
-    return name !== appHostname() && !LOOPBACK.has(name);
-  }
+  if (mode === 'proxy') return !isStudioHost(host);
   return false;
+}
+
+/**
+ * The studio's own host: the app's host name or loopback (which Caddy's own requests and the
+ * server itself use). Site documents asked for here are redirected to where they live. A host that
+ * is neither this nor a site host (an operator's own custom-domain proxy without STATIC_PROXY) is
+ * served as it was, so it neither loops nor locks the studio out.
+ */
+export function isStudioHost(host: string): boolean {
+  const name = host.replace(/:\d+$/, '');
+  return name === appHostname() || LOOPBACK.has(name);
 }
 
 /** What a site host answers: the sites themselves, their review copies, functions and analytics. */

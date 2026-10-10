@@ -49,11 +49,19 @@ describe('with a proxy', () => {
 });
 
 describe('with a sites origin', () => {
-  it('keeps the path and swaps the origin', async () => {
+  beforeEach(() => {
     vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://studio.example.com');
     vi.stubEnv('SITES_ORIGIN', 'https://sites.example.com');
-    const res = await ask('/review/d1/');
-    expect(res.headers.get('location')).toBe('https://sites.example.com/review/d1/');
-    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it('keeps the path and swaps the origin', async () => {
+    resolve.mockResolvedValue({ deployment: { id: 'd1', slug: 'sunny' } });
+    expect((await ask('/review/d1/')).headers.get('location')).toBe('https://sites.example.com/review/d1/');
+    expect((await ask('/deployments/d1/about.html')).headers.get('location')).toBe('https://sites.example.com/deployments/d1/about.html');
+  });
+
+  it('sends a deployment with a custom domain there, where its root-relative assets work', async () => {
+    resolve.mockResolvedValue({ deployment: { id: 'd1', customDomain: 'shop.example.org' } });
+    expect((await ask('/deployments/d1/about.html')).headers.get('location')).toBe('https://shop.example.org/about.html');
   });
 });

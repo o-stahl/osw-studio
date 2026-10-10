@@ -8,7 +8,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveDeploymentByIdOrSlug } from '@/lib/vfs/adapters/deployment-adapter';
-import { appUrl, siteOriginFor, sitesMode, sitesOrigin } from '@/lib/web/site-origin';
+import { appUrl, siteOriginFor, sitesMode } from '@/lib/web/site-origin';
 
 const NOT_FOUND = () => new NextResponse('Not found', { status: 404 });
 const PREFIX = '/api/site-location';
@@ -24,18 +24,18 @@ export async function GET(request: NextRequest) {
   if (!match || sitesMode() === 'same-origin') return NOT_FOUND();
   const [, kind, id, rest = '/'] = match;
 
-  if (sitesMode() === 'host') {
-    return NextResponse.redirect(`${sitesOrigin()}${url.pathname}${url.search}`, 308);
-  }
-
   const resolved = await resolveDeploymentByIdOrSlug(id);
   if (!resolved) return NOT_FOUND();
   const { deployment } = resolved;
   const origin = siteOriginFor(deployment);
   // Never back to the studio itself: a deployment with no host of its own has nowhere else to go.
   if (origin === new URL(request.url).origin || origin === new URL(appUrl()).origin) return NOT_FOUND();
-  // A site on its own host is served at the root; its review copy keeps its /review/{id}/ path.
-  const path = kind === 'deployments' ? rest : `/review/${deployment.id}${rest}`;
+  // A site on its own host (custom domain, or a slug with the proxy) is served at the root; on a
+  // sites address it keeps its /deployments/{id}/ path. A review copy keeps its /review/{id}/ path.
+  const atRoot = !!deployment.customDomain || (sitesMode() === 'proxy' && !!deployment.slug);
+  const path = kind === 'review'
+    ? `/review/${deployment.id}${rest}`
+    : atRoot ? rest : `/deployments/${deployment.id}${rest}`;
   return NextResponse.redirect(`${origin}${path}${url.search}`, 308);
 }
 
