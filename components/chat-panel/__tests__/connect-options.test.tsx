@@ -31,7 +31,10 @@ vi.mock('@/lib/telemetry', () => ({ track: (...a: unknown[]) => track(...a) }));
 const checkHFCapabilities = vi.fn(async () => ({ oauthAvailable: true, clientId: 'hf-client', scopes: 'openid' }));
 vi.mock('@/lib/auth/hf-auth', () => ({ checkHFCapabilities: () => checkHFCapabilities(), loginHF: vi.fn(async () => {}) }));
 const startSignIn = vi.fn(async (..._a: unknown[]) => true);
-vi.mock('@/lib/auth/provider-sign-in', () => ({ startSignIn: (...a: unknown[]) => startSignIn(...a), prepareSignIn: async () => {} }));
+const prepareSignIn = vi.fn(async () => {});
+vi.mock('@/lib/auth/provider-sign-in', () => ({ startSignIn: (...a: unknown[]) => startSignIn(...a), prepareSignIn: () => prepareSignIn() }));
+let embedded = false;
+vi.mock('@/lib/web/embedded', () => ({ isEmbedded: () => embedded }));
 const loadProviderModels = vi.fn(async (..._a: unknown[]) => {});
 vi.mock('@/lib/llm/models/model-catalog', () => ({ loadProviderModels: (...a: unknown[]) => loadProviderModels(...a) }));
 const activateProviderAsGlobalDefault = vi.fn(async (..._a: unknown[]) => {});
@@ -54,8 +57,9 @@ beforeEach(() => {
   surface = 'browser';
   localModels = {};
   autoAssign = true;
+  embedded = false;
   events = [];
-  for (const m of [verifyApiKey, getAvailableModels, track, checkHFCapabilities, startSignIn, loadProviderModels, activateProviderAsGlobalDefault]) m.mockClear();
+  for (const m of [verifyApiKey, getAvailableModels, track, checkHFCapabilities, startSignIn, prepareSignIn, loadProviderModels, activateProviderAsGlobalDefault]) m.mockClear();
   window.addEventListener('apiKeyUpdated', onKey);
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -67,6 +71,7 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 async function render(props: React.ComponentProps<typeof ConnectOptions> = {}) {
@@ -185,6 +190,30 @@ describe('signing in and exclusions', () => {
     await render();
     await act(async () => { rowButton('OpenRouter', t('signIn'))!.click(); });
     expect(startSignIn).toHaveBeenCalledWith('openrouter', { popup: false });
+  });
+
+  it('signs in in a popup inside a frame, where the sign-in page refuses to load', async () => {
+    embedded = true;
+    await render();
+    await act(async () => { rowButton('OpenRouter', t('signIn'))!.click(); });
+    expect(startSignIn).toHaveBeenCalledWith('openrouter', { popup: true });
+  });
+
+  it('redirects on desktop even where the page has to stay, since its popups open in the system browser', async () => {
+    vi.stubEnv('NEXT_PUBLIC_DESKTOP', 'true');
+    embedded = true;
+    await render({ keepPage: true });
+    await act(async () => { rowButton('OpenRouter', t('signIn'))!.click(); });
+    expect(startSignIn).toHaveBeenCalledWith('openrouter', { popup: false });
+  });
+
+  it('keeps the sign-in button busy until the sign-in is prepared', async () => {
+    let finish!: () => void;
+    prepareSignIn.mockImplementationOnce(() => new Promise<void>((r) => { finish = r; }));
+    await render();
+    expect(rowButton('OpenRouter', t('signIn'))!.disabled).toBe(true);
+    await act(async () => { finish(); await Promise.resolve(); });
+    expect(rowButton('OpenRouter', t('signIn'))!.disabled).toBe(false);
   });
 
   it('leaves out an excluded provider', async () => {

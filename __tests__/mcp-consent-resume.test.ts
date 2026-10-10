@@ -97,6 +97,21 @@ describe('middleware resuming a held authorization', () => {
     expect(cleared!.maxAge === 0 || new Date(cleared!.expires!).getTime() < Date.now()).toBe(true);
   });
 
+  it('on a Secure install, clears the __Host- cookie with the Secure and Path=/ it requires', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://inst-1.oswstudio.com');
+    const res = await run({ pending: AUTH_QUERY, signedIn: true });
+
+    expect(res.headers.get('location')).toContain('/mcp/authorize');
+    // Without them the browser refuses the Set-Cookie, keeps the held request, and every later
+    // page view is sent back to consent until it expires.
+    const cleared = res.headers.getSetCookie().find((h) => h.startsWith('__Host-osw_mcp_pending='));
+    expect(cleared).toMatch(/^__Host-osw_mcp_pending=;/);
+    expect(cleared).toMatch(/;\s*Secure/i);
+    expect(cleared).toMatch(/;\s*Path=\/(;|$)/i);
+    expect(cleared).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/i);
+  });
+
   it('leaves a signed-out visitor to the login they were already being sent to', async () => {
     const res = await run({ pending: AUTH_QUERY, signedIn: false });
     expect(res.headers.get('location') ?? '').not.toContain('/mcp/authorize');

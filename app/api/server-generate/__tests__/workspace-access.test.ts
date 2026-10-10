@@ -49,4 +49,11 @@ describe('starting a server run', () => {
     expect((await start({})).status).toBe(400);
     expect(mocks.createTask).not.toHaveBeenCalled();
   });
+
+  it.each(['admin', 'desktop'])('lets the instance principal %s run against the unscoped database', async (userId) => {
+    mocks.session = { userId, email: '', isAdmin: userId === 'admin', exp: 0 } as never;
+    expect((await start({})).status).toBe(200);
+    expect(mocks.verifyWorkspaceAccess).not.toHaveBeenCalled();
+    expect(mocks.createTask).toHaveBeenCalledWith('p1', userId, 'k', undefined);
+  });
 });

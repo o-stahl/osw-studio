@@ -16,6 +16,8 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 
+const EXPIRED = /Max-Age=0|Expires=Thu, 01 Jan 1970/i;
+
 describe('sessionCookieName', () => {
   it('is __Host- prefixed exactly when cookies are Secure', async () => {
     const session = { ...(await import('../session')), ...(await import('../secure-cookies')) };
@@ -89,8 +91,37 @@ describe('logout on a Secure install', () => {
     expect(session).toMatch(/Path=\//i);
     expect(session).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/i);
     const workspace = headers.find(h => h.startsWith('__Host-osw_workspace='))!;
+    expect(workspace).toMatch(/^__Host-osw_workspace=;/);
     expect(workspace).toMatch(/Secure/i);
-    expect(headers.some(h => h.startsWith('osw_workspace='))).toBe(true);
+    expect(workspace).toMatch(/Path=\//i);
+    expect(workspace).toMatch(EXPIRED);
+    expect(headers.find(h => h.startsWith('osw_workspace='))).toMatch(/^osw_workspace=;/);
+    expect(headers.find(h => h.startsWith('osw_workspace='))).toMatch(EXPIRED);
+  });
+
+  it('also clears a session still held under the old name', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const { POST } = await import('@/app/api/auth/logout/route');
+    const old = (await POST()).headers.getSetCookie().find(h => h.startsWith('osw_session='));
+    expect(old).toMatch(/^osw_session=;/);
+    expect(old).toMatch(EXPIRED);
+  });
+});
+
+describe('logout with SECURE_COOKIES=false', () => {
+  it('clears the session under the plain name, and the workspace under both names', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('SECURE_COOKIES', 'false');
+    const { POST } = await import('@/app/api/auth/logout/route');
+    const headers = (await POST()).headers.getSetCookie();
+    const session = headers.find(h => h.startsWith('osw_session='));
+    expect(session).toMatch(/^osw_session=;/);
+    expect(session).toMatch(/Path=\//i);
+    expect(session).toMatch(EXPIRED);
+    expect(headers.some(h => h.startsWith('__Host-osw_session='))).toBe(false);
+    // The browser picked the workspace name by protocol, so HTTPS may still hold the prefixed one.
+    expect(headers.find(h => h.startsWith('__Host-osw_workspace='))).toMatch(EXPIRED);
+    expect(headers.find(h => h.startsWith('osw_workspace='))).toMatch(EXPIRED);
   });
 });
 

@@ -13,9 +13,10 @@ const mocks = vi.hoisted(() => ({
   prepareSignIn: vi.fn(async () => {}),
   embedded: false,
   spaceId: null as string | null,
+  checkHFCapabilities: vi.fn(async () => ({ spaceId: mocks.spaceId })),
 }));
 vi.mock('@/lib/auth/provider-sign-in', () => ({ startSignIn: mocks.startSignIn, prepareSignIn: mocks.prepareSignIn }));
-vi.mock('@/lib/auth/hf-auth', () => ({ checkHFCapabilities: async () => ({ spaceId: mocks.spaceId }) }));
+vi.mock('@/lib/auth/hf-auth', () => ({ checkHFCapabilities: () => mocks.checkHFCapabilities() }));
 vi.mock('@/lib/web/embedded', () => ({ isEmbedded: () => mocks.embedded }));
 
 import { useSignInStart } from '../use-sign-in-start';
@@ -97,5 +98,18 @@ describe('useSignInStart', () => {
     expect(hook.ready).toBe(false);
     await act(async () => { finishPrepare(); await Promise.resolve(); });
     expect(hook.ready).toBe(true);
+  });
+
+  it('in a frame, is not ready until the Space lookup resolves', async () => {
+    mocks.embedded = true;
+    let finishLookup!: (c: { spaceId: string }) => void;
+    mocks.checkHFCapabilities.mockImplementationOnce(() => new Promise((r) => { finishLookup = r; }));
+    await mount();
+    expect(mocks.prepareSignIn).toHaveBeenCalled();
+    expect(hook.ready).toBe(false);
+    await act(async () => { finishLookup({ spaceId: 'otst/osw-studio' }); await Promise.resolve(); });
+    expect(hook.ready).toBe(true);
+    await start('openrouter', { popup: true });
+    expect(mocks.startSignIn).toHaveBeenLastCalledWith('openrouter', { popup: true, returnTo: 'https://huggingface.co/spaces/otst/osw-studio' });
   });
 });
