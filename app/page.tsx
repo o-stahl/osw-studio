@@ -26,10 +26,11 @@ export default function Home() {
   const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
   const isDesktop = process.env.NEXT_PUBLIC_DESKTOP === 'true';
   // The HuggingFace Space's popup coming back from a provider sign-in finishes it and shows only that;
-  // it is decided before paint, since only the browser holds the pending sign-in.
-  const [relay, setRelay] = useState(false);
+  // it is decided before paint, since only the browser holds the pending sign-in, and nothing
+  // mounts until it is, so the studio does not start its boot work inside that popup.
+  const [relay, setRelay] = useState<boolean | null>(null);
   useLayoutEffect(() => {
-    if (!isServerMode && isRelayedReturn()) setRelay(true);
+    if (!isServerMode) setRelay(isRelayedReturn());
   }, [isServerMode]);
 
   useEffect(() => {
@@ -93,5 +94,6 @@ export default function Home() {
     );
   }
 
+  if (relay === null) return null;
   return relay ? <SignInRelay /> : <StudioApp />;
 }

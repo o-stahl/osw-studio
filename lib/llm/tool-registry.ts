@@ -659,11 +659,10 @@ async function executeShellSegment(
 
   if (serverCommands.includes(command) && deploymentId) {
     try {
-      // Use workspace-scoped URL if in server mode with a workspace cookie
-      const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
-      const workspaceId = isServerMode ? readWorkspaceCookie() : undefined;
-      const bashUrl = workspaceId ? `/api/w/${workspaceId}/bash/execute` : '/api/bash/execute';
-      const response = await apiFetch(bashUrl, {
+      // The route is workspace-scoped; without a selected workspace there is nowhere to send it.
+      const workspaceId = process.env.NEXT_PUBLIC_SERVER_MODE === 'true' ? readWorkspaceCookie() : undefined;
+      if (!workspaceId) return `Error: ${command} needs a workspace selected in Server Mode`; // i18n-ignore: returned to the agent
+      const response = await apiFetch(`/api/w/${encodeURIComponent(workspaceId)}/bash/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ deploymentId, cmd: cmdArray })

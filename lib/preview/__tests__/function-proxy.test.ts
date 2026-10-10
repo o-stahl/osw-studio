@@ -198,4 +198,23 @@ describe('the frame side, in the compiled page', () => {
 
     window.XMLHttpRequest = RealXHR;
   });
+
+  it("lets a reused XHR report the real request's outcome after an edge call, and ignores a GET body", async () => {
+    const RealXHR = window.XMLHttpRequest;
+    new Function(await interceptor())();
+    const xhr = new window.XMLHttpRequest();
+    const loaded = new Promise<void>((resolve) => { xhr.onload = () => resolve(); });
+    xhr.open('GET', '/stats');
+    xhr.send('');
+    await vi.waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0].message.body).toBeNull();
+    answer(posted[0].message.id, '{"n":1}', 201);
+    await loaded;
+    expect(xhr.status).toBe(201);
+
+    xhr.open('GET', 'https://example.test/data.json');
+    expect(Object.getOwnPropertyNames(xhr)).not.toContain('status');
+    expect(xhr.status).toBe(0);
+    window.XMLHttpRequest = RealXHR;
+  });
 });

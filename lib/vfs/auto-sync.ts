@@ -834,7 +834,7 @@ async function deleteOnServer(path: string): Promise<void> {
  * `ServerDeleteRefused` otherwise, so the caller keeps the local copy.
  */
 export async function autoDeleteProject(projectId: string): Promise<void> {
-  await deleteOnServer(`/sync/projects/${projectId}`);
+  await deleteOnServer(`/sync/projects/${encodeURIComponent(projectId)}`);
 }
 
 /** Delete a project on the server, then locally. A refused server delete keeps both copies. */
@@ -866,7 +866,7 @@ export async function autoSyncSkill(skill: import('./skills/types').Skill): Prom
  * `ServerDeleteRefused` otherwise, so the caller keeps the local copy.
  */
 export async function autoDeleteSkill(skillId: string): Promise<void> {
-  await deleteOnServer(`/sync/skills/${skillId}`);
+  await deleteOnServer(`/sync/skills/${encodeURIComponent(skillId)}`);
 }
 
 /**
@@ -891,7 +891,7 @@ export async function autoSyncTemplate(template: import('./types').CustomTemplat
  * `ServerDeleteRefused` otherwise, so the caller keeps the local copy.
  */
 export async function autoDeleteTemplate(templateId: string): Promise<void> {
-  await deleteOnServer(`/sync/templates/${templateId}`);
+  await deleteOnServer(`/sync/templates/${encodeURIComponent(templateId)}`);
 }
 
 /**
@@ -917,7 +917,7 @@ export async function autoSyncModelTemplate(template: import('@/lib/llm/models/a
  * `ServerDeleteRefused` otherwise, so the caller keeps the local copy.
  */
 export async function autoDeleteModelTemplate(templateId: string): Promise<void> {
-  await deleteOnServer(`/sync/model-templates/${templateId}`);
+  await deleteOnServer(`/sync/model-templates/${encodeURIComponent(templateId)}`);
 }
 
 /**
@@ -982,7 +982,7 @@ export async function autoSyncInterviewTemplate(template: import('@/lib/intervie
  * `ServerDeleteRefused` otherwise, so the caller keeps the local copy.
  */
 export async function autoDeleteInterviewTemplate(templateId: string): Promise<void> {
-  await deleteOnServer(`/sync/interview-templates/${templateId}`);
+  await deleteOnServer(`/sync/interview-templates/${encodeURIComponent(templateId)}`);
 }
 
 /**
@@ -990,5 +990,5 @@ export async function autoDeleteInterviewTemplate(templateId: string): Promise<v
  * `ServerDeleteRefused` otherwise, so the caller keeps the local copy.
  */
 export async function autoDeleteConnection(id: string): Promise<void> {
-  await deleteOnServer(`/sync/connections/${id}`);
+  await deleteOnServer(`/sync/connections/${encodeURIComponent(id)}`);
 }

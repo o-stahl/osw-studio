@@ -9,7 +9,8 @@ import { toast } from 'sonner';
 import { getBackendStatus, subscribeBackendStatus } from '@/lib/api/backend-status';
 import { getMcpActivity, subscribeMcpActivity } from '@/lib/api/mcp-activity';
 import { setLocale } from '@/lib/i18n/actions';
-import { defaultLocale, isEmbedded } from '@/lib/i18n/config';
+import { defaultLocale } from '@/lib/i18n/config';
+import { isEmbedded } from '@/lib/web/embedded';
 import type { OfferLocale } from '@/lib/i18n/config';
 import type { OfferStrings } from '@/lib/i18n/offer';
 

@@ -1501,6 +1501,7 @@
     }
   },
   "connections": {
+    "deleteTemplateFailed": "Failed to delete the model template",
     "headerName": "Header name",
     "headerValue": "Header value",
     "removeHeader": "Remove header",
@@ -2426,6 +2427,7 @@
     "displayNameHint": "Shown in front of the instance From address. There is no address field here because a custom workspace address through someone else’s relay fails SPF and DKIM and often goes to spam. Use your own server if you need your own From address."
   },
   "interviews": {
+    "deleteFailed": "Failed to delete the interview template",
     "templates": "Interview templates",
     "removeItem": "Remove item",
     "question": "Question",

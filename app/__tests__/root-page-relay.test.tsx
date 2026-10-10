@@ -10,7 +10,10 @@ import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
  */
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn() }) }));
-vi.mock('@/components/studio-app', () => ({ StudioApp: () => <div data-testid="studio" /> }));
+const studioMounted = vi.hoisted(() => vi.fn());
+vi.mock('@/components/studio-app', () => ({
+  StudioApp: () => { studioMounted(); return <div data-testid="studio" />; },
+}));
 vi.mock('@/components/sign-in-relay', () => ({ SignInRelay: () => <div data-testid="relay" /> }));
 
 import Home from '../page';
@@ -49,8 +52,11 @@ describe('the root page', () => {
   it('shows the relay screen for a relayed sign-in coming back', async () => {
     pending(true);
     window.history.replaceState(null, '', '/?code=abc');
+    studioMounted.mockClear();
     await render();
     expect(shown()).toBe('relay');
+    // Not even for a moment: its effects would start the studio's boot work inside the popup.
+    expect(studioMounted).not.toHaveBeenCalled();
   });
 
   it('shows the studio for an ordinary sign-in return, which the studio finishes', async () => {

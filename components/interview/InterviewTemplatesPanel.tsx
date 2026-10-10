@@ -29,6 +29,7 @@ import {
 import { InterviewTemplateEditor } from './InterviewTemplateEditor';
 import { COMPACT_ROW_WIDTH } from '@/lib/constants/layout';
 import { useNarrowContainer } from '@/lib/hooks/use-narrow-container';
+import { ServerDeleteRefused } from '@/lib/vfs/auto-sync';
 
 interface InterviewTemplatesPanelProps {
   initialMode?: 'list' | 'create';
@@ -109,8 +110,7 @@ export function InterviewTemplatesPanel({
       await reloadList();
       onChanged?.();
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Failed to delete template';
-      toast.error(message);
+      toast.error(e instanceof ServerDeleteRefused ? e.message : ti('deleteFailed'));
     } finally {
       setTemplateToDelete(null);
     }

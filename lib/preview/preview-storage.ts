@@ -5,7 +5,7 @@
  * `document.cookie` throw. The bridge (`lib/preview/preview-bridge.ts`) puts in-memory stand-ins in
  * their place, seeded from here when the page is written and reported back here when they change.
  * Kept in memory, per project: it survives the preview reloading after every edit, and goes with the
- * tab. Projects no longer share one storage, as they did when the preview ran on the app's origin.
+ * tab.
  */
 
 export type PreviewStorageArea = 'local' | 'session' | 'cookie';

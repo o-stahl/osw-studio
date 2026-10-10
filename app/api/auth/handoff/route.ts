@@ -3,14 +3,9 @@ import { verifyHandoffToken, createSession, setSessionOnResponse } from '@/lib/a
 import { getUserById, getUserDefaultWorkspace } from '@/lib/auth/system-database';
 import { ensureDefaultWorkspace } from '@/lib/auth/default-workspace';
 import { setWorkspaceOnResponse } from '@/lib/web/workspace-cookie';
+import { sanitizeRedirect } from '@/lib/auth/safe-redirect';
 
 const UUID_REGEX = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-
-function sanitizeRedirect(redirect: string): string {
-  // Only allow relative paths starting with / — block open redirects
-  if (!redirect.startsWith('/') || redirect.startsWith('//')) return '/';
-  return redirect;
-}
 
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get('token');
@@ -41,7 +36,7 @@ export async function GET(request: NextRequest) {
   const response = NextResponse.redirect(new URL(redirect, baseUrl));
   setSessionOnResponse(response, sessionToken);
 
-  // Set osw_workspace cookie — extract workspace ID from redirect URL or use default
+  // Select the workspace: the one in the redirect URL, or the user's default
   const workspaceMatch = redirect.match(/\/w\/([^/]+)\//);
   const extractedId = workspaceMatch?.[1];
   const workspaceId = (extractedId && UUID_REGEX.test(extractedId)) ? extractedId : getUserDefaultWorkspace(user.id);

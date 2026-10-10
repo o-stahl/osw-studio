@@ -36,11 +36,7 @@ import { consumeReviewCommentListAttempt } from '@/lib/review/read-gate';
 import { consumeReviewWriteAttempt } from '@/lib/review/write-gate';
 import { ReviewDatabase, type ReviewParticipant } from '@/lib/vfs/adapters/review-database';
 import { logger } from '@/lib/utils';
-
-const PRIVATE_HEADERS = {
-  'Cache-Control': 'private, no-store, max-age=0',
-  'X-Robots-Tag': 'noindex, nofollow',
-};
+import { PRIVATE_HEADERS, teamRefused } from '@/lib/review/responses';
 
 /**
  * The answer for a caller with no claim to this deployment, matching lib/api/deployment-access.ts:
@@ -49,13 +45,6 @@ const PRIVATE_HEADERS = {
  */
 function notFound(): NextResponse {
   return NextResponse.json({ error: 'Not found' }, { status: 404, headers: PRIVATE_HEADERS });
-}
-
-function teamRefused(status: 401 | 403): NextResponse {
-  return NextResponse.json(
-    { error: status === 401 ? 'Unauthorized' : 'Forbidden' },
-    { status, headers: PRIVATE_HEADERS }
-  );
 }
 
 function badRequest(error: string): NextResponse {

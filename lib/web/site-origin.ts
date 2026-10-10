@@ -88,15 +88,16 @@ export function isSiteHost(host: string): boolean {
   if (!host) return false;
   const mode = sitesMode();
   // The sites address is matched with its port: on desktop it differs from the studio's only there,
-  // and any loopback name for that port is the same server, so it is the sites host too.
+  // and any loopback name for that port is the same server, so it is the sites host too. A default
+  // port written out (`:443`) is the same address.
   if (mode === 'host') {
     const sites = sitesOrigin();
     if (!sites) return false;
     const url = new URL(sites);
-    if (url.host === host) return true;
-    const port = url.port || (url.protocol === 'https:' ? '443' : '80');
-    const match = host.match(/^(.*?)(?::(\d+))?$/)!;
-    return LOOPBACK.has(url.hostname) && LOOPBACK.has(match[1]) && (match[2] || '80') === port;
+    const defaultPort = url.protocol === 'https:' ? '443' : '80';
+    const [, name = '', port = defaultPort] = host.match(/^(.*?)(?::(\d+))?$/) ?? [];
+    if (port !== (url.port || defaultPort)) return false;
+    return name === url.hostname || (LOOPBACK.has(url.hostname) && LOOPBACK.has(name));
   }
   if (mode === 'proxy') return !isStudioHost(host);
   return false;

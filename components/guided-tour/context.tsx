@@ -20,6 +20,7 @@ import { runGuidedDemoEdit, runGuidedFocusDemo } from './demo-runner';
 import { checkpointManager } from '@/lib/vfs/checkpoint';
 import { saveManager } from '@/lib/vfs/save-manager';
 import { track } from '@/lib/telemetry';
+import { toast } from 'sonner';
 
 interface TourWorkspaceData {
   projectId: string | null;
@@ -218,7 +219,9 @@ export function GuidedTourProvider({ children }: { children: React.ReactNode }) 
           }
         }
       } catch (error) {
-        console.error('[GuidedTour] Failed to cleanup tour demo project', error);
+        // A refused server delete keeps the demo project, and says why; anything else only logs.
+        if (error instanceof Error && error.name === 'ServerDeleteRefused') toast.error(error.message);
+        else console.error('[GuidedTour] Failed to cleanup tour demo project', error);
       }
     }
 

@@ -16,8 +16,8 @@ export class FrameScrollMemory {
   /**
    * Record where the outgoing document was scrolled to, on the way to replacing it.
    *
-   * A missing path or an unreadable frame clears the slot instead of leaving the previous record in
-   * it: a record that survives the load it was taken for would be restored onto the *next* one.
+   * A missing path, or no position reported by the frame, clears the slot instead of leaving the
+   * previous record in it: a record that survives the load it was taken for would be restored onto the *next* one.
    *
    * Zero is not recorded; a fresh document is already at the top.
    */

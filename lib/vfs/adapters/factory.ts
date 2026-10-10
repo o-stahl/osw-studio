@@ -11,21 +11,13 @@ import { IndexedDBAdapter } from './indexeddb-adapter';
 import { readWorkspaceCookie } from '@/lib/web/workspace-cookie';
 
 /**
- * Read the workspace ID from the osw_workspace cookie (client-side).
- * Returns undefined if not in a browser or no workspace cookie set.
- */
-function getWorkspaceId(): string | undefined {
-  return readWorkspaceCookie();
-}
-
-/**
  * Create storage adapter for client-side usage.
  * In server mode with a workspace cookie, uses a workspace-scoped IndexedDB (osw-studio-{workspaceId}).
  * In browser mode, always uses the default database (osw-studio-db) regardless of stale cookies.
  */
 export function createClientAdapter(): StorageAdapter {
   const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
-  const workspaceId = isServerMode ? getWorkspaceId() : undefined;
+  const workspaceId = isServerMode ? readWorkspaceCookie() : undefined;
   const dbName = workspaceId ? `osw-studio-${workspaceId}` : undefined;
   return new IndexedDBAdapter(dbName);
 }

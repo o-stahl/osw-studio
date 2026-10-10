@@ -44,6 +44,7 @@ import { useNarrowContainer } from '@/lib/hooks/use-narrow-container';
 import { COMPACT_ROW_WIDTH } from '@/lib/constants/layout';
 import { apiFetch } from '@/lib/api/backend-status';
 import type { SitesMode } from '@/lib/web/site-origin';
+import { useSwapConfirm } from './use-swap-confirm';
 
 type SortOption = 'updated' | 'created' | 'name' | 'published';
 
@@ -79,15 +80,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('updated');
   const [viewMode, setViewMode] = useViewMode('deployments');
-  const [swapDialogState, setSwapDialogState] = useState<{
-    deploymentId: string;
-    deploymentName: string;
-    currentProjectId: string;
-    newProjectId: string;
-    newProjectName: string;
-    /** Settles the save waiting on the dialog: true carries it on, false leaves the edits unsaved. */
-    resolve: (confirmed: boolean) => void;
-  } | null>(null);
+  const { pending: swapDialogState, ask: confirmSwap } = useSwapConfirm();
   const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
   // How the install serves published sites; 'same-origin' gets a warning (lib/web/site-origin.ts).
   const [sitesMode, setSitesMode] = useState<SitesMode | null>(null);
@@ -309,15 +302,13 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
       const projectIdChanged = settings.projectId && settings.projectId !== selectedDeployment.projectId;
       if (projectIdChanged && isServerMode && selectedDeployment.publishedAt) {
         const newProject = projects.find(p => p.id === settings.projectId);
-        const confirmed = await new Promise<boolean>((resolve) => setSwapDialogState({
+        const confirmed = await confirmSwap({
           deploymentId: selectedDeployment.id,
           deploymentName: selectedDeployment.name,
           currentProjectId: selectedDeployment.projectId,
           newProjectId: settings.projectId!,
           newProjectName: newProject?.name || t('unknown'),
-          resolve,
-        }));
-        setSwapDialogState(null);
+        });
         if (!confirmed) return false;
       }
 

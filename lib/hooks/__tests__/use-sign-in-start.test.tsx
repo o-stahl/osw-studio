@@ -16,17 +16,18 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/auth/provider-sign-in', () => ({ startSignIn: mocks.startSignIn, prepareSignIn: mocks.prepareSignIn }));
 vi.mock('@/lib/auth/hf-auth', () => ({ checkHFCapabilities: async () => ({ spaceId: mocks.spaceId }) }));
-vi.mock('@/lib/i18n/config', () => ({ isEmbedded: () => mocks.embedded }));
+vi.mock('@/lib/web/embedded', () => ({ isEmbedded: () => mocks.embedded }));
 
 import { useSignInStart } from '../use-sign-in-start';
 
 let container: HTMLElement;
 let root: Root;
-let start: ReturnType<typeof useSignInStart>;
+let hook: ReturnType<typeof useSignInStart>;
+const start = (...args: Parameters<ReturnType<typeof useSignInStart>['start']>) => hook.start(...args);
 
 async function mount() {
   function Probe() {
-    start = useSignInStart();
+    hook = useSignInStart();
     return null;
   }
   await act(async () => root.render(<Probe />));
@@ -83,5 +84,18 @@ describe('useSignInStart', () => {
     await mount();
     await start('openrouter', { popup: true });
     expect(mocks.startSignIn).toHaveBeenLastCalledWith('openrouter', { popup: true });
+  });
+
+  it('is not ready until the PKCE pair and, in a frame, the Space page are known', async () => {
+    let finishPrepare!: () => void;
+    mocks.prepareSignIn.mockImplementationOnce(() => new Promise<void>((r) => { finishPrepare = r; }));
+    function Probe() {
+      hook = useSignInStart();
+      return null;
+    }
+    await act(async () => root.render(<Probe />));
+    expect(hook.ready).toBe(false);
+    await act(async () => { finishPrepare(); await Promise.resolve(); });
+    expect(hook.ready).toBe(true);
   });
 });

@@ -22,12 +22,7 @@ import { mintReviewCookie, type ReviewCookie } from '@/lib/review/session';
 import { resolveDeployment } from '@/lib/vfs/adapters/deployment-adapter';
 import type { ReviewConfig } from '@/lib/vfs/types';
 import { logger } from '@/lib/utils';
-
-/** A review copy is private and must not be cached by anything between here and the client. */
-const PRIVATE_HEADERS = {
-  'Cache-Control': 'private, no-store, max-age=0',
-  'X-Robots-Tag': 'noindex, nofollow',
-};
+import { PRIVATE_HEADERS } from '@/lib/review/responses';
 
 function notFound(): NextResponse {
   return new NextResponse('Not found', { status: 404, headers: PRIVATE_HEADERS });

@@ -44,6 +44,8 @@ const signInButton = () =>
     b.textContent === en.settings.signInWithProvider.replace('{provider}', 'OpenRouter'));
 
 async function signIn() {
+  // The button waits for the sign-in to be prepared, which settles after mount.
+  await act(async () => { await Promise.resolve(); });
   const button = signInButton();
   if (!button) throw new Error('no sign-in button');
   await act(async () => { button.dispatchEvent(new MouseEvent('click', { bubbles: true })); });

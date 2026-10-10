@@ -33,7 +33,6 @@ export function DeploymentSelector({
   const apiBase = workspaceId ? `/api/w/${workspaceId}` : '/api';
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Fetch deployments for this project
   useEffect(() => {
@@ -46,11 +45,10 @@ export function DeploymentSelector({
 
       try {
         setLoading(true);
-        setError(null);
 
         const response = await apiFetch(`${apiBase}/projects/${projectId}/deployments`);
         if (!response.ok) {
-          throw new Error('Failed to fetch deployments');
+          throw new Error('Failed to fetch deployments'); // i18n-ignore: caught below, never shown
         }
 
         const data = await response.json();
@@ -90,15 +88,6 @@ export function DeploymentSelector({
       <div className={cn('flex items-center gap-2 text-sm text-muted-foreground', className)}>
         <Loader2 className="h-4 w-4 animate-spin" />
         <span>{t('loading')}</span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className={cn('flex items-center gap-2 text-sm text-destructive', className)}>
-        <Server className="h-4 w-4" />
-        <span>{error}</span>
       </div>
     );
   }

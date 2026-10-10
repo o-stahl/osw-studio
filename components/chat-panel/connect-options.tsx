@@ -17,7 +17,7 @@ import { useSignInStart } from '@/lib/hooks/use-sign-in-start';
 import { checkHFCapabilities, loginHF } from '@/lib/auth/hf-auth';
 import { detectDeploymentType } from '@/lib/telemetry/config';
 import { track } from '@/lib/telemetry';
-import { isEmbedded } from '@/lib/i18n/config';
+import { isEmbedded } from '@/lib/web/embedded';
 
 /**
  * Ways to connect a model, as the first thing in an empty chat and on a stopped task's card.
@@ -195,7 +195,7 @@ export function ConnectOptions({ exclude = [], onMoreOptions, rowsOnly = false, 
     }
   }, [local, probeLocal, t]);
 
-  const startSignIn = useSignInStart();
+  const { start: startSignIn, ready: signInReady } = useSignInStart();
   const signIn = useCallback((provider: 'openrouter') => {
     // Sign-in pages refuse to load inside a frame (OpenRouter sends frame-ancestors 'self'), and
     // the HuggingFace Space runs this app in one; there, as on a stopped task's card, use a popup.
@@ -261,7 +261,7 @@ export function ConnectOptions({ exclude = [], onMoreOptions, rowsOnly = false, 
             name={<>OpenRouter{!local && <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">{t('recommended')}</span>}</>}
             description={t('openrouterDesc')}
             primary={!local}
-            action={<RowButton onClick={() => signIn('openrouter')} icon={LogIn} primary={!local}>{t('signIn')}</RowButton>}
+            action={<RowButton onClick={() => signIn('openrouter')} icon={LogIn} primary={!local} busy={!signInReady}>{t('signIn')}</RowButton>}
           />
         )}
         {offered('pollinations') && (

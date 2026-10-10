@@ -94,7 +94,7 @@ export type PreviewMessage =
   | import('./function-proxy').FunctionCall
   /** One storage area of the frame's stand-ins, whole. See `lib/preview/preview-storage.ts`. */
   | { type: 'preview:storage'; loadId: number; area: string; data: Record<string, string> }
-  /** Where that document is scrolled to, sent trailing after scrolling stops. */
+  /** Where that document is scrolled to, sent while scrolling (at most every 100 ms). */
   | { type: 'preview:scroll'; loadId: number; x: number; y: number }
   | { type: 'navigate'; path: string }
   | { type: 'preview:external'; href: string }

@@ -8,7 +8,7 @@
  * - `preview:ready` on the document's load event, carrying the `loadId` it was written with. The
  *   host pairs it with the iframe's own load event; a load nothing reports for is a page that is
  *   not ours.
- * - `preview:scroll`, trailing after scrolling stops, so a recompile can put the reader back.
+ * - `preview:scroll` while scrolling, at most every 100 ms, so a recompile can put the reader back.
  * - `preview:capture`: runs the screenshot runtime the host sends (`lib/preview/frame-capture.ts`)
  *   and posts the result back. Only the host may ask.
  * - Storage: see `STORAGE_SHIM_JS`.
@@ -16,7 +16,7 @@
 
 import { PREVIEW_STORAGE_LIMIT } from './preview-storage';
 
-/** Marks the bridge's `<script>`, so a frame that already has one is not given a second. */
+/** Marks the bridge's `<script>` tag. */
 export const PREVIEW_BRIDGE_ATTR = 'data-osw-bridge';
 
 /**

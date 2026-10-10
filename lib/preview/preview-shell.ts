@@ -95,7 +95,7 @@ export async function collectShellAssets(
         try {
           blob = await (await fetch(url)).blob();
         } catch {
-          return null; // revoked by a newer compile; the page will show a missing asset, as before
+          return null; // revoked by a newer compile; the page shows a missing asset
         }
         cache?.set(url, blob);
       }

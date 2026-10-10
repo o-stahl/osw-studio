@@ -24,12 +24,3 @@ export const localeNames: Record<Locale, string> = {
   ko: '한국어',
   fi: 'Suomi',
 };
-
-/** Whether the page is shown inside another page's frame, where the locale cookie needs other attributes. */
-export function isEmbedded(): boolean {
-  try {
-    return typeof window !== 'undefined' && window.top !== window.self;
-  } catch {
-    return true;
-  }
-}

@@ -389,6 +389,8 @@ export class OswsProviderAdapter implements ProviderAdapter {
   private classifyError(status: number, errorMessage: string, code?: ApiErrorCode): { errorType: string; errorCategory: string } {
     let errorType = 'unknown';
     if (status === 429) errorType = 'rate_limit';
+    // A refused request or a model refusing the app is not a key problem, whatever the status.
+    else if (code === 'blocked' || code === 'model_refused') errorType = 'refused';
     else if (status === 401 || status === 403) errorType = 'auth';
     else if (status >= 500 || status === 529) errorType = 'server';
     else if (status === 400) errorType = 'invalid_request';

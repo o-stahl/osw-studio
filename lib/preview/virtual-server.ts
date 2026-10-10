@@ -664,6 +664,8 @@ export class VirtualServer {
     xhr.open = function(method, url, ...args) {
       edgeResponseHeaders = null;
       edgeCall = null;
+      // An earlier edge call's outcome was set on this object; clear it, or it hides the real XHR's.
+      ['readyState', 'status', 'statusText', 'responseText', 'response'].forEach(function(key) { delete xhr[key]; });
       if (isEdgeFunctionUrl(url)) {
         edge = { method: method, path: toEdgeFunctionApiUrl(url), headers: [] };
         return;
@@ -707,7 +709,10 @@ export class VirtualServer {
         }, xhr.timeout);
       }
       const type = xhr.responseType;
-      hostFetch(call.path, call.path, { method: call.method, headers: call.headers, body: body, signal: controller.signal })
+      const method = String(call.method || 'GET').toUpperCase();
+      // A real XHR ignores a body on GET and HEAD; a Request refuses one.
+      const sent = method === 'GET' || method === 'HEAD' ? undefined : body;
+      hostFetch(call.path, call.path, { method: call.method, headers: call.headers, body: sent, signal: controller.signal })
         .then(function(res) {
           const read = type === 'arraybuffer' ? res.arrayBuffer() : type === 'blob' ? res.blob() : res.text();
           return read.then(function(content) {

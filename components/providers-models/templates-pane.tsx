@@ -10,6 +10,7 @@ import { trackAgentProviderChange } from '@/lib/telemetry/provider-selection';
 import { getProvider } from '@/lib/llm/providers/registry';
 import { track } from '@/lib/telemetry';
 import { toast } from 'sonner';
+import { ServerDeleteRefused } from '@/lib/vfs/auto-sync';
 import type { ModelTemplate, ModelRef } from '@/lib/llm/models/assignment';
 
 // ---------------------------------------------------------------------------
@@ -297,7 +298,7 @@ export function TemplatesPane() {
     try {
       await configManager.deleteModelTemplate(id);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
+      toast.error(error instanceof ServerDeleteRefused ? error.message : t('deleteTemplateFailed'));
       return;
     }
     track('model_template_deleted');

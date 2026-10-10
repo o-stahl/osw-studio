@@ -279,7 +279,7 @@ A published site runs code you did not write line by line: what the AI wrote, an
 | Server with a sites address (`SITES_ORIGIN`) | `https://sites.example.com/deployments/{id}/` | One DNS record, a certificate and one setting |
 | Server with neither | The studio's own address | Nothing, but the Deployments view shows a warning |
 
-On the studio's address, links to `/deployments/{id}/` and `/review/{id}/` redirect to where the site now lives, so links shared before keep working. The site's address answers only what a site needs: its pages, its review copy, its edge functions and the analytics collector. Everything else there returns 404.
+On the studio's address, links to `/deployments/{id}/` and `/review/{id}/` redirect to where the site now lives, so links shared before keep working. The site's address answers only what a site needs: its pages, its review copy, its edge functions and the analytics collector. Other paths return 404, apart from the studio's public static files (icons, scripts), which hold nothing private.
 
 ### Setting up a sites address
 

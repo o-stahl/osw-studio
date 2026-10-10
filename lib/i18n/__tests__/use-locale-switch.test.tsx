@@ -9,7 +9,7 @@ import fi from '@/messages/fi.json';
 
 const mocks = vi.hoisted(() => ({ setLocale: vi.fn(), refresh: vi.fn(), embedded: false }));
 vi.mock('@/lib/i18n/actions', () => ({ setLocale: mocks.setLocale }));
-vi.mock('@/lib/i18n/config', async (orig) => ({ ...(await orig<object>()), isEmbedded: () => mocks.embedded }));
+vi.mock('@/lib/web/embedded', () => ({ isEmbedded: () => mocks.embedded }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.refresh }) }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
 

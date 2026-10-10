@@ -32,8 +32,16 @@ export interface ObservedModel {
 }
 
 const busyUntil = new Map<string, number>();
-/** Whether the stored refusals are in `busyUntil` yet; read once, as ranking asks per candidate. */
+/**
+ * Whether the stored refusals are in `busyUntil` yet: read once, as ranking asks per candidate, and
+ * again after another tab records one.
+ */
 let refusedLoaded = false;
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === REFUSED_KEY) refusedLoaded = false;
+  });
+}
 
 const id = (provider: string, model: string) => `${provider}|${model}`;
 
@@ -80,12 +88,24 @@ export function recordModelOutcome(provider: string, model: string, outcome: Mod
   // Busy and flagged say nothing about the model's ability. A working turn counts for it; a failed
   // tool call, or a model that is not there to answer, counts against it.
   if (outcome === 'busy' || outcome === 'flagged') return;
+  // A model that answered is taking requests again, whatever kept it out.
+  if (outcome === 'ok') liftCooldown(key, now);
   const all = read();
   const entry = all[key] ?? { ok: 0, fail: 0 };
   if (outcome === 'ok') entry.ok += 1;
   else entry.fail += 1;
   all[key] = entry;
   write(all);
+}
+
+function liftCooldown(key: string, now: number): void {
+  busyUntil.delete(key);
+  const refused = readRefused(now);
+  if (!(key in refused)) return;
+  delete refused[key];
+  try {
+    globalThis.localStorage?.setItem(REFUSED_KEY, JSON.stringify(refused));
+  } catch { /* storage unavailable: the in-memory cooldown is lifted for this page */ }
 }
 
 /** What a stopped task says about the model it stopped on, from the stop's category. */

@@ -97,7 +97,7 @@ export function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectCo
   // key when it lands; desktop sends popups to the system browser, so there it redirects instead.
   const canSignIn = providerId === 'openrouter';
   const signingIn = useRef(false);
-  const startSignIn = useSignInStart();
+  const { start: startSignIn, ready: signInReady } = useSignInStart();
   const signIn = () => {
     signingIn.current = true;
     startSignIn('openrouter', { popup: process.env.NEXT_PUBLIC_DESKTOP !== 'true' })
@@ -263,7 +263,7 @@ export function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectCo
 
       {canSignIn && (
         <>
-          <Button onClick={signIn} className="w-full gap-2" variant="outline">
+          <Button onClick={signIn} disabled={!signInReady} className="w-full gap-2" variant="outline">
             {ts('signInWithProvider', { provider: providerConfig.name })}
           </Button>
           <div className="relative">

@@ -146,6 +146,23 @@ describe('a model that refused the request', () => {
     expect(isCoolingDown('openrouter', 'gated:free', now + 25 * 60 * 60_000)).toBe(false);
   });
 
+  it('is lifted when the model answers, here and after a reload', () => {
+    const now = 1_000_000;
+    recordModelOutcome('openrouter', 'gated:free', 'refused', now);
+    recordModelOutcome('openrouter', 'gated:free', 'ok', now + 1);
+    expect(isCoolingDown('openrouter', 'gated:free', now + 2)).toBe(false);
+    resetCooldowns();
+    expect(isCoolingDown('openrouter', 'gated:free', now + 2)).toBe(false);
+  });
+
+  it('is seen when another tab records it', () => {
+    const now = 1_000_000;
+    expect(isCoolingDown('openrouter', 'elsewhere:free', now)).toBe(false);
+    localStorage.setItem('osw-model-refused', JSON.stringify({ 'openrouter|elsewhere:free': now + 60_000 }));
+    window.dispatchEvent(new StorageEvent('storage', { key: 'osw-model-refused' }));
+    expect(isCoolingDown('openrouter', 'elsewhere:free', now)).toBe(true);
+  });
+
   it('does not count against the model', () => {
     recordModelOutcome('openrouter', 'gated:free', 'refused');
     expect(getObserved('openrouter', 'gated:free')).toBeUndefined();

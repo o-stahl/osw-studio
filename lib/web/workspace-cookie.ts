@@ -14,19 +14,26 @@
 
 import { secureCookies } from '@/lib/auth/secure-cookies';
 
-export const WORKSPACE_COOKIE = 'osw_workspace';
-export const SECURE_WORKSPACE_COOKIE = `__Host-${WORKSPACE_COOKIE}`;
+const WORKSPACE_COOKIE = 'osw_workspace';
+const SECURE_WORKSPACE_COOKIE = `__Host-${WORKSPACE_COOKIE}`;
 const MAX_AGE = 60 * 60 * 24 * 365;
+
+/**
+ * Only an id-shaped value is taken. The unprefixed cookie can be planted by a sibling subdomain, and
+ * the value ends up in a database name, an API path and a redirect.
+ */
+const WORKSPACE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const valid = (value: string | undefined) => (value && WORKSPACE_ID.test(value) ? value : undefined);
 
 /** The workspace id in a `Cookie` header or `document.cookie`, or undefined. */
 export function workspaceFromCookieString(cookies: string): string | undefined {
-  const read = (name: string) => cookies.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`))?.[1];
-  return read(SECURE_WORKSPACE_COOKIE) || read(WORKSPACE_COOKIE) || undefined;
+  const read = (name: string) => valid(cookies.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`))?.[1]);
+  return read(SECURE_WORKSPACE_COOKIE) || read(WORKSPACE_COOKIE);
 }
 
 /** The workspace id from a request's cookie jar (middleware and route handlers). */
 export function workspaceFromRequest(request: { cookies: { get(name: string): { value: string } | undefined } }): string | undefined {
-  return request.cookies.get(SECURE_WORKSPACE_COOKIE)?.value || request.cookies.get(WORKSPACE_COOKIE)?.value || undefined;
+  return valid(request.cookies.get(SECURE_WORKSPACE_COOKIE)?.value) || valid(request.cookies.get(WORKSPACE_COOKIE)?.value);
 }
 
 /** Browser: the selected workspace. */

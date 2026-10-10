@@ -20,7 +20,7 @@ import { extractBackendFeatures } from './backend-feature-extractor';
 import { deploymentStaticDir } from './deployment-static-dir';
 import { deploymentReviewDir } from './deployment-review-dir';
 import { resolveDeploymentServing, replaceAssetPathsWithPrefix } from './deployment-paths';
-import { sitesOrigin } from '@/lib/web/site-origin';
+import { appUrl, sitesOrigin } from '@/lib/web/site-origin';
 
 export interface BuildResult {
   success: boolean;
@@ -182,10 +182,9 @@ async function prepareBuild(
   }
 
   // Decide how the deployment is served — controls asset path style and SEO URLs.
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
   const { servedAtRoot, baseUrl } = resolveDeploymentServing(deployment, deploymentId, {
     staticProxyEnabled: process.env.STATIC_PROXY === 'true',
-    appUrl,
+    appUrl: appUrl(),
     sitesOrigin: sitesOrigin(),
   });
 

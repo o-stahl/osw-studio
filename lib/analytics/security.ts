@@ -6,7 +6,7 @@
  */
 
 import crypto from 'crypto';
-import { sitesOrigin } from '@/lib/web/site-origin';
+import { appUrl, sitesOrigin } from '@/lib/web/site-origin';
 
 const TOKEN_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000; // 30 days (for static sites)
 
@@ -219,15 +219,15 @@ export function getAllowedOrigins(
   deploymentId: string,
   customDomain?: string | null
 ): string[] {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const app = appUrl();
 
   const origins: string[] = [
-    `${appUrl}/deployments/${deploymentId}`, // Published deployment path
-    appUrl // Base app URL (for development/testing)
+    `${app}/deployments/${deploymentId}`, // Published deployment path
+    app // Base app URL (for development/testing)
   ];
 
   // Add localhost variations for development
-  if (appUrl.includes('localhost')) {
+  if (app.includes('localhost')) {
     origins.push('http://localhost:3000');
     origins.push('http://127.0.0.1:3000');
   }
@@ -243,7 +243,7 @@ export function getAllowedOrigins(
   }
 
   // Allow subdomain-routed deployments (e.g., my-site.oswstudio.com)
-  const appHost = appUrl.replace(/^https?:\/\//, '').split(':')[0];
+  const appHost = app.replace(/^https?:\/\//, '').split(':')[0];
   if (appHost && !appHost.includes('localhost')) {
     origins.push(`https://*.${appHost}`);
     origins.push(`http://*.${appHost}`);

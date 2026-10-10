@@ -13,7 +13,7 @@
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /** API routes other origins call by design, each with the reason. */
-export const CROSS_ORIGIN_ROUTES: ReadonlyArray<{ pattern: RegExp; why: string }> = [
+const CROSS_ORIGIN_ROUTES: ReadonlyArray<{ pattern: RegExp; why: string }> = [
   { pattern: /^\/api\/deployments\/[^/]+\/functions\//, why: 'published sites call their functions, from custom domains too' },
   { pattern: /^\/api\/analytics\/(track|interaction)$/, why: 'published sites report pageviews and interactions' },
   { pattern: /^\/api\/mcp$/, why: 'the MCP endpoint itself, authenticated by bearer token' },

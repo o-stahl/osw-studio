@@ -1498,6 +1498,7 @@
     }
   },
   "connections": {
+    "deleteTemplateFailed": "모델 템플릿을 삭제할 수 없었어요",
     "headerName": "헤더 이름",
     "headerValue": "헤더 값",
     "removeHeader": "헤더 삭제",
@@ -2423,6 +2424,7 @@
     "displayNameHint": "인스턴스의 보내는 사람 주소 앞에 표시돼요. 다른 사람의 릴레이를 거쳐 워크스페이스 전용 주소로 보내면 SPF와 DKIM 검사에 실패해 스팸함으로 가는 일이 많아서 여기에는 주소 칸이 없어요. 보내는 사람 주소를 직접 정하려면 내 서버를 쓰세요."
   },
   "interviews": {
+    "deleteFailed": "인터뷰 템플릿을 삭제할 수 없었어요",
     "templates": "인터뷰 템플릿",
     "removeItem": "항목 삭제",
     "question": "질문",

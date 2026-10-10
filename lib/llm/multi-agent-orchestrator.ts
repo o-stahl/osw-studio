@@ -704,8 +704,8 @@ export class MultiAgentOrchestrator {
         // a stopped card does not offer straight back the model the person just moved away from.
         if (apiError) this.recordStop(apiError);
 
-        // "Free models" is the one selection the app moves on its own: a busy or missing free
-        // model is passed over for the next suggestion. A model the user picked stays picked.
+        // "Free models" is the one selection the app moves on its own: a busy, missing or refusing
+        // free model is passed over for the next suggestion. A model the user picked stays picked.
         if (apiError && SWITCHABLE_CATEGORIES.has(apiError.errorCategory) && this.onFreeModels()) {
           if (await this.rotateFreeModel(apiError)) return 'retry';
         }

@@ -41,7 +41,7 @@ The API authenticates with an HttpOnly session cookie. On HTTPS installs it is n
 
 ### Review copies
 
-A review copy can require a password. A participant's identity is a signed cookie for that one deployment. Comments can be posted only from the studio or from the review copy's own address. Resolving comments and replying as the team need an account with access to the workspace.
+A review copy can require a password. A participant's identity is a signed cookie for that one deployment. Comments can be posted only from the studio or from the review copy's own address. Resolving comments and replying as the team need an account with access to the workspace, and work only on the studio's address: a request to the review copy on a site's address is always a participant's, including in the desktop app.
 
 ### Provider keys
 

@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { setLocale } from './actions';
-import { isEmbedded, type Locale } from './config';
+import type { Locale } from './config';
+import { isEmbedded } from '@/lib/web/embedded';
 
 /**
  * Switching the interface language from a control. The choice shows as `current` straight away and

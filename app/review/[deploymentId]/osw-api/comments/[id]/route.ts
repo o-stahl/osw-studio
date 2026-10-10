@@ -17,21 +17,10 @@ import { isReviewOriginAllowed } from '@/lib/review/origin-gate';
 import { resolveDeployment } from '@/lib/vfs/adapters/deployment-adapter';
 import { ReviewDatabase } from '@/lib/vfs/adapters/review-database';
 import { logger } from '@/lib/utils';
-
-const PRIVATE_HEADERS = {
-  'Cache-Control': 'private, no-store, max-age=0',
-  'X-Robots-Tag': 'noindex, nofollow',
-};
+import { PRIVATE_HEADERS, teamRefused } from '@/lib/review/responses';
 
 function notFound(): NextResponse {
   return NextResponse.json({ error: 'Not found' }, { status: 404, headers: PRIVATE_HEADERS });
-}
-
-function teamRefused(status: 401 | 403): NextResponse {
-  return NextResponse.json(
-    { error: status === 401 ? 'Unauthorized' : 'Forbidden' },
-    { status, headers: PRIVATE_HEADERS }
-  );
 }
 
 export async function PATCH(

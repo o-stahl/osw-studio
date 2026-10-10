@@ -88,6 +88,12 @@ describe('autoDelete* server outcomes', () => {
     await expect(autoSync.autoDeleteProject('x')).resolves.toBeUndefined();
   });
 
+  it('encodes the id, so one with a slash cannot miss the route and read as deleted', async () => {
+    respond(200);
+    await autoSync.autoDeleteSkill('a/b');
+    expect(fetchMock).toHaveBeenCalledWith('/api/w/ws1/sync/skills/a%2Fb', { method: 'DELETE' });
+  });
+
   it('refuses without a workspace, rather than reading the unscoped 404 as deleted', async () => {
     autoSync.setAutoSyncWorkspaceId(undefined);
     respond(404);

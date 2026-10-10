@@ -5,8 +5,8 @@ import { NextRequest } from 'next/server';
  * What crosses the function route in each direction.
  *
  * Functions are written by whoever can edit a project, and a published site runs them for every
- * visitor on the app's own origin. The visitor's browser sends that origin's cookies, including the
- * admin's session and the ChatGPT refresh token, so the route is the only place that can keep them
+ * visitor. Where sites share the app's origin, or a domain with it, the visitor's browser can send
+ * the studio's cookies, including the admin's session and the ChatGPT refresh token, so the route is the only place that can keep them
  * out of function code, and the only place that can stop a function's response setting them.
  */
 

@@ -10,8 +10,8 @@ import { FrameScrollMemory } from '../scroll-memory';
  * the rule — record on the way out, hand it back only for the same page, once — and that is what this
  * file pins.
  *
- * **Only reachable by hand:** that `loadPage` records before writing `srcdoc` and that `handleLoad`
- * restores before announcing frame-ready. Both are ordering facts about a real browser.
+ * **Only reachable by hand:** that `loadPage` records before writing `srcdoc` and that
+ * `handleReadyAck` restores before announcing frame-ready. Both are ordering facts about a real browser.
  */
 
 describe('FrameScrollMemory', () => {
@@ -71,7 +71,7 @@ describe('FrameScrollMemory', () => {
 
     memory.remember('/index.html', null);
 
-    // An unreadable frame must not leave the previous load's record in the slot, or it is restored
+    // A frame that reported no position must not leave the previous load's record in the slot, or it is restored
     // onto the document *after* the one it was taken from.
     expect(memory.take('/index.html')).toBeNull();
   });

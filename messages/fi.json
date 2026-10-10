@@ -1498,6 +1498,7 @@
     }
   },
   "connections": {
+    "deleteTemplateFailed": "Mallipohjan poisto ei onnistunut",
     "headerName": "Headerin nimi",
     "headerValue": "Headerin arvo",
     "removeHeader": "Poista header",
@@ -2423,6 +2424,7 @@
     "displayNameHint": "Näytetään instanssin lähettäjäosoitteen edessä. Osoitekenttää ei ole, koska oma workspace-osoite toisen välityspalvelimen kautta ei läpäise SPF- ja DKIM-tarkistuksia ja päätyy usein roskapostiin. Käytä omaa palvelinta, jos tarvitset oman lähettäjäosoitteen."
   },
   "interviews": {
+    "deleteFailed": "Haastattelupohjan poisto ei onnistunut",
     "templates": "Haastattelupohjat",
     "removeItem": "Poista kohta",
     "question": "Kysymys",

@@ -18,11 +18,7 @@ import { validateParticipantProfile } from '@/lib/review/participant-input';
 import { consumeReviewWriteAttempt } from '@/lib/review/write-gate';
 import { ReviewDatabase } from '@/lib/vfs/adapters/review-database';
 import { logger } from '@/lib/utils';
-
-const PRIVATE_HEADERS = {
-  'Cache-Control': 'private, no-store, max-age=0',
-  'X-Robots-Tag': 'noindex, nofollow',
-};
+import { PRIVATE_HEADERS } from '@/lib/review/responses';
 
 function notFound(): NextResponse {
   return NextResponse.json({ error: 'Not found' }, { status: 404, headers: PRIVATE_HEADERS });

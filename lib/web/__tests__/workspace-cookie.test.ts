@@ -65,3 +65,14 @@ describe('on a response', () => {
     expect(headers).toContainEqual(expect.stringMatching(/^__Host-osw_workspace=;.*Secure/i));
   });
 });
+
+describe('reading the selection', () => {
+  it('takes only an id-shaped value, so a planted cookie cannot steer a path', () => {
+    expect(workspaceFromCookieString('osw_workspace=ws-1_A')).toBe('ws-1_A');
+    expect(workspaceFromCookieString('osw_workspace=../admin')).toBeUndefined();
+    expect(workspaceFromCookieString('__Host-osw_workspace=a%2Fb; osw_workspace=ws-2')).toBe('ws-2');
+    const jar = (v: string) => ({ cookies: { get: (n: string) => (n === 'osw_workspace' ? { value: v } : undefined) } });
+    expect(workspaceFromRequest(jar('ws-3'))).toBe('ws-3');
+    expect(workspaceFromRequest(jar('x/../y'))).toBeUndefined();
+  });
+});

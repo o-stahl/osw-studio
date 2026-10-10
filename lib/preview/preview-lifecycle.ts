@@ -2,11 +2,11 @@
  * Pure state for the preview's per-load handshake + escape recovery.
  *
  * The host writes a document into the iframe and stamps it with a monotonic `loadId`. The
- * injected bridge posts `preview:ready { loadId }` the instant it runs, and the host verifies the
- * loaded document is the one it wrote. If a document never acks (or the frame navigated away to a
+ * injected bridge posts `preview:ready { loadId }` from the document's load event, and the host
+ * pairs it with the iframe's own load. If a document never acks (or the frame navigated away to a
  * page that isn't ours), that's an "escape": we try one bounded auto-reload, then surface a
- * recoverable overlay. This class holds the decision logic only — timers, srcdoc writes, and DOM
- * reads live in the component so this stays unit-testable.
+ * recoverable overlay. This class holds the decision logic only — timers and srcdoc writes live in
+ * the component so this stays unit-testable.
  */
 
 type LoadPhase = 'loading' | 'ready' | 'escaped';

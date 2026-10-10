@@ -22,11 +22,7 @@ import { resolveReviewAccess } from '@/lib/review/access';
 import { consumeReviewAssetAttempt } from '@/lib/review/read-gate';
 import { resolveReviewFilePath, reviewMimeType } from '@/lib/review/serve-path';
 import { logger } from '@/lib/utils';
-
-const PRIVATE_HEADERS = {
-  'Cache-Control': 'private, no-store, max-age=0',
-  'X-Robots-Tag': 'noindex, nofollow',
-};
+import { PRIVATE_HEADERS } from '@/lib/review/responses';
 
 function notFound(): NextResponse {
   return new NextResponse('Not found', { status: 404, headers: PRIVATE_HEADERS });
