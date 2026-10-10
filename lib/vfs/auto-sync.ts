@@ -23,9 +23,9 @@ import { translator } from '@/lib/i18n/runtime';
 let _autoSyncWorkspaceId: string | undefined;
 
 /**
- * Set the workspace ID used by auto-sync functions for URL scoping.
- * When set, all `/api/sync/…` calls become `/api/w/{workspaceId}/sync/…`.
- * Call with `undefined` to revert to unscoped paths (browser/no-workspace mode).
+ * Set the workspace ID used by auto-sync functions for URL scoping: calls go to
+ * `/api/w/{workspaceId}/sync/…`. Sync routes exist only under a workspace, so with `undefined`
+ * (browser mode, or before one is selected) the unscoped paths answer 404, and deletes refuse.
  */
 export function setAutoSyncWorkspaceId(workspaceId: string | undefined): void {
   _autoSyncWorkspaceId = workspaceId;

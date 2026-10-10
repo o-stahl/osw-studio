@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 /** What the swap dialog shows while a deployment save waits on it. */
-export interface SwapDetails {
+interface SwapDetails {
   deploymentId: string;
   deploymentName: string;
   currentProjectId: string;

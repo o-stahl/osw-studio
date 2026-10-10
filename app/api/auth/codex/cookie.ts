@@ -9,7 +9,7 @@ import { secureCookies } from '@/lib/auth/secure-cookies';
  */
 const LEGACY_CODEX_COOKIE_NAME = 'osw_codex_rt';
 const LEGACY_CODEX_LOGIN_COOKIE_NAME = 'osw_codex_login';
-export const CODEX_COOKIE_MAX_AGE = 90 * 24 * 60 * 60; // 90 days
+const CODEX_COOKIE_MAX_AGE = 90 * 24 * 60 * 60; // 90 days
 export const CODEX_LOGIN_COOKIE_MAX_AGE = 10 * 60;
 
 const prefixed = (name: string) => (secureCookies() ? `__Host-${name}` : name);

@@ -89,7 +89,6 @@ export async function maybeRefreshSession(session: SessionData): Promise<string 
   return createSession(session.userId, session.email, session.isAdmin);
 }
 
-
 /**
  * The session cookie's name. `__Host-` wherever cookies are Secure: the browser then accepts it only
  * from this exact host, with `Path=/` and no `Domain`, so a published site on a subdomain of the same
@@ -165,15 +164,6 @@ export async function getSession(): Promise<SessionData | null> {
   }
 
   return session;
-}
-
-
-/**
- * Check if user is authenticated
- */
-export async function isAuthenticated(): Promise<boolean> {
-  const session = await getSession();
-  return session !== null;
 }
 
 /**

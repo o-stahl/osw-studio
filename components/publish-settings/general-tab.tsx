@@ -47,7 +47,8 @@ export function GeneralTab({ settings, onChange, projectId, deploymentId, public
   const publicUrl = settings.customDomain
     ? `https://${settings.customDomain}`
     : resolvedUrl || directUrl;
-  const showDirectPath = publicUrl !== directUrl && (sitesMode ?? 'same-origin') === 'same-origin';
+  // Unknown until the hosting answer arrives; shown only once it says sites share this address.
+  const showDirectPath = publicUrl !== directUrl && sitesMode === 'same-origin';
 
   return (
     <div className="flex flex-col gap-4">

@@ -155,6 +155,15 @@ describe('a model that refused the request', () => {
     expect(isCoolingDown('openrouter', 'gated:free', now + 2)).toBe(false);
   });
 
+  it('is lifted here when another tab lifts it', () => {
+    const now = 1_000_000;
+    recordModelOutcome('openrouter', 'back:free', 'refused', now);
+    expect(isCoolingDown('openrouter', 'back:free', now + 1)).toBe(true);
+    localStorage.setItem('osw-model-refused', JSON.stringify({}));
+    window.dispatchEvent(new StorageEvent('storage', { key: 'osw-model-refused' }));
+    expect(isCoolingDown('openrouter', 'back:free', now + 1)).toBe(false);
+  });
+
   it('is seen when another tab records it', () => {
     const now = 1_000_000;
     expect(isCoolingDown('openrouter', 'elsewhere:free', now)).toBe(false);

@@ -12,7 +12,7 @@ import {
 import { vfs } from '@/lib/vfs';
 import { PreviewLifecycle } from '@/lib/preview/preview-lifecycle';
 import { FrameScrollMemory, type FrameScroll } from '@/lib/preview/scroll-memory';
-import { previewBridgeScript } from '@/lib/preview/preview-bridge';
+import { prependToHead, previewBridgeScript } from '@/lib/preview/preview-bridge';
 import { previewShellHtml, sendShellContent } from '@/lib/preview/preview-shell';
 import { runFunctionCall } from '@/lib/preview/function-proxy';
 import { getPreviewStorage, setPreviewStorageArea } from '@/lib/preview/preview-storage';
@@ -2034,11 +2034,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     }
     const bridgeScript = previewBridgeScript(loadId);
     const headInject = bridgeScript + vfsMapScript;
-    if (processedHtml.includes('<head>')) {
-      processedHtml = processedHtml.replace('<head>', '<head>' + headInject);
-    } else {
-      processedHtml = headInject + processedHtml;
-    }
+    processedHtml = prependToHead(processedHtml, headInject);
 
     // Clear stale runtime errors before loading new content —
     // only errors from this compilation should be in the buffer.

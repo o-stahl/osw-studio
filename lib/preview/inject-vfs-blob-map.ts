@@ -8,7 +8,7 @@
  * renderer that forgets loses runtime assets with no error and nothing to search for.
  *
  * Used by the thumbnail capture. `components/preview/multipage-preview.tsx` builds the same script
- * inline because it injects it together with its per-load marker; the two have to stay in step.
+ * inline because it injects it together with its per-load bridge; the two have to stay in step.
  */
 export function injectVfsBlobMap(html: string, blobUrls: ReadonlyMap<string, string>): string {
   // The escape keeps a path containing `</script` from closing the tag it is written inside.

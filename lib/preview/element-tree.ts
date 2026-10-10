@@ -42,7 +42,7 @@ export interface SerializedLevel {
  *
  * Only elements carrying `data-osw-src`. `injectProvenance` tags every authored element and never
  * tags `script` or `style`, so this one rule excludes the selector overlay, the placement indicator
- * and its placeholders, the two scripts before `</body>`, and the head-injected marker and blob-map
+ * and its placeholders, the two scripts before `</body>`, and the head-injected bridge and blob-map
  * scripts — without the serializer having to recognise each piece of furniture individually.
  *
  * The tradeoff, stated rather than hidden: legitimately JS-built elements are absent from the tree

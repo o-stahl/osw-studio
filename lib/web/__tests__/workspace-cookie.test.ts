@@ -27,7 +27,9 @@ describe('on a response', () => {
     const res = NextResponse.json({});
     setWorkspaceOnResponse(res, 'ws-1');
     const headers = res.headers.getSetCookie();
-    expect(headers.find(h => h.startsWith('__Host-osw_workspace=ws-1'))).toMatch(/Secure.*|Path=\//i);
+    const prefixed = headers.find(h => h.startsWith('__Host-osw_workspace=ws-1'));
+    expect(prefixed).toMatch(/Secure/i);
+    expect(prefixed).toMatch(/Path=\//i);
     expect(headers.find(h => h.startsWith('__Host-osw_workspace=ws-1'))).not.toMatch(/HttpOnly/i);
     expect(headers.some(h => /^osw_workspace=;/.test(h))).toBe(true);
   });

@@ -8,7 +8,7 @@
  * tab.
  */
 
-export type PreviewStorageArea = 'local' | 'session' | 'cookie';
+type PreviewStorageArea = 'local' | 'session' | 'cookie';
 
 export type PreviewStorageSnapshot = Record<PreviewStorageArea, Record<string, string>>;
 

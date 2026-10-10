@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { PREVIEW_BRIDGE_ATTR, previewBridgeJs, previewBridgeScript } from '../preview-bridge';
+import { PREVIEW_BRIDGE_ATTR, prependToHead, previewBridgeJs, previewBridgeScript } from '../preview-bridge';
 
 /**
  * The host learns about a preview document only from what the document posts: its load, and its
@@ -47,7 +47,7 @@ describe('previewBridgeScript', () => {
     expect(posted).toEqual([{ type: 'preview:ready', loadId: 42 }]);
   });
 
-  it('reports the scroll position once scrolling settles, not per event', () => {
+  it('reports the scroll position at most every 100 ms, not per event', () => {
     run(3);
     Object.defineProperty(window, 'scrollY', { configurable: true, value: 500 });
     Object.defineProperty(window, 'scrollX', { configurable: true, value: 12 });
@@ -79,3 +79,20 @@ describe('previewBridgeScript', () => {
     expect(posted).toEqual([{ type: 'preview:capture-result', reqId: 4, error: 'Error: boom' }]);
   });
 });
+
+describe('prependToHead', () => {
+  it('goes first in the head, whatever its case or attributes', () => {
+    expect(prependToHead('<html><head><title>t</title></head></html>', 'X')).toBe('<html><head>X<title>t</title></head></html>');
+    expect(prependToHead('<!doctype html><HTML><HEAD lang="en"></HEAD></HTML>', 'X')).toBe('<!doctype html><HTML><HEAD lang="en">X</HEAD></HTML>');
+  });
+
+  it('never takes a <header> for the head, and makes one after <html> when there is none', () => {
+    expect(prependToHead('<!doctype html><html><body><header>h</header></body></html>', 'X'))
+      .toBe('<!doctype html><html><head>X</head><body><header>h</header></body></html>');
+  });
+
+  it('prepends to a fragment with neither', () => {
+    expect(prependToHead('<p>x</p>', 'X')).toBe('X<p>x</p>');
+  });
+});
+

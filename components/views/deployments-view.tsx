@@ -798,7 +798,7 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
                 {t.rich('sameOriginWarning', {
                   code: (chunks) => <code className="font-mono">{chunks}</code>,
                   link: (chunks) => (
-                    <a className="underline" href={workspaceId ? `/w/${workspaceId}/docs?doc=server-mode` : '/admin/docs?doc=server-mode'}>{chunks}</a>
+                    <a className="underline" href={`/w/${workspaceId}/docs?doc=server-mode`}>{chunks}</a>
                   ),
                 })}
               </div>

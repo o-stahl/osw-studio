@@ -63,7 +63,8 @@ function appHostname(): string {
 export function siteOriginFor(deployment: { slug?: string | null; customDomain?: string | null }): string {
   if (deployment.customDomain) return `https://${deployment.customDomain}`;
   const mode = sitesMode();
-  if (mode === 'proxy' && deployment.slug) return `https://${deployment.slug}.${appHostname()}`;
+  // With the app URL's port, as the published URL and the generated Caddyfile have it.
+  if (mode === 'proxy' && deployment.slug) return `https://${deployment.slug}.${appUrl().replace(/^https?:\/\//, '').replace(/\/.*$/, '')}`;
   const sites = mode === 'host' ? sitesOrigin() : null;
   if (sites) return sites;
   return originOf(appUrl()) ?? appUrl();

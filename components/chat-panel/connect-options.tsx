@@ -199,7 +199,8 @@ export function ConnectOptions({ exclude = [], onMoreOptions, rowsOnly = false, 
   const signIn = useCallback((provider: 'openrouter') => {
     // Sign-in pages refuse to load inside a frame (OpenRouter sends frame-ancestors 'self'), and
     // the HuggingFace Space runs this app in one; there, as on a stopped task's card, use a popup.
-    startSignIn(provider, { popup: keepPage || isEmbedded() })
+    // Desktop sends popups to the system browser, whose storage the return cannot reach: redirect.
+    startSignIn(provider, { popup: (keepPage || isEmbedded()) && process.env.NEXT_PUBLIC_DESKTOP !== 'true' })
       .then((started) => { if (!started) toast.error(t('popupBlocked')); })
       .catch(() => toast.error(t('signInFailed')));
   }, [t, keepPage, startSignIn]);

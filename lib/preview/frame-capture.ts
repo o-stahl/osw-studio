@@ -18,7 +18,7 @@ import { TOOLBAR_HOST_ATTR } from './toolbar-dom';
 
 const CAPTURE_LIB_PATH = '/preview-capture/';
 
-export interface FrameCaptureOptions {
+interface FrameCaptureOptions {
   captureWidth: number;
   captureHeight: number;
   fullPage: boolean;

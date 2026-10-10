@@ -71,8 +71,10 @@ export function generateCaddyfile(config: CaddyConfig): string {
   // Wildcard subdomain block: terminates TLS for any *.domain host without an
   // explicit block above and proxies it to Node, which answers a host that is
   // not the studio's only on site paths (`isSiteHost`). So an unmatched
-  // subdomain gets a valid certificate and a 404, never the studio; a
-  // deployment's subdomain serves its site once its explicit block exists.
+  // subdomain gets a valid certificate and never the studio. Node serves sites
+  // by path, so `/deployments/{id}/` still answers there, on that subdomain's
+  // own origin, where review writes are refused (it is not the deployment's
+  // origin). A deployment's subdomain serves its site once its block exists.
   if (slugRoutes.length > 0) {
     lines.push(`*.${domain} {`);
     lines.push('  tls {');

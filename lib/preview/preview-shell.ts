@@ -18,7 +18,7 @@ import type { PreviewStorageSnapshot } from './preview-storage';
 const SHELL_READY = 'preview:shell-ready';
 export const SHELL_CONTENT = 'preview:shell-content';
 
-export interface ShellAsset {
+interface ShellAsset {
   url: string;
   blob: Blob;
   text: boolean;

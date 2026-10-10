@@ -33,9 +33,10 @@ export interface ObservedModel {
 
 const busyUntil = new Map<string, number>();
 /**
- * Whether the stored refusals are in `busyUntil` yet: read once, as ranking asks per candidate, and
- * again after another tab records one.
+ * The stored refusals, read once (ranking asks per candidate) and again whenever another tab records
+ * or lifts one. Kept apart from `busyUntil` so a re-read replaces them rather than adding to them.
  */
+let refusedUntil = new Map<string, number>();
 let refusedLoaded = false;
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
@@ -82,7 +83,7 @@ export function recordModelOutcome(provider: string, model: string, outcome: Mod
     try {
       globalThis.localStorage?.setItem(REFUSED_KEY, JSON.stringify({ ...readRefused(now), [key]: now + REFUSED_COOLDOWN_MS }));
     } catch { /* storage unavailable: the in-memory cooldown below still holds for this page */ }
-    busyUntil.set(key, now + REFUSED_COOLDOWN_MS);
+    refusedUntil.set(key, now + REFUSED_COOLDOWN_MS);
     return;
   }
   // Busy and flagged say nothing about the model's ability. A working turn counts for it; a failed
@@ -100,6 +101,7 @@ export function recordModelOutcome(provider: string, model: string, outcome: Mod
 
 function liftCooldown(key: string, now: number): void {
   busyUntil.delete(key);
+  refusedUntil.delete(key);
   const refused = readRefused(now);
   if (!(key in refused)) return;
   delete refused[key];
@@ -135,16 +137,15 @@ export function getObserved(provider: string, model: string): ObservedModel | un
 export function isCoolingDown(provider: string, model: string, now = Date.now()): boolean {
   if (!refusedLoaded) {
     refusedLoaded = true;
-    for (const [key, until] of Object.entries(readRefused(now))) {
-      if (until > (busyUntil.get(key) ?? 0)) busyUntil.set(key, until);
-    }
+    refusedUntil = new Map(Object.entries(readRefused(now)));
   }
-  const until = busyUntil.get(id(provider, model));
-  return until !== undefined && until > now;
+  const key = id(provider, model);
+  return (busyUntil.get(key) ?? 0) > now || (refusedUntil.get(key) ?? 0) > now;
 }
 
 /** Test seam: forget the in-memory cooldowns, as a reload does; stored refusals are read again. */
 export function resetCooldowns(): void {
   busyUntil.clear();
+  refusedUntil.clear();
   refusedLoaded = false;
 }

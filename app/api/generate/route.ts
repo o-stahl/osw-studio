@@ -606,8 +606,9 @@ Habits:
       // authentication hint.
       if (errorClass.code === 'blocked' || errorClass.code === 'model_refused') {
         const reasons = Array.isArray(errorMetadata?.reasons) ? (errorMetadata.reasons as unknown[]).filter((r) => typeof r === 'string') : [];
+        const said = providerMessageForDisplay(`${cleanError}${reasons.length ? ` (${reasons.join(', ')})` : ''}`, apiKey);
         return NextResponse.json(
-          { ...errorClass, error: `${providerConfig.name} refused the request: ${providerSaid}${reasons.length ? ` (${reasons.join(', ')})` : ''}` },
+          { ...errorClass, error: `${providerConfig.name} refused the request: ${said}` },
           { status: response.status }
         );
       }
