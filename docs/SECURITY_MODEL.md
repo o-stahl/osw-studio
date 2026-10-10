@@ -50,7 +50,7 @@ Provider API keys are kept in the browser that entered them. Connections synced 
 ## Known limits
 
 - **Sites on the studio's address.** An install with neither `STATIC_PROXY` nor `SITES_ORIGIN` serves sites from the studio's own address, where a site's scripts can act as whoever views them in the studio. The Deployments view warns about it.
-- **Sites sharing a sites address.** With `SITES_ORIGIN`, all sites share one address, so in a visitor's browser one site's scripts can read another site's storage. Subdomains (`STATIC_PROXY`) keep sites apart.
+- **Sites sharing a sites address.** With `SITES_ORIGIN`, all sites and their review copies share one address, so in a visitor's browser one site's scripts can read another site's storage. Subdomains (`STATIC_PROXY`) keep sites apart.
 - **Subdomains are one site to the browser.** The browser sends the studio's cookies with requests a site on a subdomain of the studio's domain makes, and that site can set cookies for the parent domain. The studio's origin checks and the browser's cross-origin rules stop those requests from reading data or making changes, and the studio's own cookies cannot be planted that way (see above), apart from the language choice and a review participant's cookie, which is scoped to its review copy's path and so cannot take the prefix. A separate domain for sites removes the issue.
 - **The admin is trusted.** Someone with admin access, or with access to the server, can read everything on the instance.
 

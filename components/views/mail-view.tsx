@@ -728,7 +728,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
     setWsTesting(true);
     setWsTest(null);
     try {
-      const res = await apiFetch(`${apiBase}/mail/test`, { method: 'POST' });
+      const res = await apiFetch(`${apiBase}/mail/test`, { method: 'POST' }, { relaysUpstream: true });
       const data = await res.json().catch(() => null);
       setWsTest(
         presentTestResult(t, {
@@ -793,7 +793,7 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
     setInstTesting(true);
     setInstTest(null);
     try {
-      const res = await apiFetch('/api/admin/mail/test', { method: 'POST' });
+      const res = await apiFetch('/api/admin/mail/test', { method: 'POST' }, { relaysUpstream: true });
       const data = await res.json().catch(() => null);
       setInstTest(
         presentTestResult(t, {

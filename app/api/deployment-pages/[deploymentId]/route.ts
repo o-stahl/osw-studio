@@ -22,7 +22,7 @@ export async function GET(
   const { deploymentId } = await params;
   const access = await requireDeploymentAccess(deploymentId, 'viewer');
   if (!access.ok) return access.response;
-  const deployment = access.context.deployment as { id: string; slug?: string; customDomain?: string };
+  const { deployment } = access.context;
 
   let page = (request.nextUrl.searchParams.get('path') || '/').split(/[?#]/)[0];
   const prefix = `/deployments/${deployment.id}`;
@@ -33,8 +33,9 @@ export async function GET(
     ? [`${relative}index.html`]
     : [relative, `${relative}.html`, `${relative}/index.html`];
   for (const candidate of candidates) {
+    if (!candidate.endsWith('.html')) continue;
     const file = deploymentStaticFile(deployment.id, candidate);
-    if (!file || !candidate.endsWith('.html')) continue;
+    if (!file) continue;
     try {
       const html = await fs.readFile(file, 'utf-8');
       return NextResponse.json(

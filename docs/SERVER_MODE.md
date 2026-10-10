@@ -294,7 +294,7 @@ The guide's Nginx configuration already answers any host name and passes the `Ho
 
 A separate domain (such as `example-sites.com`) isolates the studio more fully than a subdomain of the studio's own domain. Browsers treat subdomains of one domain as the same site for cookies, so a subdomain relies on the browser's cross-origin rules and the studio's origin checks rather than on cookies staying apart.
 
-All sites on one sites address share it. In a visitor's browser, one site's scripts can read another site's storage. Use subdomains (`STATIC_PROXY`) when the sites on an instance belong to different people.
+All sites on one sites address share it, review copies included. In a visitor's browser, one site's scripts can read another site's storage. Use subdomains (`STATIC_PROXY`) when the sites on an instance belong to different people.
 
 ### Review copies
 

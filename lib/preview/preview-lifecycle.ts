@@ -50,8 +50,8 @@ export class PreviewLifecycle {
   }
 
   /**
-   * A signal that the current document isn't (or is no longer) ours — an ack timeout, or a load
-   * event whose marker doesn't match. Only the current load's signal acts; the phase transitions
+   * A signal that the current document isn't (or is no longer) ours: a frame load with no ack
+   * inside the timeout. Only the current load's signal acts; the phase transitions
    * once to `escaped` after the bounded auto-reload is spent.
    */
   onEscapeSignal(loadId: number): EscapeAction {

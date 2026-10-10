@@ -45,7 +45,7 @@ interface NoticeData {
  * The base for a note in the chat thread that is not a message: a provider limit, a model switch,
  * a stopped task. One look for all of them, with the icon carrying the kind.
  */
-export function ChatNotice({ icon: Icon, iconClassName, children }: {
+function ChatNotice({ icon: Icon, iconClassName, children }: {
   icon: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
   iconClassName?: string;
   children?: React.ReactNode;
@@ -106,7 +106,7 @@ interface StoppedData {
 /** Where a spent allowance leaves the task: it can only go on somewhere else, or after a top-up. */
 const SPENT = new Set(['daily_limit', 'credit_exhausted']);
 /** The provider's own words say why: which key, or what in the request was refused. */
-const SHOW_DETAILS = new Set(['auth_expired', 'blocked']);
+const SHOW_DETAILS = new Set(['auth_expired', 'blocked', 'model_refused']);
 
 /** OpenRouter's documented free tier: 50 free requests a day until $10 of credit is bought. */
 const OPENROUTER_FREE_TIER_DAILY = 50;
@@ -145,6 +145,7 @@ export function StoppedCard({ data, live, onContinue }: {
       case 'model_not_found': return t('titleModel', { model });
       case 'auth_expired': return t('titleAuth', { provider: name });
       case 'blocked': return t('titleBlocked', { provider: name });
+      case 'model_refused': return t('titleModelRefused', { model, provider: name });
       default: return name ? t('titleOther', { provider: name }) : t('titleOtherNoProvider');
     }
   })();
@@ -169,6 +170,7 @@ export function StoppedCard({ data, live, onContinue }: {
   else if (category === 'model_busy' || category === 'model_not_found') lines.push(t('modelBody'));
   else if (category === 'auth_expired') lines.push(t('authBody'));
   else if (category === 'blocked') lines.push(t('blockedBody'));
+  else if (category === 'model_refused') lines.push(t('modelRefusedBody'));
 
   const alternatives = (data.alternatives ?? []).filter((a) => a.provider !== provider);
   const [first, ...others] = alternatives;

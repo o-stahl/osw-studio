@@ -54,8 +54,8 @@ export async function PATCH(
     const access = await resolveReviewAccess(deploymentId, request);
     if (access.kind === 'denied') return notFound();
 
-    // The app origin only — see lib/review/origin-gate.ts for why the analytics allowlist is the
-    // wrong one on a write.
+    // The studio and the review copy's own site origin only: see lib/review/origin-gate.ts for why
+    // the analytics allowlist is the wrong one on a write.
     if (!isReviewOriginAllowed(request, (await resolveDeployment(deploymentId))?.deployment)) {
       logger.warn('[Review Participant] Invalid origin (rejected):', {
         origin: request.headers.get('origin'),

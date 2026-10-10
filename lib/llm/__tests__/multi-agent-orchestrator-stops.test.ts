@@ -375,8 +375,11 @@ describe('"Free models" moving on', () => {
     await handle(apiError('model_busy', { model: 'picked/a' }), assign('picked/a'));
     expect(observed.recordModelOutcome).toHaveBeenCalledWith('openrouter', 'picked/a', 'busy');
     observed.recordModelOutcome.mockClear();
-    await handle(apiError('blocked', { status: 403, model: 'picked/b' }), assign('picked/b'));
+    await handle(apiError('model_refused', { status: 403, model: 'picked/b' }), assign('picked/b'));
     expect(observed.recordModelOutcome).toHaveBeenCalledWith('openrouter', 'picked/b', 'refused');
+    observed.recordModelOutcome.mockClear();
+    await handle(apiError('blocked', { status: 403, model: 'picked/c' }), assign('picked/c'));
+    expect(observed.recordModelOutcome).toHaveBeenCalledWith('openrouter', 'picked/c', 'flagged');
   });
 
   it('records nothing for a stop that is not about the model', async () => {
@@ -390,9 +393,9 @@ describe('"Free models" moving on', () => {
       { provider: 'openrouter', model: { id: 'next/model:free' }, coolingDown: false },
     ]);
     observed.recordModelOutcome.mockClear();
-    const { action, events } = await handle(apiError('blocked', { status: 403, model: 'gated/model:free' }), assign(FREE));
+    const { action, events } = await handle(apiError('model_refused', { status: 403, model: 'gated/model:free' }), assign(FREE));
     expect(action).toBe('retry');
-    expect(events.find((e) => e.event === 'model_switched')?.data).toMatchObject({ toModel: 'next/model:free', reason: 'refused' });
+    expect(events.find((e) => e.event === 'model_switched')?.data).toMatchObject({ toModel: 'next/model:free', reason: 'refused', outcome: 'refused' });
     expect(observed.recordModelOutcome).toHaveBeenCalledWith('openrouter', 'gated/model:free', 'refused');
   });
 

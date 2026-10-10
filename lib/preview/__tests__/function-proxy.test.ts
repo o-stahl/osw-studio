@@ -150,4 +150,52 @@ describe('the frame side, in the compiled page', () => {
     await new Promise(r => setTimeout(r, 10));
     expect(settled).toBe(false);
   });
+
+  it('rejects an aborted fetch and drops the late answer', async () => {
+    new Function(await interceptor())();
+    const controller = new AbortController();
+    const pending = window.fetch('/contact', { signal: controller.signal });
+    await vi.waitFor(() => expect(posted).toHaveLength(1));
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    answer(posted[0].message.id, '{}');
+  });
+
+  it('gives XHR the body in the responseType asked for, and aborts and times out like XHR', async () => {
+    const RealXHR = window.XMLHttpRequest;
+    new Function(await interceptor())();
+
+    const binary = new window.XMLHttpRequest();
+    binary.responseType = 'arraybuffer';
+    const loaded = new Promise<void>((resolve) => { binary.onload = () => resolve(); });
+    binary.open('GET', '/bytes');
+    binary.send();
+    await vi.waitFor(() => expect(posted).toHaveLength(1));
+    answer(posted[0].message.id, 'abc');
+    await loaded;
+    expect(new TextDecoder().decode(binary.response as ArrayBuffer)).toBe('abc');
+
+    const aborted = new window.XMLHttpRequest();
+    const events: string[] = [];
+    aborted.onabort = () => events.push('abort');
+    aborted.onload = () => events.push('load');
+    aborted.open('GET', '/slow');
+    aborted.send();
+    await vi.waitFor(() => expect(posted).toHaveLength(2));
+    aborted.abort();
+    answer(posted[1].message.id, '{}');
+    await new Promise(r => setTimeout(r, 10));
+    expect(events).toEqual(['abort']);
+    expect(aborted.status).toBe(0);
+
+    const slow = new window.XMLHttpRequest();
+    slow.timeout = 20;
+    const timedOut = new Promise<void>((resolve) => { slow.ontimeout = () => resolve(); });
+    slow.open('GET', '/slower');
+    slow.send();
+    await timedOut;
+    expect(slow.readyState).toBe(4);
+
+    window.XMLHttpRequest = RealXHR;
+  });
 });

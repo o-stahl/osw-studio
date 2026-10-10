@@ -832,32 +832,6 @@ export class SyncManager {
     }
   }
 
-  /**
-   * Delete a skill from server
-   */
-  async deleteSkillFromServer(id: string): Promise<SyncResult> {
-    try {
-      const response = await apiFetch(`${this.baseUrl}${this.getApiUrl(`/sync/skills/${encodeURIComponent(id)}`)}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        return {
-          success: false,
-          error: errorData.error || `HTTP ${response.status}`,
-        };
-      }
-
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : translator()('sync.networkError'),
-      };
-    }
-  }
-
   // ============================================
   // Model Template Sync Methods
   // ============================================
@@ -925,20 +899,6 @@ export class SyncManager {
       }
       const data = await response.json();
       return { success: true, modelTemplate: data.modelTemplate, action: data.action };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
-    }
-  }
-
-  /** Delete a model template from server */
-  async deleteModelTemplateFromServer(id: string): Promise<SyncResult> {
-    try {
-      const response = await apiFetch(`${this.baseUrl}${this.getApiUrl(`/sync/model-templates/${encodeURIComponent(id)}`)}`, { method: 'DELETE' });
-      if (!response.ok) {
-        const errorData = await response.json();
-        return { success: false, error: errorData.error || `HTTP ${response.status}` };
-      }
-      return { success: true };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
@@ -1016,20 +976,6 @@ export class SyncManager {
     }
   }
 
-  /** Delete an interview template from server */
-  async deleteInterviewTemplateFromServer(id: string): Promise<SyncResult> {
-    try {
-      const response = await apiFetch(`${this.baseUrl}${this.getApiUrl(`/sync/interview-templates/${encodeURIComponent(id)}`)}`, { method: 'DELETE' });
-      if (!response.ok) {
-        const errorData = await response.json();
-        return { success: false, error: errorData.error || `HTTP ${response.status}` };
-      }
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
-    }
-  }
-
   // ============================================
   // Connection Sync Methods
   // ============================================
@@ -1063,20 +1009,6 @@ export class SyncManager {
       }
       const data = await response.json();
       return { success: true, connection: data.connection, action: data.action };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
-    }
-  }
-
-  /** Delete a custom connection from server */
-  async deleteConnectionFromServer(id: string): Promise<SyncResult> {
-    try {
-      const response = await apiFetch(`${this.baseUrl}${this.getApiUrl(`/sync/connections/${encodeURIComponent(id)}`)}`, { method: 'DELETE' });
-      if (!response.ok) {
-        const errorData = await response.json();
-        return { success: false, error: errorData.error || `HTTP ${response.status}` };
-      }
-      return { success: true };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }
@@ -1230,32 +1162,6 @@ export class SyncManager {
         template: data?.template && { ...data.template, files: decodeTemplateFiles(data.template.files) },
         action: data?.action,
       };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : translator()('sync.networkError'),
-      };
-    }
-  }
-
-  /**
-   * Delete a template from server
-   */
-  async deleteTemplateFromServer(id: string): Promise<SyncResult> {
-    try {
-      const response = await apiFetch(`${this.baseUrl}${this.getApiUrl(`/sync/templates/${encodeURIComponent(id)}`)}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        return {
-          success: false,
-          error: errorData.error || `HTTP ${response.status}`,
-        };
-      }
-
-      return { success: true };
     } catch (error) {
       return {
         success: false,

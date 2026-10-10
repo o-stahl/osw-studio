@@ -60,11 +60,9 @@ import { apiFetch, markAuthExpired } from '@/lib/api/backend-status';
  * auth-gated `/api/w/` paths, so their 401 (account session expired) raises the banner here.
  */
 async function reviewFetch(url: string, init: RequestInit = {}): Promise<Response> {
-  const response = await apiFetch(url, {
-    ...init,
-    credentials: 'same-origin',
-    headers: { ...(init.headers as Record<string, string> | undefined), [REVIEW_AS_TEAM_HEADER]: 'team' },
-  });
+  const headers = new Headers(init.headers);
+  headers.set(REVIEW_AS_TEAM_HEADER, 'team');
+  const response = await apiFetch(url, { ...init, credentials: 'same-origin', headers });
   if (response.status === 401) markAuthExpired();
   return response;
 }
@@ -132,9 +130,9 @@ export function ReviewTab({
   const update = (patch: Partial<ReviewDraft>) => onChange({ ...review, ...patch });
 
   // ── Address ──────────────────────────────────────────────────────────────
-  // Unlike the public URL, which the server resolves because slugs and custom domains change where
-  // a deployment is served from, the review copy has exactly one address: app/review/[deploymentId]
-  // is a route on this origin and nothing reroutes it.
+  // The studio's address for the review copy. Where sites are served away from the studio, it
+  // redirects to the copy on the site's own origin (`/api/site-location`), so the link stays valid
+  // when the slug or custom domain changes.
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const reviewUrl = `${origin}/review/${deploymentId}/`;
 

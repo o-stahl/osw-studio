@@ -81,3 +81,13 @@ export function previewBridgeJs(loadId: number): string {
 export function previewBridgeScript(loadId: number): string {
   return `<script ${PREVIEW_BRIDGE_ATTR}>${previewBridgeJs(loadId)}</script>`;
 }
+
+const HEAD_TAG = /<head(?:\s[^>]*)?>/i;
+const HTML_TAG = /<html(?:\s[^>]*)?>/i;
+
+/** `markup` first in the document's `<head>`, making one when there is none. Never `<header>`. */
+export function prependToHead(html: string, markup: string): string {
+  if (HEAD_TAG.test(html)) return html.replace(HEAD_TAG, (tag) => tag + markup);
+  if (HTML_TAG.test(html)) return html.replace(HTML_TAG, (tag) => `${tag}<head>${markup}</head>`);
+  return markup + html;
+}

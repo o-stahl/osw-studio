@@ -1,15 +1,27 @@
 import { describe, it, expect } from 'vitest';
-import { classifyProviderError, classifyGeminiError, parseRetryAfter, parseResetHeader } from '../provider-errors';
+import { classifyProviderError, classifyGeminiError, parseRetryAfter, parseResetHeader, providerMessageForDisplay } from '../provider-errors';
 
 const headers = (h: Record<string, string>) => ({ get: (name: string) => h[name.toLowerCase()] ?? null });
 
 describe('classifyProviderError', () => {
-  it('reads an OpenRouter 403 as a refused request, not a refused key, and a 401 as the key', () => {
-    // OpenRouter answers 403 for a moderation flag or a guardrail block; a bad key is 401.
+  it('reads an OpenRouter 403 as a refusal, not a refused key, and a 401 as the key', () => {
+    // OpenRouter answers 403 for a moderation flag or for the model itself; a bad key is 401.
     const flagged = { reasons: ['violence'], flagged_input: 'x', provider_name: 'OpenAI', model_slug: 'm' };
     expect(classifyProviderError({ status: 403, provider: 'openrouter', message: 'm requires moderation on OpenAI. Your input was flagged', metadata: flagged }).code).toBe('blocked');
-    expect(classifyProviderError({ status: 403, provider: 'openrouter', message: 'Forbidden' }).code).toBe('blocked');
     expect(classifyProviderError({ status: 401, provider: 'openrouter', message: 'User not found.' }).code).toBe('auth');
+  });
+
+  it('tells a refusal of what was sent from a model that refuses this app', () => {
+    // What was sent: moderation metadata, or the content error types. Another prompt may pass.
+    const sent = (metadata: Record<string, unknown>) => classifyProviderError({ status: 403, provider: 'openrouter', message: 'Forbidden', metadata }).code;
+    expect(sent({ error_type: 'content_policy_violation' })).toBe('blocked');
+    expect(sent({ error_type: 'refusal' })).toBe('blocked');
+    expect(sent({ flagged_input: 'x' })).toBe('blocked');
+    // The model: one OpenRouter serves only to listed apps, a guardrail excluding it, or a 403 that says nothing.
+    expect(classifyProviderError({ status: 403, provider: 'openrouter', message: 'x:free is only available on agentic harnesses.' }).code).toBe('model_refused');
+    expect(sent({ error_type: 'permission_denied' })).toBe('model_refused');
+    expect(classifyProviderError({ status: 403, provider: 'openrouter', message: 'Blocked by guardrail', metadata: { error_type: 'permission_denied' } }).code).toBe('model_refused');
+    expect(classifyProviderError({ status: 403, provider: 'openrouter', message: 'Forbidden' }).code).toBe('model_refused');
   });
 
   it('reads another provider\'s 403 as the key, unless it says the content was refused', () => {
@@ -135,5 +147,16 @@ describe('header parsing', () => {
     expect(parseResetHeader('1791158400')).toBe(1791158400000);
     expect(parseResetHeader('1791158400000')).toBe(1791158400000);
     expect(parseResetHeader('0')).toBeUndefined();
+  });
+});
+
+describe('providerMessageForDisplay', () => {
+  it('masks every copy of the key, and leaves a message without one alone', () => {
+    expect(providerMessageForDisplay('bad key sk-or-v1-abcdefgh, sk-or-v1-abcdefgh', 'sk-or-v1-abcdefgh')).toBe('bad key ***, ***');
+    expect(providerMessageForDisplay('User not found.', 'sk-or-v1-abcdefgh')).toBe('User not found.');
+  });
+
+  it('does not mask on a key too short to be one', () => {
+    expect(providerMessageForDisplay('a b c', 'a')).toBe('a b c');
   });
 });

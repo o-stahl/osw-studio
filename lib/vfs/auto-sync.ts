@@ -317,10 +317,10 @@ async function pushProject(projectId: string, silent: boolean): Promise<void> {
 
     // An expired session: the banner is up, and the load after signing in pushes what is left.
     const response = delta === 'unauthorized'
-      ? null
+      ? 'unauthorized'
       : await postProjectBatches(projectId, project, delta.files, delta.deletedPaths);
 
-    if (!response || response.status === 401) {
+    if (response === 'unauthorized' || response.status === 401) {
       syncRetries.delete(projectId);
       logger.warn(`[AutoSync] Skipping ${projectId}: session expired`);
       return;
@@ -798,7 +798,7 @@ export async function reconcileProjectsToServer(
   }
 }
 
-export type ServerDeleteReason = 'auth' | 'forbidden' | 'failed';
+type ServerDeleteReason = 'auth' | 'forbidden' | 'failed';
 
 /** The server did not delete the item. Its message is ready to show; nothing was deleted. */
 export class ServerDeleteRefused extends Error {
@@ -814,6 +814,9 @@ export class ServerDeleteRefused extends Error {
  */
 async function deleteOnServer(path: string): Promise<void> {
   if (process.env.NEXT_PUBLIC_SERVER_MODE !== 'true') return;
+  // Sync routes are workspace-scoped; without a workspace the DELETE would answer 404, read as
+  // already gone, and the local copy would go while the server's stayed.
+  if (!_autoSyncWorkspaceId) throw new ServerDeleteRefused('failed');
   let res: Response;
   try {
     res = await apiFetch(getAutoSyncApiUrl(path), { method: 'DELETE' });

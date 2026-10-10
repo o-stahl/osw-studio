@@ -17,7 +17,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SecretEditor } from './secret-editor';
-import { cn } from '@/lib/utils';
 import type { SecretsDataProvider } from './data-providers';
 import { apiFetch } from '@/lib/api/backend-status';
 

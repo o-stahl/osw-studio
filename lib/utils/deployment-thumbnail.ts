@@ -12,7 +12,7 @@
 
 import { captureIframeScreenshot } from './screenshot';
 import { apiFetch } from '@/lib/api/backend-status';
-import { previewBridgeScript } from '@/lib/preview/preview-bridge';
+import { prependToHead, previewBridgeScript } from '@/lib/preview/preview-bridge';
 import { loadIntoShell } from '@/lib/preview/preview-shell';
 
 export interface DeploymentCaptureOptions {
@@ -21,7 +21,6 @@ export interface DeploymentCaptureOptions {
   captureWidth?: number;
   captureHeight?: number;
   outputWidth?: number;
-  outputHeight?: number;
   quality?: number;
   fullPage?: boolean;
 }
@@ -31,7 +30,6 @@ const DEFAULTS = {
   captureWidth: 1280,
   captureHeight: 720,
   outputWidth: 640,
-  outputHeight: 360,
   quality: 0.8,
   fullPage: false,
 };
@@ -42,10 +40,7 @@ function escapeAttribute(value: string): string {
 
 /** The page's HTML with a `<base>` at its public URL and the preview bridge, first in `<head>`. */
 export function pageForCapture(html: string, url: string): string {
-  const head = `<base href="${escapeAttribute(url)}">${previewBridgeScript(0)}`;
-  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (tag) => tag + head);
-  if (/<html[^>]*>/i.test(html)) return html.replace(/<html[^>]*>/i, (tag) => `${tag}<head>${head}</head>`);
-  return head + html;
+  return prependToHead(html, `<base href="${escapeAttribute(url)}">${previewBridgeScript(0)}`);
 }
 
 export async function captureDeploymentPage(
@@ -79,7 +74,6 @@ export async function captureDeploymentPage(
       opts.captureWidth,
       opts.captureHeight,
       opts.outputWidth,
-      opts.outputHeight,
       opts.quality,
       opts.fullPage,
       true,

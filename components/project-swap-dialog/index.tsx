@@ -11,8 +11,6 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import {
   Loader2, AlertTriangle, Plus, Minus, RefreshCw, Key,
   Code2, Wrench, Clock,
@@ -35,7 +33,8 @@ interface ProjectSwapDialogProps {
   currentProjectId: string;
   newProjectId: string;
   newProjectName: string;
-  onSwapComplete: () => void;
+  /** The swap is confirmed: the settings save carries on, and the live site changes on republish. */
+  onConfirm: () => void;
   workspaceId?: string;
 }
 
@@ -47,7 +46,7 @@ export function ProjectSwapDialog({
   currentProjectId,
   newProjectId,
   newProjectName,
-  onSwapComplete,
+  onConfirm,
   workspaceId,
 }: ProjectSwapDialogProps) {
   const tb = useTranslations('backend');
@@ -58,7 +57,6 @@ export function ProjectSwapDialog({
   const [diff, setDiff] = useState<SwapDiff | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [swapping, setSwapping] = useState(false);
 
   useEffect(() => {
     if (isOpen && newProjectId !== currentProjectId) {
@@ -83,28 +81,6 @@ export function ProjectSwapDialog({
       setError(err instanceof Error ? err.message : tb('analyzeSwapFailed'));
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSwap = async () => {
-    try {
-      setSwapping(true);
-      setError(null);
-      const res = await apiFetch(`${apiBase}/deployments/${deploymentId}/swap-project`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: newProjectId }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || tb('swapFailed'));
-      }
-      onSwapComplete();
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : tb('swapFailed'));
-    } finally {
-      setSwapping(false);
     }
   };
 
@@ -214,22 +190,15 @@ export function ProjectSwapDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={swapping}>
+          <Button variant="outline" onClick={onClose}>
             {tc('actions.cancel')}
           </Button>
           <Button
-            onClick={handleSwap}
-            disabled={loading || swapping || !!error}
+            onClick={onConfirm}
+            disabled={loading || !!error}
             variant={diff?.hasConflicts ? 'destructive' : 'default'}
           >
-            {swapping ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {tb('swapping')}
-              </>
-            ) : (
-              tb('swapAndRepublish')
-            )}
+            {tb('swapConfirm')}
           </Button>
         </DialogFooter>
       </DialogContent>

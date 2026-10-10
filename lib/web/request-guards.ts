@@ -3,10 +3,6 @@ import { getIdentifier } from '@/lib/analytics/rate-limiter';
 import { checkRateLimit } from '@/lib/web/rate-limit';
 import { workspaceFromRequest } from '@/lib/web/workspace-cookie';
 
-function getCookie(request: NextRequest, name: string): string | null {
-  return request.cookies.get(name)?.value ?? null;
-}
-
 export function isSameOrigin(request: NextRequest): boolean {
   const host = request.headers.get('host') || '';
   const proto = request.headers.get('x-forwarded-proto') || 'https';

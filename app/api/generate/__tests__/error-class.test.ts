@@ -63,6 +63,27 @@ describe('POST /api/generate — error class on the error body', () => {
     expect(body.error).not.toMatch(/authentication failed|API key/);
   });
 
+  it('marks a model OpenRouter serves only to listed apps as refusing the model, with its words', async () => {
+    // The body OpenRouter returned, 2026-10-08.
+    const said = 'thinkingmachines/inkling-small:free is only available on agentic harnesses. Try plugging it into a coding agent or productivity app listed on https://openrouter.ai/apps';
+    upstream(403, { error: { message: said, code: 403 } });
+    const res = await post({ provider: 'openrouter', apiKey: 'sk-or-x', model: 'thinkingmachines/inkling-small:free' });
+    const body = await res.json();
+    expect(body.code).toBe('model_refused');
+    expect(body.error).toContain('only available on agentic harnesses');
+    expect(body.error).not.toMatch(/authentication failed/);
+  });
+
+  it('masks the key and bounds the length of what the provider said', async () => {
+    const key = 'sk-or-v1-0123456789abcdef';
+    upstream(401, { error: { message: `Invalid key ${key} ${'x'.repeat(1000)}` } });
+    const res = await post({ provider: 'openrouter', apiKey: key, model: 'a/b' });
+    const body = await res.json();
+    expect(body.error).not.toContain(key);
+    expect(body.error).toContain('Invalid key ***');
+    expect(body.error.length).toBeLessThan(450);
+  });
+
   it('marks spent OpenRouter credit, with the reset the provider gave', async () => {
     upstream(402, { error: { message: 'Insufficient credits' } }, { 'X-RateLimit-Reset': '1900000000000' });
     const res = await post({ provider: 'openrouter', apiKey: 'sk-or-x', model: 'a/b' });

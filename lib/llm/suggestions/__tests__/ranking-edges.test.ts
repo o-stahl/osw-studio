@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { buildSnapshot } from '../snapshot';
 import { rankModels, nextSuggestion, isFreeModel } from '../rank';
-import { recordModelOutcome, getObserved, isCoolingDown, resetCooldowns } from '../observed';
+import { recordModelOutcome, getObserved, isCoolingDown, resetCooldowns, outcomeForStop, switchReason } from '../observed';
 import { FREE_MODELS_ID } from '../free-models';
 import type { ProviderModel } from '@/lib/llm/providers/types';
 
@@ -156,5 +156,33 @@ describe('a model that refused the request', () => {
     const ranked = ['a', 'b'].map((id) => ({ provider: 'openrouter', model: { id }, coolingDown: isCoolingDown('openrouter', id) }));
     // Stopped on b: the only other model, a, refused earlier, so nothing is offered.
     expect(nextSuggestion(ranked as never, { provider: 'openrouter', model: 'b' })).toBeUndefined();
+  });
+});
+
+/** A moderation flag is about what was sent, so the model is back after a busy model's wait. */
+describe('a model whose moderation flagged the request', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetCooldowns();
+  });
+
+  it('is passed over briefly, not for a day, and not across a reload', () => {
+    const now = 1_000_000;
+    recordModelOutcome('openrouter', 'strict', 'flagged', now);
+    expect(isCoolingDown('openrouter', 'strict', now + 60_000)).toBe(true);
+    expect(isCoolingDown('openrouter', 'strict', now + 60 * 60_000)).toBe(false);
+    resetCooldowns();
+    expect(isCoolingDown('openrouter', 'strict', now + 60_000)).toBe(false);
+    expect(getObserved('openrouter', 'strict')).toBeUndefined();
+  });
+
+  it('comes from a blocked stop; a model refusing the app comes from model_refused', () => {
+    expect(outcomeForStop('blocked')).toBe('flagged');
+    expect(outcomeForStop('model_refused')).toBe('refused');
+    expect(outcomeForStop('rate_limited')).toBeNull();
+    // Both read as a refusal in the thread when "Free models" moves on.
+    expect(switchReason('blocked')).toBe('refused');
+    expect(switchReason('model_refused')).toBe('refused');
+    expect(switchReason('model_busy')).toBe('busy');
   });
 });

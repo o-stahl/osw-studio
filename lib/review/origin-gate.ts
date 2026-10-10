@@ -11,20 +11,12 @@
  */
 
 import { validateOrigin } from '@/lib/analytics/security';
-import { appUrl, siteOriginFor, sitesMode } from '@/lib/web/site-origin';
-
-function originOf(url: string): string {
-  try {
-    return new URL(url).origin;
-  } catch {
-    // An unparseable entry matches nothing, which refuses everything rather than widening the gate.
-    return url;
-  }
-}
+import { appUrl, originOf, siteOriginFor, sitesMode } from '@/lib/web/site-origin';
 
 /** Normalised through URL, so a trailing slash in `NEXT_PUBLIC_APP_URL` still matches a header. */
 export function reviewAllowedOrigins(deployment?: { slug?: string | null; customDomain?: string | null } | null): string[] {
-  const origins = [originOf(appUrl())];
+  // An unparseable app URL is kept as written: it matches no header, which refuses rather than widens.
+  const origins = [originOf(appUrl()) ?? appUrl()];
   if (deployment && sitesMode() !== 'same-origin') {
     const site = siteOriginFor(deployment);
     if (!origins.includes(site)) origins.push(site);

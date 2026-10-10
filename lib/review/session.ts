@@ -17,6 +17,7 @@
 import { SignJWT, jwtVerify } from 'jose';
 
 import type { ReviewConfig } from '@/lib/vfs/types';
+import { secureCookies } from '@/lib/auth/secure-cookies';
 
 /**
  * Long enough that a client working through a site over a few evenings is not asked to re-enter a
@@ -127,7 +128,7 @@ export async function mintReviewCookie(
       httpOnly: true,
       // Same knob as the account session: on by default, and only ever off for local http testing
       // and the documented pre-SSL VPS path.
-      secure: process.env.SECURE_COOKIES !== 'false' && process.env.NODE_ENV === 'production',
+      secure: secureCookies(),
       sameSite: 'lax',
       maxAge: Math.max(0, Math.floor(lifetimeMs / 1000)),
       // The browser will not send this cookie to any other deployment's review copy.

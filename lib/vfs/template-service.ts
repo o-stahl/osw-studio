@@ -359,6 +359,7 @@ export class TemplateService {
       logger.info('[TemplateService] Template deleted', { id });
     } catch (error) {
       logger.error('[TemplateService] Failed to delete template:', error);
+      // By name: auto-sync is imported lazily here, so its class is not in scope to test against.
       if (error instanceof Error && error.name === 'ServerDeleteRefused') throw error;
       throw new Error('Failed to delete template');
     }

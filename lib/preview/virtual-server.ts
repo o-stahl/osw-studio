@@ -439,12 +439,15 @@ export class VirtualServer {
   // the preview runs on an opaque origin, and the function route answers no other origin.
   const hostCalls = {};
   let hostCallSeq = 0;
+  // A host that never answers (it reloaded, or was closed) fails the call rather than leaving it
+  // pending; well past any function's own time limit.
+  const HOST_CALL_TIMEOUT_MS = 120000;
   window.addEventListener('message', function(e) {
     if (e.source !== window.parent) return;
     const d = e.data;
     if (!d || d.type !== 'preview:function-response' || !hostCalls[d.id]) return;
     const call = hostCalls[d.id];
-    delete hostCalls[d.id];
+    call.done();
     if (d.error) call.reject(new TypeError('Failed to fetch: ' + d.error));
     else call.resolve(new Response(d.body, { status: d.status, statusText: d.statusText, headers: d.headers }));
   });
@@ -455,12 +458,23 @@ export class VirtualServer {
     } catch (err) {
       return Promise.reject(err);
     }
+    const signal = request.signal;
+    const aborted = function() { return new DOMException('The operation was aborted.', 'AbortError'); };
+    if (signal && signal.aborted) return Promise.reject(aborted());
     const method = request.method.toUpperCase();
     const read = method === 'GET' || method === 'HEAD' ? Promise.resolve(null) : request.arrayBuffer();
     return read.then(function(body) {
       return new Promise(function(resolve, reject) {
         const id = ++hostCallSeq;
-        hostCalls[id] = { resolve: resolve, reject: reject };
+        const onAbort = function() { done(); reject(aborted()); };
+        const timer = setTimeout(function() { done(); reject(new TypeError('Failed to fetch: no answer')); }, HOST_CALL_TIMEOUT_MS);
+        function done() {
+          delete hostCalls[id];
+          clearTimeout(timer);
+          if (signal) signal.removeEventListener('abort', onAbort);
+        }
+        if (signal) signal.addEventListener('abort', onAbort);
+        hostCalls[id] = { resolve: resolve, reject: reject, done: done };
         const headers = [];
         request.headers.forEach(function(value, name) { headers.push([name, value]); });
         window.parent.postMessage({ type: 'preview:function-call', id: id, path: apiPath, method: method, headers: headers, body: body }, '*', body ? [body] : []);
@@ -635,6 +649,8 @@ export class VirtualServer {
     const originalSetRequestHeader = xhr.setRequestHeader;
     let edge = null;
     let edgeResponseHeaders = null;
+    // Set while an edge call is in flight; abort() or the timeout clears it, and a late answer is dropped.
+    let edgeCall = null;
 
     function settle(fields) {
       Object.keys(fields).forEach(function(key) {
@@ -646,6 +662,8 @@ export class VirtualServer {
     }
 
     xhr.open = function(method, url, ...args) {
+      edgeResponseHeaders = null;
+      edgeCall = null;
       if (isEdgeFunctionUrl(url)) {
         edge = { method: method, path: toEdgeFunctionApiUrl(url), headers: [] };
         return;
@@ -666,21 +684,48 @@ export class VirtualServer {
       edgeResponseHeaders.forEach(function(value, name) { all += name + ': ' + value + '\\r\\n'; });
       return all;
     };
+    function fail(type) {
+      edgeCall = null;
+      settle({ readyState: 4, status: 0, statusText: '', responseText: '', response: null });
+      fire('readystatechange'); fire(type); fire('loadend');
+    }
+    xhr.abort = function() {
+      if (!edge) return OriginalXHR.prototype.abort.call(this);
+      if (edgeCall) { edgeCall.controller.abort(); clearTimeout(edgeCall.timer); fail('abort'); }
+    };
     xhr.send = function(body) {
       if (!edge) return originalSend.call(this, body);
       const call = edge;
-      hostFetch(call.path, call.path, { method: call.method, headers: call.headers, body: body })
+      const controller = new AbortController();
+      const current = { controller: controller, timer: 0 };
+      edgeCall = current;
+      if (xhr.timeout > 0) {
+        current.timer = setTimeout(function() {
+          if (edgeCall !== current) return;
+          controller.abort();
+          fail('timeout');
+        }, xhr.timeout);
+      }
+      const type = xhr.responseType;
+      hostFetch(call.path, call.path, { method: call.method, headers: call.headers, body: body, signal: controller.signal })
         .then(function(res) {
-          return res.text().then(function(text) {
+          const read = type === 'arraybuffer' ? res.arrayBuffer() : type === 'blob' ? res.blob() : res.text();
+          return read.then(function(content) {
+            if (edgeCall !== current) return;
+            edgeCall = null;
+            clearTimeout(current.timer);
             edgeResponseHeaders = res.headers;
-            let response = text;
-            if (xhr.responseType === 'json') { try { response = JSON.parse(text); } catch (e) { response = null; } }
-            settle({ readyState: 4, status: res.status, statusText: res.statusText, responseText: text, response: response });
+            const isText = type === '' || type === 'text' || type === 'json';
+            let response = content;
+            if (type === 'json') { try { response = JSON.parse(content); } catch (e) { response = null; } }
+            settle({ readyState: 4, status: res.status, statusText: res.statusText, responseText: isText ? content : '', response: response });
             fire('readystatechange'); fire('load'); fire('loadend');
           });
-        }, function() {
-          settle({ readyState: 4, status: 0, statusText: '', responseText: '', response: null });
-          fire('readystatechange'); fire('error'); fire('loadend');
+        })
+        .catch(function() {
+          if (edgeCall !== current) return;
+          clearTimeout(current.timer);
+          fail('error');
         });
     };
 

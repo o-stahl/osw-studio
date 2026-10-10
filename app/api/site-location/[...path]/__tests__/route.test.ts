@@ -29,7 +29,7 @@ describe('with a proxy', () => {
   it("sends a site page to the root of the site's subdomain", async () => {
     resolve.mockResolvedValue({ deployment: { id: 'd1', slug: 'pale-plum-place' } });
     const res = await ask('/deployments/d1/about.html?x=1');
-    expect(res.status).toBe(308);
+    expect(res.status).toBe(307);
     expect(res.headers.get('location')).toBe('https://pale-plum-place.inst-1.oswstudio.com/about.html?x=1');
   });
 
@@ -45,6 +45,11 @@ describe('with a proxy', () => {
     resolve.mockResolvedValue(null);
     expect((await ask('/deployments/nope/')).status).toBe(404);
     expect((await ask('/api/w/ws/deployments')).status).toBe(404);
+  });
+
+  it('answers 404 when the lookup fails, instead of an error page', async () => {
+    resolve.mockRejectedValue(new Error('database is locked'));
+    expect((await ask('/deployments/d1/')).status).toBe(404);
   });
 });
 

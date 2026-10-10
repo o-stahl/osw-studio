@@ -84,7 +84,8 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
     currentProjectId: string;
     newProjectId: string;
     newProjectName: string;
-    pendingSettings: DeploymentSettingsUpdate;
+    /** Settles the save waiting on the dialog: true carries it on, false leaves the edits unsaved. */
+    resolve: (confirmed: boolean) => void;
   } | null>(null);
   const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
   // How the install serves published sites; 'same-origin' gets a warning (lib/web/site-origin.ts).
@@ -302,23 +303,24 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
     if (!selectedDeployment) return;
 
     try {
-      // If projectId changed in server mode, show swap dialog for conflict analysis
+      // A published deployment changing project shows what that does to its backend features
+      // first. Confirmed, the save goes on as any other; the live site changes on republish.
       const projectIdChanged = settings.projectId && settings.projectId !== selectedDeployment.projectId;
       if (projectIdChanged && isServerMode && selectedDeployment.publishedAt) {
         const newProject = projects.find(p => p.id === settings.projectId);
-        setSwapDialogState({
+        const confirmed = await new Promise<boolean>((resolve) => setSwapDialogState({
           deploymentId: selectedDeployment.id,
           deploymentName: selectedDeployment.name,
           currentProjectId: selectedDeployment.projectId,
           newProjectId: settings.projectId!,
           newProjectName: newProject?.name || t('unknown'),
-          pendingSettings: settings,
-        });
-        return false; // Not saved yet: the swap dialog saves the rest once the swap succeeds
+          resolve,
+        }));
+        setSwapDialogState(null);
+        if (!confirmed) return false;
       }
 
       if (projectIdChanged) {
-        // Non-server mode or first deploy: update directly
         const deploymentResponse = await apiFetch(`${apiBase}/deployments/${selectedDeployment.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -381,42 +383,6 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
       logger.error('[DeploymentsView] Failed to save deployment settings:', error);
       throw error;
     }
-  };
-
-  const handleSwapComplete = async () => {
-    if (!swapDialogState) return;
-
-    // Swap + republish completed via the swap API.
-    // Now save any remaining publishing settings.
-    const { deploymentId, pendingSettings } = swapDialogState;
-    const { projectId: _projectId, review, ...publishSettings } = pendingSettings;
-
-    try {
-      const savedReview = review ? await saveReviewBlock(deploymentId, review) : undefined;
-
-      const response = await apiFetch(`${apiBase}/deployments/${deploymentId}/settings`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(publishSettings),
-      });
-
-      if (!response.ok) throw new Error(`Settings save failed: ${response.status}`); // i18n-ignore: logged, never shown
-      const result = await response.json();
-      updateDeploymentInState(deploymentId, {
-        ...pendingSettings,
-        ...(review ? { review: savedReview } : {}),
-        settingsVersion: result.settingsVersion,
-        updatedAt: new Date(),
-        publishedAt: new Date(),
-      });
-      toast.success(t('swappedAndRepublished'));
-    } catch (err) {
-      logger.error('[DeploymentsView] Failed to save settings after swap:', err);
-      toast.error(t('swappedSettingsNotSaved'), { duration: Infinity });
-    }
-
-    setSwapDialogState(null);
-    await loadData();
   };
 
   const handlePublish = async (deploymentId: string) => {
@@ -764,13 +730,13 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
         {swapDialogState && (
           <ProjectSwapDialog
             isOpen={true}
-            onClose={() => setSwapDialogState(null)}
+            onClose={() => swapDialogState.resolve(false)}
             deploymentId={swapDialogState.deploymentId}
             deploymentName={swapDialogState.deploymentName}
             currentProjectId={swapDialogState.currentProjectId}
             newProjectId={swapDialogState.newProjectId}
             newProjectName={swapDialogState.newProjectName}
-            onSwapComplete={handleSwapComplete}
+            onConfirm={() => swapDialogState.resolve(true)}
             workspaceId={workspaceId}
           />
         )}
@@ -1122,13 +1088,13 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
       {swapDialogState && (
         <ProjectSwapDialog
           isOpen={true}
-          onClose={() => setSwapDialogState(null)}
+          onClose={() => swapDialogState.resolve(false)}
           deploymentId={swapDialogState.deploymentId}
           deploymentName={swapDialogState.deploymentName}
           currentProjectId={swapDialogState.currentProjectId}
           newProjectId={swapDialogState.newProjectId}
           newProjectName={swapDialogState.newProjectName}
-          onSwapComplete={handleSwapComplete}
+          onConfirm={() => swapDialogState.resolve(true)}
           workspaceId={workspaceId}
         />
       )}

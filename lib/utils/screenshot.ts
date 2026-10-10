@@ -12,9 +12,8 @@ export async function captureIframeScreenshot(
   iframe: HTMLIFrameElement,
   captureWidth: number = 1280,
   captureHeight: number = 720,
+  // The output height follows the captured aspect ratio.
   outputWidth: number = 640,
-  // Unused: the output height follows the captured aspect ratio, not a requested one.
-  _outputHeight: number = 360,
   quality: number = 0.8,
   fullPage: boolean = true,
   waitForContent: boolean = false,
@@ -22,8 +21,8 @@ export async function captureIframeScreenshot(
 ): Promise<string | null> {
   let bitmap: ImageBitmap | null = null;
   try {
-    // Resource wait, loading the painters, two painters with their own timeouts, and one retry.
-    const timeoutMs = (waitForContent ? minWaitDelay + 8000 : 0) + 25000;
+    // Resource wait, loading the painter, and painting.
+    const timeoutMs = (waitForContent ? minWaitDelay + 8000 : 0) + 15000;
     bitmap = await requestFrameCapture(
       iframe,
       { captureWidth, captureHeight, fullPage, waitForContent, minWaitDelay },

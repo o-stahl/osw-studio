@@ -16,6 +16,7 @@
 
 import { getAllDomainRoutes, getAllSlugRoutes } from '@/lib/auth/system-database';
 import path from 'path';
+import { appUrl } from '@/lib/web/site-origin';
 
 const CADDY_ADMIN_API = process.env.CADDY_ADMIN_API || 'http://localhost:2019';
 
@@ -68,11 +69,10 @@ export function generateCaddyfile(config: CaddyConfig): string {
   }
 
   // Wildcard subdomain block: terminates TLS for any *.domain host without an
-  // explicit block above and proxies it to Node. This does NOT serve a
-  // deployment — Node serves deployments by /deployments/{id}/ path only, not by
-  // host — so an unmatched subdomain reaches the main app, not its site. Its
-  // purpose is a valid wildcard cert instead of a TLS error; a deployment's
-  // subdomain only serves its site once its explicit block above exists.
+  // explicit block above and proxies it to Node, which answers a host that is
+  // not the studio's only on site paths (`isSiteHost`). So an unmatched
+  // subdomain gets a valid certificate and a 404, never the studio; a
+  // deployment's subdomain serves its site once its explicit block exists.
   if (slugRoutes.length > 0) {
     lines.push(`*.${domain} {`);
     lines.push('  tls {');
@@ -128,8 +128,7 @@ export async function regenerateInstanceCaddy(): Promise<void> {
   if (process.env.STATIC_PROXY !== 'true') return;
 
   try {
-    const domain = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000')
-      .replace(/^https?:\/\//, '');
+    const domain = appUrl().replace(/^https?:\/\//, '');
     const publicRoot = await resolvedPublicRoot();
 
     const config = generateCaddyfile({

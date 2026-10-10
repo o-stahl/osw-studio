@@ -49,6 +49,7 @@ const CODE_CATEGORIES: Record<ApiErrorCode, string> = {
   credit_exhausted: 'credit_exhausted',
   auth: 'auth_expired',
   blocked: 'blocked',
+  model_refused: 'model_refused',
   model_unavailable: 'model_not_found',
   overloaded: 'server_error',
   tool_unsupported: 'tool_not_supported',
@@ -207,8 +208,8 @@ export class OswsProviderAdapter implements ProviderAdapter {
       const midstreamStatus = typeof result.midstreamError.code === 'number' ? result.midstreamError.code : 0;
       // A provider error relayed inside the stream still says what happened: a busy free model
       // arrives this way as often as on the status line.
-      const midstreamCode = midstreamStatus === 429
-        ? classifyProviderError({ status: 429, provider, message: result.midstreamError.message }).code
+      const midstreamCode = midstreamStatus === 429 || midstreamStatus === 403
+        ? classifyProviderError({ status: midstreamStatus, provider, message: result.midstreamError.message }).code
         : undefined;
       const midstreamCategory = midstreamCode ? CODE_CATEGORIES[midstreamCode] : 'midstream_error';
       throw new ProviderApiError(

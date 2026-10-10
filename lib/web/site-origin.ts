@@ -10,8 +10,8 @@
  *   subdomain of the app host or a custom domain.
  * - `host` (`SITES_ORIGIN`; the desktop app sets it to a second local port): every site under
  *   `/deployments/{id}/` on one origin that is not the studio's.
- * - `same-origin`: neither configured; sites are served on the studio's origin, as before. Shown
- *   as a warning in the deployments view and in the docs.
+ * - `same-origin`: neither configured; sites are served on the studio's origin. Shown as a warning
+ *   in the deployments view and in the docs.
  *
  * In the first two, the studio host redirects site documents to where they live and a site host
  * answers only what a site needs (`isSitePath`). Edge-safe: no Node or database imports, since
@@ -27,7 +27,8 @@ export function appUrl(): string {
   return process.env.NEXT_PUBLIC_APP_URL || DEFAULT_APP_URL;
 }
 
-function originOf(url: string | undefined): string | null {
+/** The origin of a URL, or null for one that does not parse. */
+export function originOf(url: string | undefined): string | null {
   if (!url) return null;
   try {
     return new URL(url).origin;
@@ -63,7 +64,8 @@ export function siteOriginFor(deployment: { slug?: string | null; customDomain?:
   if (deployment.customDomain) return `https://${deployment.customDomain}`;
   const mode = sitesMode();
   if (mode === 'proxy' && deployment.slug) return `https://${deployment.slug}.${appHostname()}`;
-  if (mode === 'host') return sitesOrigin()!;
+  const sites = mode === 'host' ? sitesOrigin() : null;
+  if (sites) return sites;
   return originOf(appUrl()) ?? appUrl();
 }
 
@@ -85,13 +87,16 @@ export function requestHost(headers: Headers): string {
 export function isSiteHost(host: string): boolean {
   if (!host) return false;
   const mode = sitesMode();
-  // The sites address is matched with its port: on desktop it differs from the studio's only there.
+  // The sites address is matched with its port: on desktop it differs from the studio's only there,
+  // and any loopback name for that port is the same server, so it is the sites host too.
   if (mode === 'host') {
-    try {
-      return new URL(sitesOrigin()!).host === host;
-    } catch {
-      return false;
-    }
+    const sites = sitesOrigin();
+    if (!sites) return false;
+    const url = new URL(sites);
+    if (url.host === host) return true;
+    const port = url.port || (url.protocol === 'https:' ? '443' : '80');
+    const match = host.match(/^(.*?)(?::(\d+))?$/)!;
+    return LOOPBACK.has(url.hostname) && LOOPBACK.has(match[1]) && (match[2] || '80') === port;
   }
   if (mode === 'proxy') return !isStudioHost(host);
   return false;
@@ -101,7 +106,7 @@ export function isSiteHost(host: string): boolean {
  * The studio's own host: the app's host name or loopback (which Caddy's own requests and the
  * server itself use). Site documents asked for here are redirected to where they live. A host that
  * is neither this nor a site host (an operator's own custom-domain proxy without STATIC_PROXY) is
- * served as it was, so it neither loops nor locks the studio out.
+ * neither redirected nor limited to site paths, so it cannot loop or lock the studio out.
  */
 export function isStudioHost(host: string): boolean {
   const name = host.replace(/:\d+$/, '');
@@ -114,8 +119,7 @@ export function isSitePath(pathname: string): boolean {
     || pathname.startsWith('/review/')
     || /^\/api\/deployments\/[^/]+\/functions\//.test(pathname)
     || pathname === '/api/analytics/track'
-    || pathname === '/api/analytics/interaction'
-    || pathname === '/favicon.ico';
+    || pathname === '/api/analytics/interaction';
 }
 
 /**

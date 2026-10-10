@@ -110,4 +110,9 @@ describe('desktop', () => {
     expect((await call('http://localhost:30012/api/w/ws-1/deployments')).status).toBe(404);
     expect((await call('http://localhost:30012/deployments/d1/')).status).toBe(200);
   });
+
+  it('treats another loopback name for the sites port as the sites port', async () => {
+    expect((await call('http://127.0.0.1:30012/api/w/ws-1/deployments')).status).toBe(404);
+    expect((await call('http://127.0.0.1:30012/deployments/d1/')).status).toBe(200);
+  });
 });

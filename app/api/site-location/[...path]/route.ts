@@ -1,5 +1,6 @@
 /**
- * Where a site document now lives, as a permanent redirect.
+ * Where a site document now lives, as a redirect. Temporary, since the target follows the
+ * deployment's slug and custom domain, which can change; a browser keeps a permanent one.
  *
  * Middleware sends here the studio-host requests for a published site (`/deployments/{id}/...`) or
  * its review copy (`/review/{id}/...`) when sites are served elsewhere (`lib/web/site-origin.ts`).
@@ -24,7 +25,12 @@ export async function GET(request: NextRequest) {
   if (!match || sitesMode() === 'same-origin') return NOT_FOUND();
   const [, kind, id, rest = '/'] = match;
 
-  const resolved = await resolveDeploymentByIdOrSlug(id);
+  let resolved: Awaited<ReturnType<typeof resolveDeploymentByIdOrSlug>>;
+  try {
+    resolved = await resolveDeploymentByIdOrSlug(id);
+  } catch {
+    return NOT_FOUND();
+  }
   if (!resolved) return NOT_FOUND();
   const { deployment } = resolved;
   const origin = siteOriginFor(deployment);
@@ -36,7 +42,7 @@ export async function GET(request: NextRequest) {
   const path = kind === 'review'
     ? `/review/${deployment.id}${rest}`
     : atRoot ? rest : `/deployments/${deployment.id}${rest}`;
-  return NextResponse.redirect(`${origin}${path}${url.search}`, 308);
+  return NextResponse.redirect(`${origin}${path}${url.search}`, 307);
 }
 
 export const HEAD = GET;

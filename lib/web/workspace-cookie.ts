@@ -12,6 +12,8 @@
  * takes over the next time the cookie is written (login, workspace switch).
  */
 
+import { secureCookies } from '@/lib/auth/secure-cookies';
+
 export const WORKSPACE_COOKIE = 'osw_workspace';
 export const SECURE_WORKSPACE_COOKIE = `__Host-${WORKSPACE_COOKIE}`;
 const MAX_AGE = 60 * 60 * 24 * 365;
@@ -48,7 +50,7 @@ type CookieResponse = { cookies: { set(name: string, value: string, options: obj
 
 /** Server: select a workspace on a response (the gateway handoff). Same rule as the session cookie. */
 export function setWorkspaceOnResponse(response: CookieResponse, workspaceId: string): void {
-  const secure = process.env.SECURE_COOKIES !== 'false' && process.env.NODE_ENV === 'production';
+  const secure = secureCookies();
   // Not HttpOnly: read in the browser by the VFS factory, the workspace switcher and the tool registry.
   const options = { httpOnly: false, secure, sameSite: 'lax' as const, maxAge: MAX_AGE, path: '/' };
   if (secure) {
@@ -61,6 +63,6 @@ export function setWorkspaceOnResponse(response: CookieResponse, workspaceId: st
 
 /** Server: clear the selection under both names; the prefixed one needs its attributes to be cleared. */
 export function clearWorkspaceOnResponse(response: CookieResponse): void {
-  response.cookies.set(SECURE_WORKSPACE_COOKIE, '', { secure: true, path: '/', maxAge: 0, sameSite: 'lax' });
+  if (secureCookies()) response.cookies.set(SECURE_WORKSPACE_COOKIE, '', { secure: true, path: '/', maxAge: 0, sameSite: 'lax' });
   response.cookies.delete(WORKSPACE_COOKIE);
 }

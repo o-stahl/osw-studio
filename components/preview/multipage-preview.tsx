@@ -173,7 +173,7 @@ interface MultipagePreviewProps {
   onToolbarAction?: (message: Extract<PreviewMessage, { type: 'toolbar-action' }>) => void;
   onToolbarHover?: (message: Extract<PreviewMessage, { type: 'toolbar-hover' }>) => void;
   /**
-   * The frame has loaded the document this component wrote, verified by its load marker.
+   * The frame has loaded the document this component wrote, as its own `preview:ready` reports.
    *
    * Fires on every load, so it is also the reload signal: a `srcdoc` reassignment mints a new
    * document and every id a consumer holds for the old one is dead. A consumer that requests
@@ -1412,18 +1412,18 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
   const ackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The outgoing document's scroll position, as last reported by the frame itself.
   const frameScrollRef = useRef<FrameScroll | null>(null);
-  // The page waiting for its shell to ask for it (`lib/preview/preview-shell.ts`).
   // Read by the message handler, which is not re-registered when the deployment changes.
   const deploymentIdRef = useRef(deploymentId);
   deploymentIdRef.current = deploymentId;
-  const projectIdRef = useRef(projectId);
-  projectIdRef.current = projectId;
-  const pendingShellRef = useRef<{ loadId: number; html: string; blobUrls: string[]; cache: Map<string, Blob>; projectId: string } | null>(null);
+  // The current load's page, for its shell to ask for (`lib/preview/preview-shell.ts`). Kept until
+  // the next load: a page that reloads itself reloads the shell, which asks again. Its `projectId`
+  // is the project the page belongs to, whatever the prop has moved on to since.
+  const shellPageRef = useRef<{ loadId: number; html: string; blobUrls: string[]; cache: Map<string, Blob>; projectId: string } | null>(null);
   // Blobs already read for a compile, so a reload of the same compile does not read them again.
   const shellCacheRef = useRef(new WeakMap<object, Map<string, Blob>>());
 
-  // Respond to a confident escape signal (the load-event marker check found the frame is no longer
-  // our document): one bounded auto-reload, then the recovery overlay. Stable — safe to call from
+  // Respond to a confident escape signal (a frame load with no `preview:ready` to pair it with: the
+  // frame is no longer our document): one bounded auto-reload, then the recovery overlay. Stable — safe to call from
   // the load handler.
   const handleEscapeSignal = useCallback((loadId: number) => {
     const action = lifecycleRef.current.onEscapeSignal(loadId);
@@ -1505,7 +1505,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
       }
       return await captureIframeScreenshot(
         iframeRef.current,
-        undefined, undefined, options?.outputWidth, undefined, undefined, undefined,
+        undefined, undefined, options?.outputWidth, undefined, undefined,
         waitForContent ?? false,
         1500
       );
@@ -1617,11 +1617,10 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
   /** A shell we wrote is asking for its page. */
   const handleShellReady = useCallback((loadId: number) => {
     pairAck();
-    const pending = pendingShellRef.current;
+    const page = shellPageRef.current;
     const target = iframeRef.current?.contentWindow;
-    if (!pending || pending.loadId !== loadId || loadId !== lifecycleRef.current.loadId || !target) return;
-    pendingShellRef.current = null;
-    sendShellContent(target, loadId, pending.html, pending.blobUrls, pending.cache, getPreviewStorage(pending.projectId)).catch((err) => {
+    if (!page || page.loadId !== loadId || loadId !== lifecycleRef.current.loadId || !target) return;
+    sendShellContent(target, loadId, page.html, page.blobUrls, page.cache, getPreviewStorage(page.projectId)).catch((err) => {
       logger.error('[Preview] Could not send the page to the preview frame:', err);
     });
   }, [pairAck]);
@@ -2023,8 +2022,12 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     const loadId = ++loadIdCounterRef.current;
     lifecycleRef.current.beginLoad(loadId, isRecovery);
     unpairedAcksRef.current = 0;
-    const markerScript = previewBridgeScript(loadId);
-    const headInject = markerScript + vfsMapScript;
+    if (ackTimerRef.current) {
+      clearTimeout(ackTimerRef.current);
+      ackTimerRef.current = null;
+    }
+    const bridgeScript = previewBridgeScript(loadId);
+    const headInject = bridgeScript + vfsMapScript;
     if (processedHtml.includes('<head>')) {
       processedHtml = processedHtml.replace('<head>', '<head>' + headInject);
     } else {
@@ -2041,7 +2044,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
       cache = new Map();
       shellCacheRef.current.set(projectToUse, cache);
     }
-    pendingShellRef.current = { loadId, html: processedHtml, blobUrls: [...projectToUse.blobUrls.values()], cache, projectId };
+    shellPageRef.current = { loadId, html: processedHtml, blobUrls: [...projectToUse.blobUrls.values()], cache, projectId };
     iframeRef.current.srcdoc = previewShellHtml(loadId);
     setActivePath(normalizedPath);
     activePathRef.current = normalizedPath;
@@ -2125,6 +2128,8 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
         const target = event.source as Window;
         runFunctionCall(data, deploymentIdRef.current).then((reply) => {
           target.postMessage(reply, '*', reply.body ? [reply.body] : []);
+        }).catch((err) => {
+          logger.error('[Preview] Could not answer a function call from the preview frame:', err);
         });
         return;
       }
@@ -2132,8 +2137,9 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
       if (data.type === 'preview:storage') {
         // Only the document on screen writes: a late report from the page being replaced would
         // otherwise overwrite what the new one starts from.
-        if (data.loadId === lifecycleRef.current.loadId) {
-          setPreviewStorageArea(projectIdRef.current, data.area, data.data);
+        const page = shellPageRef.current;
+        if (page && data.loadId === lifecycleRef.current.loadId && data.loadId === page.loadId) {
+          setPreviewStorageArea(page.projectId, data.area, data.data);
         }
         return;
       }

@@ -167,8 +167,8 @@ export async function POST(
     if (refusal) return teamRefused(refusal);
     if (access.kind === 'denied') return notFound();
 
-    // The review copy is reachable only at the app origin, so that is the whole allowlist — not the
-    // analytics one, which names every tenant's published subdomain. See lib/review/origin-gate.ts.
+    // The studio and the review copy's own site origin only, not the analytics allowlist, which
+    // names every tenant's published subdomain. See lib/review/origin-gate.ts.
     if (!isReviewOriginAllowed(request, (await resolveDeployment(deploymentId))?.deployment)) {
       logger.warn('[Review Comments] Invalid origin (rejected):', {
         origin: request.headers.get('origin'),

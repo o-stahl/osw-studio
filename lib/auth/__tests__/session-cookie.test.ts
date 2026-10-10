@@ -18,7 +18,7 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe('sessionCookieName', () => {
   it('is __Host- prefixed exactly when cookies are Secure', async () => {
-    const session = await import('../session');
+    const session = { ...(await import('../session')), ...(await import('../secure-cookies')) };
     vi.stubEnv('NODE_ENV', 'production');
     expect([session.secureCookies(), session.sessionCookieName()]).toEqual([true, '__Host-osw_session']);
     vi.stubEnv('SECURE_COOKIES', 'false');

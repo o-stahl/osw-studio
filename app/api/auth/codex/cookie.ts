@@ -1,4 +1,4 @@
-import { secureCookies } from '@/lib/auth/session';
+import { secureCookies } from '@/lib/auth/secure-cookies';
 
 /**
  * The ChatGPT sign-in cookies: the refresh token, and the state of a sign-in in progress.

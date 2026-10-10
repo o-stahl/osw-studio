@@ -2,12 +2,11 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import MonacoEditor from '@monaco-editor/react';
-import { Play, Loader2, AlertCircle, CheckCircle2, History, X } from 'lucide-react';
+import { Play, Loader2, AlertCircle, CheckCircle2, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTheme } from 'next-themes';
 import { useTranslations } from 'next-intl';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
-import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api/backend-status';
 
 interface SqlEditorProps {

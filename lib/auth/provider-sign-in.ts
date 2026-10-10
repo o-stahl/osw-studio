@@ -164,8 +164,9 @@ export async function startSignIn(
   }
   const verifier = pair?.verifier ?? randomString();
   const nonce = randomString(16);
-  const relay = Boolean(options.popup && options.returnTo);
-  const redirectUri = relay ? options.returnTo! : appRoot();
+  const relayTo = options.popup ? options.returnTo : undefined;
+  const relay = Boolean(relayTo);
+  const redirectUri = relayTo || appRoot();
   writePending({
     ...readPending(),
     [nonce]: {

@@ -19,6 +19,8 @@ export type ApiErrorCode =
   | 'auth'
   /** The provider refused this request's content (moderation, a guardrail). Another model may take it; the key is fine. */
   | 'blocked'
+  /** The model refuses this app or key whatever is sent: a model OpenRouter serves only to listed apps, or one an account guardrail excludes. */
+  | 'model_refused'
   /** The model is gone, renamed, or has no provider serving it right now. */
   | 'model_unavailable'
   | 'overloaded'
@@ -52,6 +54,8 @@ export interface ProviderErrorClass {
 
 const CREDIT_WORDS = ['credit', 'quota', 'billing', 'insufficient', 'balance', 'payment required'];
 const BLOCK_WORDS = ['moderation', 'flagged', 'guardrail', 'content policy', 'safety'];
+/** OpenRouter's `metadata.error_type` values for a refusal of what was sent. */
+const CONTENT_ERROR_TYPES = new Set(['content_policy_violation', 'refusal']);
 const RATE_WORDS = ['rate-limited', 'rate limit', 'ratelimit', 'too many requests', 'retry shortly', 'retry after', 'temporarily'];
 
 /** `Retry-After` is seconds or an HTTP date. Anything else is no answer rather than zero. */
@@ -88,10 +92,17 @@ export function classifyProviderError(input: ProviderErrorInput): ProviderErrorC
 
   if (status === 401) return { code: 'auth' };
   if (status === 403) {
-    // OpenRouter answers 403 for a moderation flag or a guardrail block, never for a bad key (401).
-    // Elsewhere 403 is usually a key without access, unless it says it was the content.
-    const flagged = BLOCK_WORDS.some((w) => lower.includes(w)) || Array.isArray(input.metadata?.reasons);
-    return { code: provider === 'openrouter' || flagged ? 'blocked' : 'auth' };
+    // OpenRouter answers 403 for what was sent (a moderation flag: `reasons`, `flagged_input`) or
+    // for the model itself (`permission_denied`: a model it serves only to listed apps, an account
+    // guardrail), never for a bad key (401). Elsewhere 403 is usually a key without access, unless
+    // it says it was the content.
+    const type = typeof input.metadata?.error_type === 'string' ? input.metadata.error_type : '';
+    if (CONTENT_ERROR_TYPES.has(type) || Array.isArray(input.metadata?.reasons) || typeof input.metadata?.flagged_input === 'string') {
+      return { code: 'blocked' };
+    }
+    if (provider === 'openrouter' && type === 'permission_denied') return { code: 'model_refused' };
+    if (BLOCK_WORDS.some((w) => lower.includes(w))) return { code: 'blocked' };
+    return { code: provider === 'openrouter' ? 'model_refused' : 'auth' };
   }
   if (status === 402) return withTiming('credit_exhausted');
 
@@ -152,4 +163,12 @@ export function classifyGeminiError(status: number, details: unknown): ProviderE
   if (quotaIds.some((id) => /PerDay/i.test(id))) return { code: 'model_busy' };
   if (quotaIds.length > 0) return { code: 'rate_limited', ...(retryAfterMs !== undefined ? { retryAfterMs } : {}) };
   return {};
+}
+
+const DISPLAY_LIMIT = 300;
+
+/** A provider's error message as the client may show it: the request's key masked, the length bounded. */
+export function providerMessageForDisplay(message: string, apiKey?: string): string {
+  const masked = apiKey && apiKey.length >= 8 ? message.split(apiKey).join('***') : message;
+  return masked.length > DISPLAY_LIMIT ? `${masked.slice(0, DISPLAY_LIMIT)}…` : masked;
 }

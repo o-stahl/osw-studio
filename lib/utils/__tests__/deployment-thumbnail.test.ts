@@ -21,6 +21,13 @@ describe('pageForCapture', () => {
     expect(pageForCapture('<p>x</p>', url)).toMatch(/^<base href=/);
   });
 
+  it('never takes a <header> for the head', () => {
+    const out = pageForCapture('<html><body><header>nav</header></body></html>', url);
+    expect(out).toMatch(/^<html><head><base href=/);
+    expect(out).toContain('<header>nav</header>');
+    expect(pageForCapture('<html><head lang="en"><header></header>', url)).toMatch(/^<html><head lang="en"><base href=/);
+  });
+
   it('cannot be broken out of by the URL', () => {
     expect(pageForCapture('<head></head>', 'https://x.test/"><script>bad()</script>')).not.toContain('"><script>bad');
   });

@@ -26,9 +26,12 @@ import { saveManager } from '@/lib/vfs/save-manager';
 import { localHasUnackedEdits, markSyncNeedsRetry } from '@/lib/vfs/auto-sync';
 import { notifyServerProjectsChanged, notifyServerDeploymentsChanged } from '@/lib/vfs/sync-events';
 import { getProjectAssignment } from '@/lib/llm/models/project-assignment';
-import { outcomeForStop, recordModelOutcome } from '@/lib/llm/suggestions/observed';
+import { isStopOutcome, outcomeForStop, recordModelOutcome } from '@/lib/llm/suggestions/observed';
 import { FREE_MODELS_FALLBACK, isFreeModels } from '@/lib/llm/suggestions/free-models';
 import type { ProviderId } from '@/lib/llm/providers/types';
+import type { InterviewTemplate } from '@/lib/interview/types';
+import type { ApprovalRequest, ApprovalOutcome } from '@/lib/llm/permissions';
+import { translator } from '@/lib/i18n/runtime';
 
 /**
  * The free models a server run on "Free models" should use, best first, minus those cooling down.
@@ -44,9 +47,6 @@ async function freeModelCandidates(provider: ProviderId): Promise<string[]> {
     return [];
   }
 }
-import type { InterviewTemplate } from '@/lib/interview/types';
-import type { ApprovalRequest, ApprovalOutcome } from '@/lib/llm/permissions';
-import { translator } from '@/lib/i18n/runtime';
 
 const MAX_DEBUG_EVENTS = 2000;
 let debugIdCounter = 0;
@@ -1168,8 +1168,8 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
         }
         if (event === 'model_switched') {
           // A server run on "Free models" moved past a model; note it as a stop would be.
-          const sw = data as { provider?: string; fromModel?: string; reason?: string };
-          const outcome = sw.reason === 'busy' || sw.reason === 'unavailable' || sw.reason === 'refused' ? sw.reason : null;
+          const sw = data as { provider?: string; fromModel?: string; outcome?: unknown };
+          const outcome = isStopOutcome(sw.outcome) ? sw.outcome : null;
           if (outcome && sw.provider && sw.fromModel && sw.fromModel !== FREE_MODELS_FALLBACK) {
             recordModelOutcome(sw.provider, sw.fromModel, outcome);
           }

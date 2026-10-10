@@ -135,6 +135,18 @@ describe('StoppedCard', () => {
     expect(button(/^Continue$/)).toBeUndefined();
   });
 
+  it('says a model that refuses the app is about the model, with the provider\'s words, and offers no plain Continue', () => {
+    working('openrouter', 'gated:free');
+    render(<StoppedCard live onContinue={() => {}} data={{
+      errorCategory: 'model_refused', provider: 'openrouter', model: 'gated:free', canRetrySame: false,
+      message: 'gated:free is only available on agentic harnesses.',
+    }} />);
+    expect(container.textContent).toContain('does not serve');
+    expect(container.textContent).toContain('only available on agentic harnesses');
+    expect(container.textContent).not.toContain('refused this request');
+    expect(button(/^Continue$/)).toBeUndefined();
+  });
+
   it('shows the provider\'s own words beside a refused key', () => {
     working('openrouter', 'm');
     render(<StoppedCard live onContinue={() => {}} data={{ errorCategory: 'auth_expired', provider: 'openrouter', model: 'm', message: 'User not found.' }} />);

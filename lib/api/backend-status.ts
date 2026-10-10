@@ -67,11 +67,20 @@ function isAuthGatedPath(url: string): boolean {
 // Flips the "backend down" banner on when the server is unreachable (network
 // error or 5xx) and off when a request succeeds. A 401 from an auth-gated
 // route flips the "auth expired" banner on; a 2xx from one flips it off.
-export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+//
+// `relaysUpstream`: the route answers 502 for a server it was asked to reach (the mail test's SMTP
+// server), so a 502 says nothing either way about this backend.
+export async function apiFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  opts?: { relaysUpstream?: boolean },
+): Promise<Response> {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
   try {
     const res = await fetch(input, init);
-    if (res.status >= 500) {
+    if (res.status === 502 && opts?.relaysUpstream) {
+      // Neither up nor down: a proxy in front of a stopped backend answers 502 too.
+    } else if (res.status >= 500) {
       markBackendDown();
     } else {
       markBackendUp();

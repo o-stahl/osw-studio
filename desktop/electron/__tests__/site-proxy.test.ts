@@ -58,4 +58,28 @@ describe('startSiteProxy', () => {
     expect(reply).toEqual({ status: 201, header: 'app', body: 'answered' });
     expect(seen).toEqual({ host: `127.0.0.1:${sitePort}`, url: '/deployments/d1/?x=1', method: 'POST', body: 'payload' });
   });
+
+  it('drops the upstream request when the visitor goes away mid-answer', async () => {
+    let upstreamClosed!: () => void;
+    const closed = new Promise<void>((r) => { upstreamClosed = r; });
+    const upstream = http.createServer((req, res) => {
+      res.writeHead(200);
+      res.write('partial');
+      // Never ends: only the visitor leaving can finish this request.
+      req.socket.on('close', () => upstreamClosed());
+    });
+    await new Promise<void>((r) => upstream.listen(0, '127.0.0.1', () => r()));
+    servers.push(upstream);
+    const proxy = await startSiteProxy('127.0.0.1', 0, (upstream.address() as AddressInfo).port);
+    servers.push(proxy);
+
+    await new Promise<void>((resolve) => {
+      const req = http.request({ host: '127.0.0.1', port: (proxy.address() as AddressInfo).port, path: '/' }, (res) => {
+        res.once('data', () => { req.destroy(); resolve(); });
+      });
+      req.on('error', () => {});
+      req.end();
+    });
+    await closed;
+  });
 });

@@ -1,5 +1,4 @@
 import { TOOLBAR_HOST_ATTR } from './toolbar-dom';
-import { PREVIEW_BRIDGE_ATTR, previewBridgeJs } from './preview-bridge';
 
 /**
  * Screenshots of a preview document, taken inside its own frame.
@@ -17,7 +16,7 @@ import { PREVIEW_BRIDGE_ATTR, previewBridgeJs } from './preview-bridge';
  * so it may not depend on anything the bundler would add or rename.
  */
 
-export const CAPTURE_LIB_PATH = '/preview-capture/';
+const CAPTURE_LIB_PATH = '/preview-capture/';
 
 export interface FrameCaptureOptions {
   captureWidth: number;
@@ -117,25 +116,6 @@ function paint() {
 
 let nextRequestId = 1;
 
-/**
- * Make sure a same-origin frame that was not written by the preview (a published deployment loaded
- * by URL) has the bridge that answers capture requests. A frame the host cannot read is one the
- * preview wrote, and it carries the bridge already.
- */
-function ensureBridge(iframe: HTMLIFrameElement): void {
-  let doc: Document | null = null;
-  try {
-    doc = iframe.contentDocument;
-  } catch {
-    return;
-  }
-  if (!doc || doc.querySelector(`script[${PREVIEW_BRIDGE_ATTR}]`)) return;
-  const script = doc.createElement('script');
-  script.setAttribute(PREVIEW_BRIDGE_ATTR, '');
-  script.textContent = previewBridgeJs(0);
-  (doc.head || doc.documentElement).appendChild(script);
-}
-
 /** Ask the frame to paint itself. Resolves with the painted page, or rejects with the frame's reason. */
 export function requestFrameCapture(
   iframe: HTMLIFrameElement,
@@ -144,7 +124,6 @@ export function requestFrameCapture(
 ): Promise<ImageBitmap> {
   const target = iframe.contentWindow;
   if (!target) return Promise.reject(new Error('frame has no window'));
-  ensureBridge(iframe);
   const reqId = nextRequestId++;
 
   return new Promise<ImageBitmap>((resolve, reject) => {
@@ -157,7 +136,7 @@ export function requestFrameCapture(
       const data = event.data as { type?: string; reqId?: number; bitmap?: ImageBitmap; error?: string } | null;
       if (!data || data.type !== 'preview:capture-result' || data.reqId !== reqId) return;
       finish();
-      if (data.bitmap) resolve(data.bitmap);
+      if (data.bitmap instanceof ImageBitmap) resolve(data.bitmap);
       else reject(new Error(data.error || 'capture failed'));
     };
     const timer = setTimeout(() => {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { classifyProviderError, classifyGeminiError, type ProviderErrorClass } from '@/lib/llm/provider-errors';
+import { classifyProviderError, classifyGeminiError, providerMessageForDisplay, type ProviderErrorClass } from '@/lib/llm/provider-errors';
 import { isFreeModels, FREE_MODELS_FALLBACK } from '@/lib/llm/suggestions/free-models';
 import { supportedCommandList } from '@/lib/vfs/shell-commands';
 import { ProviderId } from '@/lib/llm/providers/types';
@@ -597,12 +597,17 @@ Habits:
         headers: response.headers,
       });
 
-      // A request the provider refused for its content (moderation, a guardrail): its own words say
-      // why, and the key is fine, so they are passed on rather than an authentication hint.
-      if (errorClass.code === 'blocked') {
+      // The provider's own words for a refusal or an auth failure are shown under Details. Some
+      // providers echo the key they were given, so it is masked, and the text is bounded.
+      const providerSaid = providerMessageForDisplay(cleanError, apiKey);
+
+      // A request the provider refused for its content (moderation) or a model that refuses this
+      // app: its own words say why, and the key is fine, so they are passed on rather than an
+      // authentication hint.
+      if (errorClass.code === 'blocked' || errorClass.code === 'model_refused') {
         const reasons = Array.isArray(errorMetadata?.reasons) ? (errorMetadata.reasons as unknown[]).filter((r) => typeof r === 'string') : [];
         return NextResponse.json(
-          { ...errorClass, error: `${providerConfig.name} refused the request: ${cleanError}${reasons.length ? ` (${reasons.join(', ')})` : ''}` },
+          { ...errorClass, error: `${providerConfig.name} refused the request: ${providerSaid}${reasons.length ? ` (${reasons.join(', ')})` : ''}` },
           { status: response.status }
         );
       }
@@ -614,7 +619,7 @@ Habits:
           ? `Try reconnecting your ${providerName} account in Settings.`
           : `Check your ${providerName} API key in Settings.`;
         return NextResponse.json(
-          { ...errorClass, error: `${providerName} authentication failed (${cleanError}). ${authHint}` },
+          { ...errorClass, error: `${providerName} authentication failed (${providerSaid}). ${authHint}` },
           { status: response.status }
         );
       }

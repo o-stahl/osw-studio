@@ -15,7 +15,7 @@
 
 import type { PreviewStorageSnapshot } from './preview-storage';
 
-export const SHELL_READY = 'preview:shell-ready';
+const SHELL_READY = 'preview:shell-ready';
 export const SHELL_CONTENT = 'preview:shell-content';
 
 export interface ShellAsset {

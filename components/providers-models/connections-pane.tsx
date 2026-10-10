@@ -654,6 +654,29 @@ function ConnectChooseBody({ onChoose, onChooseCustom }: ConnectChooseBodyProps)
 // Connection row
 // ---------------------------------------------------------------------------
 
+/**
+ * Remove a connection: its key or sign-in, and a custom provider's record. The custom record goes
+ * first, so a refused server delete leaves the key and connection as they were.
+ */
+async function disconnectProvider(id: ProviderId): Promise<void> {
+  const isCustom = getProviderArchetype(id) === 'custom';
+  if (isCustom) {
+    await configManager.removeCustomProvider(id);
+  }
+  if (id === 'openai-codex') {
+    await disconnectCodex();
+    configManager.clearCodexAuth();
+    configManager.clearModelCache('openai-codex');
+  } else if (id === 'huggingface') {
+    configManager.clearHFAuth();
+    configManager.clearModelCache('huggingface');
+  } else {
+    configManager.setProviderApiKey(id, '');
+    configManager.clearModelCache(id);
+  }
+  track('connection_removed', { provider: isCustom ? 'custom' : id });
+}
+
 interface ConnectionRowProps {
   providerId: ProviderId;
   onDisconnect: () => void;
@@ -753,22 +776,7 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
   const handleDisconnect = async () => {
     setDisconnecting(true);
     try {
-      // First, so a refused server delete leaves the key and connection as they were.
-      if (isCustom) {
-        await configManager.removeCustomProvider(providerId);
-      }
-      if (providerId === 'openai-codex') {
-        await disconnectCodex();
-        configManager.clearCodexAuth();
-        configManager.clearModelCache('openai-codex');
-      } else if (providerId === 'huggingface') {
-        configManager.clearHFAuth();
-        configManager.clearModelCache('huggingface');
-      } else {
-        configManager.setProviderApiKey(providerId, '');
-        configManager.clearModelCache(providerId);
-      }
-      track('connection_removed', { provider: isCustom ? 'custom' : providerId });
+      await disconnectProvider(providerId);
       toast.success(t('disconnectedFrom', { name: providerConfig.name }));
       dispatchApiKeyEvent(false);
       onDisconnected();
@@ -1078,24 +1086,8 @@ export function ConnectionsPane() {
 
   const handleDisconnect = async (id: ProviderId) => {
     const cfg = getProvider(id);
-    const isCustom = getProviderArchetype(id) === 'custom';
     try {
-      // First, so a refused server delete leaves the key and connection as they were.
-      if (isCustom) {
-        await configManager.removeCustomProvider(id);
-      }
-      if (id === 'openai-codex') {
-        await disconnectCodex();
-        configManager.clearCodexAuth();
-        configManager.clearModelCache('openai-codex');
-      } else if (id === 'huggingface') {
-        configManager.clearHFAuth();
-        configManager.clearModelCache('huggingface');
-      } else {
-        configManager.setProviderApiKey(id, '');
-        configManager.clearModelCache(id);
-      }
-      track('connection_removed', { provider: isCustom ? 'custom' : id });
+      await disconnectProvider(id);
       toast.success(t('disconnectedFrom', { name: cfg.name }));
       emitApiKeyUpdate(id, false);
       refresh();

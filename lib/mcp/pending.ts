@@ -5,10 +5,10 @@
  * cannot load the store (SQLite) or anything importing `server-only`.
  */
 
-/** Ten minutes: long enough to sign in, short enough that an abandoned attempt expires unnoticed. */
-export const PENDING_MCP_MAX_AGE = 10 * 60;
+import { secureCookies } from '@/lib/auth/secure-cookies';
 
-const secure = () => process.env.SECURE_COOKIES !== 'false' && process.env.NODE_ENV === 'production';
+/** Ten minutes: long enough to sign in, short enough that an abandoned attempt expires unnoticed. */
+const PENDING_MCP_MAX_AGE = 10 * 60;
 
 /**
  * `__Host-` wherever cookies are Secure, like the session cookie, so a site on a sibling subdomain
@@ -16,7 +16,7 @@ const secure = () => process.env.SECURE_COOKIES !== 'false' && process.env.NODE_
  * upgrade is not resumed; the connector asks again.
  */
 export function pendingMcpCookieName(): string {
-  return secure() ? '__Host-osw_mcp_pending' : 'osw_mcp_pending';
+  return secureCookies() ? '__Host-osw_mcp_pending' : 'osw_mcp_pending';
 }
 
 /**
@@ -25,7 +25,7 @@ export function pendingMcpCookieName(): string {
  * only allows with these same attributes.
  */
 export function pendingMcpCookieOptions(maxAge = PENDING_MCP_MAX_AGE) {
-  return { httpOnly: true, secure: secure(), sameSite: 'lax' as const, maxAge, path: '/' };
+  return { httpOnly: true, secure: secureCookies(), sameSite: 'lax' as const, maxAge, path: '/' };
 }
 
 /** Cap before a cookie starts being dropped by the browser rather than by us. */

@@ -154,12 +154,14 @@ describe('CAPTURE_RUNTIME_JS', () => {
 });
 
 describe('requestFrameCapture', () => {
+  // jsdom has no ImageBitmap; the host accepts only a real one from the frame.
+  class FakeBitmap {}
+  beforeEach(() => vi.stubGlobal('ImageBitmap', FakeBitmap));
+  afterEach(() => vi.unstubAllGlobals());
+
   function fakeFrame() {
     const contentWindow = { postMessage: vi.fn() };
-    const iframe = {
-      contentWindow,
-      get contentDocument(): Document { throw new DOMException('cross-origin', 'SecurityError'); },
-    } as unknown as HTMLIFrameElement;
+    const iframe = { contentWindow } as unknown as HTMLIFrameElement;
     return { iframe, contentWindow };
   }
   const opts = { captureWidth: 1280, captureHeight: 720, fullPage: false, waitForContent: false, minWaitDelay: 0 };
@@ -172,19 +174,28 @@ describe('requestFrameCapture', () => {
     const sent = contentWindow.postMessage.mock.calls[0][0];
     expect(sent).toMatchObject({ type: 'preview:capture', runtime: CAPTURE_RUNTIME_JS, opts });
 
-    reply({}, { type: 'preview:capture-result', reqId: sent.reqId, bitmap: 'forged' });
-    reply(contentWindow, { type: 'preview:capture-result', reqId: sent.reqId + 1, bitmap: 'other request' });
-    reply(contentWindow, { type: 'preview:capture-result', reqId: sent.reqId, bitmap: 'painted' });
+    const painted = new FakeBitmap();
+    reply({}, { type: 'preview:capture-result', reqId: sent.reqId, bitmap: new FakeBitmap() });
+    reply(contentWindow, { type: 'preview:capture-result', reqId: sent.reqId + 1, bitmap: new FakeBitmap() });
+    reply(contentWindow, { type: 'preview:capture-result', reqId: sent.reqId, bitmap: painted });
 
-    await expect(pending).resolves.toBe('painted');
+    await expect(pending).resolves.toBe(painted);
+  });
+
+  it('rejects a reply whose bitmap is not an image', async () => {
+    const { iframe, contentWindow } = fakeFrame();
+    const pending = requestFrameCapture(iframe, opts, 1000);
+    const { reqId } = contentWindow.postMessage.mock.calls[0][0];
+    reply(contentWindow, { type: 'preview:capture-result', reqId, bitmap: { width: 1 } });
+    await expect(pending).rejects.toThrow('capture failed');
   });
 
   it("rejects with the frame's reason", async () => {
     const { iframe, contentWindow } = fakeFrame();
     const pending = requestFrameCapture(iframe, opts, 1000);
     const { reqId } = contentWindow.postMessage.mock.calls[0][0];
-    reply(contentWindow, { type: 'preview:capture-result', reqId, error: 'html2canvas broke' });
-    await expect(pending).rejects.toThrow('html2canvas broke');
+    reply(contentWindow, { type: 'preview:capture-result', reqId, error: 'painter broke' });
+    await expect(pending).rejects.toThrow('painter broke');
   });
 
   it('gives up when the frame never answers', async () => {

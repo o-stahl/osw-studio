@@ -31,11 +31,13 @@ describe('orchestrator slice — a server run stopping on a model', () => {
   });
 
   it('records a refusal, a busy model and a missing one', async () => {
-    await deliver({ provider: 'openrouter', model: 'gated:free', errorCategory: 'blocked' });
+    await deliver({ provider: 'openrouter', model: 'gated:free', errorCategory: 'model_refused' });
+    await deliver({ provider: 'openrouter', model: 'strict:free', errorCategory: 'blocked' });
     await deliver({ provider: 'openrouter', model: 'busy:free', errorCategory: 'model_busy' });
     await deliver({ provider: 'openrouter', model: 'gone:free', errorCategory: 'model_not_found' });
     expect(recordModelOutcome.mock.calls).toEqual([
       ['openrouter', 'gated:free', 'refused'],
+      ['openrouter', 'strict:free', 'flagged'],
       ['openrouter', 'busy:free', 'busy'],
       ['openrouter', 'gone:free', 'unavailable'],
     ]);
@@ -46,9 +48,10 @@ describe('orchestrator slice — a server run stopping on a model', () => {
     const { SSEClient } = await import('@/lib/server-generate/sse-client');
     const ctor = SSEClient as unknown as { mock: { calls: [{ onEvent: (e: string, d: unknown) => void }][] } };
     ctor.mock.calls[ctor.mock.calls.length - 1][0].onEvent('model_switched', {
-      sourceProjectId: 'p1', sourceTaskId: 't1', provider: 'openrouter', fromModel: 'busy:free', toModel: 'next:free', reason: 'busy',
+      sourceProjectId: 'p1', sourceTaskId: 't1', provider: 'openrouter', fromModel: 'strict:free', toModel: 'next:free', reason: 'refused', outcome: 'flagged',
     });
-    expect(recordModelOutcome).toHaveBeenCalledWith('openrouter', 'busy:free', 'busy');
+    // The outcome, not the thread's wording: a moderation flag reads as a refusal but is not kept for a day.
+    expect(recordModelOutcome).toHaveBeenCalledWith('openrouter', 'strict:free', 'flagged');
   });
 
   it('records nothing for a stop about the key, or for OpenRouter\'s free router', async () => {

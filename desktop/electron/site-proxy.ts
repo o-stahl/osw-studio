@@ -31,12 +31,18 @@ export function startSiteProxy(host: string, sitePort: number, appPort: number):
       { host, port: appPort, method: req.method, path: req.url, headers: req.headers },
       (answer) => {
         res.writeHead(answer.statusCode ?? 502, answer.headers);
+        answer.on('error', () => res.destroy());
         answer.pipe(res);
       },
     );
     upstream.on('error', () => {
       if (!res.headersSent) res.writeHead(502);
       res.end();
+    });
+    // A visitor that goes away mid-request, or mid-answer, takes the upstream request with it.
+    req.on('error', () => upstream.destroy());
+    res.on('close', () => {
+      if (!res.writableFinished) upstream.destroy();
     });
     req.pipe(upstream);
   });

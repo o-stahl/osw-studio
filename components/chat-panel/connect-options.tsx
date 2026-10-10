@@ -17,6 +17,7 @@ import { useSignInStart } from '@/lib/hooks/use-sign-in-start';
 import { checkHFCapabilities, loginHF } from '@/lib/auth/hf-auth';
 import { detectDeploymentType } from '@/lib/telemetry/config';
 import { track } from '@/lib/telemetry';
+import { isEmbedded } from '@/lib/i18n/config';
 
 /**
  * Ways to connect a model, as the first thing in an empty chat and on a stopped task's card.
@@ -39,14 +40,6 @@ function surfaceCanReachLocal(surface: Surface): boolean {
   if (surface === 'desktop') return true;
   const host = typeof window !== 'undefined' ? window.location.hostname : '';
   return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
-}
-
-function isFramed(): boolean {
-  try {
-    return window.top !== window.self;
-  } catch {
-    return true;
-  }
 }
 
 /** Store a key the way Settings › Connections does, and announce it. */
@@ -206,7 +199,7 @@ export function ConnectOptions({ exclude = [], onMoreOptions, rowsOnly = false, 
   const signIn = useCallback((provider: 'openrouter') => {
     // Sign-in pages refuse to load inside a frame (OpenRouter sends frame-ancestors 'self'), and
     // the HuggingFace Space runs this app in one; there, as on a stopped task's card, use a popup.
-    startSignIn(provider, { popup: keepPage || isFramed() })
+    startSignIn(provider, { popup: keepPage || isEmbedded() })
       .then((started) => { if (!started) toast.error(t('popupBlocked')); })
       .catch(() => toast.error(t('signInFailed')));
   }, [t, keepPage, startSignIn]);

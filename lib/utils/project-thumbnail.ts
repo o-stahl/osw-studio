@@ -8,7 +8,7 @@ import { vfs } from '@/lib/vfs';
 import { VirtualServer } from '@/lib/preview/virtual-server';
 import { captureIframeScreenshot } from './screenshot';
 import { injectVfsBlobMap } from '@/lib/preview/inject-vfs-blob-map';
-import { previewBridgeScript } from '@/lib/preview/preview-bridge';
+import { prependToHead, previewBridgeScript } from '@/lib/preview/preview-bridge';
 import { loadIntoShell } from '@/lib/preview/preview-shell';
 import { getPreviewStorage } from '@/lib/preview/preview-storage';
 
@@ -63,9 +63,7 @@ export async function captureProjectScreenshot(projectId: string): Promise<strin
   html = injectVfsBlobMap(html, compiled.blobUrls);
   // The frame paints itself on request (`captureIframeScreenshot`), through the same bridge the
   // live preview carries.
-  html = /<head[^>]*>/i.test(html)
-    ? html.replace(/<head[^>]*>/i, (head) => head + previewBridgeScript(0))
-    : previewBridgeScript(0) + html;
+  html = prependToHead(html, previewBridgeScript(0));
 
   const iframe = document.createElement('iframe');
   // Project code runs in this frame, so it gets the preview's sandbox: an opaque origin, with the
@@ -86,7 +84,7 @@ export async function captureProjectScreenshot(projectId: string): Promise<strin
     // Let the page render
     await new Promise(r => setTimeout(r, 1500));
 
-    return await captureIframeScreenshot(iframe, 1280, 720, 640, 360, 0.8, false);
+    return await captureIframeScreenshot(iframe, 1280, 720, 640, 0.8, false);
   } finally {
     if (iframe.parentElement) document.body.removeChild(iframe);
     server.cleanupBlobUrls();

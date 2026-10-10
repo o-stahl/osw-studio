@@ -7,8 +7,8 @@ import { DeploymentDetail } from '../index';
 import type { Deployment } from '@/lib/vfs/types';
 
 /**
- * A save that opens the swap dialog has not happened yet, so the edits stay marked unsaved until
- * the swap succeeds. They used to read as saved, and a failed swap lost them on Back with no prompt.
+ * A save that waits on the swap dialog has not happened until the swap is confirmed: cancelled, the
+ * edits stay marked unsaved, so Back still prompts for them.
  */
 
 let container: HTMLElement;

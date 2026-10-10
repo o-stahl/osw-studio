@@ -88,6 +88,13 @@ describe('autoDelete* server outcomes', () => {
     await expect(autoSync.autoDeleteProject('x')).resolves.toBeUndefined();
   });
 
+  it('refuses without a workspace, rather than reading the unscoped 404 as deleted', async () => {
+    autoSync.setAutoSyncWorkspaceId(undefined);
+    respond(404);
+    await expect(autoSync.autoDeleteProject('x')).rejects.toMatchObject({ reason: 'failed' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('does not call the server in browser mode', async () => {
     vi.stubEnv('NEXT_PUBLIC_SERVER_MODE', 'false');
     await expect(autoSync.autoDeleteProject('x')).resolves.toBeUndefined();

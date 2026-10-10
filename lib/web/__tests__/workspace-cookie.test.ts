@@ -41,10 +41,17 @@ describe('on a response', () => {
   });
 
   it('clears the prefixed cookie with Secure, which a bare delete would not', () => {
+    vi.stubEnv('NODE_ENV', 'production');
     const res = NextResponse.json({});
     clearWorkspaceOnResponse(res);
     const prefixed = res.headers.getSetCookie().find(h => h.startsWith('__Host-osw_workspace='))!;
     expect(prefixed).toMatch(/Secure/i);
     expect(prefixed).toMatch(/Path=\//i);
+  });
+
+  it('clears only the plain name where cookies are not Secure, which cannot hold the prefix', () => {
+    const res = NextResponse.json({});
+    clearWorkspaceOnResponse(res);
+    expect(res.headers.getSetCookie()).toEqual([expect.stringMatching(/^osw_workspace=;/)]);
   });
 });

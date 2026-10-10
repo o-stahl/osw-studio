@@ -8,9 +8,10 @@ import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { timingSafeEqual } from 'crypto';
 import type { NextRequest } from 'next/server';
+import { secureCookies } from './secure-cookies';
 
 /** The session cookie's name before it took the `__Host-` prefix, and wherever cookies are not Secure. */
-export const LEGACY_SESSION_COOKIE_NAME = 'osw_session';
+const LEGACY_SESSION_COOKIE_NAME = 'osw_session';
 const SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
 function getSecretKey(): Uint8Array {
@@ -88,12 +89,6 @@ export async function maybeRefreshSession(session: SessionData): Promise<string 
   return createSession(session.userId, session.email, session.isAdmin);
 }
 
-export { SESSION_DURATION };
-
-/** Cookies are Secure in production, unless `SECURE_COOKIES=false` (plain HTTP before a certificate). */
-export function secureCookies(): boolean {
-  return process.env.SECURE_COOKIES !== 'false' && process.env.NODE_ENV === 'production';
-}
 
 /**
  * The session cookie's name. `__Host-` wherever cookies are Secure: the browser then accepts it only
