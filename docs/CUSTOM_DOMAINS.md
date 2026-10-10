@@ -22,7 +22,9 @@ When you publish a deployment with a custom domain:
 2. The reverse proxy (Caddy) intercepts requests to your domain
 3. Caddy provisions an SSL certificate automatically (on-demand TLS)
 4. Requests are routed to your deployment's static files
-5. `/api/` paths (edge functions, analytics) pass through without rewriting
+5. The deployment's own edge functions, the analytics collector and its review copy are passed to OSW Studio; other `/api/` paths are not served on your domain
+
+When the install serves sites away from the studio (`STATIC_PROXY`, as on hosted instances, or `SITES_ORIGIN`), a link to `/deployments/{id}/` on the studio's address redirects to your domain. See [Where Published Sites Are Served](?doc=server-mode).
 
 ## What OSW Studio Handles
 

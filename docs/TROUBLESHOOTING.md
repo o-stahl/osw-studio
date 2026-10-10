@@ -455,7 +455,7 @@ Error: Parse error on line 5
 ### Blob URL Issues
 
 **Symptoms**:
-- `blob:http://localhost...` URLs
+- `blob:` URLs in the preview
 - Images work in preview but not export
 
 **Solution**:

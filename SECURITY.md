@@ -14,6 +14,10 @@ Include what you can of:
 
 OSW Studio is maintained by one person. Reports are acknowledged within 7 days. Fix times depend on severity; you will be kept up to date in the report, and credited in the advisory unless you would rather not be.
 
+## How OSW Studio is protected
+
+[docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) describes what OSW Studio trusts, the boundaries between the studio, the preview, published sites and functions, and the known limits. Reports of a way across one of those boundaries are what this policy is for.
+
 ## Supported versions
 
 Only the latest release receives security fixes.

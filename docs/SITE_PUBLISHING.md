@@ -54,12 +54,9 @@ Server Mode lets you publish static sites directly from your OSW Studio instance
 
 ### Accessing Published Deployments
 
-**Default URL:**
-```
-https://your-osw-instance.com/deployments/{id}/
-```
+Where a deployment is served depends on the install: its own subdomain or custom domain (`STATIC_PROXY`), `https://sites.example.com/deployments/{id}/` (`SITES_ORIGIN`), or the studio's own address when neither is set. On the studio's address, `/deployments/{id}/` redirects to the site. See [Where Published Sites Are Served](?doc=server-mode).
 
-**Clean URLs** (Next.js rewrites):
+**Clean URLs**, under a `/deployments/{id}/` path:
 ```
 /deployments/{id}/about → /deployments/{id}/about.html
 /deployments/{id}/blog/post → /deployments/{id}/blog/post.html

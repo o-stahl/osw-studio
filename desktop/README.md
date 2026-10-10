@@ -7,8 +7,10 @@ use these exact files.
 
 ## Layout
 
-- `electron/main.ts` — the entire main process: boots the bundled server,
-  failure diagnostics, consent-based updates, menu
+- `electron/main.ts` — boots the bundled server, failure diagnostics,
+  consent-based updates, menu
+- `electron/site-proxy.ts` — serves published sites on a second local port, so
+  their scripts never run on the studio's origin
 - `electron/icons/` — committed app icons (no build-time generation)
 - `electron-builder.yml` — packaging config (dmg / nsis / AppImage / deb)
 - `assemble-app.sh` — copies a finished Next.js standalone build into `app/`;
@@ -48,7 +50,8 @@ npx tsup && npx electron-builder --mac --publish never
 
 Run `npm run dev` in the repo root, then `npm run dev` in this directory —
 the Electron window points at `localhost:3000` instead of booting the bundled
-server.
+server. Dev mode does not start the second port for published sites, so they are
+served from `localhost:3000` as in a plain server install.
 
 ## Updates
 

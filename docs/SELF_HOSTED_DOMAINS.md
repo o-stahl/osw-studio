@@ -4,7 +4,9 @@ Guide for OSW Studio operators running their own instances.
 
 ## Deployment Serving
 
-Published deployments are served by Node.js route handlers by default. For better performance, set `STATIC_PROXY=true` in `.env` and use a reverse proxy (e.g., Caddy) to serve deployment files directly. With this setup, deployment requests bypass Node.js entirely.
+Published deployments are served by Node.js route handlers by default, under `/deployments/{id}/`. For better performance and for isolation, set `STATIC_PROXY=true` in `.env` and use Caddy with the generated Caddyfile: each deployment is served from its own subdomain (`{slug}.{your instance domain}`) or custom domain, straight from disk. Only the deployment's own edge functions, `/api/analytics/track`, `/api/analytics/interaction` and its review copy (`/review/{id}/`) are passed to Node.js from those hosts.
+
+The studio's own domain does not serve deployments in this set-up: `/deployments/{id}/` and `/review/{id}/` there redirect to the deployment's subdomain or custom domain, so a site's scripts never run on the studio's origin. Without `STATIC_PROXY`, set `SITES_ORIGIN` to serve every deployment from a separate address instead; see [Where Published Sites Are Served](?doc=server-mode).
 
 When `STATIC_PROXY=true`, publishing or deleting a deployment with a custom domain automatically regenerates the proxy config and reloads it.
 
@@ -27,5 +29,5 @@ GET /api/resolve-domain?list=true                  → { domains: [...] } (all r
 
 ### Notes
 
-- Deployments published with a custom domain use root-relative asset paths. The direct URL at `/deployments/{id}/` will have broken assets — access via the custom domain instead.
+- Deployments published with a custom domain use root-relative asset paths. With `STATIC_PROXY` or `SITES_ORIGIN`, `/deployments/{id}/` on the studio's address redirects to the domain; without either, open the site on its domain, since the assets do not load under the path.
 - The domain is registered in the routing table on publish. If a domain is removed and republished, the routing entry is cleared.

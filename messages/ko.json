@@ -148,6 +148,7 @@
       "backend-features": "백엔드",
       "mcp-server": "MCP 서버",
       "multitenancy": "멀티테넌시",
+      "security-model": "보안 모델",
       "faq": "FAQ",
       "troubleshooting": "문제 해결"
     },

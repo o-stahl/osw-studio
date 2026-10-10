@@ -148,6 +148,7 @@
       "backend-features": "Backend",
       "mcp-server": "MCP Server",
       "multitenancy": "Multitenancy",
+      "security-model": "Security Model",
       "faq": "FAQ",
       "troubleshooting": "Troubleshooting"
     },

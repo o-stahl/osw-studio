@@ -188,7 +188,7 @@ OSW Studio runs client-side by default (Browser Mode). For advanced use cases, e
 - ✅ **Workspaces** - Isolated environments with own projects, deployments, and quotas
 - ✅ **Multi-user** - User accounts with shared workspace access and admin management
 - ✅ SQLite persistence (no external database setup)
-- ✅ Static site publishing to `/deployments/{deploymentId}/`
+- ✅ Static site publishing, served from a separate address from the studio (subdomain, custom domain or `SITES_ORIGIN`)
 - ✅ Edge Functions - JavaScript API endpoints with database access
 - ✅ Scheduled Functions - Run edge functions on cron schedules
 - ✅ Per-deployment SQLite databases (WAL mode) with SQL editor

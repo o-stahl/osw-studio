@@ -237,7 +237,7 @@ git push
 
 OSW Studio's **Server Mode** lets you:
 - Host OSW Studio on your own server
-- Create and publish deployments at `/deployments/{id}/` directly
+- Create and publish deployments directly from the studio, served from their own address
 - Configure SEO, analytics, and custom domains per deployment
 - Skip the export/upload cycle
 

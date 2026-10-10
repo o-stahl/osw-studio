@@ -127,6 +127,8 @@ See your website in real-time:
 - Use the **focus tool** to select specific elements and add them to message context for targeted AI edits
 - Drag **semantic blocks** from the Blocks palette onto the preview — the AI writes code that fits your project
 
+The preview runs isolated from the studio: a project's `localStorage`, `sessionStorage` and cookies are kept per project until you close the tab, and IndexedDB is not available. Test IndexedDB on the published site.
+
 ### Console (Python/Lua)
 
 For terminal runtimes (Python, Lua), the Console panel shows script output and lets you see errors from script execution. Opens automatically for terminal runtimes.

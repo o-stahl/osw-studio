@@ -86,8 +86,11 @@ ANALYTICS_SECRET=your_analytics_secret_here
 # Optional: Secrets encryption (generate with: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")
 SECRETS_ENCRYPTION_KEY=your_encryption_key_here
 
-# Optional: App URL (for SEO/sitemaps)
+# Optional: App URL (the studio's address; used for SEO/sitemaps and origin checks)
 NEXT_PUBLIC_APP_URL=https://your-domain.com
+
+# Optional: a separate address for published sites (see "Where Published Sites Are Served")
+# SITES_ORIGIN=https://sites.example.com
 
 # Optional: MCP connector for outside agents (Claude Code, Cursor, …)
 # MCP_ENABLED=true
@@ -109,7 +112,7 @@ SQLite databases are created automatically:
 
 - **Studio**: http://localhost:3000/
 - **Admin panel**: http://localhost:3000/admin/login
-- **Published sites**: http://localhost:3000/deployments/{id}/
+- **Published sites**: http://localhost:3000/deployments/{id}/ when no separate address is set. See [Where Published Sites Are Served](#where-published-sites-are-served).
 
 **On first visit**, you'll be prompted to create an admin account. After login, you'll land on the **Dashboard** with server stats and traffic metrics.
 
@@ -205,7 +208,7 @@ For bulk operations or troubleshooting, use the Sync button in the sidebar. This
 
 1. Download the installer for your platform from [GitHub Releases](https://github.com/o-stahl/osw-studio/releases)
 2. Install and launch — authentication is bypassed for the single local user
-3. Published sites are served locally at `http://localhost:3000/deployments/{id}/`
+3. Published sites are served on a second local port, e.g. `http://localhost:30012/deployments/{id}/`, so their scripts never run on the studio's address
 
 **Best for**: Personal use, local development, and evaluating Server Mode features without provisioning a server.
 
@@ -234,8 +237,9 @@ For bulk operations or troubleshooting, use the Sync button in the sidebar. This
      ```
      NEXT_PUBLIC_SERVER_MODE=true
      SESSION_SECRET=<generate>
-     NEXT_PUBLIC_APP_URL=${{ RAILWAY_PUBLIC_DOMAIN }}
+     NEXT_PUBLIC_APP_URL=https://${{ RAILWAY_PUBLIC_DOMAIN }}
      ```
+   - With only the Railway domain, published sites are served from the studio's address. To serve them separately, add a second domain to the service and set `SITES_ORIGIN` to it.
 
 4. **Deploy:**
    - Railway auto-deploys on push
@@ -264,6 +268,44 @@ For bulk operations or troubleshooting, use the Sync button in the sidebar. This
 
 ---
 
+## Where Published Sites Are Served
+
+A published site runs code you did not write line by line: what the AI wrote, an imported template, a widget a client asked for. If it is served from the same address as the studio, its scripts run with the access of whoever opens it. They can call the studio's API with that person's session and read the API keys the studio keeps in their browser. So OSW Studio serves published sites from a different address than the studio whenever the install has one.
+
+| Set-up | Where sites are served | What to configure |
+|--------|-----------------------|-------------------|
+| Desktop app | A second local port, e.g. `http://localhost:30012/deployments/{id}/` | Nothing |
+| Server with subdomains (`STATIC_PROXY=true` and Caddy) | Each site on its own subdomain or custom domain | See [Custom Domains](?doc=custom-domains) |
+| Server with a sites address (`SITES_ORIGIN`) | `https://sites.example.com/deployments/{id}/` | One DNS record, a certificate and one setting |
+| Server with neither | The studio's own address | Nothing, but the Deployments view shows a warning |
+
+On the studio's address, links to `/deployments/{id}/` and `/review/{id}/` redirect to where the site now lives, so links shared before keep working. The site's address answers only what a site needs: its pages, its review copy, its edge functions and the analytics collector. Everything else there returns 404.
+
+### Setting up a sites address
+
+With the Nginx set-up from the [VPS Deployment guide](?doc=vps-deployment):
+
+1. Add a DNS record for the sites address (for example `sites.example.com`) pointing at the same server.
+2. Add a certificate for it: `sudo certbot --nginx -d sites.example.com`.
+3. Add `SITES_ORIGIN=https://sites.example.com` to `.env`, check that `NEXT_PUBLIC_APP_URL` is the address you open the studio on (redirects apply there), and restart the app.
+4. Republish your sites, so their sitemaps and canonical URLs use the new address.
+
+The guide's Nginx configuration already answers any host name and passes the `Host` header through. Any proxy in front of OSW Studio must do the same (`proxy_set_header Host $host;` in Nginx). Otherwise the app cannot tell the two addresses apart and the redirect loops.
+
+A separate domain (such as `example-sites.com`) isolates the studio more fully than a subdomain of the studio's own domain. Browsers treat subdomains of one domain as the same site for cookies, so a subdomain relies on the browser's cross-origin rules and the studio's origin checks rather than on cookies staying apart.
+
+All sites on one sites address share it. In a visitor's browser, one site's scripts can read another site's storage. Use subdomains (`STATIC_PROXY`) when the sites on an instance belong to different people.
+
+### Review copies
+
+A site's review copy is served from the site's address too. Clients use it as before. Team members reply from the Review tab in the studio, which shows the team badge. On the review copy itself they are visitors like anyone else.
+
+### Without a separate address
+
+If neither `STATIC_PROXY` nor `SITES_ORIGIN` is set, sites are served from the studio's own address, as in earlier versions. That is a reasonable choice when you write or check every site you host, and you are the only person who uses the studio. The Deployments view says when this applies.
+
+---
+
 ## Environment Variables
 
 | Variable | Required | Description |
@@ -274,7 +316,9 @@ For bulk operations or troubleshooting, use the Sync button in the sidebar. This
 | `ANALYTICS_SECRET` | No | Secret for analytics API |
 | `SECRETS_ENCRYPTION_KEY` | No | 256-bit key for encrypting secrets |
 | `SECURE_COOKIES` | No | Set to `false` to allow insecure cookies (pre-SSL only) |
-| `NEXT_PUBLIC_APP_URL` | No | Base URL for SEO/sitemaps |
+| `NEXT_PUBLIC_APP_URL` | No | The studio's address. Used for SEO, sitemaps and origin checks, and for site subdomains with `STATIC_PROXY` |
+| `SITES_ORIGIN` | No | A separate address to serve published sites from, e.g. `https://sites.example.com`. See [Where Published Sites Are Served](#where-published-sites-are-served) |
+| `STATIC_PROXY` | No | Set to `true` when Caddy serves each site on its own subdomain or custom domain (the generated Caddyfile) |
 | `ALLOWED_ORIGINS` | No | Comma-separated origins allowed to send write requests to the API, for a reverse proxy that rewrites the `Host` header and passes no `X-Forwarded-Host` (requests from other sites are refused with 403) |
 | `REGISTRATION_MODE` | No | `open` to allow user self-registration, `closed` (default) for admin-only provisioning |
 | `NEXT_PUBLIC_REGISTRATION_MODE` | No | Client-side mirror of `REGISTRATION_MODE` |
