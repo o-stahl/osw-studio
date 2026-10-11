@@ -91,3 +91,17 @@ describe('the missing project banner', () => {
     expect(text()).toContain(en.publishSettings.changingSourceWarning);
   });
 });
+
+describe('the project picker', () => {
+  const trigger = () => container.querySelector('#project-select')?.textContent ?? '';
+
+  it('names the project the deployment uses', () => {
+    render({ projectId: 'p2' });
+    expect(trigger()).toBe('Two');
+  });
+
+  it('asks for a project when the one it used is gone', () => {
+    render({ projectMissing: true, projectId: 'gone' });
+    expect(trigger()).toBe(en.publishSettings.selectProject);
+  });
+});

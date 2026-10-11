@@ -73,7 +73,12 @@ export function GeneralTab({ settings, onChange, projectId, deploymentId, public
           <SectionBody className="space-y-3">
             <div className="space-y-2">
               <Label htmlFor="project-select">{tc('labels.project')}</Label>
-              <Select value={projectId} onValueChange={onProjectChange}>
+              {/* A deleted project is not among the options; an empty value shows the placeholder
+                  instead of a blank control. */}
+              <Select
+                value={projects.some((project) => project.id === projectId) ? projectId : ''}
+                onValueChange={onProjectChange}
+              >
                 <SelectTrigger id="project-select">
                   <SelectValue placeholder={t('selectProject')} />
                 </SelectTrigger>

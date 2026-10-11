@@ -382,6 +382,12 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
   const handlePublish = async (deploymentId: string) => {
     const deployment = deployments.find(s => s.id === deploymentId);
     if (!deployment) return;
+    // A copy of the project may still be in this browser, but the server refuses to bring back a
+    // project deleted there, and would answer a bare conflict.
+    if (deployment.projectMissing) {
+      toast.error(t('publishProjectMissing'));
+      return;
+    }
 
     // Native confirm() blocks the renderer; an automated client that never accepts
     // the dialog never issues a publish request. The publishing spinner is the signal.
