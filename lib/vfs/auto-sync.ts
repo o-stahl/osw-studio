@@ -825,7 +825,7 @@ async function deleteOnServer(path: string): Promise<void> {
     throw new ServerDeleteRefused('failed');
   }
   if (res.ok || res.status === 404) return;
-  logger.error(`[AutoSync] DELETE ${path} refused: ${res.status}`);
+  logger.warn(`[AutoSync] DELETE ${path} refused: ${res.status}`);
   if (res.status === 409) {
     const body = await res.json().catch(() => null) as { code?: string } | null;
     if (body?.code === 'in_use') throw new ServerDeleteRefused('in_use');
