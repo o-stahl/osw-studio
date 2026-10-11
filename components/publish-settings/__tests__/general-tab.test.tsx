@@ -80,6 +80,7 @@ describe('the missing project banner', () => {
 
   it('is not shown when the project exists', () => {
     render({ projectMissing: false });
+    expect(text()).toContain(en.publishSettings.sourceProjectHelp);
     expect(text()).not.toContain(en.publishSettings.projectMissingTitle);
   });
 

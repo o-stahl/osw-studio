@@ -114,7 +114,7 @@ describe('middleware resuming a held authorization', () => {
 
   it('leaves a signed-out visitor to the login they were already being sent to', async () => {
     const res = await run({ pending: AUTH_QUERY, signedIn: false });
-    expect(res.headers.get('location') ?? '').not.toContain('/mcp/authorize');
+    expect(new URL(res.headers.get('location')!).pathname).toBe('/admin/login');
   });
 
   it('does not touch the consent screen itself, which would loop', async () => {
@@ -124,7 +124,7 @@ describe('middleware resuming a held authorization', () => {
 
   it('does not hijack an API call', async () => {
     const res = await run({ pending: AUTH_QUERY, signedIn: true, path: '/api/auth/me' });
-    expect(res.headers.get('location') ?? '').not.toContain('/mcp/authorize');
+    expect(res.headers.get('location')).toBeNull();
   });
 
   it('drops a held value that fails validation instead of redirecting to it', async () => {
@@ -150,6 +150,7 @@ describe('middleware resuming a held authorization', () => {
 
   it('stays out of the way when nothing is held', async () => {
     const res = await run({ signedIn: true });
-    expect(res.headers.get('location') ?? '').not.toContain('/mcp/authorize');
+    expect(res.headers.get('location')).toBeNull();
+    expect(res.headers.get('x-middleware-next')).toBe('1');
   });
 });

@@ -77,7 +77,8 @@ describe('Sidebar footer', () => {
   it('keeps the tour, About and outside links out of the main list', async () => {
     await render({ onStartTour: vi.fn(), onOpenAbout: vi.fn() });
     const nav = container.querySelector('nav')!.textContent ?? '';
-    for (const gone of ['Guided Tour', 'About', 'Discord', 'GitHub']) expect(nav).not.toContain(gone);
+    expect(nav).toContain(en.common.terms.projects);
+    for (const gone of [en.nav.items.tour, en.nav.items.about, en.nav.discussions, 'GitHub']) expect(nav).not.toContain(gone);
   });
 
   it('offers the tour, About, Discussions and GitHub in the help menu', async () => {

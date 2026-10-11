@@ -107,6 +107,8 @@ describe('autoSyncSkill', () => {
   it('does not count an accepted push', async () => {
     pushSkill.mockResolvedValue({ success: true });
     await autoSync.autoSyncSkill({ id: 's1', isBuiltIn: false } as never);
+    expect(pushSkill).toHaveBeenCalledTimes(1);
+    expect(logger.error).not.toHaveBeenCalled();
     expect(track).not.toHaveBeenCalled();
   });
 });
