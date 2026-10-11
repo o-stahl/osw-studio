@@ -117,9 +117,29 @@ describe('the style-probe message', () => {
   });
 
   it('leaves the rest of the handler standing when the payload is junk', () => {
-    // `data` crosses postMessage, so a throw here would take every branch after it down too.
-    expect(() => send({ type: 'style-probe' })).not.toThrow();
-    expect(() => send({ type: 'style-probe', nodeId: 5, markerId: {}, properties: 7 })).not.toThrow();
+    // `data` crosses postMessage, so any field can be anything. The reply is the evidence, not the
+    // absence of a throw: dispatchEvent swallows a listener's exception, and the handler answers
+    // every probe, so one that threw is one that never posted. Each field is junk on its own, with
+    // the others valid — a junk nodeId resolves to no element and returns before the properties or
+    // the marker are ever read, so it cannot stand in for them.
+    const nodeId = selectCard();
+    send({ type: 'style-preview', markerId: 'm1', css: 'color: rgb(1, 2, 3);' });
+
+    for (const properties of [undefined, null, 7, {}, 'color']) {
+      const reply = probe(nodeId, 'm1', properties);
+      expect(reply.lost, String(properties)).toEqual([]);
+      expect(reply).not.toHaveProperty('winner');
+    }
+    for (const markerId of [undefined, null, 5, {}]) {
+      expect(probe(nodeId, markerId as unknown as string, ['color']).lost, String(markerId)).toEqual([]);
+    }
+    for (const junk of [undefined, null, 5, {}]) {
+      expect(probe(junk as unknown as string, 'm1', ['color']).lost, String(junk)).toEqual([]);
+    }
+
+    // And a well-formed probe after all that still measures.
+    (document.querySelector('.card') as HTMLElement).style.color = 'rgb(3, 3, 3)';
+    expect(probe(nodeId, 'm1', ['color']).lost).toEqual(['color']);
   });
 });
 

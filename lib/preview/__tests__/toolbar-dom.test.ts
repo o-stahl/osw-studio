@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   TOOLBAR_DOM_JS,
   TOOLBAR_SHADOW_CSS,
@@ -7,6 +9,8 @@ import {
   TOOLBAR_PLACEMENT_ATTR,
   TOOLBAR_HEIGHT,
   TOOLBAR_GAP,
+  TOOLBAR_THEME_PREFIX,
+  TOOLBAR_THEME_TOKENS,
   elementKind,
 } from '../toolbar-dom';
 import type { FocusContextPayload } from '../types';
@@ -733,6 +737,25 @@ describe('the emitted script text', () => {
     expect(TOOLBAR_DOM_JS).not.toContain('\\s');
     expect(TOOLBAR_DOM_JS).not.toContain('\\d');
     expect(TOOLBAR_SHADOW_CSS).not.toContain('\\s');
+
+    // Those three only see an escape that survived, which is the doubled, working form. The
+    // regression the comment above describes — a single `\s` — never reaches the value at all, so it
+    // is looked for where it was written: the authored text of the two literals.
+    const source = fs.readFileSync(path.join(__dirname, '..', 'toolbar-dom.ts'), 'utf8');
+    const between = (start: string, end: string) => {
+      const from = source.indexOf(start);
+      expect(from, start).toBeGreaterThan(-1);
+      const to = source.indexOf(end, from + start.length);
+      expect(to, end).toBeGreaterThan(from);
+      return source.slice(from + start.length, to);
+    };
+    const authoredJs = between('export const TOOLBAR_DOM_JS = `', '\n`;');
+    const authoredCss = between('export const TOOLBAR_SHADOW_CSS = [', '].join(');
+    // The slices are the literals and not something empty: each carries text the value is known to.
+    expect(authoredJs).toContain('function __oswToolbarTrack(');
+    expect(authoredCss).toContain('.osw-toolbar-btn {');
+    expect(authoredJs).not.toContain('\\');
+    expect(authoredCss).not.toContain('\\');
   });
 });
 
@@ -778,6 +801,17 @@ describe('the tooltip', () => {
     // The whole bar is neutral now: nothing on it is destructive or a commitment, and a solid
     // orange block was the loudest thing on the page while only meaning "opens a panel".
     expect(TOOLBAR_SHADOW_CSS).not.toContain('osw-toolbar-btn-primary');
+
+    // The class name is only one way back. A solid fill arrives as a background, under any selector,
+    // so every background the sheet sets has to be one of the neutral surfaces or nothing.
+    const fills = [...TOOLBAR_SHADOW_CSS.matchAll(/background(?:-color)?\s*:\s*([^;]+);/g)].map(m => m[1].trim());
+    expect(fills.length).toBeGreaterThan(0);
+    const neutral = ['bg', 'hover', 'border'].map(name => 'var(' + TOOLBAR_THEME_PREFIX + name + ',');
+    for (const fill of fills) {
+      expect(fill === 'transparent' || neutral.some(prefix => fill.startsWith(prefix)), fill).toBe(true);
+    }
+    // And no colour the host sends is the app's accent proper: `--accent` is the muted hover tint.
+    expect(TOOLBAR_THEME_TOKENS.map(t => t.token)).not.toContain('--primary');
   });
 });
 
