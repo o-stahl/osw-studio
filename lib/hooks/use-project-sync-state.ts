@@ -1,11 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import {
   getProjectSyncState,
   subscribeProjectSyncState,
   type ProjectSyncState,
 } from '@/lib/vfs/project-sync-state';
+
+/**
+ * What the server renders, and so what hydration has to render too. The shared state is module
+ * level and outlives a render: a consumer inside a Suspense boundary hydrates after PageLayout has
+ * already loaded it, and reading it then would put a count into HTML the server sent without one.
+ */
+const SERVER_SNAPSHOT: ProjectSyncState = { statuses: new Map(), pendingCount: 0, loaded: false };
 
 /**
  * Subscribe to the shared project sync state.
@@ -16,9 +23,5 @@ import {
  * PageLayout had scoped it to the workspace.
  */
 export function useProjectSyncState(): ProjectSyncState {
-  const [state, setState] = useState<ProjectSyncState>(getProjectSyncState);
-
-  useEffect(() => subscribeProjectSyncState(setState), []);
-
-  return state;
+  return useSyncExternalStore(subscribeProjectSyncState, getProjectSyncState, () => SERVER_SNAPSHOT);
 }
