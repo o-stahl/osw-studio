@@ -126,6 +126,7 @@ describe('auto-sync of the other item kinds', () => {
     expect(pushes[push]).toHaveBeenCalledTimes(1);
     expect(logger.error).toHaveBeenCalled();
     if (itemType) expect(track).toHaveBeenCalledWith('sync_fail', { item_type: itemType, direction: 'push' });
+    else expect(track).not.toHaveBeenCalled();
   });
 
   it.each(kinds)('%s does not count an accepted push', async (_name, sync, push) => {
