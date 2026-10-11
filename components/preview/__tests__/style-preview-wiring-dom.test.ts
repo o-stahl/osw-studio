@@ -66,11 +66,28 @@ describe('the style-preview message', () => {
     expect(window.getComputedStyle(marked()).color).toBe('rgb(50, 50, 50)');
   });
 
-  it('leaves the rest of the handler standing when the payload is junk', () => {
+  it.each([
+    ['no fields', {}],
+    ['a css that is not a string', { markerId: 'm1', css: 7 }],
+    ['a marker id that is not a string', { markerId: 5, css: 'color: rgb(1, 2, 3);' }],
+  ])('takes the block down, without throwing, for %s', (_name, junk) => {
     // `data` crosses postMessage, so a throw here would take every branch after it down too.
-    expect(() => send({ type: 'style-preview' })).not.toThrow();
-    expect(() => send({ type: 'style-preview', markerId: 5, css: 7 })).not.toThrow();
-    expect(transient()).toBeNull();
+    // dispatchEvent swallows a listener's throw, so the evidence is the block: an unusable payload
+    // clears it, and a handler that threw first would leave it standing.
+    const errors: unknown[] = [];
+    const onError = (event: ErrorEvent) => errors.push(event.error);
+    window.addEventListener('error', onError);
+    try {
+      send({ type: 'style-preview', markerId: 'm1', css: 'color: rgb(1, 2, 3);' });
+      expect(transient()).not.toBeNull();
+
+      send({ type: 'style-preview', ...junk });
+
+      expect(transient()).toBeNull();
+      expect(errors).toEqual([]);
+    } finally {
+      window.removeEventListener('error', onError);
+    }
   });
 });
 
