@@ -118,6 +118,17 @@ function PageWrapperInner({ view, workspaceId, settingsTab, autoCreateProject, q
     router.push(route);
   }, [router, workspaceId]);
 
+  // Dialogs that leave for another view (Deploy to Deployments or Settings, the template browser to
+  // Templates) announce it with `nav-to-view`, which StudioApp hears in Browser Mode.
+  useEffect(() => {
+    const onNavToView = (event: Event) => {
+      const target = (event as CustomEvent<{ view?: unknown }>).detail?.view;
+      if (typeof target === 'string') handleNavigate(target);
+    };
+    window.addEventListener('nav-to-view', onNavToView);
+    return () => window.removeEventListener('nav-to-view', onNavToView);
+  }, [handleNavigate]);
+
   /**
    * The tour runs on the projects page. Every route mounts its own tour provider, so from anywhere
    * else it travels as `?tour=start` and the projects page starts it on arrival.
