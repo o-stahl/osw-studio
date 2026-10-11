@@ -208,7 +208,7 @@ For bulk operations or troubleshooting, use the Sync button in the sidebar. This
 
 1. Download the installer for your platform from [GitHub Releases](https://github.com/o-stahl/osw-studio/releases)
 2. Install and launch — authentication is bypassed for the single local user
-3. Published sites are served on a second local port, e.g. `http://127.0.0.1:30012/deployments/{id}/`, so their scripts do not run on the studio's address
+3. Published sites are served on a second local port, e.g. `http://localhost:30012/deployments/{id}/`, so their scripts do not run on the studio's address
 
 **Best for**: Personal use, local development, and evaluating Server Mode features without provisioning a server.
 
@@ -277,7 +277,7 @@ A published site runs code you did not write line by line: what the AI wrote, an
 | Server with neither of the below (the default) | The studio's own address, at `/deployments/{id}/` | Nothing, but the Deployments view shows a warning |
 | Server with a sites address (`SITES_ORIGIN`) | `https://sites.example.com/deployments/{id}/` | One DNS record, a certificate and one setting |
 | Server with subdomains (`STATIC_PROXY=true` and Caddy) | Each site on its own subdomain or custom domain | Caddy with the generated Caddyfile (see below) |
-| Desktop app | A second local port, e.g. `http://127.0.0.1:30012/deployments/{id}/` | Nothing; the port is chosen when the app starts |
+| Desktop app | A second local port, e.g. `http://localhost:30012/deployments/{id}/` | Nothing; the port is chosen when the app starts |
 
 When sites have their own address, links to `/deployments/{id}/` and `/review/{id}/` on the studio's address redirect to it, so links shared before keep working. The site's address answers only site paths: its pages, its review copy, its edge functions and the analytics collector. The studio's API is not answered there; its public static files (icons, scripts) are.
 

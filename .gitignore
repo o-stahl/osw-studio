@@ -87,3 +87,5 @@ playwright.config.ts
 
 # Development planning docs
 docs/superpowers/
+# Written by postinstall from node_modules/modern-screenshot
+/public/preview-capture/

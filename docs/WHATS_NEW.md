@@ -6,6 +6,28 @@ Welcome to OSW Studio! This page highlights the latest features and updates.
 
 ---
 
+## v1.106.0 - Safer Previews and Published Sites (2026-10-11)
+
+A project's code now runs apart from the studio. The preview is sandboxed, so a project you didn't write, or AI output steered by a page it read, can no longer read the API keys the studio stores in your browser. In Server Mode and the desktop app, published sites can be kept apart too, so their scripts can't act as you in the studio.
+
+### Security
+- **Update your own copies**: if you run your own copy of OSW Studio (Server Mode, the desktop app, or a copy of the Space), please update to v1.106.0. If you've previewed projects you didn't write (not including built-in templates), consider replacing the provider API keys you've used. If your Server Mode install hosts sites other people write, also give sites their own address; see Server Mode › Where Published Sites Are Served
+
+### Preview
+- **Each project keeps its own storage**: `localStorage`, `sessionStorage` and cookies in the preview belong to that project, and last until you reload or close the studio
+
+### Server Mode and desktop
+- **Published sites on their own address**: the desktop app serves them on a second local port; a self-hosted install sets `SITES_ORIGIN` or uses subdomains, and the Deployments view warns until it does
+- **Deleting a project no longer takes its deployment with it**: a project a deployment uses can't be deleted, and a deployment whose project is gone stays listed so you can point it at another one
+- **Changing a deployment's project is a setting**: save it, then Republish when you're ready. It used to republish straight away
+- **Deletes check with the server first**: if the server refuses one, for example because your session expired, the local copy is kept too
+
+### Models
+- **OpenRouter refusals say what happened**: a request OpenRouter flagged, or a model it won't serve here, stops with that reason and a different model to try, instead of saying your key was refused
+- **"Free models" shows which model is answering**: in server-side runs it also stays on one model until that model fails, instead of changing with every request
+
+---
+
 ## v1.105.0 - Finnish, Korean and an Improved First Use Experience (2026-10-06)
 
 OSW Studio's interface is now available in Finnish and Korean as well as English; choose a language in Settings › Appearance or from the language menu at the bottom of the sidebar. Getting started is simpler too: an empty chat offers ways to connect a model, including signing in with OpenRouter instead of copying a key, and the guided tour is offered rather than started for you. The agent's instructions, your project's content and the guided tour stay in English.

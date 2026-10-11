@@ -27,14 +27,14 @@ describe('with a proxy', () => {
   });
 
   it("sends a site page to the root of the site's subdomain", async () => {
-    resolve.mockResolvedValue({ deployment: { id: 'd1', slug: 'pale-plum-place' } });
+    resolve.mockResolvedValue({ deployment: { id: 'd1', slug: 'quiet-oak-hill' } });
     const res = await ask('/deployments/d1/about.html?x=1');
     expect(res.status).toBe(307);
-    expect(res.headers.get('location')).toBe('https://pale-plum-place.inst-1.oswstudio.com/about.html?x=1');
+    expect(res.headers.get('location')).toBe('https://quiet-oak-hill.inst-1.oswstudio.com/about.html?x=1');
   });
 
   it('prefers the custom domain, and keeps the review path', async () => {
-    resolve.mockResolvedValue({ deployment: { id: 'd1', slug: 'pale-plum-place', customDomain: 'papertop.app' } });
+    resolve.mockResolvedValue({ deployment: { id: 'd1', slug: 'quiet-oak-hill', customDomain: 'papertop.app' } });
     expect((await ask('/deployments/d1/')).headers.get('location')).toBe('https://papertop.app/');
     expect((await ask('/review/d1/page.html')).headers.get('location')).toBe('https://papertop.app/review/d1/page.html');
   });
@@ -53,9 +53,9 @@ describe('with a proxy', () => {
     resolve.mockResolvedValue({ deployment: { id: 'd1' } });
     expect((await ask('/deployments/d1/', 'http://localhost:3000')).status).toBe(404);
     // Control: one that has a host of its own is still sent there from loopback.
-    resolve.mockResolvedValue({ deployment: { id: 'd1', slug: 'pale-plum-place' } });
+    resolve.mockResolvedValue({ deployment: { id: 'd1', slug: 'quiet-oak-hill' } });
     expect((await ask('/deployments/d1/', 'http://localhost:3000')).headers.get('location'))
-      .toBe('https://pale-plum-place.inst-1.oswstudio.com/');
+      .toBe('https://quiet-oak-hill.inst-1.oswstudio.com/');
   });
 
   it('answers 404 when the lookup fails, instead of an error page', async () => {

@@ -18,7 +18,7 @@ import { config } from '../middleware';
 const matcher = new RegExp(`^${config.matcher[0]}$`);
 const reachesMiddleware = (pathname: string) => matcher.test(pathname);
 
-const WS = '/w/b80f9b8d-99e0-4934-9920-5dd6c5cf3edd';
+const WS = '/w/0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0';
 
 describe('the middleware matcher', () => {
   it('still guards the workspace pages and APIs', () => {
