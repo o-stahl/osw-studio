@@ -23,7 +23,7 @@ OSW Studio is a browser-based development environment where you describe what yo
 ## Key Features
 
 **🤖 Multiple AI Providers**
-Choose from 16 providers: OpenRouter, OpenAI, Anthropic, Google Gemini, Groq, HuggingFace, DeepSeek, SambaNova, MiniMax, Zhipu, Opencode Go, mesh-llm, ChatGPT subscription (Plus/Pro), or run locally with Ollama, LM Studio, or llama.cpp
+Choose from 18 providers: OpenRouter, OpenAI, Anthropic, Google Gemini, Groq, HuggingFace, DeepSeek, SambaNova, MiniMax, Zhipu, Opencode Go, Pollinations, Vercel AI Gateway, mesh-llm, ChatGPT subscription (Plus/Pro), or run locally with Ollama, LM Studio, or llama.cpp
 
 **💾 Works in Your Browser**
 Everything stays private in your browser. No server required.

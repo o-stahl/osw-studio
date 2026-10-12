@@ -8,7 +8,7 @@
 [![GitHub Stars](https://img.shields.io/github/stars/o-stahl/osw-studio?style=social)](https://github.com/o-stahl/osw-studio/stargazers)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Live Demo](https://img.shields.io/badge/Demo-Try%20Now-success)](https://huggingface.co/spaces/otst/osw-studio)
-[![Version](https://img.shields.io/badge/Version-1.106.0-blue)](https://github.com/o-stahl/osw-studio/releases)
+[![Version](https://img.shields.io/badge/Version-1.106.1-blue)](https://github.com/o-stahl/osw-studio/releases)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/o-stahl/osw-studio/pulls)
 [![Discussions](https://img.shields.io/github/discussions/o-stahl/osw-studio)](https://github.com/o-stahl/osw-studio/discussions)
 
@@ -168,7 +168,7 @@ The agent runs entirely in your browser, operating on a virtual file system (Ind
 - [Anthropic](https://console.anthropic.com) - Claude 3/4 series
 - [Google](https://aistudio.google.com) - Gemini models
 - [Groq](https://console.groq.com) - Fast inference
-- [HuggingFace](https://huggingface.co) - Free tier ($0.10/month), 120+ models
+- [HuggingFace](https://huggingface.co) - 120+ models, billed to your HuggingFace credits
 - [DeepSeek](https://platform.deepseek.com) - DeepSeek models
 - [MiniMax](https://platform.minimaxi.com) - MiniMax models
 - [Zhipu AI](https://open.bigmodel.cn) - GLM series

@@ -12,6 +12,7 @@ import { configManager } from '@/lib/config/storage';
 import { validateApiKey } from '@/lib/llm/llm-client';
 import { whoAmI } from '@huggingface/hub';
 import { checkHFCapabilities, loginHF } from '@/lib/auth/hf-auth';
+import { HF_BILLING_URL } from '@/lib/constants/links';
 import type { HFCapabilities } from '@/lib/auth/hf-auth';
 import { track } from '@/lib/telemetry';
 
@@ -162,10 +163,10 @@ export function HFAuthPanel({ onAuthChange }: HFAuthPanelProps) {
           extra={oauthUsername}
           info={
             <>
-              {t.rich('hfFreeTier', {
+              {t.rich('hfCredits', {
                 link: (chunks) => (
                   <a
-                    href="https://huggingface.co/pricing"
+                    href={HF_BILLING_URL}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-primary hover:underline inline-flex items-center gap-0.5"

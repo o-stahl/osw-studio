@@ -219,6 +219,8 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
         deployment.id === deploymentId ? { ...deployment, ...updates } : deployment
       )
     );
+    // The detail view renders its own copy; without this a publish leaves it on "Pending Changes".
+    setSelectedDeployment(prev => (prev && prev.id === deploymentId ? { ...prev, ...updates } : prev));
   };
 
   const handleOpenDetail = (deployment: Deployment, section?: string) => {

@@ -37,9 +37,9 @@ When nothing is connected yet, the chat shows ways to connect. **Sign in** next 
 
 You can also paste a key from any provider into the field under the options. OSW Studio recognises most providers from the key itself, and asks when it cannot tell.
 
-### Option A2: HuggingFace (Free Tier)
+### Option A2: HuggingFace
 
-HuggingFace provides $0.10/month in free inference credits to all users — no payment method required.
+HuggingFace bills inference to your HuggingFace account. A free account has no inference credit, so buy credits on [huggingface.co/settings/billing](https://huggingface.co/settings/billing) first; a PRO subscription includes $2 a month. For a free start, use OpenRouter's free models instead.
 
 1. Create an account at [huggingface.co](https://huggingface.co)
 2. Go to [Settings → Access Tokens](https://huggingface.co/settings/tokens)

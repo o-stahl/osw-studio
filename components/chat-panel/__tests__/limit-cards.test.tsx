@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { createTranslator } from 'next-intl';
 import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import en from '@/messages/en.json';
+import { HF_BILLING_URL } from '@/lib/constants/links';
 import { StoppedCard, LimitNotice } from '../limit-cards';
 import { configManager } from '@/lib/config/storage';
 
@@ -77,13 +78,25 @@ describe('StoppedCard', () => {
     expect(container.textContent).not.toMatch(/\d/);
   });
 
-  it('offers ways to connect when HuggingFace runs out and nothing else is connected', () => {
+  it('offers buying HuggingFace credit, and ways to connect, when HuggingFace runs out and nothing else is connected', () => {
+    // A free HuggingFace account has no inference credit at all, so this is where it ends up.
+    const limits = createTranslator({ locale: 'en', messages: en, namespace: 'limits' });
     working('huggingface', 'm');
     render(<StoppedCard live onContinue={() => {}} data={{ errorCategory: 'credit_exhausted', provider: 'huggingface', model: 'm' }} />);
-    expect(container.textContent).toContain('Your free HuggingFace allowance is used up');
-    expect(container.textContent).toContain('It renews monthly.');
+    expect(container.textContent).toContain(limits('titleHfCredit'));
+    expect(container.textContent).toContain(limits('hfCreditBody'));
+    const buy = [...container.querySelectorAll('a')].find((a) => a.textContent === limits('hfBuyCredits'));
+    expect(buy?.getAttribute('href')).toBe(HF_BILLING_URL);
+    expect(buy?.getAttribute('target')).toBe('_blank');
     expect(container.textContent).toContain('OpenRouter');
     expect(button(/^Continue$/)).toBeUndefined();
+  });
+
+  it('offers no HuggingFace credit link when another provider runs out', () => {
+    const limits = createTranslator({ locale: 'en', messages: en, namespace: 'limits' });
+    working('openai', 'm');
+    render(<StoppedCard live onContinue={() => {}} data={{ errorCategory: 'credit_exhausted', provider: 'openai', model: 'm' }} />);
+    expect(container.textContent).not.toContain(limits('hfBuyCredits'));
   });
 
   it('suggests "Free models" when a paid OpenRouter model is out of credit, as a choice', () => {

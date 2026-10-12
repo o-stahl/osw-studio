@@ -261,7 +261,7 @@ export function ChatPanel({
   const [showMobileSettings, setShowMobileSettings] = useState(false);
   const [showSettingsManage, setShowSettingsManage] = useState(false);
   const [settingsManagePane, setSettingsManagePane] = useState<SettingsPane>('models');
-  const openProvidersManage = useCallback((tab: 'models' | 'connections' | 'templates' = 'models') => {
+  const openProvidersManage = useCallback((tab: 'models' | 'connections' | 'templates') => {
     setSettingsManagePane(tab as SettingsPane);
     setShowSettingsManage(true);
   }, []);
@@ -1437,7 +1437,7 @@ export function ChatPanel({
                   <ProjectModelsPanel
                     onManageSettings={() => {
                       setShowMobileSettings(false);
-                      openProvidersManage('models');
+                      openProvidersManage('connections');
                     }}
                   />
                 </PopoverContent>
@@ -1453,7 +1453,7 @@ export function ChatPanel({
                     <ProjectModelsPanel
                       onManageSettings={() => {
                         setShowMobileSettings(false);
-                        openProvidersManage('models');
+                        openProvidersManage('connections');
                       }}
                       onDone={() => setShowMobileSettings(false)}
                     />

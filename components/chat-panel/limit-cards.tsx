@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { ArrowLeftRight, Clock, OctagonPause, Play, Sparkles } from 'lucide-react';
+import { ArrowLeftRight, Clock, ExternalLink, OctagonPause, Play, Sparkles } from 'lucide-react';
 import { getDefaultModel, getProvider } from '@/lib/llm/providers/registry';
 import { isProviderConnected } from '@/lib/llm/providers/connection-status';
 import type { ProviderId } from '@/lib/llm/providers/types';
@@ -10,6 +10,7 @@ import type { ModelRef } from '@/lib/llm/models/assignment';
 import type { ProviderQuota } from '@/lib/llm/provider-status';
 import { modelLabel } from '@/lib/llm/providers/model-label';
 import { FREE_MODELS_FALLBACK, isFreeModels } from '@/lib/llm/suggestions/free-models';
+import { HF_BILLING_URL } from '@/lib/constants/links';
 import { cn } from '@/lib/utils';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { ConnectOptions } from './connect-options';
@@ -161,7 +162,7 @@ export function StoppedCard({ data, live, onContinue }: {
     // instead of the note going wrong.
     if (provider === 'openrouter' && quota?.kind === 'daily' && quota.limit === OPENROUTER_FREE_TIER_DAILY) lines.push(t('openrouterRaise'));
   } else if (category === 'credit_exhausted') {
-    if (provider === 'huggingface') lines.push(t('hfRenews'));
+    if (provider === 'huggingface') lines.push(t('hfCreditBody'));
     else {
       if (quota?.kind === 'balance') lines.push(t('balance', { remaining: quota.remaining }));
       lines.push(t('creditBody', { provider: name }));
@@ -194,6 +195,18 @@ export function StoppedCard({ data, live, onContinue }: {
 
       {live && onContinue && (
         <div className="flex flex-col gap-2">
+          {/* A free HuggingFace account has no inference credit, so buying some is the direct fix. */}
+          {category === 'credit_exhausted' && provider === 'huggingface' && (
+            <a
+              href={HF_BILLING_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-8 w-full items-center justify-center gap-2 rounded-md border border-primary/30 bg-primary/15 text-xs font-semibold text-primary transition-colors hover:bg-primary/20"
+            >
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+              {t('hfBuyCredits')}
+            </a>
+          )}
           {offerContinue && (
             <button
               type="button"

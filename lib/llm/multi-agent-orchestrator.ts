@@ -1095,9 +1095,10 @@ export class MultiAgentOrchestrator {
       const [status, alternatives, sameProvider] = await Promise.all([
         spent ? fetchProviderStatus(provider, configManager.getProviderApiKey(provider) ?? '') : Promise.resolve(undefined),
         spent ? alternativesTo(provider) : Promise.resolve([]),
-        // The daily free count is shared by every free model, so no other free model would answer.
+        // A spent allowance or credit is the account's, so another model on the same provider would
+        // stop the same way: the free entry below, other providers or connecting one are what can help.
         // On "Free models" the rotation already tried the next one, so there is nothing to suggest.
-        error.errorCategory === 'daily_limit' || onFreeModels ? Promise.resolve(undefined) : nextModelAfter({ provider, model: error.model }).catch(() => undefined),
+        spent || onFreeModels ? Promise.resolve(undefined) : nextModelAfter({ provider, model: error.model }).catch(() => undefined),
       ]);
       // Out of credit on a provider with free models: the free entry is the natural thing to try.
       const tryFree = error.errorCategory === 'credit_exhausted' && FREE_MODELS_PROVIDERS.has(provider) && !onFreeModels;

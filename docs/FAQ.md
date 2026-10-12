@@ -38,7 +38,7 @@ The application itself is **free and open source** (MIT license). However:
 ### Do I need an API key?
 
 - **Cloud providers** (OpenAI, Anthropic, etc.): Yes, get key from provider
-- **HuggingFace**: Free tier with $0.10/month credits — create a token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) with "Inference Providers" permission. On HF Spaces, OAuth sign-in is also available (no token needed).
+- **HuggingFace**: Billed to your HuggingFace account's credits, which a free account has none of (PRO includes $2 a month). Create a token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) with "Inference Providers" permission. On HF Spaces, OAuth sign-in is also available (no token needed).
 - **ChatGPT subscription** (Plus/Pro): No API key needed, uses interactive ChatGPT sign-in.
 - **Local providers** (Ollama, LM Studio, llama.cpp, mesh-llm): No, run models locally for free
 

@@ -221,6 +221,19 @@ describe('signing in and exclusions', () => {
     expect(rowButton('OpenRouter', t('signIn'))).toBeUndefined();
   });
 
+  it('leads with OpenRouter on the Space too, offering HuggingFace below it: a free HuggingFace account has no credit', async () => {
+    surface = 'hf_space';
+    await render();
+    const badges = [...container.querySelectorAll('span[aria-hidden="true"]')].map((b) => b.textContent);
+    const row = (badge: string) => [...container.querySelectorAll('span[aria-hidden="true"]')]
+      .find((b) => b.textContent === badge)!.parentElement!;
+
+    expect(badges[0]).toBe('OR');
+    expect(badges).toContain('HF');
+    expect(row('OR').textContent).toContain(t('recommended'));
+    expect(row('HF').textContent).not.toContain(t('recommended'));
+  });
+
   it('offers HuggingFace sign-in on the Space, but does not ask for it where the page must stay or HF is excluded', async () => {
     surface = 'hf_space';
     await render();

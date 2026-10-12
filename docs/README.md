@@ -127,7 +127,7 @@ Download your complete site and deploy to Vercel, Netlify, or any static host in
 
 **Major Features:**
 - Multiple project runtimes (Static, Handlebars, React, Preact, Svelte, Vue, Python, Lua)
-- Multi-provider AI support (14+ providers, including ChatGPT subscription and HuggingFace free tier)
+- Multi-provider AI support (18 providers, including a ChatGPT subscription and OpenRouter's free models)
 - Dual modes (Chat/Code)
 - Semantic blocks — drag pre-defined layouts onto the preview
 - Templates & Skills systems

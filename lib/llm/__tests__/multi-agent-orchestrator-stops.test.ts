@@ -283,9 +283,20 @@ describe('the stopped card', () => {
     expect(status.fetchProviderStatus).toHaveBeenCalledWith('openrouter', 'key');
   });
 
-  it('suggests the next model on the same provider when that provider has no "Free models"', async () => {
+  it('suggests no other model on a provider out of credit with no "Free models": the credit is the account\'s', async () => {
+    suggest.nextModelAfter.mockResolvedValue({ provider: 'huggingface', model: 'cheaper/model' });
+    suggest.alternativesTo.mockResolvedValue([{ provider: 'gemini', model: 'g/m' }]);
+
+    const { stopped } = await handle(apiError('credit_exhausted', { status: 429, provider: 'huggingface' }), assign('paid/model', 'huggingface'));
+
+    expect(stopped).not.toHaveProperty('suggestion');
+    expect(stopped).toMatchObject({ alternatives: [{ provider: 'gemini', model: 'g/m' }] });
+    expect(suggest.nextModelAfter).not.toHaveBeenCalled();
+  });
+
+  it('suggests the next model on the same provider for a stop about the model', async () => {
     suggest.nextModelAfter.mockResolvedValue({ provider: 'openai', model: 'cheaper/model' });
-    const { stopped } = await handle(apiError('credit_exhausted', { status: 402, provider: 'openai' }), assign('paid/model', 'openai'));
+    const { stopped } = await handle(apiError('model_unavailable', { provider: 'openai' }), assign('paid/model', 'openai'));
     expect(stopped?.suggestion).toEqual({ provider: 'openai', model: 'cheaper/model' });
   });
 

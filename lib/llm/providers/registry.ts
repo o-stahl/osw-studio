@@ -286,7 +286,7 @@ export const providers: Record<BuiltInProviderId, ProviderConfig> = {
   huggingface: {
     id: 'huggingface',
     name: 'HuggingFace',
-    description: 'Free inference with your HuggingFace account',
+    description: 'Models through your HuggingFace account, paid from its credits',
     apiKeyRequired: false,
     apiKeyPlaceholder: 'hf_...',
     apiKeyHelpUrl: 'https://huggingface.co/settings/tokens',

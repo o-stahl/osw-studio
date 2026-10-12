@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.106.1 - 2026-10-13
+
+### Fixes
+- **A task out of credit on a provider without "Free models" suggests no other model there**: `describeStop` (`lib/llm/multi-agent-orchestrator.ts`) skips `nextModelAfter` for `credit_exhausted` as for `daily_limit`, so the stopped card offers other connected providers or `ContinueOnConnect`. It suggested a cheaper model on the same account, such as another HuggingFace model on spent HuggingFace credit, which stopped the same way.
+- **The stopped card for spent HuggingFace credit links to buying more**: `StoppedCard` (`components/chat-panel/limit-cards.tsx`) shows `limits.hfBuyCredits`, opening `HF_BILLING_URL` (`lib/constants/links.ts`), above the other ways to continue. A free HuggingFace account has no inference credit, so its first task stops here.
+- **HuggingFace copy describes paid credit, not a free monthly allowance**: `limits.titleHfCredit`, `limits.hfCreditBody` (replacing `hfRenews`), `settings.hfIntro`, `settings.hfCredits` (was `hfFreeTier`; its link goes to billing, not pricing), `connect.huggingfaceDesc` and `providerCatalog.descriptions.huggingface`, plus the README, `docs/FAQ.md` and `docs/GETTING_STARTED.md`.
+- **Publishing from a deployment's detail view clears its "Pending Changes" badge**: `updateDeploymentInState` (`components/views/deployments-view.tsx`) also updates `selectedDeployment`, the copy `DeploymentDetail` renders. A publish updated only the list's copy, so the open detail kept the old `lastPublishedVersion` until it was reopened.
+- **The models popup's "Manage providers & templates" opens Settings › Connections**: `ProjectModelsPanel`'s `onManageSettings` in `components/chat-panel/index.tsx` calls `openProvidersManage('connections')`. It opened the Models tab.
+
+### Tests
+- **Coverage for the credit stop, the HuggingFace card and the detail view's publish**: `multi-agent-orchestrator-stops.test.ts`, `limit-cards.test.tsx` and `connect-options.test.tsx` (OpenRouter first on the Space), and the new `components/views/__tests__/deployments-view-publish-clears-pending.test.tsx`.
+
 ## v1.106.0 - 2026-10-11
 
 ### Security
