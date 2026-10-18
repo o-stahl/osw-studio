@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.106.2 - 2026-10-18
+
+### Fixes
+- **A gallery edit in an older tab keeps the name and checkpoint another tab saved**: `handleProjectUpdate` (`components/project-manager/index.tsx`) applies only the changed fields to the stored project; `ProjectCard` and `ProjectTableRow` pass only the thumbnail, name or description. A thumbnail upload wrote back the tab's whole copy, rewinding `name` and `lastSavedCheckpointId` (#29).
+- **A project thumbnail upload that cannot be stored shows an error**: `changeThumbnail` in `ProjectCard` and `ProjectTableRow` shows `projects.updateFailed`. The failure went unhandled, with no error, for example on a project deleted in another tab.
+
+### Tests
+- **Coverage for gallery edits from an older tab and a failed thumbnail**: `components/project-manager/__tests__/stale-gallery-write.test.tsx` and `gallery-edits.test.tsx`.
+
 ## v1.106.1 - 2026-10-13
 
 ### Fixes

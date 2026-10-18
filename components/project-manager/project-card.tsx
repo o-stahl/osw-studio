@@ -51,7 +51,7 @@ interface ProjectCardProps {
   onExportZip: (project: Project) => void;
   onDuplicate: (project: Project) => void;
   onPreview: (project: Project) => void;
-  onUpdate: (project: Project) => void;
+  onUpdate: (projectId: string, changes: Partial<Project>) => Promise<void>;
   onExportAsTemplate?: (project: Project) => void;
   onBackend?: (project: Project) => void;
   viewMode?: 'grid' | 'list';
@@ -84,6 +84,12 @@ export const ProjectCard = React.memo(function ProjectCard({
   const t = useTranslations('projects');
   const tc = useTranslations('common');
   const when = useLocalFormat();
+  const changeThumbnail = (image: string | undefined) => {
+    onUpdate(project.id, { previewImage: image, previewUpdatedAt: image ? new Date() : undefined }).catch((error) => {
+      logger.error('Failed to update project thumbnail:', error);
+      toast.error(t('updateFailed'));
+    });
+  };
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState(project.name);
   const [editedDescription, setEditedDescription] = useState(project.description || '');
@@ -126,13 +132,10 @@ export const ProjectCard = React.memo(function ProjectCard({
     }
 
     try {
-      project.name = editedName.trim();
-      project.description = editedDescription.trim() || undefined;
-      await vfs.updateProject(project);
-      // The name and description are stored server-side too. Nothing else on the gallery pushes,
-      // so without this a rename left the project reading as "Local newer" forever.
-      vfs.scheduleAutoSync(project.id);
-      onUpdate(project);
+      await onUpdate(project.id, {
+        name: editedName.trim(),
+        description: editedDescription.trim() || undefined,
+      });
       setIsEditing(false);
       toast.success(t('updated'));
     } catch (error) {
@@ -212,7 +215,7 @@ export const ProjectCard = React.memo(function ProjectCard({
           <ThumbnailArea
             image={project.previewImage}
             onCapture={() => captureProjectScreenshot(project.id)}
-            onImageChange={(img) => onUpdate({ ...project, previewImage: img, previewUpdatedAt: img ? new Date() : undefined })}
+            onImageChange={changeThumbnail}
             size="sm"
           />
 
@@ -431,7 +434,7 @@ export const ProjectCard = React.memo(function ProjectCard({
         <ThumbnailArea
           image={project.previewImage}
           onCapture={() => captureProjectScreenshot(project.id)}
-          onImageChange={(img) => onUpdate({ ...project, previewImage: img, previewUpdatedAt: img ? new Date() : undefined })}
+          onImageChange={changeThumbnail}
           size="md"
         />
         <div className="absolute bottom-2 left-2 flex items-center gap-1.5">

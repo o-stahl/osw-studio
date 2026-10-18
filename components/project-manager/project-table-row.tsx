@@ -18,6 +18,7 @@ import { MoreVertical, Trash2, Download, FileArchive, Copy, Settings, FileBox, P
 import { ThumbnailArea } from '@/components/ui/thumbnail-area';
 import { captureProjectScreenshot } from '@/lib/utils/project-thumbnail';
 import { logger } from '@/lib/utils';
+import { toast } from 'sonner';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
 
 interface ProjectTableRowProps {
@@ -32,7 +33,7 @@ interface ProjectTableRowProps {
   onBackend?: (project: Project) => void;
   /** Absent outside server mode, where quick edit has no route to open. */
   onQuickEdit?: (project: Project) => void;
-  onUpdate: (project: Project) => void;
+  onUpdate: (projectId: string, changes: Partial<Project>) => Promise<void>;
   /** True when the row hid its inline actions, so the menu offers them instead. */
   compactRows?: boolean;
 }
@@ -60,6 +61,12 @@ export const ProjectTableRow = React.memo(function ProjectTableRow({
   const tc = useTranslations('common');
   const tp = useTranslations('projects');
   const when = useLocalFormat();
+  const changeThumbnail = (image: string | undefined) => {
+    onUpdate(project.id, { previewImage: image, previewUpdatedAt: image ? new Date() : undefined }).catch((error) => {
+      logger.error('Failed to update project thumbnail:', error);
+      toast.error(tp('updateFailed'));
+    });
+  };
   const [stats, setStats] = useState<ProjectStats | null>(null);
 
   useEffect(() => {
@@ -80,7 +87,7 @@ export const ProjectTableRow = React.memo(function ProjectTableRow({
           size="xs"
           image={project.previewImage}
           onCapture={() => captureProjectScreenshot(project.id)}
-          onImageChange={(img) => onUpdate({ ...project, previewImage: img, previewUpdatedAt: img ? new Date() : undefined })}
+          onImageChange={changeThumbnail}
         />
       </td>
       <td className="w-full p-[4px_10px] text-[13px] align-middle overflow-hidden" style={{ maxWidth: 0 }}>

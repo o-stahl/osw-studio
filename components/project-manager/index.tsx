@@ -679,11 +679,14 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
     }
   };
 
-  const handleProjectUpdate = useCallback(async (updatedProject: Project) => {
+  // The gallery's copy of a project goes stale once another tab saves or renames it, so a gallery
+  // edit applies only the fields it changed to the stored row.
+  const handleProjectUpdate = useCallback(async (projectId: string, changes: Partial<Project>) => {
+    const updatedProject = { ...(await vfs.getProject(projectId)), ...changes };
     await vfs.updateProject(updatedProject);
-    vfs.scheduleAutoSync(updatedProject.id);
+    vfs.scheduleAutoSync(projectId);
     setProjects(prev => prev.map(p =>
-      p.id === updatedProject.id ? updatedProject : p
+      p.id === projectId ? updatedProject : p
     ));
   }, []);
 
