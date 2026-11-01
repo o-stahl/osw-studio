@@ -102,8 +102,44 @@ describe('generateCaddyfile', () => {
     });
 
     const rootMatches = result.match(/root \* \/custom\/path\/public/g) || [];
-    // The subdomain block only; the studio's block serves no files
-    expect(rootMatches.length).toBe(1);
+    // The subdomain block only (its files and its 404 page); the studio's block serves no files
+    expect(rootMatches.length).toBe(2);
+  });
+
+  it('serves a site\'s own 404.html for a missing page, with status 404', () => {
+    const result = generateCaddyfile({
+      ...BASE_CONFIG,
+      slugRoutes: [{ deployment_id: 'abc', slug: 'test' }],
+      customDomainRoutes: [{ deployment_id: 'xyz', custom_domain: 'example.com' }],
+    });
+
+    // Compared whole: each line is a condition (a 404, a page, a 404.html there) or a step in serving it.
+    for (const [host, id] of [['test.inst-1.oswstudio.com', 'abc'], ['example.com', 'xyz']]) {
+      const block = result.split(`\n${host} {\n`)[1].split('\n}\n')[0];
+      expect(block.slice(block.indexOf('  handle_errors {')), host).toBe([
+        '  handle_errors {',
+        '    @page {',
+        '      expression {err.status_code} == 404',
+        '      path_regexp ^(.*/)?[^/.]*(\\.html?)?$',
+        `      file /deployments/${id}/404.html`,
+        '    }',
+        '    handle @page {',
+        `      root * ${BASE_CONFIG.publicRoot}`,
+        `      rewrite * /deployments/${id}/404.html`,
+        '      file_server',
+        '    }',
+        '  }',
+      ].join('\n'));
+    }
+    expect(result.match(/handle_errors \{/g) || []).toHaveLength(2);
+    // Only for pages: a path with no extension, or .html. A missing script or image keeps the bare 404.
+    const page = /path_regexp (\S+)/.exec(result)![1].replace(/\\\\/g, '\\');
+    const re = new RegExp(page);
+    for (const p of ['/deployments/abc/nope', '/deployments/abc/a/b', '/deployments/abc/nope.html']) expect(re.test(p)).toBe(true);
+    for (const p of ['/deployments/abc/app.js', '/deployments/abc/img/x.png', '/deployments/abc/data.json']) expect(re.test(p)).toBe(false);
+    // The www redirect block has none
+    const wwwBlock = result.slice(result.indexOf('www.example.com {'));
+    expect(wwwBlock).not.toContain('handle_errors');
   });
 
   it('includes try_files for clean URLs in all serving blocks', () => {

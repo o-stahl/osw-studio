@@ -209,10 +209,22 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Room for a top bar that takes space rather than covering the page (the demo notice sets it).
+       !important because the scroll lock of an open menu or dialog (react-remove-scroll-bar) sets the
+       body's padding-top to 0, which would move the page up under the pointer. */
+    padding-top: var(--app-top-offset, 0px) !important;
   }
   html {
     @apply scroll-smooth;
   }
+}
+
+/* Full-height app containers, less the room a top bar takes (`--app-top-offset`, 0 without one). */
+.h-app-dvh {
+  height: calc(100dvh - var(--app-top-offset, 0px));
+}
+.h-app-vh {
+  height: calc(100vh - var(--app-top-offset, 0px));
 }
 
 .background__noisy {

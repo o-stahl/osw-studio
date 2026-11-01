@@ -3,14 +3,14 @@
 import { useEffect } from 'react';
 import type { ProviderId } from '@/lib/llm/providers/types';
 import { configManager } from '@/lib/config/storage';
-import { shouldAutoAssignAgent } from '@/lib/llm/models/project-assignment';
-import { activateProviderAsGlobalDefault, fitModelToAccount, reconcileActiveProviderIfConnected, trackConnectSettling } from '@/lib/llm/models/global-auto-assign';
+import { activateProviderAsGlobalDefault, fitModelToAccount, reconcileActiveProviderIfConnected, shouldTakeOverAgent, trackConnectSettling } from '@/lib/llm/models/global-auto-assign';
+import { checkAllowance } from '@/lib/inference/allowance-status';
 
 /**
- * Auto-assign the GLOBAL active model to a freshly connected provider when no working
- * model is selected yet. Fixes the model-picker still showing "Select provider" after a
- * user pastes an API key on the Connections screen, and means a newly created project
- * inherits the just-connected provider.
+ * Auto-assign the GLOBAL active model to a freshly connected provider when no working model is
+ * selected yet, or only the free allowance is. So the model picker stops showing "Select provider"
+ * once a user pastes an API key on the Connections screen, and a newly created project inherits the
+ * just-connected provider.
  *
  * Event-driven (apiKeyUpdated window event): activateProviderAsGlobalDefault writes the
  * global default (dispatching modelConfigChanged), which the root-mounted useModelConfigSignal
@@ -28,6 +28,8 @@ export function useProviderAutoAssign(): void {
   // the Default template with a keyless provider) would otherwise be stuck showing onboarding UI —
   // the HF "Sign in" button and a disabled composer — until they re-add the connection. See issue #17.
   useEffect(() => {
+    // Where the free allowance is offered, its status check starts with the page (a no-op elsewhere).
+    void checkAllowance();
     const work = (async () => {
       await reconcileActiveProviderIfConnected();
       await fitModelToAccount(configManager.getActiveAssignment().agent.provider);
@@ -50,8 +52,8 @@ export function useProviderAutoAssign(): void {
         if (!provider || !detail?.hasKey) return;
 
         const work = (async () => {
-          // Only when no working model exists yet: don't clobber the user's existing choice.
-          if (shouldAutoAssignAgent()) await activateProviderAsGlobalDefault(provider);
+          // Only when no working model exists yet, or the free allowance stands in: a model the user chose stays.
+          if (shouldTakeOverAgent(provider)) await activateProviderAsGlobalDefault(provider);
           // Either way, a model the account cannot use is no choice at all.
           await fitModelToAccount(provider);
         })();

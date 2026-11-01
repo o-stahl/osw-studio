@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 /**
- * A write to the API from another site's page is refused (SEC-4). Routes authenticate with the
- * session cookie, which the browser attaches to a cross-site form or fetch, so without this a page on
- * any site could publish, add members or hand out a ChatGPT token in the name of a signed-in user.
- * Routes that other origins call by design are exempt, and a request with no Origin (a server or CLI
- * client) is not a browser's cross-site request and passes.
+ * The API answers only the studio's own pages. Routes authenticate with the session cookie, which the
+ * browser attaches to a cross-site form and to any request from a same-site page (a published site on
+ * a sibling subdomain), and which project code running on the studio's origin would send as the user.
+ * So without this a page on any site could publish, add members or hand out a ChatGPT token in the
+ * name of a signed-in user, and project code could read their workspace. Routes that other pages
+ * reach by design are exempt, and a request with neither Sec-Fetch-Site nor Origin passes: a server or
+ * CLI client, or a same-origin read over plain HTTP.
  */
 
 vi.mock('server-only', () => ({}));
@@ -61,9 +63,63 @@ describe('a write from another site', () => {
   });
 });
 
+describe('a read from another page', () => {
+  const get = (path: string, opts: { origin?: string | null; headers?: Record<string, string> }) =>
+    call(path, { method: 'GET', ...opts });
+
+  it('is refused when it names another origin', async () => {
+    expect(refused(await get('/api/w/ws-1/projects', { origin: 'https://evil.example' }))).toBe(true);
+  });
+
+  it('is refused from project code on an opaque origin', async () => {
+    for (const path of ['/api/auth/me', '/api/w/ws-1/sync/status', '/api/admin/users']) {
+      expect(refused(await get(path, { origin: 'null', headers: { 'sec-fetch-site': 'cross-site' } }))).toBe(true);
+      // Over plain HTTP, or from an older browser, only the Origin comes.
+      expect(refused(await get(path, { origin: 'null' }))).toBe(true);
+    }
+  });
+
+  it('is refused from a same-site page, which the Lax session cookie still reaches', async () => {
+    // A published site on a sibling subdomain, by fetch or by an <img> that sends no Origin.
+    expect(refused(await get('/api/w/ws-1/projects', { origin: null, headers: { 'sec-fetch-site': 'same-site' } }))).toBe(true);
+    expect(refused(await get('/api/w/ws-1/projects', { origin: 'https://shop.inst-1.oswstudio.com', headers: { 'sec-fetch-site': 'same-site' } }))).toBe(true);
+  });
+
+  it('is refused on a cross-site navigation to an API address', async () => {
+    expect(refused(await get('/api/analytics/d1/overview', { origin: null, headers: { 'sec-fetch-site': 'cross-site' } }))).toBe(true);
+  });
+
+  it('is refused on the desktop app, whose API has no session', async () => {
+    vi.stubEnv('OSW_DESKTOP', 'true');
+    expect(refused(await call('/api/w/ws-1/projects', { method: 'GET', host: 'localhost:30011', origin: null, headers: { 'sec-fetch-site': 'cross-site' } }))).toBe(true);
+  });
+
+  it.each([
+    ['/api/auth/handoff', 'the gateway\'s login redirect'],
+    ['/api/mcp/oauth/hold', 'the consent page\'s redirect on an MCP client\'s navigation'],
+    ['/api/deployments/d1/functions/contact', 'a published site\'s function call'],
+    ['/api/analytics/track', 'a published site\'s pageview'],
+  ])('passes for %s, %s', async (path) => {
+    expect(refused(await get(path, { origin: null, headers: { 'sec-fetch-site': 'cross-site' } }))).toBe(false);
+    expect(refused(await get(path, { origin: null, headers: { 'sec-fetch-site': 'same-site' } }))).toBe(false);
+  });
+});
+
 describe('what still gets through', () => {
   it('a write from the app\'s own pages', async () => {
     expect(refused(await call('/api/w/ws-1/deployments/d1/publish'))).toBe(false);
+  });
+
+  it('a read from the studio\'s own pages, and the user\'s own navigation', async () => {
+    const read = (headers?: Record<string, string>) => call('/api/w/ws-1/projects', { method: 'GET', origin: null, headers });
+    expect(refused(await read({ 'sec-fetch-site': 'same-origin' }))).toBe(false);
+    expect(refused(await read({ 'sec-fetch-site': 'none' }))).toBe(false);
+    // Over plain HTTP a same-origin read carries neither header.
+    expect(refused(await read())).toBe(false);
+  });
+
+  it('a request marked Sec-Fetch-Site same-origin behind a proxy that hides the public host', async () => {
+    expect(refused(await call('/api/w/ws-1/projects/p1', { host: 'localhost:3000', origin: 'https://studio.example', headers: { 'sec-fetch-site': 'same-origin' } }))).toBe(false);
   });
 
   it('the desktop app\'s own pages over plain http', async () => {
@@ -75,8 +131,8 @@ describe('what still gets through', () => {
     expect(refused(await call('/api/admin/users', { origin: null }))).toBe(false);
   });
 
-  it('a read from another site, which changes nothing', async () => {
-    expect(refused(await call('/api/w/ws-1/projects', { method: 'GET', origin: 'https://evil.example' }))).toBe(false);
+  it('a page navigation from another site, which is not the API', async () => {
+    expect(refused(await call('/w/ws-1/projects', { method: 'GET', origin: null, headers: { 'sec-fetch-site': 'cross-site' } }))).toBe(false);
   });
 
   it.each([

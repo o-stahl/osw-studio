@@ -7,6 +7,17 @@ import { loadProviderModels } from './model-catalog';
 import { pickModelForProvider, shouldAutoAssignAgent } from './project-assignment';
 import { fetchProviderStatus } from '@/lib/llm/provider-status';
 import { FREE_MODELS_ID, FREE_MODELS_PROVIDERS, isFreeModels } from '@/lib/llm/suggestions/free-models';
+import { OSWS_PROVIDER } from '@/lib/inference/allowance';
+
+/**
+ * Whether connecting `provider` should make it the working model: when nothing works yet, or when the
+ * free allowance (lib/inference/allowance.ts) is standing in, since someone who connects their own
+ * provider means to use it.
+ */
+export function shouldTakeOverAgent(provider: ProviderId): boolean {
+  if (shouldAutoAssignAgent()) return true;
+  return provider !== OSWS_PROVIDER && configManager.getActiveAssignment().agent.provider === OSWS_PROVIDER;
+}
 
 /**
  * Make `provider` the GLOBAL active model. This is the onboarding auto-assign path:
@@ -27,7 +38,7 @@ export async function activateProviderAsGlobalDefault(provider: ProviderId): Pro
 
   const models = await loadProviderModels(provider);
   // Re-check after the async load: config may have changed (another connect) meanwhile.
-  if (!shouldAutoAssignAgent()) return;
+  if (!shouldTakeOverAgent(provider)) return;
 
   const model = pickModelForProvider(getDefaultModel(provider), models.map((m) => m.id));
   if (!model) return; // do not assign an empty model (e.g. custom provider with no models)
@@ -60,13 +71,18 @@ export async function activateProviderAsGlobalDefault(provider: ProviderId): Pro
  * deletes and re-adds the connection (which fires `apiKeyUpdated`). See issue #17.
  *
  * When the active agent provider is unready but a provider IS connected, point the global default at a
- * connected provider (preferring the globally selected one). No-op when the active agent is already
- * ready, or when nothing is connected (a genuine new user, whose onboarding UI must stay as-is).
+ * connected provider (preferring the globally selected one, and the free allowance last). No-op when
+ * the active agent is already ready, or when nothing is connected (a genuine new user, whose onboarding
+ * UI must stay as-is; where the free allowance is offered, it counts as connected unless its last
+ * status check refused it).
  */
 export async function reconcileActiveProviderIfConnected(): Promise<void> {
   if (!shouldAutoAssignAgent()) return; // active agent already ready — don't clobber the user's choice
   const selected = configManager.getSelectedProvider();
-  const target = isProviderConnected(selected) ? selected : getConnectedProviders()[0];
+  // The free allowance counts as connected where it is offered and its last check did not refuse it;
+  // a provider the user connected comes first.
+  const connected = getConnectedProviders();
+  const target = isProviderConnected(selected) ? selected : (connected.find((p) => p !== OSWS_PROVIDER) ?? connected[0]);
   if (!target) return; // genuine new user: leave onboarding as-is
   await activateProviderAsGlobalDefault(target);
 }

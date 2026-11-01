@@ -41,6 +41,7 @@ export function useProviderDescriptions(): (provider: { id: string; description:
       'opencode-go': t('opencode-go'),
       pollinations: t('pollinations'),
       vercel: t('vercel'),
+      osws: t('osws'),
     };
     return (provider: { id: string; description: string; baseUrl?: string }) => {
       const builtIn = (descriptions as Record<string, string>)[provider.id];

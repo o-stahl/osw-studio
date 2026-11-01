@@ -52,7 +52,7 @@ describe('shouldAutoCreateFirstProject', () => {
 
 describe('opensFirstProject', () => {
   it('opens a project where people arrive to try building', () => {
-    expect(['hf_space', 'managed', 'desktop'].every((s) => opensFirstProject(s as never))).toBe(true);
+    expect(['hf_space', 'demo', 'managed', 'desktop'].every((s) => opensFirstProject(s as never))).toBe(true);
   });
 
   it('shows the projects page on a local or self-hosted install', () => {

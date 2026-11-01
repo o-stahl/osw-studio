@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getProvider } from '@/lib/llm/providers/registry';
 import { ollamaOrigin, resolveOllamaNumCtx } from '@/lib/llm/ollama-adapter';
 import type { PreflightCheck, PreflightResult } from '@/lib/llm/ollama-preflight';
+import { isDemo } from '@/lib/demo';
 
 /**
  * Checks an Ollama setup the way a task would use it and returns one row per check,
@@ -10,7 +11,8 @@ import type { PreflightCheck, PreflightResult } from '@/lib/llm/ollama-preflight
  * machine at all, which is reported as such rather than as "not running".
  */
 
-const HOSTED = Boolean(process.env.SPACE_ID);
+// True when the server is not on the visitor's computer (the HF Space, the hosted demo). Read per request.
+const hosted = () => Boolean(process.env.SPACE_ID) || isDemo();
 
 async function getJson<T = Record<string, unknown>>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, signal: AbortSignal.timeout(5000) });
@@ -35,11 +37,11 @@ export async function POST(request: NextRequest) {
     checks.push({
       id: 'reachable',
       ok: false,
-      detail: HOSTED
+      detail: hosted()
         ? 'This hosted instance cannot reach a model server on your computer. Ollama works in the desktop app or a self-hosted OSW Studio.'
         : `Nothing answered at ${origin}.`,
-      fix: HOSTED ? undefined : 'ollama serve',
-      ...(HOSTED ? { hosted: true as const } : {}),
+      fix: hosted() ? undefined : 'ollama serve',
+      ...(hosted() ? { hosted: true as const } : {}),
     });
     return NextResponse.json(result);
   }

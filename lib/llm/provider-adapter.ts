@@ -14,8 +14,19 @@ import { requestSnapshotStore } from './request-snapshot';
 import { logger } from '@/lib/utils';
 import { configManager } from '@/lib/config/storage';
 import { classifyProviderError, type ApiErrorBody, type ApiErrorCode } from './provider-errors';
+import { isDemo } from '@/lib/demo';
+import { OSWS_PROVIDER } from '@/lib/inference/allowance';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/** The `code` of an error answer, read without using up the response. */
+async function answerCode(response: Response): Promise<unknown> {
+  try {
+    return ((await response.clone().json()) as { code?: unknown } | null)?.code;
+  } catch {
+    return undefined;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // ProviderApiError — typed error thrown on non-transient API failures.
@@ -66,12 +77,20 @@ const NO_RETRY_CODES = new Set<ApiErrorCode>(['daily_limit', 'credit_exhausted',
 export interface ProviderAdapterConfig {
   getProviderConfig: () => { provider: string; apiKey: string; model: string; baseUrl?: string; customHeaders?: Record<string, string> };
   getApiUrl: () => string;
+  /** Headers sent with each request to `getApiUrl()`: a server-side run's own (lib/server-generate/run-auth.ts). */
+  getRequestHeaders?: () => Record<string, string> | undefined;
   getReasoningEnabled: (model: string) => boolean;
   getDebugStreamEnabled: () => boolean;
   getModelPricing: (provider: string, model: string) => unknown;
   getCachedModels: (provider: string) => { models: { id: string; supportsFunctions?: boolean }[] } | null;
   /** Context length a local provider is loaded with; undefined for cloud providers. */
   getLocalContextLength?: () => number | undefined;
+  /**
+   * What ties a project's requests together for the free allowance (the orchestrator passes the
+   * project id), which uses it to keep them on one upstream and its prompt cache warm.
+   * `/api/generate` hashes it before it leaves.
+   */
+  getSessionId?: () => string | undefined;
   progress: ProgressReporter;
 }
 
@@ -114,6 +133,10 @@ export class OswsProviderAdapter implements ProviderAdapter {
       apiKey = await ensureValidCodexToken();
     }
 
+    // The free allowance sends no key from the browser: the server adds the token (on the demo, for the
+    // trial session in this browser's cookie, lib/inference/trial).
+    const demoTrial = provider === OSWS_PROVIDER && typeof window !== 'undefined' && isDemo();
+
     await this.ensurePricing(provider, model);
 
     const modelSupportsTools = this.supportsTools();
@@ -133,6 +156,7 @@ export class OswsProviderAdapter implements ProviderAdapter {
       ...(providerConfig.baseUrl ? { baseUrl: providerConfig.baseUrl } : {}),
       ...(providerConfig.customHeaders ? { customHeaders: providerConfig.customHeaders } : {}),
       ...(localContextLength ? { context_length: localContextLength } : {}),
+      ...(provider === OSWS_PROVIDER && this.config.getSessionId?.() ? { sessionId: this.config.getSessionId() } : {}),
     };
 
     // Debug capture of the exact outgoing history (no-op unless enabled in the
@@ -152,16 +176,28 @@ export class OswsProviderAdapter implements ProviderAdapter {
       });
     }
 
-    const response = await this.fetchWithRetry(
+    const send = (body: typeof requestBody) => this.fetchWithRetry(
       this.config.getApiUrl(),
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
+        headers: { 'Content-Type': 'application/json', ...this.config.getRequestHeaders?.() },
+        body: JSON.stringify(body),
       },
       3,
       params.signal,
     );
+    // Sessions the page had started when this request left: one started since, by a parallel
+    // request's check, is the session this request was missing.
+    const sessionsBefore = demoTrial ? (await import('@/lib/inference/trial-check')).trialSessionsStarted() : 0;
+    let response = await send(requestBody);
+
+    // No trial session in this browser, or it has ended (over, its allowance spent, or a request from
+    // another network): the bot check for a new one, then one retry.
+    if (demoTrial && response.status === 401 && (await answerCode(response)) === 'trial_session') {
+      const { trialSessionsStarted } = await import('@/lib/inference/trial-check');
+      if (trialSessionsStarted() === sessionsBefore) await this.startTrialSession(model, params.signal);
+      response = await send(requestBody);
+    }
 
     if (!response.ok) {
       const status = response.status;
@@ -243,7 +279,7 @@ export class OswsProviderAdapter implements ProviderAdapter {
     signal?: AbortSignal,
   ): Promise<Response> {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      const response = await apiFetch(url, { ...options, signal });
+      const response = await apiFetch(url, { ...options, signal }, { relaysUpstream: true });
 
       // Retry on rate limits (429), transient server errors (502, 504), and Anthropic overloaded (529)
       // Note: 503 is NOT retried — OpenRouter uses it for "no provider available" which is not transient
@@ -258,8 +294,8 @@ export class OswsProviderAdapter implements ProviderAdapter {
 
       // Waiting cannot help a spent allowance, and a busy model is better replaced than waited on.
       if (response.status === 429) {
-        const code = await response.clone().json().then((b: Partial<ApiErrorBody>) => b?.code).catch(() => undefined);
-        if (code && NO_RETRY_CODES.has(code)) return response;
+        const code = await answerCode(response);
+        if (typeof code === 'string' && NO_RETRY_CODES.has(code as ApiErrorCode)) return response;
       }
 
       const retryAfter = response.headers.get('Retry-After');
@@ -298,7 +334,8 @@ export class OswsProviderAdapter implements ProviderAdapter {
       return;
     }
 
-    if (this.config.getModelPricing(provider, model)) {
+    // The free allowance costs the user nothing (`calculateCost`): no price list to fetch.
+    if (provider === OSWS_PROVIDER || this.config.getModelPricing(provider, model)) {
       this.pricingEnsured.add(key);
       return;
     }
@@ -379,6 +416,30 @@ export class OswsProviderAdapter implements ProviderAdapter {
     }
 
     return result;
+  }
+
+  /**
+   * Starts a new trial session for this browser. When it cannot, it throws the stop the chat shows
+   * instead: no session left today for this network as spent allowance (with when it resets), a failed
+   * check as an expired key, and no answer at all as a model that is not available.
+   */
+  private async startTrialSession(model: string, signal?: AbortSignal): Promise<void> {
+    const { startTrialSession, TrialCheckError } = await import('@/lib/inference/trial-check');
+    try {
+      await startTrialSession(signal);
+    } catch (err) {
+      // Stopped while the check ran: rethrown, as any other request's abort.
+      if (signal?.aborted) throw err;
+      const failure = err instanceof TrialCheckError ? err.failure : 'unavailable';
+      if (failure === 'trial_limit') {
+        const resetAt = err instanceof TrialCheckError ? err.resetAt : undefined;
+        throw new ProviderApiError('OSW Studio inference has no more free sessions for this network today.', 429, 'rate_limit', 'daily_limit', OSWS_PROVIDER, model, resetAt ? { resetAt } : {});
+      }
+      if (failure === 'check_failed') {
+        throw new ProviderApiError('The bot check for OSW Studio inference did not pass.', 401, 'auth', 'auth_expired', OSWS_PROVIDER, model);
+      }
+      throw new ProviderApiError('OSW Studio inference is not available right now.', 503, 'server', 'model_not_found', OSWS_PROVIDER, model);
+    }
   }
 
   // ---------------------------------------------------------------------------

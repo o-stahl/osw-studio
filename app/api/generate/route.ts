@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'crypto';
 import { classifyProviderError, classifyGeminiError, providerMessageForDisplay, type ProviderErrorClass } from '@/lib/llm/provider-errors';
 import { isFreeModels, FREE_MODELS_FALLBACK } from '@/lib/llm/suggestions/free-models';
 import { supportedCommandList } from '@/lib/vfs/shell-commands';
@@ -12,6 +13,11 @@ import { applyReasoningReplayPolicy } from '@/lib/llm/reasoning-replay';
 import { consolidateSystemMessages } from '@/lib/llm/consolidate-system-messages';
 import { logger } from '@/lib/utils';
 import { handleCodexGeneration } from '@/lib/llm/codex-adapter';
+import { OSWS_PROVIDER, allowanceFromServer, freeAllowanceOffered, inferenceBaseUrl } from '@/lib/inference/allowance';
+import { forgetAccountToken, getAccountToken } from '@/lib/inference/account-token';
+import { trialClientAddress, trialCookieName, trialRequestToken, trialResponse, trialSessionNeeded } from '@/lib/inference/trial';
+import { getSession } from '@/lib/auth/session';
+import { serverRunUser } from '@/lib/server-generate/run-auth';
 import { buildGeminiRequestBody, createGeminiToCompletionsTransformer, geminiToCompletionsResponse } from '@/lib/llm/gemini-adapter';
 import { buildOllamaChatBody, createOllamaToCompletionsTransformer, messagesToOllama, ollamaToCompletionsResponse, ollamaOrigin, resolveOllamaNumCtx } from '@/lib/llm/ollama-adapter';
 
@@ -111,7 +117,7 @@ export async function POST(request: NextRequest) {
   // Set once the provider is known, for the network-error message in the catch below.
   let localTarget: { name: string; url: string; hint: string } | undefined;
   try {
-    const { prompt, apiKey: clientApiKey, model: requestedModel, tools, context, messages, tool_choice, provider, max_tokens, reasoning, stream: requestStream, baseUrl: requestBaseUrl, customHeaders: requestCustomHeaders, context_length: requestContextLength } = await request.json();
+    const { prompt, apiKey: clientApiKey, model: requestedModel, tools, context, messages, tool_choice, provider, max_tokens, reasoning, stream: requestStream, baseUrl: requestBaseUrl, customHeaders: requestCustomHeaders, context_length: requestContextLength, sessionId } = await request.json();
     // "Free models" is resolved by the client; one that arrives unresolved goes to OpenRouter's
     // own free router rather than to an id no provider knows.
     const model = isFreeModels(requestedModel) ? FREE_MODELS_FALLBACK : requestedModel;
@@ -120,14 +126,21 @@ export async function POST(request: NextRequest) {
     const providerConfig = getProvider(selectedProvider);
     const wireFormat = resolveWireFormat(selectedProvider, model || '');
 
-    const apiKey = clientApiKey;
+    let apiKey = clientApiKey;
 
-    const customBaseUrl = requestBaseUrl;
+    // The free allowance (lib/inference/allowance.ts) goes to OSW Studio's inference server and to no
+    // address a client names, and only where it is offered.
+    const allowance = selectedProvider === OSWS_PROVIDER;
+    if (allowance && !freeAllowanceOffered()) {
+      return NextResponse.json({ error: 'OSW Studio inference is not offered here.', code: 'model_unavailable' }, { status: 404 });
+    }
+    const customBaseUrl = allowance ? inferenceBaseUrl() : requestBaseUrl;
 
     // Custom endpoints are external-only: reject loopback/private/non-http URLs. Built-in
     // local providers (Ollama/LM Studio/llama.cpp) legitimately point at localhost and are
-    // exempt. On hosted instances, network egress filtering blocks DNS-rebinding past this.
-    if (customBaseUrl && !providerConfig.isLocal) assertPublicHttpUrl(customBaseUrl);
+    // exempt, as is the allowance's server address, which is configuration rather than input.
+    // On hosted instances, network egress filtering blocks DNS-rebinding past this.
+    if (customBaseUrl && !providerConfig.isLocal && !allowance) assertPublicHttpUrl(customBaseUrl);
     if (providerConfig.isLocal) {
       localTarget = {
         name: providerConfig.name,
@@ -141,6 +154,30 @@ export async function POST(request: NextRequest) {
         { error: 'Either prompt or messages is required' },
         { status: 400 }
       );
+    }
+
+    // The allowance's token is never one a client sends. A hosted instance asks the gateway for the
+    // signed-in user's, or for the user a server-side run is for (lib/server-generate/run-auth.ts);
+    // the demo mints one for the trial session in this browser's cookie (lib/inference/trial), and
+    // without a session the page runs the bot check for one.
+    let trialSession = false;
+    let accountUser: string | null = null;
+    if (allowance) {
+      if (allowanceFromServer()) {
+        const userId = serverRunUser(request.headers) ?? (await getSession())?.userId;
+        if (!userId) return NextResponse.json({ error: 'Sign in to use OSW Studio inference.', code: 'auth' }, { status: 401 });
+        const issued = await getAccountToken(userId);
+        if (!issued) {
+          return NextResponse.json({ error: 'OSW Studio inference is not available right now.', code: 'model_unavailable' }, { status: 503 });
+        }
+        apiKey = issued.token;
+        accountUser = userId;
+      } else {
+        const trial = await trialRequestToken({ ip: trialClientAddress(request.headers), cookie: request.cookies.get(trialCookieName())?.value });
+        if (!trial.ok) return trialResponse(trial.answer);
+        apiKey = trial.token;
+        trialSession = true;
+      }
     }
 
     if (providerConfig.apiKeyRequired && !apiKey && !providerConfig.usesOAuth) {
@@ -218,7 +255,7 @@ Habits:
       });
     }
 
-    const headers = buildHeaders(selectedProvider, apiKey, providerConfig, wireFormat, requestCustomHeaders);
+    const headers = buildHeaders(selectedProvider, apiKey, providerConfig, wireFormat, allowance ? undefined : requestCustomHeaders);
     
     let processedMessages = chatMessages;
     let anthropicSystemPrompt = '';
@@ -414,6 +451,12 @@ Habits:
       messages: processedMessages,
       stream: streamEnabled
     };
+
+    // The allowance keeps one conversation on one upstream with its prompt cache warm. What the
+    // client sends (a project id) leaves only as a hash.
+    if (allowance && typeof sessionId === 'string' && sessionId) {
+      requestBody.session_id = createHash('sha256').update(sessionId).digest('hex').slice(0, 32);
+    }
 
     // Request usage stats in streaming responses (needed for compaction threshold).
     // Most OpenAI-compatible providers support this; skip for local servers that may reject it.
@@ -612,6 +655,14 @@ Habits:
         );
       }
 
+      // The inference server refused a token this app or the gateway issued: a setup problem, not the
+      // visitor's doing.
+      if (allowance && response.status === 401) {
+        logger.error('[allowance] the inference server refused the token');
+        if (accountUser && apiKey) forgetAccountToken(accountUser, apiKey);
+        return NextResponse.json({ ...errorClass, error: 'OSW Studio inference is not available right now.', code: 'model_unavailable' }, { status: 503 });
+      }
+
       // Auth errors — actionable message for all providers, with what the provider said
       if (response.status === 401 || response.status === 403) {
         const providerName = providerConfig.name;
@@ -659,6 +710,15 @@ Habits:
         if (selectedProvider === 'openrouter') {
           return NextResponse.json(
             { ...errorClass, error: 'OpenRouter credit limit reached. Add credits at openrouter.ai/credits or switch to a provider with your own API key.' },
+            { status: 429 }
+          );
+        }
+        // A trial session's own allowance is spent: it ends, and the page starts a new one while the
+        // network has sessions left for the day.
+        if (trialSession && errorMetadata?.limit_source === 'osws_visitor_daily') return trialResponse(trialSessionNeeded());
+        if (allowance) {
+          return NextResponse.json(
+            { ...errorClass, error: 'OSW Studio\'s free inference is used up for now. Connect your own provider to keep going.' },
             { status: 429 }
           );
         }

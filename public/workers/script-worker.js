@@ -2,8 +2,10 @@
  * Script Worker — Executes Python (Pyodide) and Lua (wasmoon) scripts
  * in a Web Worker to avoid blocking the UI thread.
  *
+ * Not started from its URL: the app fetches this file as text and a sandboxed frame starts it from a blob
+ * (lib/sandbox/script-sandbox.ts), so project code runs on an opaque origin, not the app's.
+ *
  * Receives: { type: 'execute', payload: { runtime, entryPoint, files } }
- *           { type: 'abort' }
  * Posts:    { type: 'stdout'|'stderr'|'status'|'error'|'complete'|'output-file', ... }
  */
 
@@ -34,6 +36,18 @@ function offlineHint() {
 }
 
 // ─── Python (Pyodide) ──────────────────────────────────────────────
+
+// Pyodide raises a rejected promise in Python only when the value looks like an error, which it
+// decides by a `stack` property (DOMException aside). WebKit's network errors have none, and an
+// await on one never returns, so `await pyfetch(...)` to an unreachable host would hang the run.
+// Failed requests rethrow as an error that has one.
+const nativeFetch = self.fetch;
+self.fetch = function fetch(input, init) {
+  return nativeFetch.call(self, input, init).catch((err) => {
+    if (err instanceof DOMException || (err && typeof err === 'object' && 'stack' in err)) throw err;
+    throw new TypeError(err && err.message ? String(err.message) : String(err), { cause: err });
+  });
+};
 
 async function ensurePyodide() {
   if (pyodide) return pyodide;
@@ -160,8 +174,8 @@ async function ensureLuaFactory() {
   send('status', 'Loading Lua runtime...');
 
   try {
-    // Dynamic import of wasmoon from CDN
-    const wasmoon = await import('https://esm.sh/wasmoon@1');
+    // jsdelivr's browser build: esm.sh's build of wasmoon fails with "not compiled for this environment".
+    const wasmoon = await import('https://cdn.jsdelivr.net/npm/wasmoon@1.16.0/+esm');
     luaFactory = new wasmoon.LuaFactory();
   } catch (_err) {
     throw new Error(

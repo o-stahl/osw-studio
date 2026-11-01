@@ -15,6 +15,8 @@ import { cn } from '@/lib/utils';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { ConnectOptions } from './connect-options';
 import { configManager } from '@/lib/config/storage';
+import { OSWS_PROVIDER } from '@/lib/inference/allowance';
+import { checkAllowance } from '@/lib/inference/allowance-status';
 import { useWorkspaceStore } from '@/lib/stores/workspace';
 
 /**
@@ -136,15 +138,20 @@ export function StoppedCard({ data, live, onContinue }: {
   const provider = (data.provider ?? '') as ProviderId;
   const name = providerName(provider);
   const model = data.model ? nameOf(provider, data.model) : '';
+  // The free allowance has no credit to add and no key to replace.
+  const allowance = provider === OSWS_PROVIDER;
 
   const title = (() => {
     switch (category) {
       case 'daily_limit': return t('titleDaily', { provider: name });
-      case 'credit_exhausted': return provider === 'huggingface' ? t('titleHfCredit') : t('titleCredit', { provider: name });
+      case 'credit_exhausted':
+        // The allowance's monthly cap says when it renews; a pause does not.
+        if (allowance) return data.resetAt ? t('titleAllowanceMonth') : t('titleAllowancePaused');
+        return provider === 'huggingface' ? t('titleHfCredit') : t('titleCredit', { provider: name });
       case 'rate_limited': return t('titleRate', { provider: name });
       case 'model_busy':
       case 'model_not_found': return t('titleModel', { model });
-      case 'auth_expired': return t('titleAuth', { provider: name });
+      case 'auth_expired': return allowance ? t('titleAllowanceCheck') : t('titleAuth', { provider: name });
       case 'blocked': return t('titleBlocked', { provider: name });
       case 'model_refused': return t('titleModelRefused', { model, provider: name });
       default: return name ? t('titleOther', { provider: name }) : t('titleOtherNoProvider');
@@ -162,14 +169,15 @@ export function StoppedCard({ data, live, onContinue }: {
     // instead of the note going wrong.
     if (provider === 'openrouter' && quota?.kind === 'daily' && quota.limit === OPENROUTER_FREE_TIER_DAILY) lines.push(t('openrouterRaise'));
   } else if (category === 'credit_exhausted') {
-    if (provider === 'huggingface') lines.push(t('hfCreditBody'));
+    if (allowance) lines.push(data.resetAt ? t('allowanceMonthBody', { when: format.relativeTime(data.resetAt) }) : t('allowancePausedBody'));
+    else if (provider === 'huggingface') lines.push(t('hfCreditBody'));
     else {
       if (quota?.kind === 'balance') lines.push(t('balance', { remaining: quota.remaining }));
       lines.push(t('creditBody', { provider: name }));
     }
   } else if (category === 'rate_limited' || category === 'server_error') lines.push(t('rateBody'));
   else if (category === 'model_busy' || category === 'model_not_found') lines.push(t('modelBody'));
-  else if (category === 'auth_expired') lines.push(t('authBody'));
+  else if (category === 'auth_expired') lines.push(allowance ? t('allowanceCheckBody') : t('authBody'));
   else if (category === 'blocked') lines.push(t('blockedBody'));
   else if (category === 'model_refused') lines.push(t('modelRefusedBody'));
 
@@ -178,6 +186,11 @@ export function StoppedCard({ data, live, onContinue }: {
   const spent = SPENT.has(category);
   // Re-read when the model changes: a model picked with "Change" can be continued on.
   useWorkspaceStore((s) => s.modelConfigVersion);
+  // A stop that is not a spent allowance may mean it cannot be used at all: check it again, so
+  // Connections and the connect options stop counting on it.
+  useEffect(() => {
+    if (live && allowance && !spent) void checkAllowance({ force: true });
+  }, [live, allowance, spent]);
   const working = configManager.getActiveAssignment().agent;
   const movedOn = working.provider !== provider || working.model !== data.model;
   const offerContinue = (data.canRetrySame !== false && !spent) || movedOn;
@@ -255,7 +268,7 @@ export function StoppedCard({ data, live, onContinue }: {
           <button type="button" onClick={openModelPicker} className="self-start text-xs text-primary underline-offset-2 hover:underline">
             {t('chooseAnother')}
           </button>
-          {spent && !first && !data.suggestion && (
+          {(spent || allowance) && !first && !data.suggestion && (
             <ContinueOnConnect exclude={provider} onContinue={onContinue} />
           )}
         </div>

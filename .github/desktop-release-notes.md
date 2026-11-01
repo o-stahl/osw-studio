@@ -16,4 +16,4 @@ Updates are user-controlled: on Windows and Linux the app notifies you when a ne
 
 Full details for this version are in the [changelog](https://github.com/o-stahl/osw-studio/blob/main/CHANGELOG.md).
 
-For browser-based use, [oswstudio.com](https://oswstudio.com) and the [HuggingFace Space](https://huggingface.co/spaces/otst/osw-studio) are the easiest way to try OSWS. For full setup, clone the repo.
+For browser-based use, [oswstudio.com](https://oswstudio.com) and the demo at [try.oswstudio.com](https://try.oswstudio.com) are the easiest way to try OSWS. For full setup, clone the repo.

@@ -8,7 +8,8 @@ export type WebhookEventType =
   | 'workspace.updated'
   | 'workspace.deleted'
   | 'workspace.access_granted'
-  | 'workspace.access_revoked';
+  | 'workspace.access_revoked'
+  | 'user.demo_import_handled';
 
 export interface WebhookEvent {
   id: number;
@@ -34,6 +35,11 @@ export interface UserUpdatedPayload {
 }
 
 export interface UserDeactivatedPayload {
+  userId: string;
+}
+
+/** The user brought projects over from the hosted demo, or said no: the gateway stops offering it. */
+export interface UserDemoImportHandledPayload {
   userId: string;
 }
 
@@ -71,4 +77,5 @@ export type WebhookPayload =
   | WorkspaceUpdatedPayload
   | WorkspaceDeletedPayload
   | WorkspaceAccessGrantedPayload
-  | WorkspaceAccessRevokedPayload;
+  | WorkspaceAccessRevokedPayload
+  | UserDemoImportHandledPayload;

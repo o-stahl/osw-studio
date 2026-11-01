@@ -17,6 +17,8 @@ export interface ServerWebSearchConfig {
 /** Passed to MultiAgentOrchestrator when running server-side */
 export interface ServerOrchestratorContext {
   apiBaseUrl: string;
+  /** Sent with every request to `apiBaseUrl`: who the run is for (`run-auth.ts`). */
+  requestHeaders?: Record<string, string>;
   vfs: VirtualFileSystem;
   config: ServerConfigManager;
   onEvent: (event: string, data: Record<string, unknown>) => void;

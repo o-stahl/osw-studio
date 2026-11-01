@@ -15,11 +15,11 @@ export function shouldAutoCreateFirstProject(opts: { search: string; projectCoun
 
 /**
  * Where a first visit opens a project rather than the projects page: the surfaces someone arrives at
- * to try building something (the HF Space, hosted, desktop). A git clone and a self-hosted server
- * are usually being set up, and an unasked-for project there is clutter.
+ * to try building something (the HF Space, the hosted demo, hosted, desktop). A git clone and a
+ * self-hosted server are usually being set up, and an unasked-for project there is clutter.
  */
 export function opensFirstProject(surface: ReturnType<typeof detectDeploymentType>): boolean {
-  return surface === 'hf_space' || surface === 'managed' || surface === 'desktop';
+  return surface === 'hf_space' || surface === 'demo' || surface === 'managed' || surface === 'desktop';
 }
 
 /**

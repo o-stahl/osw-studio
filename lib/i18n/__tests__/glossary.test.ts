@@ -32,11 +32,13 @@ const GLOSSARY: Record<'fi' | 'ko', Rule[]> = {
     { forbid: /\bSecret|\bsecret(in|it|tien|ia|eja)\b/, use: 'salaisuus', why: 'the Secrets manager says "Salaisuudet"' },
     { forbid: /server-til/i, use: 'palvelintila', why: 'Server Mode is "Palvelintila" in its own setting' },
     { forbid: /aloitus$/i, use: 'pohja', why: 'a template is a "pohja"; "aloitus" read as a step, not a thing', only: 'templateCatalog.' },
+    { forbid: /kokeiluversi|esittelyversi/i, use: 'demo', why: 'the hosted demo is "OSW Studion demo"' },
   ],
   ko: [
     // The catalogue's voice is 해요체 (…어요); a 합니다체 string reads as a register change mid-panel.
     { forbid: /니다/, use: '해요체 (…어요/…해요)', why: 'the catalogue is written in 해요체' },
     { forbid: /게시/, use: '배포', why: 'Publish is "배포" in every action label' },
+    { forbid: /체험판|시연/, use: '데모', why: 'the hosted demo is "OSW Studio 데모"' },
   ],
 };
 

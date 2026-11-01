@@ -95,11 +95,8 @@ const nextConfig: NextConfig = {
         source: '/deployments/:projectId/',
         destination: '/deployments/:projectId/index.html',
       },
-      // /deployments/{projectId}/page -> page.html (if no extension)
-      {
-        source: '/deployments/:projectId/:path([^.]+)',
-        destination: '/deployments/:projectId/:path.html',
-      },
+      // Any other path reaches app/deployments/[id]/[...path] as it is, which tries it, then
+      // `.html`, then `/index.html`, as Caddy does.
     ];
   },
 };

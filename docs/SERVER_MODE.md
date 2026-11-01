@@ -330,7 +330,7 @@ A site's review copy is served from the site's address too, or from the sites ad
 | `NEXT_PUBLIC_APP_URL` | No | The studio's address. Used for SEO, sitemaps and origin checks, and for site subdomains with `STATIC_PROXY` |
 | `SITES_ORIGIN` | No | A separate address to serve published sites from, e.g. `https://sites.example.com`. See [Where Published Sites Are Served](#where-published-sites-are-served) |
 | `STATIC_PROXY` | No | Set to `true` when Caddy serves each site on its own subdomain or custom domain (the generated Caddyfile) |
-| `ALLOWED_ORIGINS` | No | Comma-separated origins allowed to send write requests to the API, for a reverse proxy that rewrites the `Host` header and passes no `X-Forwarded-Host` (requests from other sites are refused with 403) |
+| `ALLOWED_ORIGINS` | No | Comma-separated origins the studio is reached at, for a reverse proxy that rewrites the `Host` header and passes no `X-Forwarded-Host`; needed only where browsers send no `Sec-Fetch-Site` (plain HTTP, older browsers). The API answers only the studio's own pages, apart from published sites' function and analytics calls, MCP and the sign-in hand-off; requests from other sites, including same-site subdomains, are refused with 403 |
 | `REGISTRATION_MODE` | No | `open` to allow user self-registration, `closed` (default) for admin-only provisioning |
 | `NEXT_PUBLIC_REGISTRATION_MODE` | No | Client-side mirror of `REGISTRATION_MODE` |
 | `INSTANCE_API_KEY` | No | Shared secret for machine-to-machine admin API auth |

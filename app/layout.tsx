@@ -8,9 +8,13 @@ import { Toaster } from "@/components/ui/sonner";
 import { McpActivityBanner } from '@/components/mcp-activity-banner';
 import { BackendStatusBanner } from "@/components/backend-status-banner";
 import { LanguageOfferSlot } from "@/components/language-offer/slot";
+import { DemoNoticeSlot } from "@/components/demo-notice/slot";
+import { DemoProjectCount } from "@/components/demo-project-count";
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale } from 'next-intl/server';
 import { TranslatorBridge } from '@/lib/i18n/translator-bridge';
+import { demoAccountLinks, demoGatewayUrl, hostedDemoOrigin } from '@/lib/demo';
+import { DEMO_URL } from '@/lib/constants/links';
 
 const inter = Inter({
   variable: "--font-inter-sans",
@@ -31,7 +35,7 @@ export const metadata: Metadata = {
     title: "Open Source Web Studio | Agentic AI Development",
     description:
       "Open Source Web Studio is an AI-powered development environment that enables autonomous multi-file development through intelligent tool usage. Build complete applications with natural language.",
-    url: "https://huggingface.co/spaces/otst/osw-studio",
+    url: DEMO_URL,
     siteName: "Open Source Web Studio",
     images: [
       {
@@ -73,9 +77,17 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const locale = await getLocale();
+  const demoGateway = demoGatewayUrl();
+  const hostedDemo = hostedDemoOrigin();
 
   return (
-    <html lang={locale} suppressHydrationWarning>
+    <html
+      lang={locale}
+      data-demo-gateway={demoGateway ?? undefined}
+      data-demo-accounts={demoAccountLinks() ? 'on' : undefined}
+      data-hosted-demo={hostedDemo ?? undefined}
+      suppressHydrationWarning
+    >
       <body
         className={`${inter.variable} ${ptSans.variable} antialiased bg-background h-[100dvh] overflow-hidden`}
         suppressHydrationWarning
@@ -87,6 +99,8 @@ export default async function RootLayout({
             <BackendStatusBanner />
             <McpActivityBanner />
             <LanguageOfferSlot />
+            <DemoNoticeSlot />
+            {demoGateway && <DemoProjectCount />}
             <TanstackProvider>
               {children}
             </TanstackProvider>

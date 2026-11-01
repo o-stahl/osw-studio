@@ -325,6 +325,18 @@ describe('the stopped card', () => {
     expect(suggest.alternativesTo).not.toHaveBeenCalled();
   });
 
+  it('offers the other providers whenever the free allowance stops, spent or not', async () => {
+    suggest.alternativesTo.mockResolvedValue([{ provider: 'openrouter', model: 'o/m' }]);
+    // Not available right now, and a bot check that did not pass: the allowance cannot go on either way.
+    for (const category of ['model_not_found', 'auth_expired']) {
+      suggest.alternativesTo.mockClear();
+      const { stopped } = await handle(apiError(category, { status: 503, provider: 'osws', model: 'osws/agent' }), assign('osws/agent', 'osws'));
+      expect(stopped).toMatchObject({ alternatives: [{ provider: 'openrouter', model: 'o/m' }] });
+      expect(suggest.alternativesTo).toHaveBeenCalledWith('osws');
+    }
+    expect(status.fetchProviderStatus).not.toHaveBeenCalled();
+  });
+
   it('suggests nothing on the same provider for a task on "Free models": the rotation already tried', async () => {
     await handle(apiError('rate_limited', { model: 'a/m:free' }), assign(FREE));
     expect(suggest.nextModelAfter).not.toHaveBeenCalled();
@@ -615,6 +627,19 @@ describe('a server-side run', () => {
     await expect(generate('a cat', { aspectRatio: '1:1' })).resolves.toEqual({ base64: 'AAAA', mimeType: 'image/png' });
     expect(onImageRequested).toHaveBeenCalledWith('a cat', { aspectRatio: '1:1' });
     await expect(generate('a dog', {})).rejects.toThrow('No image model connected');
+  });
+
+  it("sends its own and its sub-agents' model requests to this server with the run's headers, tied to the project", async () => {
+    h.adapterConfigs.length = 0;
+    const requestHeaders = { 'x-run': 'this run' };
+    await new MultiAgentOrchestrator('test-p1', 'orchestrator', () => {}, { serverContext: serverContext({ requestHeaders }) }).execute('build');
+    h.coordinatorConfigs[0].createChildProvider({ onEvent: vi.fn() });
+    expect(h.adapterConfigs).toHaveLength(2);
+    for (const adapter of h.adapterConfigs) {
+      expect(adapter.getApiUrl()).toBe('http://srv/api/generate');
+      expect(adapter.getRequestHeaders()).toEqual(requestHeaders);
+      expect(adapter.getSessionId?.()).toBe('test-p1');
+    }
   });
 
   it('offers no image command when the browser has no image model', async () => {

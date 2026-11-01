@@ -1,8 +1,9 @@
 /**
  * Public Deployments Route - Root
  *
- * Serves index.html from public/deployments/[id]/
- * Disabled when STATIC_PROXY=true (Caddy serves static files directly).
+ * Serves index.html from public/deployments/[id]/. With STATIC_PROXY=true Caddy serves a site's own
+ * host directly; a subdomain without a block of its own reaches Node, which serves it here, as in
+ * `[...path]`.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -13,10 +14,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (process.env.STATIC_PROXY === 'true') {
-    return new NextResponse('Not found', { status: 404 });
-  }
-
   const { id } = await params;
 
   try {

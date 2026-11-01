@@ -18,8 +18,11 @@ import { verifySession, maybeRefreshSession, sessionCookieName, sessionCookieOpt
 import { clearWorkspaceOnResponse, workspaceFromRequest } from '@/lib/web/workspace-cookie';
 import type { SessionData } from '@/lib/auth/session';
 import { pendingMcpCookieName, pendingMcpCookieOptions, pendingAuthorizationIsWellFormed } from '@/lib/mcp/pending';
-import { isCrossOriginWrite } from '@/lib/web/origin-guard';
+import { isForeignApiRequest } from '@/lib/web/origin-guard';
 import { isRelocatedSitePath, isSiteHost, isSitePath, isStudioHost, requestHost, sitesMode } from '@/lib/web/site-origin';
+import { isDemo } from '@/lib/demo';
+import { BRIDGE_PATH } from '@/lib/demo-bridge/protocol';
+import { bridgeOrigins } from '@/lib/demo-bridge/origins';
 
 async function nextWithRefreshedSession(session: SessionData): Promise<NextResponse> {
   const response = NextResponse.next();
@@ -45,9 +48,18 @@ export async function middleware(request: NextRequest) {
   const isDesktop = process.env.OSW_DESKTOP === 'true';
 
   // Before anything else, desktop included: its API has no session at all, so any page the user
-  // opens could otherwise write to it on localhost.
-  if (isCrossOriginWrite(request.method, pathname, request.headers)) {
+  // opens could otherwise call it on localhost. Project code is one of those pages: it runs on an
+  // opaque origin (lib/sandbox), and this is what keeps it from acting as the signed-in user.
+  if (isForeignApiRequest(pathname, request.headers)) {
     return NextResponse.json({ error: 'Cross-origin request refused' }, { status: 403 });
+  }
+
+  // The demo's bridge page (lib/demo-bridge) answers only the hosted instances, and only they may
+  // frame it.
+  if (pathname === BRIDGE_PATH && isDemo()) {
+    const response = NextResponse.next();
+    response.headers.set('Content-Security-Policy', `frame-ancestors ${(await bridgeOrigins()).join(' ') || "'none'"}`);
+    return response;
   }
 
   // Sites served away from the studio (lib/web/site-origin.ts). A site host answers only what a
@@ -286,8 +298,8 @@ export async function middleware(request: NextRequest) {
  * real workspace view does.
  *
  * `/api/` paths are never skipped, whatever they end in: a route whose last segment is a value
- * (`/api/w/{id}/sync/projects/{id}`) can be sent one ending in `.js`, and the cross-origin write
- * check here is the only one those routes have. Preview misses resolve against page paths, not `/api/`.
+ * (`/api/w/{id}/sync/projects/{id}`) can be sent one ending in `.js`, and the origin check here is
+ * the only one those routes have. Preview misses resolve against page paths, not `/api/`.
  *
  * Nor are `/deployments/` and `/review/` paths: they are where a published site lives, and on the
  * studio host they are redirected to the site's own host (`lib/web/site-origin.ts`). Skipping an

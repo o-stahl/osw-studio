@@ -46,6 +46,7 @@ function byId(result: PreflightResult, id: string) {
 beforeEach(() => {
   vi.resetModules();
   vi.stubEnv('SPACE_ID', '');
+  vi.stubEnv('DEMO_GATEWAY_URL', '');
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -84,6 +85,16 @@ describe('POST /api/ollama/preflight', () => {
     expect(row).toMatchObject({ ok: false, hosted: true });
     // No command fixes that, so none is offered.
     expect(row?.fix).toBeUndefined();
+  });
+
+  it('says the same on the hosted demo, which runs on a server too', async () => {
+    vi.stubEnv('DEMO_GATEWAY_URL', 'https://gateway.example.com');
+    vi.stubGlobal('fetch', fakeOllama('down'));
+
+    const result = await run({ model: 'qwen3:4b' });
+
+    expect(byId(result, 'reachable')).toMatchObject({ ok: false, hosted: true });
+    expect(byId(result, 'reachable')?.fix).toBeUndefined();
   });
 
   it('asks for a pull when the selected model is missing', async () => {

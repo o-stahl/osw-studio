@@ -16,6 +16,8 @@ vi.mock('@/lib/vfs/checkpoint', () => ({
 }));
 const rankProviderModels = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/llm/suggestions/suggest', () => ({ rankProviderModels }));
+const checkAllowance = vi.hoisted(() => vi.fn(async () => 'unavailable'));
+vi.mock('@/lib/inference/allowance-status', () => ({ checkAllowance }));
 
 setupOrchestratorMocks();
 
@@ -220,6 +222,26 @@ describe('orchestrator slice — startServerGeneration model resolution', () => 
     // The server runs the loop, so the local window has to travel with the request.
     expect(body.generationParams.localContextLength).toBe(65536);
     expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('checks the free allowance again when the server will not start a run on it', async () => {
+    vi.mocked(getProvider).mockReturnValue({ name: 'OSW Studio', apiKeyRequired: false, isLocal: false, usesOAuth: false } as never);
+    vi.mocked(configManager.getProviderApiKey).mockReturnValue('');
+    vi.mocked(getProjectAssignment).mockResolvedValue({
+      agent: { provider: 'osws', model: 'osws/agent' }, imageGen: null, voiceInput: null, autoCompact: false, compactLimit: null,
+    } as never);
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({ error: 'OSW Studio inference is not available right now.' }) });
+
+    expect(await store.getState().startServerGeneration('proj1', 'build it', false)).toBe(false);
+    expect(toast.error).toHaveBeenCalledWith('OSW Studio inference is not available right now.');
+    // Connections and the connect options stop counting on it once the check says so.
+    expect(checkAllowance).toHaveBeenCalledWith({ force: true });
+  });
+
+  it('leaves the allowance alone when another provider\'s run is refused', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({ error: 'nope' }) });
+    expect(await store.getState().startServerGeneration('proj1', 'build it', false)).toBe(false);
+    expect(checkAllowance).not.toHaveBeenCalled();
   });
 
   it('still refuses a cloud provider with no key', async () => {

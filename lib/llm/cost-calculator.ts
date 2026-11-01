@@ -8,6 +8,7 @@ import { UsageInfo } from './types';
 import { configManager, type ProviderPricingEntry } from '@/lib/config/storage';
 import { getCustomProviders } from './providers/custom-providers';
 import { logger } from '@/lib/utils';
+import { OSWS_PROVIDER } from '@/lib/inference/allowance';
 
 export const PROVIDER_PRICING: Record<string, { input: number; output: number; reasoning?: number }> = {
   'openrouter/deepseek/deepseek-chat': { input: 0.14, output: 0.28 },
@@ -77,6 +78,8 @@ export class CostCalculator {
     model: string,
     isRealUsageData: boolean = false
   ): number {
+    // The free allowance costs the user nothing, whatever cost the upstream reports.
+    if (provider === OSWS_PROVIDER) return 0;
     const reportedCost = typeof usage.cost === 'number' && Number.isFinite(usage.cost)
       ? usage.cost
       : undefined;

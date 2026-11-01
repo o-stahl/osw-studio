@@ -14,6 +14,7 @@ import { captureIframeScreenshot } from './screenshot';
 import { apiFetch } from '@/lib/api/backend-status';
 import { prependToHead, previewBridgeScript } from '@/lib/preview/preview-bridge';
 import { loadIntoShell } from '@/lib/preview/preview-shell';
+import { createSandboxedFrame } from '@/lib/sandbox';
 
 export interface DeploymentCaptureOptions {
   /** The page as a visitor addresses it. Defaults to the site's home page. */
@@ -57,8 +58,7 @@ export async function captureDeploymentPage(
     return null;
   }
 
-  const iframe = document.createElement('iframe');
-  iframe.setAttribute('sandbox', 'allow-scripts');
+  const iframe = createSandboxedFrame();
   iframe.style.position = 'fixed';
   iframe.style.top = '-10000px';
   iframe.style.left = '-10000px';

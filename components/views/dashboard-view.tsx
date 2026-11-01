@@ -16,6 +16,7 @@ import {
   Clock,
   ChevronRight,
   MessagesSquare,
+  Monitor,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -28,6 +29,7 @@ import { skillsService } from '@/lib/vfs/skills';
 import pkg from '@/package.json';
 import { PageShell, PageHeader, PageBody } from '@/components/ui/page-shell';
 import { apiFetch } from '@/lib/api/backend-status';
+import { demoAccountUrl } from '@/lib/demo';
 
 const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
 
@@ -530,6 +532,28 @@ function RecentProjectsCard({
   );
 }
 
+/** On the hosted demo: where its projects are kept, and the hosted service for keeping them on a server. */
+export function DemoCard({ signInUrl, signUpUrl }: { signInUrl: string; signUpUrl: string }) {
+  const t = useTranslations('demo');
+  return (
+    <div className="bg-card rounded-lg border border-border p-4 flex flex-col">
+      <div className="flex items-center gap-2 mb-3">
+        <Monitor className="w-4 h-4 text-orange-500" />
+        <h3 className="text-sm font-medium text-foreground">{t('cardTitle')}</h3>
+      </div>
+      <p className="text-xs text-muted-foreground flex-1">{t('cardBody')}</p>
+      <div className="flex flex-wrap gap-2 mt-3">
+        <Button asChild size="sm" variant="accent">
+          <a href={signUpUrl} target="_blank" rel="noopener">{t('signUp')}</a>
+        </Button>
+        <Button asChild size="sm" variant="outline">
+          <a href={signInUrl} target="_blank" rel="noopener">{t('signIn')}</a>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // Recent Deployments Card
 function RecentDeploymentsCard({ deployments }: { deployments: DashboardData['recentDeployments'] }) {
   const when = useLocalFormat();
@@ -804,6 +828,8 @@ export function DashboardView({ workspaceId, onNavigate, onProjectSelect, onStar
   // Browser mode render OR server mode non-admin workspace render
   if (browserData) {
     const hasWhatsNew = browserData.whatsNew !== null;
+    const demoSignInUrl = demoAccountUrl('login');
+    const demoSignUpUrl = demoAccountUrl('register');
 
     return (
       <PageShell>
@@ -823,13 +849,14 @@ export function DashboardView({ workspaceId, onNavigate, onProjectSelect, onStar
             )}
           </div>
 
-          {/* Row 2: Recent Projects (no Deployments in browser mode) */}
-          <div className="mb-4 lg:w-1/2">
+          {/* Row 2: Recent Projects (no Deployments in browser mode); on the hosted demo, the demo card beside it */}
+          <div className={demoSignInUrl && demoSignUpUrl ? 'grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 [&>*]:min-h-[160px]' : 'mb-4 lg:w-1/2'}>
             <RecentProjectsCard
               projects={browserData.recentProjects}
               onNavigate={onNavigate}
               onProjectSelect={handleProjectSelect}
             />
+            {demoSignInUrl && demoSignUpUrl && <DemoCard signInUrl={demoSignInUrl} signUpUrl={demoSignUpUrl} />}
           </div>
         </PageBody>
       </PageShell>

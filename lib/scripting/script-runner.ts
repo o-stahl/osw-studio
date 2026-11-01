@@ -1,6 +1,7 @@
 import { vfs } from '@/lib/vfs';
 import { logger } from '@/lib/utils';
 import { beginCompilation, pushCompileError, commitCompilation } from '@/lib/preview/compile-errors';
+import { ScriptSandbox } from '@/lib/sandbox/script-sandbox';
 import type { ScriptRuntime, ScriptWorkerResponse } from './types';
 
 type OutputListener = (msg: ScriptWorkerResponse) => void;
@@ -8,7 +9,7 @@ type OutputListener = (msg: ScriptWorkerResponse) => void;
 const EXECUTION_TIMEOUT_MS = 60_000;
 
 class ScriptRunner {
-  private worker: Worker | null = null;
+  private worker: ScriptSandbox | null = null;
   private running = false;
   private listeners = new Set<OutputListener>();
   private timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -22,24 +23,6 @@ class ScriptRunner {
     // Abort any running execution
     if (this.running) {
       this.abort();
-    }
-
-    // Ensure worker is created
-    if (!this.worker) {
-      try {
-        this.worker = new Worker('/workers/script-worker.js');
-      } catch (err) {
-        this.emit({ type: 'error', data: 'Failed to create worker: ' + String(err) });
-        return;
-      }
-      this.worker.onmessage = (event: MessageEvent<ScriptWorkerResponse>) => {
-        this.handleWorkerMessage(event.data);
-      };
-      this.worker.onerror = (event) => {
-        this.emit({ type: 'error', data: 'Worker error: ' + (event.message || 'Unknown error') });
-        this.running = false;
-        this.clearTimeout();
-      };
     }
 
     // Gather VFS files
@@ -59,6 +42,31 @@ class ScriptRunner {
     // remain importable because all VFS files are still gathered above.
     if (typeof inlineSource === 'string') {
       files[entryPoint] = inlineSource;
+    }
+
+    // Ensure worker is created. Project code runs in it, so it runs in a sandboxed frame
+    // (lib/sandbox/script-sandbox.ts), never on the app's origin. Made after the awaits above, so a
+    // frame that fails to start does so while this run counts as running.
+    if (!this.worker) {
+      try {
+        this.worker = new ScriptSandbox({
+          onMessage: (msg) => this.handleWorkerMessage(msg),
+          onError: (message) => {
+            // Also the frame failing to start the worker. The next run starts afresh, and anyone
+            // waiting on this one is told it ended. A sandbox kept between runs that fails belongs
+            // to no run: the next one's listener may already be subscribed.
+            const wasRunning = this.running;
+            this.abort();
+            if (!wasRunning) return;
+            this.emit({ type: 'error', data: 'Worker error: ' + (message || 'Unknown error') });
+            commitCompilation();
+            this.emit({ type: 'complete', exitCode: 1 });
+          },
+        });
+      } catch (err) {
+        this.emit({ type: 'error', data: 'Failed to create worker: ' + String(err) });
+        return;
+      }
     }
 
     // Begin error tracking
@@ -85,7 +93,7 @@ class ScriptRunner {
   }
 
   /**
-   * Abort the current execution by terminating the worker.
+   * Abort the current execution by terminating the worker (and the frame it runs in).
    */
   abort(): void {
     this.clearTimeout();

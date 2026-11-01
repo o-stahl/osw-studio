@@ -286,3 +286,18 @@ describe('/api/generate-image OpenRouter image generation', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('https://ai-gateway.vercel.sh/v1/chat/completions');
   });
 });
+
+describe('/api/generate-image and the free allowance', () => {
+  it('sends nothing to the allowance, which offers its agent model only', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}'));
+    vi.stubGlobal('fetch', fetchMock);
+    const request = {
+      json: async () => ({ provider: 'osws', apiKey: 'any-token', model: 'osws/image', prompt: 'a lighthouse' }),
+    } as unknown as NextRequest;
+
+    const response = await POST(request);
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({ code: 'model_unavailable' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

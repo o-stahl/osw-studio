@@ -1,4 +1,4 @@
-const OSW_SPACE_URL = 'https://huggingface.co/spaces/otst/osw-studio';
+import { DEMO_URL } from '@/lib/constants/links';
 
 function yamlString(value: string): string {
   // Quote when the value could be misparsed as YAML (contains : # etc. or leading/trailing space).
@@ -30,5 +30,5 @@ export function buildSpaceReadme(opts: { title: string; shortDescription: string
     '---',
   ].join('\n');
 
-  return `${frontmatter}\n\nBuilt with [OSW Studio](${OSW_SPACE_URL}).\n`;
+  return `${frontmatter}\n\nBuilt with [OSW Studio](${DEMO_URL}).\n`;
 }

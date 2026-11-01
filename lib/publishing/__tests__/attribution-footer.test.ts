@@ -5,7 +5,7 @@ describe('injectAttributionFooter', () => {
   it('inserts the credit just before </body>', () => {
     const out = injectAttributionFooter('<html><body><h1>Hi</h1></body></html>');
     expect(out).toContain('Built with');
-    expect(out).toContain('huggingface.co/spaces/otst/osw-studio');
+    expect(out).toContain('href="https://try.oswstudio.com"');
     expect(out.indexOf('Built with')).toBeLessThan(out.indexOf('</body>'));
   });
   it('appends to the end when there is no </body>', () => {

@@ -2313,7 +2313,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   ) : undefined;
   return (
     <TooltipProvider>
-      <div className="h-[100dvh] flex flex-col">
+      <div className="h-app-dvh flex flex-col">
         {/* Header */}
         <AppHeader
           leftText={project.name}

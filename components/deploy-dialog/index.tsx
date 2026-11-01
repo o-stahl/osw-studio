@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { vfs } from '@/lib/vfs';
 import { configManager } from '@/lib/config/storage';
 import { detectDeploymentType } from '@/lib/telemetry/config';
+import { demoAccountUrl } from '@/lib/demo';
 import { checkHFCapabilities, loginHF } from '@/lib/auth/hf-auth';
 import { HFSpaceTarget } from './hf-space-target';
 import { requestDeploymentFor } from '@/lib/deployments/pending-create';
@@ -36,8 +37,11 @@ export function DeployDialog({ open, projectId, onOpenChange }: DeployDialogProp
   const tt = useTranslations('tooltips');
   const t = useTranslations('deployDialog');
   const tw = useTranslations('workspace');
+  const tDemo = useTranslations('demo');
   const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
   const isHFSpace = detectDeploymentType() === 'hf_space';
+  // On the hosted demo, publishing is what an account on the hosted service is for.
+  const demoSignInUrl = demoAccountUrl('login');
   const hfConnected = !!configManager.getHFAuth()?.access_token;
 
   // ZIP export is always available (works in every mode and for every runtime), so it's the
@@ -133,13 +137,22 @@ export function DeployDialog({ open, projectId, onOpenChange }: DeployDialogProp
           <TargetRow
             icon={<Cloud className="h-4 w-4" />}
             title="Open Source Web Studio"
-            subtitle={tt('publishHere')}
+            subtitle={demoSignInUrl ? tDemo('publishSubtitle') : tt('publishHere')}
             enabled={isServerMode}
             selected={target === 'osws'}
             onSelect={() => setTarget('osws')}
             onLearnMore={learnMore}
             disabledContent={
-              <span className="text-xs text-muted-foreground">{t('availableInServerMode')}</span>
+              demoSignInUrl ? (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">{tDemo('publishHere')}</span>
+                  <Button asChild size="sm" variant="outline">
+                    <a href={demoSignInUrl} target="_blank" rel="noopener">{tDemo('signIn')}</a>
+                  </Button>
+                </div>
+              ) : (
+                <span className="text-xs text-muted-foreground">{t('availableInServerMode')}</span>
+              )
             }
           />
 

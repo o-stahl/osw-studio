@@ -112,7 +112,8 @@ describe('SEO settings over a page with its own tags', () => {
     expect(count(h, /property=["']og:type["']/g)).toBe(1);
     expect(count(h, /name="twitter:card"/g)).toBe(1);
     expect(count(h, /property="og:url"/g)).toBe(1);
-    expect(h).toContain('property="og:url" content="https://papertop.app"');
+    // og:url names the page's canonical address, so a shared link and a search result agree.
+    expect(h).toContain('property="og:url" content="https://old.example/"');
     expect(count(h, /name="robots"/g)).toBe(1);
     expect(h).toContain('content="noindex, nofollow"');
   });
@@ -186,3 +187,67 @@ describe('SEO settings over a page with its own tags', () => {
     expect(processHtml(PAGE, options({}))).toBe(PAGE);
   });
 });
+
+describe('og:url', () => {
+  const page = (headExtra: string) => `<!DOCTYPE html><html><head><title>t</title>${headExtra}</head><body>
+    <link rel="canonical" href="https://body.example/"></body></html>`;
+  const ogUrl = (html: string) => /property="og:url" content="([^"]*)"/.exec(head(html))?.[1];
+
+  it('is where the page is served when it has no canonical link of its own', () => {
+    for (const [pagePath, url] of [
+      ['index.html', 'https://papertop.app'],
+      ['/mahjong.html', 'https://papertop.app/mahjong'],
+      ['docs/index.html', 'https://papertop.app/docs/'],
+    ]) {
+      expect(ogUrl(processHtml(page(''), { ...options({ title: 'P' }), pagePath }))).toBe(url);
+    }
+  });
+
+  it('is the page\'s canonical link, in either quote style, when it has one', () => {
+    expect(ogUrl(processHtml(page('<link href="https://papertop.app/mahjong" rel="canonical">'), { ...options({ title: 'P' }), pagePath: 'x.html' })))
+      .toBe('https://papertop.app/mahjong');
+    expect(ogUrl(processHtml(page("<link rel='canonical' href='https://papertop.app/sudoku'>"), { ...options({ title: 'P' }), pagePath: 'x.html' })))
+      .toBe('https://papertop.app/sudoku');
+  });
+
+  it('takes the link as a browser reads it, so its references are written once', () => {
+    expect(ogUrl(processHtml(page('<link rel="canonical" href="https://papertop.app/?a=1&amp;b=2">'), { ...options({ title: 'P' }), pagePath: 'x.html' })))
+      .toBe('https://papertop.app/?a=1&amp;b=2');
+  });
+
+  it('resolves a relative canonical link against where the page is served', () => {
+    expect(ogUrl(processHtml(page('<link rel="canonical" href="/mahjong">'), { ...options({ title: 'P' }), pagePath: 'x.html' })))
+      .toBe('https://papertop.app/mahjong');
+    expect(ogUrl(processHtml(page('<link rel="canonical" href="intro">'), { ...options({ title: 'P' }), pagePath: 'docs/index.html' })))
+      .toBe('https://papertop.app/docs/intro');
+  });
+
+  it('resolves a relative canonical link on the root page inside a deployment served under a path', () => {
+    const underPath = { ...options({ title: 'P' }), baseUrl: 'https://studio.example/deployments/abc', pagePath: 'index.html' };
+    expect(ogUrl(processHtml(page('<link rel="canonical" href="about">'), underPath))).toBe('https://studio.example/deployments/abc/about');
+    expect(ogUrl(processHtml(page('<link rel="canonical" href="./">'), underPath))).toBe('https://studio.example/deployments/abc/');
+    expect(ogUrl(processHtml(page(''), underPath))).toBe('https://studio.example/deployments/abc');
+  });
+
+  it('takes a canonical link it cannot decode or resolve as written', () => {
+    // Decoding the reference or resolving the host would throw, failing the whole publish.
+    for (const [href, url] of [
+      ['https://x/&#99999999;', 'https://x/&amp;#99999999;'],
+      ['//[bad', '//[bad'],
+    ]) {
+      expect(ogUrl(processHtml(page(`<link rel="canonical" href="${href}">`), { ...options({ title: 'P' }), pagePath: 'x.html' })), href)
+        .toBe(url);
+    }
+  });
+
+  it('is the canonical the settings add when the page has none', () => {
+    const h = processHtml(page(''), { ...options({ title: 'P', canonical: 'https://papertop.app/home' }), pagePath: 'x.html' });
+    expect(ogUrl(h)).toBe('https://papertop.app/home');
+    expect(head(h)).toContain('<link rel="canonical" href="https://papertop.app/home">');
+  });
+
+  it('is the site\'s root without a page path', () => {
+    expect(ogUrl(processHtml(page(''), options({ title: 'P' })))).toBe('https://papertop.app');
+  });
+});
+

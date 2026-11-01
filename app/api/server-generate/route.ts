@@ -6,6 +6,8 @@ import { runServerGeneration } from '@/lib/server-generate/server-orchestrator-r
 import type { StartGenerationRequest } from '@/lib/server-generate/types';
 import { getProvider } from '@/lib/llm/providers/registry';
 import type { ProviderId } from '@/lib/llm/providers/types';
+import { OSWS_PROVIDER, allowanceFromServer } from '@/lib/inference/allowance';
+import { getAccountToken } from '@/lib/inference/account-token';
 
 export async function POST(request: NextRequest) {
   const session = await getSession();
@@ -47,6 +49,18 @@ export async function POST(request: NextRequest) {
     }
   } else if (session.userId !== 'admin' && session.userId !== 'desktop') {
     return NextResponse.json({ error: 'Missing workspaceId' }, { status: 400 });
+  }
+
+  // The free allowance on a hosted instance carries no key: `/api/generate` asks the gateway for the
+  // token of the user the run is for (lib/server-generate/run-auth.ts). Checked here too, so a run
+  // that could not get one does not start.
+  if (providerId === OSWS_PROVIDER) {
+    if (!allowanceFromServer()) {
+      return NextResponse.json({ error: 'OSW Studio inference is not available for server-side runs here.' }, { status: 400 });
+    }
+    if (!(await getAccountToken(session.userId))) {
+      return NextResponse.json({ error: 'OSW Studio inference is not available right now.' }, { status: 503 });
+    }
   }
 
   await taskManager.initialize();

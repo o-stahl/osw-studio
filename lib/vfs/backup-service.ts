@@ -74,34 +74,7 @@ export class BackupService {
     try {
       logger.info('Starting data export...');
 
-      const vfs = await this.readLiveDatabase();
-
-      const backupData: BackupData = {
-        version: this.BACKUP_VERSION,
-        exportDate: new Date().toISOString(),
-        databases: {
-          vfs,
-          conversations: [], // Legacy field, now part of the unified export
-          checkpoints: [], // Legacy field, now part of the unified export
-        },
-        metadata: {
-          projectCount: vfs.projects.length,
-          totalSize: 0,
-          exportedFrom: 'oswstudio',
-        },
-      };
-
-      backupData.metadata.totalSize = this.calculateDataSize(backupData);
-
-      // Create compressed backup file
-      const zip = new JSZip();
-      zip.file('backup.json', JSON.stringify(backupData, null, 2));
-
-      const blob = await zip.generateAsync({
-        type: 'blob',
-        compression: 'DEFLATE',
-        compressionOptions: { level: 6 }
-      });
+      const { blob, backupData } = await this.packBackup(await this.readLiveDatabase());
 
       // Download the file
       const filename = `oswstudio-backup-${new Date().toISOString().split('T')[0]}${this.FILE_EXTENSION}`;
@@ -112,6 +85,57 @@ export class BackupService {
       logger.error('Export failed:', error);
       throw new Error(translator()('settings.backup.exportFailed', { error: error instanceof Error ? error.message : translator()('common.labels.unknown') }));
     }
+  }
+
+  /**
+   * A `.osws` of just these projects: their records, and every record in the other stores that
+   * names one of them by `projectId`, their chats (debug events) included. Stores of records that
+   * belong to no project (skills, custom templates) stay out. `importAllData` reads it like any
+   * backup; the demo hands it to a new account's workspace this way (`components/demo-bridge-host`).
+   */
+  static async exportProjects(projectIds: string[]): Promise<Blob> {
+    const wanted = new Set(projectIds);
+    const all = await this.readLiveDatabase();
+    const vfs: Record<string, unknown[]> = { projects: [], files: [], fileTree: [] };
+    for (const [name, records] of Object.entries(all)) {
+      if (name === 'projects') {
+        vfs.projects = records.filter((record) => wanted.has(String((record as { id?: unknown }).id)));
+        continue;
+      }
+      const linked = records.filter((record) => !!record && typeof record === 'object' && 'projectId' in record);
+      if (linked.length === 0 && records.length > 0) continue;
+      vfs[name] = linked.filter((record) => wanted.has(String((record as { projectId?: unknown }).projectId)));
+    }
+    const { blob } = await this.packBackup(vfs as BackupData['databases']['vfs']);
+    return blob;
+  }
+
+  /** The backup's envelope around these stores, and the zipped `.osws` of it. */
+  private static async packBackup(vfs: BackupData['databases']['vfs']): Promise<{ blob: Blob; backupData: BackupData }> {
+    const backupData: BackupData = {
+      version: this.BACKUP_VERSION,
+      exportDate: new Date().toISOString(),
+      databases: {
+        vfs,
+        conversations: [], // Legacy field, now part of the unified export
+        checkpoints: [], // Legacy field, now part of the unified export
+      },
+      metadata: {
+        projectCount: vfs.projects.length,
+        totalSize: 0,
+        exportedFrom: 'oswstudio',
+      },
+    };
+    backupData.metadata.totalSize = this.calculateDataSize(backupData);
+
+    const zip = new JSZip();
+    zip.file('backup.json', JSON.stringify(backupData, null, 2));
+    const blob = await zip.generateAsync({
+      type: 'blob',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 }
+    });
+    return { blob, backupData };
   }
 
   /**

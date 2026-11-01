@@ -7,12 +7,12 @@
 
 [![GitHub Stars](https://img.shields.io/github/stars/o-stahl/osw-studio?style=social)](https://github.com/o-stahl/osw-studio/stargazers)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Live Demo](https://img.shields.io/badge/Demo-Try%20Now-success)](https://huggingface.co/spaces/otst/osw-studio)
-[![Version](https://img.shields.io/badge/Version-1.106.2-blue)](https://github.com/o-stahl/osw-studio/releases)
+[![Live Demo](https://img.shields.io/badge/Demo-Try%20Now-success)](https://try.oswstudio.com)
+[![Version](https://img.shields.io/badge/Version-1.107.0-blue)](https://github.com/o-stahl/osw-studio/releases)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/o-stahl/osw-studio/pulls)
 [![Discussions](https://img.shields.io/github/discussions/o-stahl/osw-studio)](https://github.com/o-stahl/osw-studio/discussions)
 
-[Try it Now](https://huggingface.co/spaces/otst/osw-studio) · [Documentation](docs/README.md) · [Discussions](https://github.com/o-stahl/osw-studio/discussions) · [GitHub](https://github.com/o-stahl/osw-studio)
+[Try it Now](https://try.oswstudio.com) · [Documentation](docs/README.md) · [Discussions](https://github.com/o-stahl/osw-studio/discussions) · [GitHub](https://github.com/o-stahl/osw-studio)
 
 ---
 
@@ -75,7 +75,7 @@ npm run dev
 4. ✅ Create project → Describe your website
 5. ✅ Export as ZIP → Deploy anywhere
 
-**Try the hosted version:** [Live Demo](https://huggingface.co/spaces/otst/osw-studio) (no installation required)
+**Try it in your browser:** [Live Demo](https://try.oswstudio.com) (no installation required)
 
 ## Key Features
 

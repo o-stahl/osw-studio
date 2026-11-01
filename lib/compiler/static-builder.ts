@@ -217,6 +217,7 @@ async function prepareBuild(
 
           // Apply deployment settings to HTML files
           content = processHtml(content, {
+            pagePath: file.path,
             publishSettings,
             projectId: deployment.projectId,
             baseUrl,

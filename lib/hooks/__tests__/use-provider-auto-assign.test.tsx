@@ -14,7 +14,8 @@ const assign = vi.hoisted(() => ({
   activate: vi.fn(async (_provider: string) => {}),
   fit: vi.fn(async (_provider: string) => {}),
   track: vi.fn((_work: Promise<void>) => {}),
-  shouldAssign: vi.fn(() => true),
+  shouldAssign: vi.fn((_provider: string) => true),
+  checkAllowance: vi.fn(async () => 'available'),
 }));
 
 vi.mock('@/lib/llm/models/global-auto-assign', () => ({
@@ -22,8 +23,9 @@ vi.mock('@/lib/llm/models/global-auto-assign', () => ({
   activateProviderAsGlobalDefault: (p: string) => assign.activate(p),
   fitModelToAccount: (p: string) => assign.fit(p),
   trackConnectSettling: (work: Promise<void>) => assign.track(work),
+  shouldTakeOverAgent: (p: string) => assign.shouldAssign(p),
 }));
-vi.mock('@/lib/llm/models/project-assignment', () => ({ shouldAutoAssignAgent: () => assign.shouldAssign() }));
+vi.mock('@/lib/inference/allowance-status', () => ({ checkAllowance: () => assign.checkAllowance() }));
 vi.mock('@/lib/config/storage', () => ({
   configManager: { getActiveAssignment: () => ({ agent: { provider: 'openrouter', model: 'm' } }) },
 }));
@@ -73,6 +75,12 @@ describe('useProviderAutoAssign', () => {
     expect(assign.track.mock.calls[0][0]).toBeInstanceOf(Promise);
   });
 
+  it("on load, starts the free allowance's status check", async () => {
+    mount();
+    await flush();
+    expect(assign.checkAllowance).toHaveBeenCalledTimes(1);
+  });
+
   it('assigns a freshly connected provider when no model works yet, then fits it', async () => {
     mount();
     await flush();
@@ -80,6 +88,7 @@ describe('useProviderAutoAssign', () => {
 
     connect('groq');
     await flush();
+    expect(assign.shouldAssign).toHaveBeenCalledWith('groq');
     expect(assign.activate).toHaveBeenCalledWith('groq');
     expect(assign.fit).toHaveBeenCalledWith('groq');
     expect(assign.activate.mock.invocationCallOrder[0]).toBeLessThan(assign.fit.mock.invocationCallOrder[0]);

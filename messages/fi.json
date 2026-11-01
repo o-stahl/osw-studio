@@ -711,7 +711,6 @@
       "exportZip": "Vie ZIP-tiedostona",
       "exportZipShort": "Vie ZIP",
       "exportJson": "Vie JSON-tiedostona",
-      "exportOsws": "Vie .osws",
       "createTemplate": "Luo pohja",
       "exportAsTemplate": "Vie pohjaksi",
       "backendFeatures": "Backend-ominaisuudet",
@@ -3096,7 +3095,7 @@
     "shareInvite": "Jos teet sovelluksella jotain, olisin innoissani, jos jakaisit aikaansaannoksesi.",
     "linksCommunity": "Linkit ja yhteisö",
     "githubRepo": "GitHub-repo",
-    "liveDemo": "Live-demo (HuggingFace)",
+    "liveDemo": "Live-demo",
     "discussions": "Yhteisön keskustelut"
   },
   "providerCatalog": {
@@ -3118,7 +3117,8 @@
       "zhipu": "GLM-mallit päättelyyn, koodaukseen ja kuvien ymmärtämiseen",
       "opencode-go": "Opencode Go -tilaus. Mallit ja niiden ominaisuudet haetaan models.devistä.",
       "pollinations": "Monta mallia yhdellä avaimella, maksetaan Pollenilla",
-      "vercel": "Monta palveluntarjoajaa yhdellä avaimella, mukana kuukausittainen ilmainen saldo"
+      "vercel": "Monta palveluntarjoajaa yhdellä avaimella, mukana kuukausittainen ilmainen saldo",
+      "osws": "Ilmainen tiettyyn rajaan asti, avainta ei tarvita"
     },
     "custom": "Oma OpenAI-yhteensopiva endpoint osoitteessa {url}"
   },
@@ -3491,9 +3491,65 @@
     "openrouterRaise": "OpenRouter sallii 1 000 ilmaista pyyntöä päivässä, kun olet lisännyt saldoa 10 $.",
     "continueWithModel": "Jatka: {model}",
     "tryModel": "Kokeile: {model}",
-    "titleOtherNoProvider": "Pyyntö epäonnistui."
+    "titleOtherNoProvider": "Pyyntö epäonnistui.",
+    "titleAllowancePaused": "OSW Studion ilmainen inferenssi on toistaiseksi tauolla.",
+    "allowancePausedBody": "Yhdistä oma palveluntarjoajasi jatkaaksesi.",
+    "titleAllowanceMonth": "OSW Studion ilmainen inferenssi on käytetty tältä kuukaudelta.",
+    "allowanceMonthBody": "Se uusiutuu {when}. Yhdistä oma palveluntarjoajasi jatkaaksesi.",
+    "titleAllowanceCheck": "Tarkistus ennen OSW Studio -inferenssiä ei mennyt läpi.",
+    "allowanceCheckBody": "Yritä hetken päästä uudelleen tai yhdistä oma palveluntarjoajasi."
   },
   "pageLayout": {
     "storageWarning": "Olet käyttänyt {percent, number, percent} workspacen tallennustilasta ({used, number} Mt / {max, number} Mt)"
+  },
+  "demo": {
+    "notice": "Tämä on OSW Studion demo: projektisi tallentuvat tähän selaimeen. Kirjaudu OSW Studio Hosted -palveluun, niin ne säilyvät palvelimella.",
+    "noticeShort": "Tämä on OSW Studion demo: projektit tallentuvat tähän selaimeen.",
+    "signUp": "Luo tili",
+    "signIn": "Kirjaudu",
+    "cardTitle": "OSW Studion demo",
+    "cardBody": "Projektisi tallentuvat tähän selaimeen. Vie ne talteen kopioksi, tai kirjaudu OSW Studio Hosted -palveluun, niin ne säilyvät palvelimella ja voit julkaista ne.",
+    "publishHere": "Täällä julkaiseminen vaatii OSW Studio Hosted -tilin.",
+    "publishSubtitle": "Julkaise OSW Studio Hosted -palvelussa ja hallitse sitä siellä Julkaisut-näkymässä."
+  },
+  "demoImport": {
+    "offerTitle": "Tervetuloa workspaceen",
+    "offerDescription": "Tämän selaimen OSW Studion demossa on projektejasi. Tuodaanko ne workspaceen?",
+    "manualTitle": "Tuo demosta",
+    "manualDescription": "Projektit, jotka teit tämän selaimen OSW Studion demossa.",
+    "loading": "Etsitään demon projekteja…",
+    "empty": "Tämän selaimen demossa ei ole projekteja.",
+    "allHere": "Kaikki demon projektit ovat jo tässä workspacessa.",
+    "failed": "Demoon ei saatu yhteyttä, joten mitään ei tuotu.",
+    "notAdded": "Projekteja ei voitu tallentaa tähän selaimeen, joten mitään ei tuotu.",
+    "notRemoved": "Ne ovat workspacessa, mutta niitä ei voitu poistaa demosta.",
+    "unreachable": "{count, plural, one {Demossa on # projektisi, mutta tämä selain ei anna tämän sivun lukea sitä. Näin tuot sen tänne:} other {Demossa on # projektiasi, mutta tämä selain ei anna tämän sivun lukea niitä. Näin tuot ne tänne:}}",
+    "unreachableExport": "Avaa demossa kunkin projektin valikko ja valitse {exportJson}.",
+    "unreachableImport": "Palaa tänne, valitse {import} › {fromFile} ja avaa tallennettu tiedosto.",
+    "openDemo": "Avaa demo",
+    "room": "{count, plural, one {Tilaukseesi mahtuu vielä # projekti.} other {Tilaukseesi mahtuu vielä # projektia.}}",
+    "noRoom": "Workspacessa on jo niin monta projektia kuin tilaukseen mahtuu.",
+    "projectMeta": "{files, plural, one {# tiedosto} other {# tiedostoa}} · {when}",
+    "import": "{count, plural, one {Tuo # projekti} other {Tuo # projektia}}",
+    "importing": "Tuodaan projekteja…",
+    "imported": "{count, plural, =0 {Yksikään projekti ei päätynyt workspaceen.} one {# projekti on nyt workspacessa.} other {# projektia on nyt workspacessa.}}",
+    "notSaved": "{count, plural, one {# projektia ei voitu tallentaa palvelimelle, joten se jää tähän selaimeen ja demoon.} other {# projektia ei voitu tallentaa palvelimelle, joten ne jäävät tähän selaimeen ja demoon.}}",
+    "keepQuestion": "Jätetäänkö kopio myös demoon?",
+    "keep": "Jätä ne",
+    "remove": "Poista demosta",
+    "removing": "Poistetaan demosta…",
+    "noThanks": "Ei kiitos",
+    "cancel": "Peruuta",
+    "close": "Sulje",
+    "fromDemo": "Demosta"
+  },
+  "allowance": {
+    "title": "OSW Studio -inferenssi",
+    "body": "OSW Studion oma inferenssi, ilmainen henkilökohtaiseen rajaan asti ja ilman lisättävää avainta. Pyynnöt menevät osoitteeseen inference.oswstudio.com, joka tarkistaa ne väärinkäytön varalta ja välittää ne sopiville malleille, enimmäkseen OpenRouterin kautta. OSW Studio ei tallenna kehotteita eikä vastauksia, ja käyttö lasketaan pseudonyymin tunnisteen alle. Mallien tarjoajien omat tietokäytännöt koskevat pyyntöjä.",
+    "botCheck": "Demossa ennen ensimmäistä pyyntöä tehdään Cloudflare Turnstile -tarkistus.",
+    "checking": "Nopea tarkistus ennen OSW Studio -inferenssin käyttöä…",
+    "statusChecking": "Tarkistetaan…",
+    "statusUnavailable": "Ei käytettävissä",
+    "unavailableBody": "Siihen ei juuri nyt saada yhteyttä. Yhteys tarkistetaan uudelleen minuutin välein."
   }
 }

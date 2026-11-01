@@ -10,7 +10,7 @@ vi.mock('../screenshot', () => ({ captureIframeScreenshot: mocks.captureIframeSc
 import { captureDeploymentPage, pageForCapture } from '../deployment-thumbnail';
 
 /**
- * A published page is captured from its built HTML in a sandboxed shell (SEC-6): its assets load
+ * A published page is captured from its built HTML in a sandboxed shell: its assets load
  * from the site's own URL through a `<base>`, which has to come before anything that names a URL,
  * and the bridge that answers the capture request comes with it.
  */

@@ -97,7 +97,7 @@ describe('LanguageOffer', () => {
     expect(mocks.refresh).not.toHaveBeenCalled();
   });
 
-  it.each(['/mcp/authorize', '/admin/login', '/review/abc', '/deployments/d1/'])('stays off %s', (path) => {
+  it.each(['/mcp/authorize', '/admin/login', '/review/abc', '/deployments/d1/', '/demo-bridge'])('stays off %s', (path) => {
     mocks.pathname = path;
     mount();
     expect(container.textContent).toBe('');

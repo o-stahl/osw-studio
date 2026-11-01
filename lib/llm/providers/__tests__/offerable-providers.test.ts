@@ -24,6 +24,8 @@ const customCfg = {
 beforeEach(stubBrowserStorage);
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
+const offeredIds = () => getOfferableProviders().map((p) => p.id);
+
 describe('getOfferableProviders', () => {
   it('offers local and custom providers on a standalone deployment', () => {
     vi.stubEnv('NEXT_PUBLIC_GATEWAY_URL', '');
@@ -43,5 +45,23 @@ describe('getOfferableProviders', () => {
     expect(ids).toContain('my-custom');   // custom endpoints allowed (external-only)
     expect(ids).toContain('openrouter');  // cloud providers remain
     removeCustomProvider('my-custom');
+  });
+
+  it('leaves out the free allowance on a git clone and on a self-hosted server', () => {
+    vi.stubEnv('NEXT_PUBLIC_GATEWAY_URL', '');
+    expect(offeredIds()).not.toContain('osws');
+    vi.stubEnv('NEXT_PUBLIC_SERVER_MODE', 'true');
+    expect(offeredIds()).not.toContain('osws');
+  });
+
+  it('offers the free allowance on the demo', () => {
+    vi.stubEnv('DEMO_GATEWAY_URL', 'https://gateway.oswstudio.com');
+    expect(offeredIds()).toContain('osws');
+  });
+
+  it('offers the free allowance on a hosted instance', () => {
+    vi.stubEnv('NEXT_PUBLIC_SERVER_MODE', 'true');
+    vi.stubEnv('NEXT_PUBLIC_GATEWAY_URL', 'https://gateway.example.com');
+    expect(offeredIds()).toContain('osws');
   });
 });

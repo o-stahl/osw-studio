@@ -30,6 +30,9 @@ import type { ProviderId } from '@/lib/llm/providers/types';
 import { disconnectCodex } from '@/lib/auth/codex-auth';
 import { useSignInStart } from '@/lib/hooks/use-sign-in-start';
 import { cn, logger } from '@/lib/utils';
+import { freeAllowanceOffered, OSWS_PROVIDER } from '@/lib/inference/allowance';
+import { ALLOWANCE_STATUS_EVENT, allowanceStatus, checkAllowance, type AllowanceStatus } from '@/lib/inference/allowance-status';
+import { isDemo } from '@/lib/demo';
 import {
   CustomHeadersEditor,
   headerRowsFrom,
@@ -544,7 +547,8 @@ function ConnectChooseBody({ onChoose, onChooseCustom }: ConnectChooseBodyProps)
   const [query, setQuery] = useState('');
 
   const allProviders = getOfferableProviders();
-  const unconnected = allProviders.filter((p) => !isProviderConnected(p.id));
+  // The free allowance has its own row and nothing to add, even while it is unavailable.
+  const unconnected = allProviders.filter((p) => p.id !== OSWS_PROVIDER && !isProviderConnected(p.id));
 
   const filtered = query.trim()
     ? unconnected.filter(
@@ -682,6 +686,80 @@ interface ConnectionRowProps {
   onDisconnect: () => void;
   onEdit: () => void;
   onRevalidate: () => Promise<void>;
+}
+
+/** The free allowance's status, checked when the row shows unless a recent answer stands. */
+function useAllowanceStatus(): AllowanceStatus {
+  const [status, setStatus] = useState(allowanceStatus);
+  useEffect(() => {
+    const onChange = () => setStatus(allowanceStatus());
+    window.addEventListener(ALLOWANCE_STATUS_EVENT, onChange);
+    onChange();
+    void checkAllowance();
+    return () => window.removeEventListener(ALLOWANCE_STATUS_EVENT, onChange);
+  }, []);
+  return status;
+}
+
+/**
+ * The free allowance (lib/inference/allowance.ts), where it is offered: always listed, with nothing
+ * to edit or disconnect. Whether it is connected comes from its status check
+ * (lib/inference/allowance-status.ts), which Revalidate runs again. The row says where its requests
+ * go, since this is where people choose a provider.
+ */
+function AllowanceRow() {
+  const ta = useTranslations('allowance');
+  const tc = useTranslations('common');
+  const t = useTranslations('connections');
+  const { state, checking } = useAllowanceStatus();
+  const unavailable = !checking && state === 'unavailable';
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">{ta('title')}</p>
+      <div className="flex items-start gap-3 bg-card border border-border rounded-md px-4 py-3">
+        <div className="w-[36px] h-[36px] rounded-md bg-secondary border border-border flex items-center justify-center flex-shrink-0 text-xs font-semibold text-muted-foreground">
+          OS
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-sm">{getProvider(OSWS_PROVIDER).name}</div>
+          <p className="text-xs text-muted-foreground mt-1">{ta('body')}</p>
+          {isDemo() && <p className="text-xs text-muted-foreground mt-1">{ta('botCheck')}</p>}
+          {unavailable && <p className="text-xs text-amber-500 mt-1">{ta('unavailableBody')}</p>}
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {checking || state === 'unknown' ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+              <span className="text-xs font-semibold text-muted-foreground mr-1">{ta('statusChecking')}</span>
+            </>
+          ) : unavailable ? (
+            <>
+              <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+              <span className="text-xs font-semibold text-amber-500 mr-1">{ta('statusUnavailable')}</span>
+            </>
+          ) : (
+            <>
+              <div className="h-1.5 w-1.5 rounded-full bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.5)]" />
+              <span className="text-xs font-semibold text-green-500 mr-1">{tc('labels.connected')}</span>
+            </>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" variant="ghost" className="size-7" title={tc('labels.connectionOptions')} disabled={checking}>
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => { void checkAllowance({ force: true }); }}>
+                <RefreshCw className="h-4 w-4" />
+                {t('revalidate')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ConnectionRow({ providerId, onDisconnect, onEdit, onRevalidate }: ConnectionRowProps) {
@@ -1038,6 +1116,11 @@ export function ConnectionsPane() {
   // providers are connected. The value itself is unused — only the update matters.
   const [, setConnVersion] = useState(0);
   const refresh = useCallback(() => setConnVersion((v) => v + 1), []);
+  // The free allowance's status check changes what counts as connected without a connect or disconnect.
+  useEffect(() => {
+    window.addEventListener(ALLOWANCE_STATUS_EVENT, refresh);
+    return () => window.removeEventListener(ALLOWANCE_STATUS_EVENT, refresh);
+  }, [refresh]);
   // Connections live in this browser's storage, which the server render cannot see: read them only
   // once hydrated, so the server HTML and the first client render agree.
   const [hydrated, setHydrated] = useState(false);
@@ -1102,8 +1185,10 @@ export function ConnectionsPane() {
 
   const cloudProviders = connectedProviders.filter((p) => {
     const arch = getProviderArchetype(p.id);
-    return arch !== 'local' && arch !== 'custom';
+    // The free allowance has nothing to edit or disconnect; it has its own row.
+    return arch !== 'local' && arch !== 'custom' && p.id !== OSWS_PROVIDER;
   });
+  const allowanceOffered = hydrated && freeAllowanceOffered();
   const customProviders = connectedProviders.filter((p) => getProviderArchetype(p.id) === 'custom');
   const localProviders = connectedProviders.filter((p) => {
     const arch = getProviderArchetype(p.id);
@@ -1159,6 +1244,8 @@ export function ConnectionsPane() {
             {t('addProvider')}
           </Button>
         </div>
+
+        {allowanceOffered && <AllowanceRow />}
 
         {/* Cloud section */}
         <div>

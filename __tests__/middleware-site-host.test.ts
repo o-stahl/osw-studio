@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 /**
- * Published sites live away from the studio's origin (SEC-6, lib/web/site-origin.ts). On a site
+ * Published sites live away from the studio's origin (lib/web/site-origin.ts). On a site
  * host the app answers only what a site needs, so a site's script cannot reach the studio's API on
  * its own origin; on the studio host, a site document is sent to where it lives. On desktop, whose
  * API has no session, a request addressed to anything but loopback is refused.

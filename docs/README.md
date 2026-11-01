@@ -119,7 +119,7 @@ Download your complete site and deploy to Vercel, Netlify, or any static host in
 
 ### External Links
 
-- **[Live Demo](https://huggingface.co/spaces/otst/osw-studio)** - Try OSW Studio now
+- **[Live Demo](https://try.oswstudio.com)** - Try OSW Studio now
 - **[GitHub Repository](https://github.com/o-stahl/osw-studio)** - Source code
 - **[Report Issues](https://github.com/o-stahl/osw-studio/issues)** - Bug reports & feature requests
 

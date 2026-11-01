@@ -84,7 +84,23 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   localStorage.removeItem('osw_provider_sign_ins');
+  delete document.documentElement.dataset.hostedDemo;
+  vi.unstubAllEnvs();
 });
+
+/** A hosted instance; `demo` when it stands behind the demo (`HOSTED_DEMO_URL`). */
+function hostedInstance({ demo }: { demo: boolean }) {
+  vi.stubEnv('NEXT_PUBLIC_SERVER_MODE', 'true');
+  if (demo) document.documentElement.dataset.hostedDemo = 'https://try.oswstudio.com';
+  surface = 'managed';
+}
+
+/** The landing a new account reaches from the gateway, on an instance behind the demo. */
+async function importLanding() {
+  hostedInstance({ demo: true });
+  window.history.replaceState({}, '', '/w/w1/dashboard?demo_import=1');
+  return import('@/lib/demo-bridge/offer');
+}
 
 async function render(props: { quickEditProjectId?: string } = {}) {
   const { PageWrapper } = await import('../index');
@@ -128,6 +144,38 @@ describe('PageWrapper — first visit', () => {
     await render({ quickEditProjectId: 'q1' });
     await new Promise((r) => setTimeout(r, 20));
     expect(createFirstProject).not.toHaveBeenCalled();
+  });
+
+  it("makes no starter project on the import landing when the visitor is asked about the demo's projects", async () => {
+    const offer = await importLanding();
+    await render();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(createFirstProject).not.toHaveBeenCalled();
+    offer.settleDemoOffer('offered');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(createFirstProject).not.toHaveBeenCalled();
+    expect(opened()).toBeNull();
+  });
+
+  it('opens a starter project on the import landing once the offer has nothing to ask', async () => {
+    const offer = await importLanding();
+    await render();
+    await act(async () => { offer.settleDemoOffer('none'); });
+    await vi.waitFor(() => expect(opened()).toBe('first'));
+  });
+
+  // waitFor gives up after a second, long before the offer's DEMO_OFFER_WAIT_MS would end a wait.
+  it('opens a starter project without waiting for the offer when the landing has no import mark', async () => {
+    hostedInstance({ demo: true });
+    await render();
+    await vi.waitFor(() => expect(opened()).toBe('first'));
+  });
+
+  it('opens a starter project without waiting for the offer when no demo stands in front of the instance', async () => {
+    hostedInstance({ demo: false });
+    window.history.replaceState({}, '', '/w/w1/dashboard?demo_import=1');
+    await render();
+    await vi.waitFor(() => expect(opened()).toBe('first'));
   });
 
   it('leaves a workspace that already has projects on the server alone', async () => {

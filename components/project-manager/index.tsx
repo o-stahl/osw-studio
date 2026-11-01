@@ -33,6 +33,7 @@ import {
   MessageSquare,
   ArrowRight,
   ArrowLeft,
+  Monitor,
 } from 'lucide-react';
 import { ViewModeToggle, useViewMode } from '@/components/ui/view-mode-toggle';
 import {
@@ -52,6 +53,8 @@ import {
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { ImportDialog, type ImportDialogSource } from '@/components/import-dialog';
+import { DemoImportDialog } from '@/components/demo-import';
+import { hostedDemoOrigin } from '@/lib/demo';
 import { pickFolderSource } from '@/components/import-dialog/pick';
 import type { ApplyResult } from '@/lib/vfs/archive';
 import { toast } from 'sonner';
@@ -202,6 +205,10 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
   const [backendProject, setBackendProject] = useState<Project | null>(null);
   const [importSource, setImportSource] = useState<ImportDialogSource | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  // On a hosted instance, the demo whose projects can be brought in by hand (components/demo-import).
+  const [demoOrigin] = useState(() => (workspaceId ? hostedDemoOrigin() : null));
+  const [demoImportOpen, setDemoImportOpen] = useState(false);
+  const tDemoImport = useTranslations('demoImport');
   const { state: tourState, setProjectList, start: startTour } = useGuidedTour();
   const tourStep = tourState.currentStep?.id;
   const tourRunning = tourState.status === 'running';
@@ -705,7 +712,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
 
   if (loading && !initialLoadComplete) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-app-dvh">
         <div className="text-center">
           <Spinner size={48} className="mx-auto text-primary" />
           <p className="mt-4">{t('loading')}</p>
@@ -715,7 +722,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
   }
 
   return (
-    <div className={`flex flex-col ${hideHeader ? 'h-full' : 'h-[100dvh]'}`} style={{ background: `linear-gradient(var(--project-background-tint), var(--project-background-tint)), var(--background)` }}>
+    <div className={`flex flex-col ${hideHeader ? 'h-full' : 'h-app-dvh'}`} style={{ background: `linear-gradient(var(--project-background-tint), var(--project-background-tint)), var(--background)` }}>
       {/* Main Content */}
       <main ref={listScrollRef} className="flex-1 min-h-0 overflow-auto">
         <div className="h-full flex flex-col">
@@ -789,6 +796,12 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
                         <FolderOpen className="h-4 w-4 mr-2" />
                         {t('fromFolder')}
                       </DropdownMenuItem>
+                      {demoOrigin && (
+                        <DropdownMenuItem onClick={() => setDemoImportOpen(true)}>
+                          <Monitor className="h-4 w-4 mr-2" />
+                          {tDemoImport('fromDemo')}
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -1208,6 +1221,16 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
         target={{ kind: 'new-project' }}
         onComplete={handleImportComplete}
       />
+
+      {demoOrigin && workspaceId && demoImportOpen && (
+        <DemoImportDialog
+          open
+          onOpenChange={setDemoImportOpen}
+          workspaceId={workspaceId}
+          demoOrigin={demoOrigin}
+          mode="manual"
+        />
+      )}
 
       {/* About Modal */}
       <AboutModal

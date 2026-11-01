@@ -1,3 +1,5 @@
+import { isDemo } from '@/lib/demo';
+
 export const TELEMETRY_ENDPOINT =
   process.env.NEXT_PUBLIC_ANALYTICS_ENDPOINT || 'https://stats.oswstudio.com/collect';
 
@@ -16,9 +18,9 @@ export const MAX_RETRIES = 3;
 export const RETRY_BASE_MS = 1_000;
 export const HEARTBEAT_INTERVAL_MS = 300_000;
 
-export function detectDeploymentType(): 'hf_space' | 'desktop' | 'managed' | 'server' | 'browser' {
+export function detectDeploymentType(): 'hf_space' | 'demo' | 'desktop' | 'managed' | 'server' | 'browser' {
   if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
+    const hostname = window.location?.hostname ?? '';
     if (hostname.includes('hf.space') || hostname.includes('huggingface.co')) {
       return 'hf_space';
     }
@@ -32,6 +34,8 @@ export function detectDeploymentType(): 'hf_space' | 'desktop' | 'managed' | 'se
     }
     return 'server';
   }
+  // The hosted demo (lib/demo.ts): Browser Mode in front of a hosted service, not a git clone.
+  if (isDemo()) return 'demo';
   return 'browser';
 }
 

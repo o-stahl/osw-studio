@@ -66,7 +66,7 @@ export function LanguageOffer({
 
   if (!mounted) return null;
   // The consent screen is a decision surface of its own, and the sign-in pages are not the studio.
-  if (['/mcp', '/admin', '/review', '/deployments'].some((prefix) => pathname.startsWith(prefix))) {
+  if (['/mcp', '/admin', '/review', '/deployments', '/demo-bridge'].some((prefix) => pathname.startsWith(prefix))) {
     return null;
   }
   // The same yielding the other top bars do among themselves: this is the least urgent of the three.

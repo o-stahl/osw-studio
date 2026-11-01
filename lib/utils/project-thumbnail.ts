@@ -11,6 +11,7 @@ import { injectVfsBlobMap } from '@/lib/preview/inject-vfs-blob-map';
 import { prependToHead, previewBridgeScript } from '@/lib/preview/preview-bridge';
 import { loadIntoShell } from '@/lib/preview/preview-shell';
 import { getPreviewStorage } from '@/lib/preview/preview-storage';
+import { createSandboxedFrame } from '@/lib/sandbox';
 
 export async function captureProjectScreenshot(projectId: string): Promise<string | null> {
   await vfs.init();
@@ -65,10 +66,9 @@ export async function captureProjectScreenshot(projectId: string): Promise<strin
   // live preview carries.
   html = prependToHead(html, previewBridgeScript(0));
 
-  const iframe = document.createElement('iframe');
-  // Project code runs in this frame, so it gets the preview's sandbox: an opaque origin, with the
+  // Project code runs in this frame, so it is sandboxed (`lib/sandbox`): an opaque origin, with the
   // page delivered through the shell (`lib/preview/preview-shell.ts`).
-  iframe.setAttribute('sandbox', 'allow-scripts');
+  const iframe = createSandboxedFrame();
   iframe.style.position = 'fixed';
   iframe.style.top = '-10000px';
   iframe.style.left = '-10000px';

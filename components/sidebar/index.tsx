@@ -671,14 +671,14 @@ function SidebarContent({
       <div
         ref={sidebarRef}
         className={cn(
-          'flex flex-col h-screen bg-card transition-all duration-300',
+          'flex flex-col h-app-vh bg-card transition-all duration-300',
           // Border: left on mobile (slides from right), right on desktop (stays on left)
           'border-l md:border-l-0 md:border-r',
           // Desktop behavior - always on left
           'md:relative md:left-0',
           pinned ? 'md:relative' : 'md:absolute md:left-0 md:top-0 md:z-40 md:shadow-lg',
-          // Mobile behavior - slide in from right, fixed 240px width
-          'fixed right-0 top-0 z-50 w-60',
+          // Mobile behavior - slide in from right, fixed 240px width, below a top bar that takes space
+          'fixed right-0 top-[var(--app-top-offset,0px)] md:top-0 z-50 w-60',
           // Desktop - 240px when expanded, or collapsed width
           collapsed ? '' : 'md:w-60',
           // Mobile: slide from right. Desktop: always visible

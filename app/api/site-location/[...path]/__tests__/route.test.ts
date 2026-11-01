@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
 /**
- * Where a site page or review copy asked for on the studio host is sent (SEC-6). Old links keep
+ * Where a site page or review copy asked for on the studio host is sent. Old links keep
  * working: they land on the site's own host, and never on the studio's origin.
  */
 

@@ -5,6 +5,7 @@
 import { AgentLoop } from './core/agent-loop';
 import { ContextManagerImpl } from './core/context-manager';
 import { track } from '@/lib/telemetry';
+import { OSWS_PROVIDER } from '@/lib/inference/allowance';
 import type {
   ToolExecutor,
   ToolCall,
@@ -50,6 +51,7 @@ export class MultiAgentCoordinator {
   ]);
 
   private static readonly MAX_PARALLEL_AGENTS = 8;
+  private static readonly MAX_PARALLEL_AGENTS_ALLOWANCE = 4;
 
   constructor(private config: CoordinatorConfig) {
     this.innerExecutor = config.innerExecutor;
@@ -344,8 +346,11 @@ export class MultiAgentCoordinator {
    * Run sub-agents and combine their results into a single string for the parent context.
    */
   private async runAgents(agents: { type: string; prompt: string }[]): Promise<string> {
-    if (agents.length > MultiAgentCoordinator.MAX_PARALLEL_AGENTS) {
-      const cap = MultiAgentCoordinator.MAX_PARALLEL_AGENTS;
+    // The free allowance takes fewer requests in flight per visitor than the agent can start.
+    const cap = this.config.provider.getProvider() === OSWS_PROVIDER
+      ? MultiAgentCoordinator.MAX_PARALLEL_AGENTS_ALLOWANCE
+      : MultiAgentCoordinator.MAX_PARALLEL_AGENTS;
+    if (agents.length > cap) {
       return `Error: Too many parallel agents (${agents.length}). Maximum is ${cap}. Break the work into smaller batches.`;
     }
 

@@ -1,6 +1,7 @@
 import { ProviderId, BuiltInProviderId, ProviderConfig, ProviderModel, InputModality } from './types';
 export type { OutputModality } from './types';
 import { getCustomProviders } from './custom-providers';
+import { freeAllowanceOffered, OSWS_AGENT_MODEL, OSWS_INFERENCE_API, OSWS_PROVIDER } from '@/lib/inference/allowance';
 
 // Mirrors the visibility:'list' models served by GET /backend-api/codex/models,
 // in priority order. Used as the fallback when the catalog fetch fails.
@@ -421,6 +422,33 @@ export const providers: Record<BuiltInProviderId, ProviderConfig> = {
     supportsFunctions: true,
     supportsStreaming: true,
   },
+  // The free allowance (lib/inference/allowance.ts): offered on the demo and hosted instances only.
+  // No key: the server adds a token (the demo mints one for its trial, a hosted instance asks the
+  // gateway for the user's). `/api/generate` sends it to this address and no other
+  // (`OSWS_INFERENCE_URL` overrides it on the server).
+  osws: {
+    id: 'osws',
+    name: 'OSW Studio',
+    description: 'Free up to a limit, no key needed',
+    apiKeyRequired: false,
+    baseUrl: OSWS_INFERENCE_API,
+    models: [
+      {
+        id: OSWS_AGENT_MODEL,
+        name: 'OSW Studio agent',
+        contextLength: 262144,
+        maxTokens: 16384,
+        supportsFunctions: true,
+        supportsVision: true,
+        inputModalities: ['text', 'image'],
+        outputModalities: ['text'],
+        free: true,
+      },
+    ],
+    supportsModelDiscovery: false,
+    supportsFunctions: true,
+    supportsStreaming: true,
+  },
 };
 
 export function getProvider(id: ProviderId): ProviderConfig {
@@ -472,12 +500,15 @@ export function getAllProviders(): ProviderConfig[] {
  * On managed/hosted instances, built-in local providers (Ollama/LM Studio/llama.cpp)
  * aren't offered — the hosted instance has no local inference. Custom endpoints ARE
  * offered everywhere (external-only; enforced by assertPublicHttpUrl plus network-level
- * egress filtering on hosted instances). Standalone/desktop offer everything.
+ * egress filtering on hosted instances). Standalone/desktop offer every provider but OSW Studio
+ * inference, which only the demo and hosted instances offer.
  */
 export function getOfferableProviders(): ProviderConfig[] {
   const managed = !!process.env.NEXT_PUBLIC_GATEWAY_URL;
-  if (!managed) return getAllProviders();
-  return getAllProviders().filter((p) => !p.isLocal);
+  // The free allowance exists only on the demo and hosted instances (lib/inference/allowance.ts).
+  const offered = getAllProviders().filter((p) => p.id !== OSWS_PROVIDER || freeAllowanceOffered());
+  if (!managed) return offered;
+  return offered.filter((p) => !p.isLocal);
 }
 
 export function getDefaultModel(provider: ProviderId): string {
@@ -525,6 +556,8 @@ export function getDefaultModel(provider: ProviderId): string {
     case 'meshllm':
       // Models come from whatever peers the mesh has, so there is nothing to name up front.
       return '';
+    case 'osws':
+      return OSWS_AGENT_MODEL;
     default:
       // No model rather than another vendor's. Every built-in has a case above, so this arm is
       // only reached by an id that is neither built-in nor a registered custom provider, such as

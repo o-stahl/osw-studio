@@ -20,7 +20,8 @@ export type BuiltInProviderId =
   | 'meshllm'
   | 'opencode-go'
   | 'pollinations'
-  | 'vercel';
+  | 'vercel'
+  | 'osws';
 
 /** Provider ID type. Includes built-in providers and arbitrary custom IDs. */
 export type ProviderId = BuiltInProviderId | (string & {});

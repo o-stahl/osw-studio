@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils';
 import { configManager } from '@/lib/config/storage';
 import { trackAgentProviderChange } from '@/lib/telemetry/provider-selection';
 import { getProvider } from '@/lib/llm/providers/registry';
+import { isProviderConnected } from '@/lib/llm/providers/connection-status';
+import { OSWS_PROVIDER } from '@/lib/inference/allowance';
 import { track } from '@/lib/telemetry';
 import { toast } from 'sonner';
 import { ServerDeleteRefused } from '@/lib/vfs/auto-sync';
@@ -20,6 +22,7 @@ import type { ModelTemplate, ModelRef } from '@/lib/llm/models/assignment';
 /** Returns true when the provider for the agent model is reachable. */
 function isAgentProviderConnected(template: ModelTemplate): boolean {
   const provider = template.assignment.agent.provider;
+  if (provider === OSWS_PROVIDER) return isProviderConnected(provider);
   return !!configManager.getProviderApiKey(provider) || !!configManager.getCachedModels(provider);
 }
 

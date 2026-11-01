@@ -1,9 +1,9 @@
-const OSW_SPACE_URL = 'https://huggingface.co/spaces/otst/osw-studio';
+import { DEMO_URL } from '@/lib/constants/links';
 
 const CREDIT_HTML =
   `<div data-osw-credit style="text-align:center;font:12px/1.6 system-ui,sans-serif;` +
   `padding:12px;opacity:.6">` +
-  `Built with <a href="${OSW_SPACE_URL}" target="_blank" rel="noopener" ` +
+  `Built with <a href="${DEMO_URL}" target="_blank" rel="noopener" ` +
   `style="color:inherit">OSW Studio</a></div>`;
 
 /** Inject the opt-out "Built with OSW Studio" credit before </body>. Idempotent. */

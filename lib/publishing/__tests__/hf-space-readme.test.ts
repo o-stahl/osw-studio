@@ -11,7 +11,7 @@ describe('buildSpaceReadme', () => {
     expect(md).toContain('colorTo: gray');
     expect(md).toContain('short_description: A demo');
     expect(md).toContain('- osw-studio');
-    expect(md).toContain('[OSW Studio](https://huggingface.co/spaces/otst/osw-studio)');
+    expect(md).toContain('[OSW Studio](https://try.oswstudio.com)');
   });
   it('truncates short_description to 200 chars and strips newlines', () => {
     const md = buildSpaceReadme({ title: 'T', shortDescription: 'x'.repeat(300) + '\n\nmore' });

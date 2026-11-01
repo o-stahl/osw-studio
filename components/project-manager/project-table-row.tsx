@@ -148,7 +148,7 @@ export const ProjectTableRow = React.memo(function ProjectTableRow({
                 <FileArchive className="w-4 h-4 mr-2" />{tp('menu.exportZipShort')}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onExport(project)}>
-                <Download className="w-4 h-4 mr-2" />{tp('menu.exportOsws')}
+                <Download className="w-4 h-4 mr-2" />{tp('menu.exportJson')}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onDuplicate(project)}>
                 <Copy className="w-4 h-4 mr-2" />{tp('menu.duplicate')}

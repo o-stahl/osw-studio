@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 /**
  * Gallery edits hand the manager only the fields they change, so a copy of the project loaded
  * before another tab saved cannot overwrite that save; a thumbnail that could not be stored says so.
+ * The table row's menu names the export each item runs.
  */
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() }));
@@ -118,5 +119,22 @@ describe('a thumbnail that could not be stored', () => {
     await uploadWith(<table><tbody><ProjectTableRow project={PROJECT} {...handlers} onUpdate={onUpdate} /></tbody></table>);
     expect(onUpdate).toHaveBeenCalledWith('p1', THUMBNAIL_CHANGE);
     expect(toast.error).toHaveBeenCalledWith(en.projects.updateFailed);
+  });
+});
+
+describe('the table row menu', () => {
+  it('names the JSON export on the item that runs it', async () => {
+    const onExport = vi.fn();
+    const onExportZip = vi.fn();
+    await render(<table><tbody><ProjectTableRow project={PROJECT} {...handlers} onExport={onExport} onExportZip={onExportZip} onUpdate={vi.fn(async () => {})} /></tbody></table>);
+    const trigger = container.querySelector('[aria-haspopup="menu"]');
+    expect(trigger).not.toBeNull();
+    await act(async () => { trigger!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 })); });
+    const item = Array.from(document.body.querySelectorAll<HTMLElement>('[role="menuitem"]'))
+      .find((el) => el.textContent === en.projects.menu.exportJson);
+    expect(item).toBeDefined();
+    await act(async () => { item!.click(); });
+    expect(onExport).toHaveBeenCalledWith(PROJECT);
+    expect(onExportZip).not.toHaveBeenCalled();
   });
 });

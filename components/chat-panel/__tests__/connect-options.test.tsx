@@ -38,9 +38,12 @@ vi.mock('@/lib/web/embedded', () => ({ isEmbedded: () => embedded }));
 const loadProviderModels = vi.fn(async (..._a: unknown[]) => {});
 vi.mock('@/lib/llm/models/model-catalog', () => ({ loadProviderModels: (...a: unknown[]) => loadProviderModels(...a) }));
 const activateProviderAsGlobalDefault = vi.fn(async (..._a: unknown[]) => {});
-vi.mock('@/lib/llm/models/global-auto-assign', () => ({ activateProviderAsGlobalDefault: (...a: unknown[]) => activateProviderAsGlobalDefault(...a) }));
+const shouldTakeOverAgent = vi.fn((_provider: ProviderId) => autoAssign);
+vi.mock('@/lib/llm/models/global-auto-assign', () => ({
+  activateProviderAsGlobalDefault: (...a: unknown[]) => activateProviderAsGlobalDefault(...a),
+  shouldTakeOverAgent: (provider: ProviderId) => shouldTakeOverAgent(provider),
+}));
 let autoAssign = true;
-vi.mock('@/lib/llm/models/project-assignment', () => ({ shouldAutoAssignAgent: () => autoAssign }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import { ConnectOptions } from '../connect-options';
@@ -59,7 +62,7 @@ beforeEach(() => {
   autoAssign = true;
   embedded = false;
   events = [];
-  for (const m of [verifyApiKey, getAvailableModels, track, checkHFCapabilities, startSignIn, prepareSignIn, loadProviderModels, activateProviderAsGlobalDefault]) m.mockClear();
+  for (const m of [verifyApiKey, getAvailableModels, track, checkHFCapabilities, startSignIn, prepareSignIn, loadProviderModels, activateProviderAsGlobalDefault, shouldTakeOverAgent]) m.mockClear();
   window.addEventListener('apiKeyUpdated', onKey);
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -123,7 +126,8 @@ describe('a key that checks out', () => {
 });
 
 describe('a model on this computer', () => {
-  it.each(['hf_space', 'managed'])('is not offered on %s, and nothing is probed', async (s) => {
+  // The demo is served from localhost in development too; the surface decides, not the hostname.
+  it.each(['hf_space', 'demo', 'managed'])('is not offered on %s, and nothing is probed', async (s) => {
     surface = s;
     await render();
     expect(container.textContent).not.toContain(t('localTitle'));
@@ -164,6 +168,7 @@ describe('a model on this computer', () => {
     expect(container.textContent).toContain(t('localFound', { name: 'Ollama', count: 2 }));
     await act(async () => { rowButton(t('localTitle'), t('use'))!.click(); });
     expect(loadProviderModels).toHaveBeenCalledWith('ollama');
+    expect(shouldTakeOverAgent).toHaveBeenCalledWith('ollama');
     expect(activateProviderAsGlobalDefault).toHaveBeenCalledWith('ollama');
     expect(events).toEqual([{ provider: 'ollama', hasKey: false }]);
   });

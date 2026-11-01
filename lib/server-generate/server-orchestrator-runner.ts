@@ -1,6 +1,7 @@
 // lib/server-generate/server-orchestrator-runner.ts
 import { MultiAgentOrchestrator } from '@/lib/llm/multi-agent-orchestrator';
 import { ServerConfigManager } from './server-config-manager';
+import { serverRunHeaders } from './run-auth';
 import { runWithVFS } from './vfs-context';
 import type { SSEEventBus } from './sse-event-bus';
 import type { TaskManager } from './task-manager';
@@ -75,11 +76,13 @@ export async function runServerGeneration(
   if (!task) throw new Error(`Task ${taskId} not found`);
 
   const params: ServerGenerationParams = {
+    // Spread first: the type keeps provider, model, key and address out of generationParams, but a
+    // request body is not held to the type.
+    ...request.generationParams,
     provider: request.providerConfig?.provider ?? 'openai',
     model: request.model,
     apiKey: request.apiKey,
     providerBaseUrl: request.providerConfig?.baseUrl,
-    ...request.generationParams,
   };
 
   const serverConfig = new ServerConfigManager(params, taskId);
@@ -88,6 +91,7 @@ export async function runServerGeneration(
 
   const serverContext: ServerOrchestratorContext = {
     apiBaseUrl,
+    requestHeaders: serverRunHeaders(task.sessionId),
     vfs: serverVFS,
     config: serverConfig,
     onEvent: (event, data) => {

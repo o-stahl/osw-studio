@@ -31,6 +31,10 @@ describe('CostCalculator.calculateCost', () => {
     expect(cost).toBe(0);
   });
 
+  it('reports no cost on the free allowance, even when the upstream reports one', () => {
+    expect(CostCalculator.calculateCost({ promptTokens: 1000, completionTokens: 500, cost: 0.002 }, 'osws', 'osws/agent', true)).toBe(0);
+  });
+
   it('uses reported cost when not provisional', () => {
     const cost = CostCalculator.calculateCost(
       { promptTokens: 1000, completionTokens: 500, cost: 0.05, isEstimated: false },

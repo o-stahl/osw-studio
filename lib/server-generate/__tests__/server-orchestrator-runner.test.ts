@@ -4,7 +4,8 @@ import { imageDelegationTimeoutMs } from '@/lib/llm/image-gen-timeout';
 import { claimImageRequest, settleImageRequest } from '../image-requests';
 import { TaskManager } from '../task-manager';
 import { SSEEventBus } from '../sse-event-bus';
-import type { StartGenerationRequest, BuildResult } from '../types';
+import type { StartGenerationRequest, ServerOrchestratorContext } from '../types';
+import { serverRunUser } from '../run-auth';
 import type { VirtualFileSystem } from '@/lib/vfs';
 import { MultiAgentOrchestrator } from '@/lib/llm/multi-agent-orchestrator';
 
@@ -230,6 +231,30 @@ describe('runServerGeneration', () => {
     expect(request).toMatchObject({ prompt: 'a lighthouse', aspectRatio: '16:9' });
     settleImageRequest(tm.getTask(taskId)!, request.requestId, { base64: 'iVBOR', mimeType: 'image/png' });
     await expect(answer).resolves.toEqual({ base64: 'iVBOR', mimeType: 'image/png' });
+  });
+
+  it("sends the run's model requests to this server as the run's own user", async () => {
+    const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
+    await runServerGeneration(taskId, makeRequest(), makeDeps());
+    const { serverContext } = vi.mocked(MultiAgentOrchestrator).mock.calls[0][3] as { serverContext: ServerOrchestratorContext };
+    expect(serverContext.apiBaseUrl).toBe('http://localhost:3000');
+    expect(serverRunUser(new Headers(serverContext.requestHeaders))).toBe('sess-1');
+  });
+
+  it('keeps the provider, model and key the request names, whatever generationParams carries', async () => {
+    const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
+    const smuggled = { provider: 'openrouter', model: 'other/model', apiKey: 'other-key', providerBaseUrl: 'https://elsewhere.example' };
+    await runServerGeneration(taskId, makeRequest({
+      providerConfig: { provider: 'osws', baseUrl: undefined } as StartGenerationRequest['providerConfig'],
+      model: 'osws/agent',
+      apiKey: 'run-key',
+      generationParams: smuggled as unknown as StartGenerationRequest['generationParams'],
+    }), makeDeps());
+    const { config } = (vi.mocked(MultiAgentOrchestrator).mock.calls[0][3] as { serverContext: ServerOrchestratorContext }).serverContext;
+    expect(config.getSelectedProvider()).toBe('osws');
+    expect(config.getProviderModel('osws')).toBe('osws/agent');
+    expect(config.getProviderApiKey('osws')).toBe('run-key');
+    expect(config.getProviderApiKey('openrouter' as never)).toBeNull();
   });
 
   it('does not advertise image generation when the tab has no image model', async () => {

@@ -8,6 +8,12 @@ import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import en from '@/messages/en.json';
 import { HF_BILLING_URL } from '@/lib/constants/links';
 import { StoppedCard, LimitNotice } from '../limit-cards';
+import { checkAllowance } from '@/lib/inference/allowance-status';
+
+vi.mock('@/lib/inference/allowance-status', async (original) => ({
+  ...(await original<typeof import('@/lib/inference/allowance-status')>()),
+  checkAllowance: vi.fn(async () => 'available'),
+}));
 import { configManager } from '@/lib/config/storage';
 
 let container: HTMLElement;
@@ -33,6 +39,8 @@ function render(node: React.ReactNode) {
 }
 
 const button = (label: RegExp) => [...container.querySelectorAll('button')].find((b) => label.test(b.textContent ?? ''));
+/** A time from now as the card words it in English (`useLocalFormat().relativeTime`). */
+const fromNow = (value: number, unit: Intl.RelativeTimeFormatUnit) => new Intl.RelativeTimeFormat('en', { numeric: 'auto' }).format(value, unit);
 
 describe('StoppedCard', () => {
   const working = (provider: string, model: string) =>
@@ -171,6 +179,58 @@ describe('StoppedCard', () => {
     render(<StoppedCard live onContinue={() => {}} data={{ errorCategory: 'unknown', provider: '', model: '' }} />);
     expect(container.textContent).toContain('The request failed');
     expect(container.textContent).not.toContain('The request to');
+  });
+
+  it('words the free allowance\'s stops without credit to add or a key to replace', () => {
+    const limits = createTranslator({ locale: 'en', messages: en, namespace: 'limits' });
+    working('osws', 'osws/agent');
+    render(<StoppedCard live onContinue={vi.fn()} data={{ errorCategory: 'daily_limit', provider: 'osws', model: 'osws/agent', resetAt: Date.now() + 3 * 3600_000 }} />);
+    expect(container.textContent).toContain(`${limits('titleDaily', { provider: 'OSW Studio' })} ${limits('dailyReset', { when: fromNow(3, 'hour') })}`);
+
+    render(<StoppedCard live onContinue={vi.fn()} data={{ errorCategory: 'credit_exhausted', provider: 'osws', model: 'osws/agent' }} />);
+    expect(container.textContent).toContain(`${en.limits.titleAllowancePaused} ${en.limits.allowancePausedBody}`);
+    expect(container.textContent).not.toContain(limits('creditBody', { provider: 'OSW Studio' }));
+
+    render(<StoppedCard live onContinue={vi.fn()} data={{ errorCategory: 'auth_expired', provider: 'osws', model: 'osws/agent', message: 'The bot check for OSW Studio inference did not pass.' }} />);
+    expect(container.textContent).toContain(`${en.limits.titleAllowanceCheck} ${en.limits.allowanceCheckBody}`);
+    expect(container.textContent).not.toContain(limits('authBody'));
+  });
+
+  it('says when the free allowance renews after its monthly cap, unlike a pause, which has no end it knows of', () => {
+    const limits = createTranslator({ locale: 'en', messages: en, namespace: 'limits' });
+    working('osws', 'osws/agent');
+    render(<StoppedCard live onContinue={vi.fn()} data={{ errorCategory: 'credit_exhausted', provider: 'osws', model: 'osws/agent', resetAt: Date.now() + 5 * 86_400_000 + 60_000 }} />);
+    expect(container.textContent).toContain(`${limits('titleAllowanceMonth')} ${limits('allowanceMonthBody', { when: fromNow(5, 'day') })}`);
+    expect(container.textContent).not.toContain(en.limits.titleAllowancePaused);
+  });
+
+  it('offers the ways to connect after any free-allowance stop that leaves nothing else, and checks the allowance again', () => {
+    working('osws', 'osws/agent');
+    vi.mocked(checkAllowance).mockClear();
+    render(<StoppedCard live onContinue={vi.fn()} data={{ errorCategory: 'auth_expired', provider: 'osws', model: 'osws/agent' }} />);
+    expect(container.textContent).toContain(en.limits.connectAnother);
+    expect(checkAllowance).toHaveBeenCalledWith({ force: true });
+
+    vi.mocked(checkAllowance).mockClear();
+    // Another stop is another card.
+    render(<StoppedCard key="next" live onContinue={vi.fn()} data={{ errorCategory: 'model_not_found', provider: 'osws', model: 'osws/agent' }} />);
+    expect(container.textContent).toContain(en.limits.connectAnother);
+    expect(checkAllowance).toHaveBeenCalledWith({ force: true });
+  });
+
+  it('leaves the allowance unchecked after its spent day, and after a stop that is only history', () => {
+    working('osws', 'osws/agent');
+    vi.mocked(checkAllowance).mockClear();
+    render(<StoppedCard live onContinue={vi.fn()} data={{ errorCategory: 'daily_limit', provider: 'osws', model: 'osws/agent' }} />);
+    render(<StoppedCard key="history" live={false} onContinue={vi.fn()} data={{ errorCategory: 'model_not_found', provider: 'osws', model: 'osws/agent' }} />);
+    expect(checkAllowance).not.toHaveBeenCalled();
+  });
+
+  it('leaves the allowance unchecked after another provider\'s stop', () => {
+    working('openrouter', 'm');
+    vi.mocked(checkAllowance).mockClear();
+    render(<StoppedCard live onContinue={vi.fn()} data={{ errorCategory: 'auth_expired', provider: 'openrouter', model: 'm' }} />);
+    expect(checkAllowance).not.toHaveBeenCalled();
   });
 
   it('keeps an earlier stop as history, without actions', () => {

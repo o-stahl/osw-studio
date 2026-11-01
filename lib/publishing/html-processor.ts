@@ -3,6 +3,7 @@ import { generateTrackingScript } from '../analytics/tracking-script';
 import { generateConsentBanner } from './consent-banner';
 import { generateReviewWidget, REVIEW_WIDGET_MARKER } from './review-widget';
 import { escapeHtml } from './escape-html';
+import { pageAddress } from './seo-generator';
 
 export interface HtmlProcessingOptions {
   publishSettings: PublishSettings;
@@ -10,6 +11,8 @@ export interface HtmlProcessingOptions {
   baseUrl: string;
   deploymentId: string;
   hasEdgeFunctions?: boolean;
+  /** The page's path in the build (`about.html`), for its og:url. Without it og:url is the site's root. */
+  pagePath?: string;
   /** Set only by the review build pass. See step 8 in processHtml. */
   reviewWidget?: boolean;
 }
@@ -27,7 +30,7 @@ export function processHtml(html: string, options: HtmlProcessingOptions): strin
   let processed = html;
 
   // 1. Inject SEO meta tags into <head>
-  processed = injectSeoMetaTags(processed, publishSettings, baseUrl);
+  processed = injectSeoMetaTags(processed, publishSettings, baseUrl, options.pagePath);
 
   // 2. Inject CDN links into <head>
   processed = injectCdnLinks(processed, publishSettings);
@@ -78,6 +81,35 @@ function removeHeadTags(html: string, tags: HeadTag[]): string {
   return head + html.slice(end);
 }
 
+/** The href of the head's <link rel="canonical"> as a browser reads it (references decoded), or null. */
+function headCanonical(html: string): string | null {
+  const end = html.search(/<\/head>/i);
+  const tag = headTagPattern({ link: 'canonical' }).exec(html.slice(0, end === -1 ? html.length : end));
+  const href = tag && /\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag[0]);
+  return href ? decodeReferences(href[1] ?? href[2] ?? href[3]) : null;
+}
+
+const NAMED_REFERENCES: Record<string, string> = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>' };
+
+/** Numeric character references and the five XML named ones (`&amp;`, `&quot;`, `&apos;`, `&lt;`, `&gt;`), decoded. */
+function decodeReferences(value: string): string {
+  return value.replace(/&(?:#(\d+)|#x([\da-f]+)|(amp|quot|apos|lt|gt));/gi, (match, dec, hex, name) => {
+    if (name) return NAMED_REFERENCES[name.toLowerCase()];
+    const code = dec ? Number(dec) : parseInt(hex, 16);
+    return code <= 0x10ffff ? String.fromCodePoint(code) : match;
+  });
+}
+
+/** `href` as an absolute URL: resolved against `base` when relative, as written when it cannot be. */
+function absoluteUrl(href: string, base: string): string {
+  if (/^[a-z][a-z\d+.-]*:/i.test(href)) return href;
+  try {
+    return new URL(href, base).toString();
+  } catch {
+    return href;
+  }
+}
+
 /** Whether the document's <head> already carries this tag. */
 function headHasTag(html: string, tag: HeadTag): boolean {
   const end = html.search(/<\/head>/i);
@@ -93,11 +125,13 @@ function headHasTag(html: string, tag: HeadTag): boolean {
  * Where the page has no such tag the setting fills it in, and a page that carries one is left with
  * one rather than two.
  *
- * `og:url`, `og:type` and `twitter:card` describe the deployment rather than the page, and
- * `noindex` / `nofollow` are a deliberate switch over the whole deployment, so those do replace
- * whatever the page set.
+ * `og:type` and `twitter:card` describe the deployment rather than the page, and `noindex` /
+ * `nofollow` are a deliberate switch over the whole deployment, so those do replace whatever the
+ * page set. `og:url` is replaced too, with the page's own address: its canonical link (the page's,
+ * else the setting's), so a shared link and a search result name the same URL, and otherwise where it
+ * is served. Open Graph wants it absolute, so a relative canonical is resolved against that address.
  */
-function injectSeoMetaTags(html: string, settings: PublishSettings, baseUrl: string): string {
+function injectSeoMetaTags(html: string, settings: PublishSettings, baseUrl: string, pagePath?: string): string {
   const { seo } = settings;
   if (!seo || Object.keys(seo).length === 0) {
     return html;
@@ -147,7 +181,12 @@ function injectSeoMetaTags(html: string, settings: PublishSettings, baseUrl: str
     fill({ meta: 'name', key: 'twitter:image' }, `<meta name="twitter:image" content="${escapeHtml(seo.ogImage)}">`);
   }
 
-  replace({ meta: 'property', key: 'og:url' }, `<meta property="og:url" content="${escapeHtml(baseUrl)}">`);
+  const address = pagePath ? pageAddress(pagePath) : '';
+  const served = `${baseUrl}${address ? '/' + address : ''}`;
+  const canonical = headCanonical(html) || seo.canonical;
+  // The root page is the deployment's folder, so a relative link on it resolves inside that folder.
+  const pageUrl = canonical ? absoluteUrl(canonical, address ? served : `${served}/`) : served;
+  replace({ meta: 'property', key: 'og:url' }, `<meta property="og:url" content="${escapeHtml(pageUrl)}">`);
   replace({ meta: 'property', key: 'og:type' }, `<meta property="og:type" content="website">`);
   replace({ meta: 'name', key: 'twitter:card' }, `<meta name="twitter:card" content="${seo.twitterCard === 'summary' ? 'summary' : 'summary_large_image'}">`);
 

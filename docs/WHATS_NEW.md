@@ -6,6 +6,27 @@ Welcome to OSW Studio! This page highlights the latest features and updates.
 
 ---
 
+## v1.107.0 - Free OSW Studio Inference on the Demo (2026-11-01)
+
+On the OSW Studio demo at try.oswstudio.com you can now start building without an API key: OSW Studio's own inference is connected from your first visit, free up to a daily limit per visitor, and passes requests to suitable models, mostly through OpenRouter. When it runs out, connect your own provider and the task carries on from where it stopped. A self-hosted server, the desktop app and the HuggingFace Space don't offer it, but update them anyway: this release closes a security gap in Python and Lua projects.
+
+### Security
+- **Update your own copies**: until now, a Python or Lua project's code could read your other projects, their chats and the backend secrets stored with them, and in Server Mode or the desktop app use the studio's API as you. It now runs in a sandbox. If you've run Python or Lua projects you didn't write, consider replacing those secrets
+
+### OSW Studio inference
+- **"OSW Studio inference" in Settings › Connections**: connected from your first visit; it's separate from OpenRouter's "Free models", which needs an OpenRouter account
+- **A quick check first**: a Cloudflare check runs before the first request, usually without asking you anything
+- **Your own provider takes over**: connect one and the agent uses it; when OSW Studio inference stops a task, the card offers your other providers
+
+### Python and Lua
+- **Lua projects run again**: the Lua runtime failed to load on every run
+
+### Published sites (Server Mode and the desktop app)
+- **Missing and folder pages**: a missing page gets the site's own `404.html`, with status 404, and `/docs` opens `docs/index.html` instead of a 404
+- **Each page's own address in sitemaps and link previews**: `sitemap.xml` lists pages without `.html`, and each page's `og:url` is its own address or canonical link instead of the site's root
+
+---
+
 ## v1.106.0 - Safer Previews and Published Sites (2026-10-11)
 
 A project's code now runs apart from the studio. The preview is sandboxed, so a project you didn't write, or AI output steered by a page it read, can no longer read the API keys the studio stores in your browser. In Server Mode and the desktop app, published sites can be kept apart too, so their scripts can't act as you in the studio.

@@ -177,6 +177,20 @@ describe('review build', () => {
     expect(titles).toHaveLength(1);
   });
 
+  it('gives each page its own og:url, in both copies', async () => {
+    const { buildStaticDeployment } = await import('../static-builder');
+    await addFile('/about.html', '<html><head><title>About</title></head><body></body></html>', 'html');
+    await createDeployment({ review: { enabled: true }, seo: { title: 'Reviewed Site' } });
+    await buildStaticDeployment('d1', 'w1');
+
+    const ogUrl = (html: string) => /<meta property="og:url" content="([^"]*)">/.exec(html)?.[1];
+    for (const [copy, base] of [['public', publicDir()], ['review', reviewDir()]]) {
+      const site = ogUrl(read(base, 'index.html'));
+      expect(site, copy).toMatch(/\/deployments\/d1$/);
+      expect(ogUrl(read(base, 'about.html')), copy).toBe(`${site}/about`);
+    }
+  });
+
   it('links binary files to the same blob rather than copying them', async () => {
     const { buildStaticDeployment } = await import('../static-builder');
     await createDeployment({ review: { enabled: true } });

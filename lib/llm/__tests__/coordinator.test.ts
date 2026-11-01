@@ -119,6 +119,21 @@ describe('MultiAgentCoordinator agent dedup and child event scoping', () => {
     expect(retry.content).not.toContain('Duplicate agent call');
   });
 
+  it('runs at most four sub-agents at once on the free allowance, which limits requests in flight', async () => {
+    const onAllowance = { ...freshProvider([]), getProvider: () => 'osws' };
+    const { coordinator } = buildCoordinator({
+      provider: onAllowance,
+      createChildProvider: () => freshProvider([{ content: 'child result' }]),
+    });
+    const wrapped = coordinator.createWrappedExecutor();
+    const batch = (n: number) => `agent task ${Array.from({ length: n }, (_, i) => `"prompt ${i}"`).join(' ')}`;
+
+    const five = await wrapped.execute(agentToolCall('b1', batch(5)), { agentType: 'orchestrator', isReadOnly: false, turnId: 1 });
+    expect(five.content).toContain('Too many parallel agents (5). Maximum is 4.');
+    const four = await wrapped.execute(agentToolCall('b2', batch(4)), { agentType: 'orchestrator', isReadOnly: false, turnId: 2 });
+    expect(four.content).not.toContain('Too many parallel agents');
+  });
+
   it('routes child provider/executor events through the agent_progress wrapper', async () => {
     const childToolCall = agentToolCall('ct1', 'ls');
     const { coordinator, rootEvents } = buildCoordinator({

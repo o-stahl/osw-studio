@@ -11,8 +11,7 @@ import type { ProviderId } from '@/lib/llm/providers/types';
 import { detectKeyProvider } from '@/lib/llm/providers/key-detect';
 import { getAvailableModels, verifyApiKey } from '@/lib/llm/llm-client';
 import { loadProviderModels } from '@/lib/llm/models/model-catalog';
-import { activateProviderAsGlobalDefault } from '@/lib/llm/models/global-auto-assign';
-import { shouldAutoAssignAgent } from '@/lib/llm/models/project-assignment';
+import { activateProviderAsGlobalDefault, shouldTakeOverAgent } from '@/lib/llm/models/global-auto-assign';
 import { useSignInStart } from '@/lib/hooks/use-sign-in-start';
 import { checkHFCapabilities, loginHF } from '@/lib/auth/hf-auth';
 import { detectDeploymentType } from '@/lib/telemetry/config';
@@ -36,7 +35,7 @@ const LOCAL_PROVIDERS: ProviderId[] = ['ollama', 'lmstudio', 'llamacpp'];
 
 /** A local server is reachable from the app's server only where both run on the user's machine. */
 function surfaceCanReachLocal(surface: Surface): boolean {
-  if (surface === 'hf_space' || surface === 'managed') return false;
+  if (surface === 'hf_space' || surface === 'demo' || surface === 'managed') return false;
   if (surface === 'desktop') return true;
   const host = typeof window !== 'undefined' ? window.location.hostname : '';
   return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
@@ -187,7 +186,7 @@ export function ConnectOptions({ exclude = [], onMoreOptions, rowsOnly = false, 
       // Loading (and caching) its models is what connects a local provider.
       await loadProviderModels(found.provider);
       track('connection_added', { provider: found.provider, method: 'local' });
-      if (shouldAutoAssignAgent()) await activateProviderAsGlobalDefault(found.provider);
+      if (shouldTakeOverAgent(found.provider)) await activateProviderAsGlobalDefault(found.provider);
       window.dispatchEvent(new CustomEvent('apiKeyUpdated', { detail: { provider: found.provider, hasKey: false } }));
       toast.success(t('connected', { name: getProvider(found.provider).name }));
     } finally {

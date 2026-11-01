@@ -714,7 +714,6 @@
       "exportZip": "Export as ZIP",
       "exportZipShort": "Export ZIP",
       "exportJson": "Export as JSON",
-      "exportOsws": "Export .osws",
       "createTemplate": "Create a Template",
       "exportAsTemplate": "Export as Template",
       "backendFeatures": "Backend Features",
@@ -3099,7 +3098,7 @@
     "shareInvite": "If you make something with the app I would be thrilled if you could share what you've made.",
     "linksCommunity": "Links & Community",
     "githubRepo": "GitHub repo",
-    "liveDemo": "Live Demo (HuggingFace)",
+    "liveDemo": "Live Demo",
     "discussions": "Community discussions"
   },
   "providerCatalog": {
@@ -3121,7 +3120,8 @@
       "zhipu": "GLM models for reasoning, coding, and vision",
       "opencode-go": "Opencode Go subscription. Models and their capabilities are fetched from models.dev.",
       "pollinations": "Many models through one key, paid for in Pollen",
-      "vercel": "Many providers through one key, with a monthly free credit"
+      "vercel": "Many providers through one key, with a monthly free credit",
+      "osws": "Free up to a limit, no key needed"
     },
     "custom": "Custom OpenAI-compatible endpoint at {url}"
   },
@@ -3494,9 +3494,65 @@
     "openrouterRaise": "OpenRouter allows 1,000 free requests a day once you have added $10 of credit.",
     "continueWithModel": "Continue with {model}",
     "tryModel": "Try {model}",
-    "titleOtherNoProvider": "The request failed."
+    "titleOtherNoProvider": "The request failed.",
+    "titleAllowancePaused": "OSW Studio's free inference is paused for now.",
+    "allowancePausedBody": "Connect your own provider to keep going.",
+    "titleAllowanceMonth": "OSW Studio's free inference is used up for this month.",
+    "allowanceMonthBody": "It renews {when}. Connect your own provider to keep going.",
+    "titleAllowanceCheck": "The check before OSW Studio inference did not pass.",
+    "allowanceCheckBody": "Try again in a moment, or connect your own provider."
   },
   "pageLayout": {
     "storageWarning": "You have used {percent, number, percent} of your workspace storage ({used, number} MB / {max, number} MB)"
+  },
+  "demo": {
+    "notice": "This is the OSW Studio demo: your projects are saved in this browser. Sign in to OSW Studio Hosted to keep them on a server.",
+    "noticeShort": "This is the OSW Studio demo: projects are saved in this browser.",
+    "signUp": "Create an account",
+    "signIn": "Sign in",
+    "cardTitle": "OSW Studio demo",
+    "cardBody": "Your projects are saved in this browser. Export them to keep a copy, or sign in to OSW Studio Hosted to keep them on a server and publish them.",
+    "publishHere": "Publishing here needs an OSW Studio Hosted account.",
+    "publishSubtitle": "Publish on OSW Studio Hosted and manage it in Deployments there."
+  },
+  "demoImport": {
+    "offerTitle": "Welcome to your workspace",
+    "offerDescription": "You have projects in the OSW Studio demo in this browser. Bring them into your workspace?",
+    "manualTitle": "Import from the demo",
+    "manualDescription": "Projects you made in the OSW Studio demo in this browser.",
+    "loading": "Looking for your demo projects…",
+    "empty": "There are no projects in the demo in this browser.",
+    "allHere": "Every project in the demo is already in this workspace.",
+    "failed": "The demo could not be reached, so nothing was imported.",
+    "notAdded": "The projects could not be stored in this browser, so nothing was imported.",
+    "notRemoved": "They are in your workspace, but they could not be removed from the demo.",
+    "unreachable": "{count, plural, one {You have # project in the demo, but this browser doesn't let this page read it. To bring it over:} other {You have # projects in the demo, but this browser doesn't let this page read them. To bring them over:}}",
+    "unreachableExport": "In the demo, open each project's menu and choose {exportJson}.",
+    "unreachableImport": "Back here, choose {import} › {fromFile} and pick the saved file.",
+    "openDemo": "Open the demo",
+    "room": "{count, plural, one {Your plan has room for # more project.} other {Your plan has room for # more projects.}}",
+    "noRoom": "Your workspace is at its project limit.",
+    "projectMeta": "{files, plural, one {# file} other {# files}} · {when}",
+    "import": "{count, plural, one {Import # project} other {Import # projects}}",
+    "importing": "Bringing your projects over…",
+    "imported": "{count, plural, =0 {No projects reached your workspace.} one {# project is in your workspace now.} other {# projects are in your workspace now.}}",
+    "notSaved": "{count, plural, one {# project could not be saved to the server, so it stays in this browser and in the demo.} other {# projects could not be saved to the server, so they stay in this browser and in the demo.}}",
+    "keepQuestion": "Keep a copy in the demo as well?",
+    "keep": "Keep them",
+    "remove": "Remove from the demo",
+    "removing": "Removing them from the demo…",
+    "noThanks": "No thanks",
+    "cancel": "Cancel",
+    "close": "Close",
+    "fromDemo": "From the demo"
+  },
+  "allowance": {
+    "title": "OSW Studio inference",
+    "body": "OSW Studio's own inference, free up to a limit per person, with no key to add. Requests go to inference.oswstudio.com, which checks them for abuse and passes them to suitable models, mostly through OpenRouter. OSW Studio doesn't store prompts or answers, and counts usage under a pseudonymous ID; the model providers' own data policies apply.",
+    "botCheck": "On the demo, a Cloudflare Turnstile check runs before the first request.",
+    "checking": "A quick check before OSW Studio inference starts…",
+    "statusChecking": "Checking…",
+    "statusUnavailable": "Unavailable",
+    "unavailableBody": "It can't be reached right now and is checked again every minute."
   }
 }

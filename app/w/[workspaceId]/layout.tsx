@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth/session';
 import { getUserById, getUserDefaultWorkspace, verifyWorkspaceAccess } from '@/lib/auth/system-database';
 import { ViewModeProvider } from '@/components/view-mode-provider';
+import { DemoImportOffer } from '@/components/demo-import';
+import { hostedDemoOrigin } from '@/lib/demo';
 
 /**
  * Membership check for every page under /w/{workspaceId}.
@@ -46,5 +48,22 @@ export default async function WorkspaceLayout({
   // on its own: it renders on the server too, where there is no localStorage to read it from.
   const studioView = (getUserById(session.userId)?.studio_view ?? 1) === 1;
 
-  return <ViewModeProvider initialStudioView={studioView}>{children}</ViewModeProvider>;
+  // A hosted instance offers a new account the projects it made in the demo (components/demo-import),
+  // on a workspace of its own: a member who is not the owner has landed in someone else's.
+  const hostedDemo = hostedDemoOrigin() !== null;
+  const owner = hostedDemo && (() => {
+    try {
+      verifyWorkspaceAccess(session.userId, workspaceId, 'owner');
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+
+  return (
+    <ViewModeProvider initialStudioView={studioView}>
+      {children}
+      {hostedDemo && <DemoImportOffer workspaceId={workspaceId} owner={owner} />}
+    </ViewModeProvider>
+  );
 }

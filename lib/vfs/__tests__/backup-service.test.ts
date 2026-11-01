@@ -279,3 +279,65 @@ describe('.osws export', () => {
     expect(Array.from(new Uint8Array(restored.content))).toEqual(Array.from(pngBytes));
   });
 });
+
+describe('.osws export of chosen projects', () => {
+  const file = (id: string, projectId: string) =>
+    ({ id, projectId, path: '/index.html', name: 'index.html', type: 'html', content: `<p>${id}</p>`, size: 9, createdAt: new Date(), updatedAt: new Date() });
+  const backendStores = ['edgeFunctions', 'serverFunctions', 'secrets', 'scheduledFunctions'];
+
+  async function seed() {
+    const db = adapter.getDatabase();
+    await put(db, 'projects', project('p1', 'Chosen'));
+    await put(db, 'projects', project('p2', 'Not chosen'));
+    await put(db, 'files', file('f1', 'p1'));
+    await put(db, 'files', file('f2', 'p2'));
+    await put(db, 'checkpoints', { id: 'c1', projectId: 'p1', timestamp: Date.now() });
+    await put(db, 'checkpoints', { id: 'c2', projectId: 'p2', timestamp: Date.now() });
+    await put(db, 'debugEvents', { id: 'd1', projectId: 'p1', timestamp: Date.now() });
+    await put(db, 'debugEvents', { id: 'd2', projectId: 'p2', timestamp: Date.now() });
+    for (const store of backendStores) {
+      await put(db, store, { id: `${store}-p1`, projectId: 'p1', name: 'api', createdAt: new Date(), updatedAt: new Date() });
+      await put(db, store, { id: `${store}-p2`, projectId: 'p2', name: 'api', createdAt: new Date(), updatedAt: new Date() });
+    }
+    await put(db, 'skills', { id: 's1', name: 'A skill of this browser', updatedAt: new Date() });
+  }
+
+  async function backupIn(blob: Blob) {
+    const zip = await JSZip.loadAsync(blob);
+    return JSON.parse(await zip.file('backup.json')!.async('string'));
+  }
+
+  it('carries the chosen projects and every record that names them, and nothing else', async () => {
+    await seed();
+
+    const backup = await backupIn(await BackupService.exportProjects(['p1']));
+    const ids = (store: string) => (backup.databases.vfs[store] ?? []).map((r: { id: string }) => r.id);
+
+    expect(ids('projects')).toEqual(['p1']);
+    expect(ids('files')).toEqual(['f1']);
+    expect(ids('checkpoints')).toEqual(['c1']);
+    // The project's chat (its debug events) goes with it; records that belong to no project stay behind.
+    expect(ids('debugEvents')).toEqual(['d1']);
+    // Its backend features too: the import pushes them to the server along with the files.
+    for (const store of backendStores) expect(ids(store), store).toEqual([`${store}-p1`]);
+    expect(backup.databases.vfs.skills).toBeUndefined();
+    expect(backup.metadata.projectCount).toBe(1);
+  });
+
+  it('is an ordinary backup to the importer, which restores it into another database', async () => {
+    await seed();
+    const blob = await BackupService.exportProjects(['p1']);
+
+    const other = new IndexedDBAdapter('osw-studio-99999999-2222-3333-4444-555555555555');
+    await other.init();
+    mocks.getDatabase.mockImplementation(() => other.getDatabase());
+    try {
+      await BackupService.importAllData(new File([blob], 'demo.osws'), { mode: 'merge' });
+      expect((await readStore(other.getDatabase(), 'projects')).map((p) => p.id)).toEqual(['p1']);
+      expect((await readStore(other.getDatabase(), 'files')).map((f) => f.content)).toEqual(['<p>f1</p>']);
+      expect((await readStore(other.getDatabase(), 'debugEvents')).map((e) => e.id)).toEqual(['d1']);
+    } finally {
+      await other.close();
+    }
+  });
+});

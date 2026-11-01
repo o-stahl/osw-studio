@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ProviderId } from '@/lib/llm/providers/types';
 import { getProvider } from '@/lib/llm/providers/registry';
+import { OSWS_PROVIDER } from '@/lib/inference/allowance';
 import { CODEX_BASE_URL, createCodexHeaders, getCodexAccountId } from '@/lib/llm/codex-utils';
 import { OPENROUTER_ATTRIBUTION } from '@/lib/llm/request-builder';
 import { imageGenTimeoutMs } from '@/lib/llm/image-gen-timeout';
@@ -273,6 +274,10 @@ export async function POST(request: NextRequest) {
     }
 
     const selectedProvider: ProviderId = provider || 'openrouter';
+    // The free allowance offers its agent model only; nothing here may reach its server.
+    if (selectedProvider === OSWS_PROVIDER) {
+      return NextResponse.json({ error: 'OSW Studio inference does not generate images.', code: 'model_unavailable' }, { status: 404 });
+    }
     const providerConfig = getProvider(selectedProvider);
     if (providerConfig.apiKeyRequired && !apiKey && !providerConfig.usesOAuth) {
       return NextResponse.json(

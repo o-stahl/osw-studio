@@ -3,7 +3,7 @@
  *
  * A review build sits beside the per-deployment databases, outside `public/`, and is reached by a
  * caller who needed no account, so the join has to be contained. The public deployment route has
- * the same problem and the same answer (`deploymentStaticFile`).
+ * the same problem and resolves its files here too, inside the folder `deploymentStaticFile` gives it.
  *
  * Containment cannot be delegated upstream. Next percent-decodes each dynamic segment after it has
  * normalized the request path, so `%2e%2e%2f` arrives as one segment whose text is `../`, the

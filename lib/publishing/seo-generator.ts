@@ -12,6 +12,18 @@ export interface RobotsOptions {
 }
 
 /**
+ * The address a page is served at, relative to the site's root and without a leading slash:
+ * `index.html` → '', `docs/index.html` → 'docs/', `about.html` → 'about'. Caddy's try_files and the
+ * built-in routes both answer `/about` with about.html.
+ */
+export function pageAddress(filePath: string): string {
+  const p = filePath.replace(/^\//, '');
+  if (p === 'index.html') return '';
+  if (p.endsWith('/index.html')) return p.slice(0, -'index.html'.length);
+  return p.endsWith('.html') ? p.slice(0, -'.html'.length) : p;
+}
+
+/**
  * Generates sitemap.xml from HTML files
  */
 export function generateSitemap(options: SitemapOptions): string {
@@ -26,26 +38,11 @@ export function generateSitemap(options: SitemapOptions): string {
 </urlset>`;
   }
 
+  // Pages are listed by the address they're served at (pageAddress). The 404 page is not one to list.
   const urls = htmlFiles
+    .filter(filePath => filePath.replace(/^\//, '') !== '404.html')
     .map(filePath => {
-      // Convert file path to URL path
-      let urlPath = filePath;
-
-      // Remove leading slash if present
-      if (urlPath.startsWith('/')) {
-        urlPath = urlPath.slice(1);
-      }
-
-      // Convert index.html to / for cleaner URLs
-      if (urlPath === 'index.html') {
-        urlPath = '';
-      } else if (urlPath.endsWith('/index.html')) {
-        urlPath = urlPath.slice(0, -'index.html'.length);
-      } else if (urlPath.endsWith('.html')) {
-        // Optional: remove .html extension for cleaner URLs
-        // urlPath = urlPath.slice(0, -'.html'.length);
-      }
-
+      const urlPath = pageAddress(filePath);
       const fullUrl = `${baseUrl}${urlPath ? '/' + urlPath : ''}`;
       const lastmod = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
 

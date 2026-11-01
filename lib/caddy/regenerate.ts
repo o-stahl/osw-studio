@@ -195,6 +195,20 @@ function siteBlock(host: string, deploymentId: string, publicRoot: string, pream
     // Public files, readable without credentials, so the studio's capture can inline them.
     '    header Access-Control-Allow-Origin "*"',
     '  }',
+    // A page that isn't there (a path with no extension, or .html) gets the site's own 404.html
+    // when it has one, still with status 404. A missing asset keeps the bare 404.
+    '  handle_errors {',
+    '    @page {',
+    '      expression {err.status_code} == 404',
+    '      path_regexp ^(.*/)?[^/.]*(\\.html?)?$',
+    `      file /deployments/${deploymentId}/404.html`,
+    '    }',
+    '    handle @page {',
+    `      root * ${publicRoot}`,
+    `      rewrite * /deployments/${deploymentId}/404.html`,
+    '      file_server',
+    '    }',
+    '  }',
     '}',
     '',
   ];

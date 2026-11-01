@@ -160,3 +160,20 @@ describe('providerMessageForDisplay', () => {
     expect(providerMessageForDisplay('a b c', 'a')).toBe('a b c');
   });
 });
+
+describe('classifyProviderError — the free allowance', () => {
+  const allowance = (source: string, headers: Record<string, string> = {}) => classifyProviderError({
+    status: 402, provider: 'osws', message: 'x', metadata: { limit_source: source }, headers: new Headers(headers),
+  });
+
+  it('reads the pool and a visitor\'s day as today\'s allowance, with when it refills', () => {
+    expect(allowance('osws_pool', { 'x-ratelimit-reset': '1800000000000' })).toEqual({ code: 'daily_limit', resetAt: 1_800_000_000_000 });
+    expect(allowance('osws_visitor_daily').code).toBe('daily_limit');
+  });
+
+  it('reads the monthly cap, the pause and an unnamed limit as no allowance left', () => {
+    expect(allowance('osws_monthly').code).toBe('credit_exhausted');
+    expect(allowance('osws_paused').code).toBe('credit_exhausted');
+    expect(classifyProviderError({ status: 402, provider: 'osws', message: 'x' }).code).toBe('credit_exhausted');
+  });
+});

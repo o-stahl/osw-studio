@@ -16,6 +16,22 @@ export function enqueueEvent(eventType: WebhookEventType, payload: WebhookPayloa
   ).run(eventType, JSON.stringify(payload));
 }
 
+/**
+ * As `enqueueEvent`, unless the same event is still waiting to be delivered: for an event that says
+ * where something stands, so repeating it before the gateway has heard it adds nothing.
+ */
+export function enqueueEventOnce(eventType: WebhookEventType, payload: WebhookPayload): void {
+  if (!isWebhookEnabled()) return;
+
+  const body = JSON.stringify(payload);
+  getSystemDatabase().prepare(
+    `INSERT INTO webhook_outbox (event_type, payload)
+     SELECT ?, ? WHERE NOT EXISTS (
+       SELECT 1 FROM webhook_outbox WHERE event_type = ? AND payload = ? AND delivered = 0 AND attempts < 10
+     )`
+  ).run(eventType, body, eventType, body);
+}
+
 export function getPendingEvents(limit = 50): WebhookEvent[] {
   const db = getSystemDatabase();
   return db.prepare(

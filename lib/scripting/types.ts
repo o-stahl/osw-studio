@@ -1,5 +1,5 @@
 /**
- * Types for the script execution system (Python/Lua via Web Workers).
+ * Types for the script execution system (Python/Lua in a worker inside a sandboxed frame, `lib/sandbox/script-sandbox.ts`).
  */
 
 export type ScriptRuntime = 'python' | 'lua';

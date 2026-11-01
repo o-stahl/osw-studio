@@ -1,9 +1,11 @@
 export async function register() {
-  if (process.env.NEXT_RUNTIME === 'nodejs') {
+  // Everything below serves Server Mode (desktop included): its scheduler, deployment routes and
+  // Caddy. A Browser Mode build has better-sqlite3 installed too, so SQLite loading proves nothing.
+  if (process.env.NEXT_RUNTIME === 'nodejs' && process.env.NEXT_PUBLIC_SERVER_MODE === 'true') {
     try {
       // Dynamic imports — avoids bundling SQLite into client
       const { listDeploymentIds } = await import('@/lib/vfs/adapters/sqlite-connection');
-      listDeploymentIds(); // Verify SQLite is available (throws in browser mode)
+      listDeploymentIds(); // Verify SQLite is available
 
       const { Scheduler } = await import('@/lib/scheduler');
       const { createDeploymentSchedulerTask } = await import('@/lib/scheduler/deployment-scheduler');
@@ -20,11 +22,8 @@ export async function register() {
       scheduler.registerTask(createEmailDeliveryTask());
       scheduler.start();
     } catch (err) {
-      // Browser mode or SQLite not available — skip
-      if (process.env.ADMIN_PASSWORD) {
-        // Only log in server mode (ADMIN_PASSWORD indicates server deployment)
-        console.warn('[Scheduler] Failed to initialize:', err instanceof Error ? err.message : err);
-      }
+      // Server Mode only reaches here, desktop included, so a failure is worth a line in the log.
+      console.warn('[Scheduler] Failed to initialize:', err instanceof Error ? err.message : err);
     }
 
     // Register any deployment that predates routing rows being written at creation time. Without
@@ -43,12 +42,10 @@ export async function register() {
             created += backfillDeploymentRoutes(workspace.id);
           } catch (err) {
             // One unreadable workspace must not stop the others from being healed.
-            if (process.env.ADMIN_PASSWORD) {
-              console.warn(
-                `[DeploymentRoutes] Backfill failed for workspace ${workspace.id}:`,
-                err instanceof Error ? err.message : err
-              );
-            }
+            console.warn(
+              `[DeploymentRoutes] Backfill failed for workspace ${workspace.id}:`,
+              err instanceof Error ? err.message : err
+            );
           }
         }
         // Silent when there was nothing to do, which is every boot after the first.
@@ -57,9 +54,7 @@ export async function register() {
         }
       }
     } catch (err) {
-      if (process.env.ADMIN_PASSWORD) {
-        console.warn('[DeploymentRoutes] Backfill skipped:', err instanceof Error ? err.message : err);
-      }
+      console.warn('[DeploymentRoutes] Backfill skipped:', err instanceof Error ? err.message : err);
     }
 
     // Rebuild the Caddy config from the deployment routing table on boot, so a
@@ -70,9 +65,7 @@ export async function register() {
       const { regenerateInstanceCaddy } = await import('@/lib/caddy/regenerate');
       await regenerateInstanceCaddy();
     } catch (err) {
-      if (process.env.ADMIN_PASSWORD) {
-        console.warn('[Caddy] Startup regeneration failed:', err instanceof Error ? err.message : err);
-      }
+      console.warn('[Caddy] Startup regeneration failed:', err instanceof Error ? err.message : err);
     }
   }
 }

@@ -5,7 +5,7 @@ import os from 'os';
 import path from 'path';
 
 /**
- * The built HTML of a published page, for the studio's sandboxed capture (SEC-6). Only for someone
+ * The built HTML of a published page, for the studio's sandboxed capture. Only for someone
  * with access to the deployment, only HTML, and only from inside that deployment's build.
  */
 

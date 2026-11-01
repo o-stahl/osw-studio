@@ -104,6 +104,13 @@ export function classifyProviderError(input: ProviderErrorInput): ProviderErrorC
     if (BLOCK_WORDS.some((w) => lower.includes(w))) return { code: 'blocked' };
     return { code: provider === 'openrouter' ? 'model_refused' : 'auth' };
   }
+  // The free allowance names its own limits in `metadata.limit_source`: the pool (`osws_pool`) and a
+  // visitor's day (`osws_visitor_daily`) refill within the day. The monthly cap renews with the month
+  // and says when; the pause says nothing, which is how the stopped card tells the two apart.
+  if (provider === 'osws' && status === 402) {
+    const source = input.metadata?.limit_source;
+    return withTiming(source === 'osws_pool' || source === 'osws_visitor_daily' ? 'daily_limit' : 'credit_exhausted');
+  }
   if (status === 402) return withTiming('credit_exhausted');
 
   if (status === 429) {

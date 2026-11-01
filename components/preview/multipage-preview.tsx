@@ -52,6 +52,7 @@ import { FALLBACK_RUNTIME } from '@/lib/vfs/project-settings';
 import { PalettePanel } from '@/components/semantic-blocks/palette-panel';
 import type { SemanticBlock } from '@/lib/semantic-blocks/types';
 import { useWorkspaceStore } from '@/lib/stores/workspace';
+import { PREVIEW_SANDBOX } from '@/lib/sandbox';
 
 export interface MultipagePreviewHandle {
   /**
@@ -2599,7 +2600,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
             ref={setIframeEl}
             className={cn("w-full h-full", !isFullscreen && "rounded-lg")}
             // No allow-same-origin: project code runs here, and must not reach the app's origin.
-            sandbox="allow-scripts allow-forms"
+            sandbox={PREVIEW_SANDBOX}
             title={tw('tabs.preview')}
             style={draggingBlock ? { pointerEvents: 'none' } : undefined}
           />

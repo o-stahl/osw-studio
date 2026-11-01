@@ -28,6 +28,8 @@ import { notifyServerProjectsChanged, notifyServerDeploymentsChanged } from '@/l
 import { getProjectAssignment } from '@/lib/llm/models/project-assignment';
 import { isStopOutcome, outcomeForStop, recordModelOutcome } from '@/lib/llm/suggestions/observed';
 import { FREE_MODELS_FALLBACK, isFreeModels } from '@/lib/llm/suggestions/free-models';
+import { OSWS_PROVIDER } from '@/lib/inference/allowance';
+import { checkAllowance } from '@/lib/inference/allowance-status';
 import type { ProviderId } from '@/lib/llm/providers/types';
 import type { InterviewTemplate } from '@/lib/interview/types';
 import type { ApprovalRequest, ApprovalOutcome } from '@/lib/llm/permissions';
@@ -1559,6 +1561,8 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
         toast.error((error as any).error || translator()('orchestrator.serverStartFailed'));
+        // Refused on the free allowance: check it again, so Connections stops counting on it if it is gone.
+        if (provider === OSWS_PROVIDER) void checkAllowance({ force: true });
         abandonClaim();
         return false;
       }

@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('server-only', () => ({}));
 vi.mock('@/lib/vfs/adapters/sqlite-connection', () => ({ listDeploymentIds: () => [] }));
 vi.mock('@/lib/scheduler', () => ({
-  Scheduler: class { registerTask() {} start() {} },
+  Scheduler: class { registerTask() {} start() { mocks.order.push('scheduler'); } },
 }));
 vi.mock('@/lib/scheduler/deployment-scheduler', () => ({
   createDeploymentSchedulerTask: () => ({}),
@@ -47,7 +47,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.order.length = 0;
   vi.stubEnv('NEXT_RUNTIME', 'nodejs');
-  vi.stubEnv('ADMIN_PASSWORD', 'secret');
+  vi.stubEnv('NEXT_PUBLIC_SERVER_MODE', 'true');
 
   mocks.systemDatabaseExists.mockReturnValue(true);
   mocks.listWorkspaces.mockReturnValue([{ id: 'ws-1' }, { id: 'ws-2' }]);
@@ -73,7 +73,7 @@ describe('boot', () => {
   it('backfills every workspace before regenerating the Caddy config', async () => {
     await boot();
 
-    expect(mocks.order).toEqual(['backfill:ws-1', 'backfill:ws-2', 'caddy']);
+    expect(mocks.order).toEqual(['scheduler', 'backfill:ws-1', 'backfill:ws-2', 'caddy']);
   });
 
   it('keeps going when one workspace fails', async () => {
@@ -85,7 +85,7 @@ describe('boot', () => {
 
     await expect(boot()).resolves.toBeUndefined();
 
-    expect(mocks.order).toEqual(['backfill:ws-2', 'caddy']);
+    expect(mocks.order).toEqual(['scheduler', 'backfill:ws-2', 'caddy']);
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('ws-1'),
       'unreadable database'
@@ -121,5 +121,15 @@ describe('boot', () => {
     await boot();
 
     expect(log).toHaveBeenCalledWith(expect.stringContaining('4'));
+  });
+
+  it('starts none of it in a Browser Mode build, which has better-sqlite3 installed as well', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SERVER_MODE', 'false');
+
+    await boot();
+
+    expect(mocks.order).toEqual([]);
+    expect(mocks.systemDatabaseExists).not.toHaveBeenCalled();
+    expect(mocks.regenerateInstanceCaddy).not.toHaveBeenCalled();
   });
 });

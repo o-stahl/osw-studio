@@ -26,6 +26,8 @@ import { signInReturnProject } from '@/lib/auth/provider-sign-in';
 import { shouldAutoCreateFirstProject, opensFirstProject, createFirstProject } from '@/lib/first-run';
 import { detectDeploymentType } from '@/lib/telemetry/config';
 import { fetchSyncStatus } from '@/lib/vfs/auto-sync';
+import { hostedDemoOrigin } from '@/lib/demo';
+import { arrivedForDemoImport, demoOfferOutcome } from '@/lib/demo-bridge/offer';
 import { logger } from '@/lib/utils';
 
 type View = 'dashboard' | 'projects' | 'templates' | 'skills' | 'interviews' | 'deployments' | 'users' | 'workspaces' | 'mail' | 'docs' | 'settings';
@@ -263,6 +265,8 @@ function PageWrapperInner({ view, workspaceId, settingsTab, autoCreateProject, q
     firstRunCheckDone = true;
     (async () => {
       try {
+        // When the offer asked about the demo's projects on arrival, make no starter project.
+        if (hostedDemoOrigin() && arrivedForDemoImport() && (await demoOfferOutcome()) === 'offered') return;
         const status = await fetchSyncStatus();
         if (!status || (status.projects?.length ?? 0) > 0) return;
         await vfs.init();

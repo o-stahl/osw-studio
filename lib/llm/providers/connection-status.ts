@@ -1,6 +1,8 @@
 import { configManager } from '@/lib/config/storage';
 import { getAllProviders, getProviderArchetype, getProvider } from '@/lib/llm/providers/registry';
 import type { ProviderId } from '@/lib/llm/providers/types';
+import { OSWS_PROVIDER } from '@/lib/inference/allowance';
+import { allowanceUsable } from '@/lib/inference/allowance-status';
 
 /**
  * Whether a provider is connected and usable.
@@ -12,6 +14,8 @@ import type { ProviderId } from '@/lib/llm/providers/types';
  * of a connection — counting them would falsely show the provider as connected.
  */
 export function isProviderConnected(id: ProviderId): boolean {
+  // The free allowance needs nothing from the user: where it is offered, its status check decides.
+  if (id === OSWS_PROVIDER) return allowanceUsable();
   if (configManager.getProviderApiKey(id)) return true;
   const archetype = getProviderArchetype(id);
   if (archetype === 'local') return !!configManager.getCachedModels(id);

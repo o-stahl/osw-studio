@@ -2495,7 +2495,7 @@ document.addEventListener('DOMContentLoaded', function() {
     {"name": "Mobile Apps", "url": "/portfolio.html"},
     {"name": "Consulting", "url": "/portfolio.html"}
   ],
-  "deepstudioLink": "https://huggingface.co/spaces/otst/oswstudio",
+  "deepstudioLink": "https://try.oswstudio.com",
   "deepstudioName": "OSW Studio",
   "legalLinks": [
     {"name": "Privacy Policy", "url": "/privacy.html"},

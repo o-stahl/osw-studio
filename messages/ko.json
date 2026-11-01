@@ -711,7 +711,6 @@
       "exportZip": "ZIP으로 내보내기",
       "exportZipShort": "ZIP 내보내기",
       "exportJson": "JSON으로 내보내기",
-      "exportOsws": ".osws 내보내기",
       "createTemplate": "템플릿 만들기",
       "exportAsTemplate": "템플릿으로 내보내기",
       "backendFeatures": "백엔드 기능",
@@ -3096,7 +3095,7 @@
     "shareInvite": "이 앱으로 무언가를 만드셨다면, 무엇을 만들었는지 공유해 주시면 정말 기쁘겠어요.",
     "linksCommunity": "링크 및 커뮤니티",
     "githubRepo": "GitHub 저장소",
-    "liveDemo": "라이브 데모 (HuggingFace)",
+    "liveDemo": "라이브 데모",
     "discussions": "커뮤니티 토론"
   },
   "providerCatalog": {
@@ -3118,7 +3117,8 @@
       "zhipu": "추론, 코딩, 비전을 위한 GLM 모델",
       "opencode-go": "Opencode Go 구독이에요. 모델과 기능 정보는 models.dev에서 가져와요.",
       "pollinations": "키 하나로 여러 모델을 써요. 요금은 Pollen으로 내요",
-      "vercel": "키 하나로 여러 제공자를 써요. 매달 무료 크레딧이 있어요"
+      "vercel": "키 하나로 여러 제공자를 써요. 매달 무료 크레딧이 있어요",
+      "osws": "한도까지 무료예요. 키가 필요 없어요"
     },
     "custom": "{url}의 사용자 지정 OpenAI 호환 엔드포인트"
   },
@@ -3491,9 +3491,65 @@
     "openrouterRaise": "OpenRouter에 크레딧을 $10 이상 추가하면 하루 1,000번까지 무료로 요청할 수 있어요.",
     "continueWithModel": "{model}(으)로 계속하기",
     "tryModel": "{model} 써 보기",
-    "titleOtherNoProvider": "요청이 실패했어요."
+    "titleOtherNoProvider": "요청이 실패했어요.",
+    "titleAllowancePaused": "OSW Studio 무료 추론이 지금은 멈춰 있어요.",
+    "allowancePausedBody": "계속하려면 직접 제공자를 연결하세요.",
+    "titleAllowanceMonth": "이번 달 OSW Studio 무료 추론을 다 썼어요.",
+    "allowanceMonthBody": "{when} 다시 채워져요. 계속하려면 직접 제공자를 연결하세요.",
+    "titleAllowanceCheck": "OSW Studio 추론 전 확인을 통과하지 못했어요.",
+    "allowanceCheckBody": "잠시 후 다시 계속하거나 직접 제공자를 연결하세요."
   },
   "pageLayout": {
     "storageWarning": "워크스페이스 저장 공간의 {percent, number, percent}를 사용했어요 ({used, number}MB / {max, number}MB)"
+  },
+  "demo": {
+    "notice": "OSW Studio 데모예요. 프로젝트는 이 브라우저에 저장돼요. 서버에 보관하려면 OSW Studio Hosted에 로그인하세요.",
+    "noticeShort": "OSW Studio 데모예요. 프로젝트는 이 브라우저에 저장돼요.",
+    "signUp": "계정 만들기",
+    "signIn": "로그인",
+    "cardTitle": "OSW Studio 데모",
+    "cardBody": "프로젝트는 이 브라우저에 저장돼요. 내보내서 사본을 보관하거나, OSW Studio Hosted에 로그인해 서버에 보관하고 배포할 수 있어요.",
+    "publishHere": "여기에 배포하려면 OSW Studio Hosted 계정이 필요해요.",
+    "publishSubtitle": "OSW Studio Hosted에서 배포하고 그곳의 배포 화면에서 관리해요."
+  },
+  "demoImport": {
+    "offerTitle": "워크스페이스에 오신 걸 환영해요",
+    "offerDescription": "이 브라우저의 OSW Studio 데모에 프로젝트가 있어요. 워크스페이스로 가져올까요?",
+    "manualTitle": "데모에서 가져오기",
+    "manualDescription": "이 브라우저의 OSW Studio 데모에서 만든 프로젝트예요.",
+    "loading": "데모 프로젝트를 찾고 있어요…",
+    "empty": "이 브라우저의 데모에는 프로젝트가 없어요.",
+    "allHere": "데모의 프로젝트가 모두 이미 이 워크스페이스에 있어요.",
+    "failed": "데모에 연결하지 못해서 아무것도 가져오지 않았어요.",
+    "notAdded": "프로젝트를 이 브라우저에 저장하지 못해서 아무것도 가져오지 않았어요.",
+    "notRemoved": "워크스페이스에는 있지만 데모에서 삭제하지 못했어요.",
+    "unreachable": "{count, plural, other {데모에 프로젝트가 #개 있지만, 이 브라우저에서는 이 페이지가 읽을 수 없어요. 이렇게 옮겨 오세요:}}",
+    "unreachableExport": "데모에서 각 프로젝트의 메뉴를 열고 {exportJson} 항목을 선택하세요.",
+    "unreachableImport": "여기로 돌아와 {import} › {fromFile} 항목을 선택하고 저장한 파일을 여세요.",
+    "openDemo": "데모 열기",
+    "room": "{count, plural, other {요금제에 프로젝트를 #개 더 둘 수 있어요.}}",
+    "noRoom": "워크스페이스가 프로젝트 한도에 도달했어요.",
+    "projectMeta": "{files, plural, other {파일 #개}} · {when}",
+    "import": "{count, plural, other {프로젝트 #개 가져오기}}",
+    "importing": "프로젝트를 가져오고 있어요…",
+    "imported": "{count, plural, =0 {워크스페이스에 들어온 프로젝트가 없어요.} other {프로젝트 #개가 이제 워크스페이스에 있어요.}}",
+    "notSaved": "{count, plural, other {프로젝트 #개를 서버에 저장하지 못해서 이 브라우저와 데모에 그대로 남아 있어요.}}",
+    "keepQuestion": "데모에도 사본을 남겨 둘까요?",
+    "keep": "남겨 두기",
+    "remove": "데모에서 삭제",
+    "removing": "데모에서 삭제하고 있어요…",
+    "noThanks": "괜찮아요",
+    "cancel": "취소",
+    "close": "닫기",
+    "fromDemo": "데모에서"
+  },
+  "allowance": {
+    "title": "OSW Studio 추론",
+    "body": "키 없이 쓸 수 있는 OSW Studio 자체 추론이에요. 한 사람당 한도까지 무료예요. 요청은 inference.oswstudio.com으로 가고, 악용 여부를 확인한 뒤 주로 OpenRouter를 거쳐 알맞은 모델로 전달돼요. OSW Studio는 프롬프트와 답변을 저장하지 않고, 이용량은 가명 ID로만 집계해요. 모델 제공업체에는 각자의 데이터 정책이 적용돼요.",
+    "botCheck": "데모에서는 첫 요청 전에 Cloudflare Turnstile 확인을 거쳐요.",
+    "checking": "OSW Studio 추론을 쓰기 전에 잠깐 확인할게요…",
+    "statusChecking": "확인하는 중…",
+    "statusUnavailable": "사용할 수 없음",
+    "unavailableBody": "지금은 연결할 수 없어요. 1분마다 다시 확인해요."
   }
 }

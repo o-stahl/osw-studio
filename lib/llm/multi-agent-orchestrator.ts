@@ -24,6 +24,7 @@ import { configManager } from '@/lib/config/storage';
 import { getProvider, getModelContextLength } from '@/lib/llm/providers/registry';
 import { boundCompactionLimit, resolveLocalContextLength } from '@/lib/llm/local-context';
 import type { ProviderId } from '@/lib/llm/providers/types';
+import { OSWS_PROVIDER } from '@/lib/inference/allowance';
 import { isFreeModels, FREE_MODELS_FALLBACK, FREE_MODELS_PROVIDERS, FREE_MODELS_ID } from './suggestions/free-models';
 import { outcomeForStop, recordModelOutcome, switchReason } from './suggestions/observed';
 import { CONTINUE_AFTER_STOP_PROMPT } from './continue-prompt';
@@ -603,11 +604,13 @@ export class MultiAgentOrchestrator {
     const providerAdapter = new OswsProviderAdapter({
       getProviderConfig: () => this.getProviderConfig(),
       getApiUrl: () => this.getApiUrl(),
+      getRequestHeaders: () => this.serverContext?.requestHeaders,
       getReasoningEnabled: (m) => this.getConfig().getReasoningEnabled(m),
       getDebugStreamEnabled: () => this.getConfig().getDebugStreamEnabled(),
       getModelPricing: (p, m) => this.getConfig().getModelPricing(p, m),
       getCachedModels: (p) => this.getConfig().getCachedModels(p),
       getLocalContextLength: () => this.getLocalContextLength(),
+      getSessionId: () => this.projectId,
       progress,
     });
 
@@ -674,11 +677,13 @@ export class MultiAgentOrchestrator {
       createChildProvider: (childProgress: ProgressReporter) => new OswsProviderAdapter({
         getProviderConfig: () => this.getProviderConfig(),
         getApiUrl: () => this.getApiUrl(),
+        getRequestHeaders: () => this.serverContext?.requestHeaders,
         getReasoningEnabled: (m) => this.getConfig().getReasoningEnabled(m),
         getDebugStreamEnabled: () => this.getConfig().getDebugStreamEnabled(),
         getModelPricing: (p, m) => this.getConfig().getModelPricing(p, m),
         getCachedModels: (p) => this.getConfig().getCachedModels(p),
         getLocalContextLength: () => this.getLocalContextLength(),
+        getSessionId: () => this.projectId,
         progress: childProgress,
       }),
       createChildExecutor: (childProgress: ProgressReporter) => buildToolExecutor(childProgress),
@@ -1092,9 +1097,11 @@ export class MultiAgentOrchestrator {
       const { fetchProviderStatus } = await import('./provider-status');
       const { alternativesTo, nextModelAfter } = await import('./suggestions/suggest');
       const onFreeModels = isFreeModels(this.assignment?.agent.model);
+      // Any stop on the free allowance leaves the task needing somewhere else to go on.
+      const elsewhere = spent || provider === OSWS_PROVIDER;
       const [status, alternatives, sameProvider] = await Promise.all([
         spent ? fetchProviderStatus(provider, configManager.getProviderApiKey(provider) ?? '') : Promise.resolve(undefined),
-        spent ? alternativesTo(provider) : Promise.resolve([]),
+        elsewhere ? alternativesTo(provider) : Promise.resolve([]),
         // A spent allowance or credit is the account's, so another model on the same provider would
         // stop the same way: the free entry below, other providers or connecting one are what can help.
         // On "Free models" the rotation already tried the next one, so there is nothing to suggest.

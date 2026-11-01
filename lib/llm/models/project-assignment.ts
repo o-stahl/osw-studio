@@ -1,4 +1,6 @@
 import { configManager } from '@/lib/config/storage';
+import { OSWS_PROVIDER } from '@/lib/inference/allowance';
+import { allowanceUsable } from '@/lib/inference/allowance-status';
 import { getProvider } from '@/lib/llm/providers/registry';
 import { resolveActiveAssignment } from './template-store';
 import { type ResolvedAssignment } from './assignment';
@@ -11,6 +13,8 @@ import { type ResolvedAssignment } from './assignment';
 export function isProjectProviderReady(): boolean {
   const agent = resolveActiveAssignment().agent;
   const provider = agent?.provider ?? configManager.getSelectedProvider();
+  // The free allowance has no key: its status check says whether it can be used.
+  if (provider === OSWS_PROVIDER) return allowanceUsable();
   const providerConfig = getProvider(provider);
   if (providerConfig.isLocal) return true;
   if (providerConfig.apiKeyRequired || providerConfig.usesOAuth) {
