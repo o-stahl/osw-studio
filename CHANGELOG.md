@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.107.1 - 2026-11-02
+
+### Server Mode
+- **The generated Caddyfile trusts `X-Forwarded-For` only from the proxies in `TRUSTED_PROXIES`**: `generateCaddyfile` (`lib/caddy/regenerate.ts`) emits `trusted_proxies static` with `trusted_proxies_strict` and sets `X-Forwarded-For` to `{client_ip}` on every `reverse_proxy` to the app; `regenerateInstanceCaddy` warns about entries that are not addresses or CIDR ranges. A request through a CDN or another proxy counted as the proxy's address in analytics sessions and per-address rate limits.
+- **`verifyInstanceApiKey` checks `GATEWAY_IPS` against `X-Forwarded-For` only**: `lib/auth/session.ts` compares the allowlist with the address the instance's Caddy passes on. It read `Cf-Connecting-Ip` and `X-Real-IP` first, which a client can send and Caddy passes through untouched, so with the key a caller could pass the allowlist by sending a gateway address in either.
+
+### Tests
+- **Coverage for `TRUSTED_PROXIES` and the `GATEWAY_IPS` allowlist**: `lib/caddy/__tests__/trusted-proxies.test.ts`, `lib/auth/__tests__/instance-api-key.test.ts`, and the visitor's-address cases in `regenerate.test.ts`.
+
 ## v1.107.0 - 2026-11-01
 
 ### Security

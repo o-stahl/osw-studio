@@ -182,6 +182,46 @@ describe('generateCaddyfile', () => {
 
 });
 
+describe('the visitor\'s address', () => {
+  // A CDN's range and a proxy's own addresses, as TRUSTED_PROXIES lists them.
+  const PROXIES = ['192.0.2.0/24', '203.0.113.10', '2001:db8::10'];
+  /** The global options block, the config's first. */
+  const globalOptions = (config: string) => config.slice(0, config.indexOf('\n}\n'));
+  const trusted = (config: string) => globalOptions(config).match(/^\s*trusted_proxies static (.+)$/m)?.[1].trim().split(/\s+/) ?? [];
+
+  it('trusts no proxy unless some are listed, as Caddy does by default', () => {
+    expect(globalOptions(generateCaddyfile(BASE_CONFIG))).not.toMatch(/servers|trusted_proxies/);
+    expect(globalOptions(generateCaddyfile({ ...BASE_CONFIG, trustedProxies: [] }))).not.toMatch(/servers|trusted_proxies/);
+  });
+
+  it('trusts the listed proxies only, and reads X-Forwarded-For from the right past them', () => {
+    const result = generateCaddyfile({ ...BASE_CONFIG, trustedProxies: PROXIES });
+    expect(trusted(result)).toEqual(PROXIES);
+    expect(globalOptions(result)).toMatch(/^\s*trusted_proxies_strict$/m);
+    // X-Forwarded-For, Caddy's default: no vendor's own header.
+    expect(globalOptions(result)).not.toMatch(/client_ip_headers/);
+  });
+
+  it('leaves out entries that are not addresses or ranges, which Caddy would refuse the whole config for', () => {
+    const result = generateCaddyfile({ ...BASE_CONFIG, trustedProxies: ['gateway.example', ' 203.0.113.10 ', '', '10.0.0.0/8', '192.0.2.1/x', '10.0.0.0/33', '2001:db8::/129'] });
+    expect(trusted(result)).toEqual(['203.0.113.10', '10.0.0.0/8']);
+  });
+
+  it('reaches the app as X-Forwarded-For, in every block that proxies to it', () => {
+    const result = generateCaddyfile({
+      ...BASE_CONFIG,
+      trustedProxies: PROXIES,
+      slugRoutes: [{ deployment_id: 'abc', slug: 'sunny' }],
+      customDomainRoutes: [{ deployment_id: 'xyz', custom_domain: 'example.com' }],
+    });
+    const proxies = result.match(/reverse_proxy localhost:3000/g) ?? [];
+    const told = result.match(/reverse_proxy localhost:3000 \{\n\s*header_up X-Forwarded-For \{client_ip\}\n\s*\}/g) ?? [];
+    // The studio, the slug site, the wildcard and the custom domain.
+    expect(proxies).toHaveLength(4);
+    expect(told).toHaveLength(4);
+  });
+});
+
 describe('wwwCounterpart', () => {
   it('maps apex to www and back', () => {
     expect(wwwCounterpart('example.com')).toBe('www.example.com');

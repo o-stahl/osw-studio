@@ -15,6 +15,7 @@
  */
 
 import { getAllDomainRoutes, getAllSlugRoutes } from '@/lib/auth/system-database';
+import { isIP } from 'net';
 import path from 'path';
 import { appUrl } from '@/lib/web/site-origin';
 
@@ -25,6 +26,30 @@ export interface CaddyConfig {
   publicRoot: string;
   slugRoutes: { deployment_id: string; slug: string }[];
   customDomainRoutes: { deployment_id: string; custom_domain: string }[];
+  /** Proxies in front of Caddy whose X-Forwarded-For it believes (`TRUSTED_PROXIES`). */
+  trustedProxies?: string[];
+}
+
+/** Addresses and CIDR ranges only: Caddy refuses the whole config over anything else. */
+function proxyAddresses(values: string[] = []): string[] {
+  return values.map((v) => v.trim()).filter((v) => {
+    const [address, bits, ...rest] = v.split('/');
+    const family = isIP(address);
+    if (family === 0 || rest.length > 0) return false;
+    return bits === undefined || (/^\d{1,3}$/.test(bits) && Number(bits) <= (family === 4 ? 32 : 128));
+  });
+}
+
+/**
+ * The app, told the visitor's address as Caddy settled it (`{client_ip}`): the address that
+ * connected, or behind a trusted proxy the one its X-Forwarded-For names.
+ */
+function proxyToApp(indent: string): string[] {
+  return [
+    `${indent}reverse_proxy localhost:3000 {`,
+    `${indent}  header_up X-Forwarded-For {client_ip}`,
+    `${indent}}`,
+  ];
 }
 
 /**
@@ -47,6 +72,16 @@ export function generateCaddyfile(config: CaddyConfig): string {
   lines.push('  admin localhost:2019 {');
   lines.push('    origins localhost:2019');
   lines.push('  }');
+  // Proxies in front of Caddy, such as a CDN in front of a custom domain: Caddy believes their
+  // X-Forwarded-For, read from the right past the trusted addresses in it. From anyone else it uses
+  // the address that connected, so a client cannot name its own.
+  const proxies = proxyAddresses(config.trustedProxies);
+  if (proxies.length > 0) {
+    lines.push('  servers {');
+    lines.push(`    trusted_proxies static ${proxies.join(' ')}`);
+    lines.push('    trusted_proxies_strict');
+    lines.push('  }');
+  }
   if (customDomainRoutes.length > 0) {
     lines.push('  on_demand_tls {');
     lines.push('    ask http://localhost:3000/api/resolve-domain');
@@ -59,7 +94,7 @@ export function generateCaddyfile(config: CaddyConfig): string {
   // /deployments/{id}/ and /review/{id}/ to the site's own host (lib/web/site-origin.ts), so a
   // site's script never runs on the studio's origin.
   lines.push(`${domain} {`);
-  lines.push('  reverse_proxy localhost:3000');
+  lines.push(...proxyToApp('  '));
   lines.push('}');
   lines.push('');
 
@@ -80,7 +115,7 @@ export function generateCaddyfile(config: CaddyConfig): string {
     lines.push('  tls {');
     lines.push('    dns cloudflare {env.CLOUDFLARE_API_TOKEN}');
     lines.push('  }');
-    lines.push('  reverse_proxy localhost:3000');
+    lines.push(...proxyToApp('  '));
     lines.push('}');
     lines.push('');
   }
@@ -132,12 +167,19 @@ export async function regenerateInstanceCaddy(): Promise<void> {
   try {
     const domain = appUrl().replace(/^https?:\/\//, '');
     const publicRoot = await resolvedPublicRoot();
+    const listed = (process.env.TRUSTED_PROXIES ?? '').split(',').map((v) => v.trim()).filter(Boolean);
+    const trustedProxies = proxyAddresses(listed);
+    const ignored = listed.filter((v) => !trustedProxies.includes(v));
+    if (ignored.length > 0) {
+      console.warn(`[Caddy] TRUSTED_PROXIES: ignoring ${ignored.join(', ')}, which are not addresses or CIDR ranges`);
+    }
 
     const config = generateCaddyfile({
       domain,
       publicRoot,
       slugRoutes: getAllSlugRoutes(),
       customDomainRoutes: getAllDomainRoutes(),
+      trustedProxies,
     });
 
     // Persist to disk so a cold Caddy restart (which loads from the file, not the
@@ -184,7 +226,7 @@ function siteBlock(host: string, deploymentId: string, publicRoot: string, pream
     ...preamble,
     `  @platform path /api/deployments/${deploymentId}/functions/* /api/analytics/track /api/analytics/interaction /review/${deploymentId} /review/${deploymentId}/*`,
     '  handle @platform {',
-    '    reverse_proxy localhost:3000',
+    ...proxyToApp('    '),
     '  }',
     '  handle {',
     `    root * ${publicRoot}`,

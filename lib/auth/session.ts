@@ -180,7 +180,9 @@ export async function requireAuth(): Promise<SessionData> {
 /**
  * Verify instance API key for machine-to-machine auth.
  * Returns a synthetic admin session if the key is valid.
- * When GATEWAY_IPS is set, restricts to those source IPs only.
+ * When GATEWAY_IPS is set, restricts to those source IPs only, checked against the address the
+ * instance's Caddy passes on in X-Forwarded-For (lib/caddy/regenerate.ts). Never Cf-Connecting-Ip or
+ * X-Real-IP, which a client can send and Caddy passes on as they came.
  */
 export function verifyInstanceApiKey(request: NextRequest): SessionData | null {
   const apiKey = request.headers.get('x-instance-api-key');
@@ -197,10 +199,7 @@ export function verifyInstanceApiKey(request: NextRequest): SessionData | null {
 
   const allowedIps = process.env.GATEWAY_IPS;
   if (allowedIps) {
-    const clientIp =
-      request.headers.get('cf-connecting-ip') ||
-      request.headers.get('x-real-ip') ||
-      request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
     const allowed = new Set(allowedIps.split(',').map(ip => ip.trim()));
     if (!clientIp || !allowed.has(clientIp)) return null;
   }
