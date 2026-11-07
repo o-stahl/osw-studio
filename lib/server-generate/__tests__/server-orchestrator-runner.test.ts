@@ -192,6 +192,54 @@ describe('runServerGeneration', () => {
     expect(complete!.data.result).toBe('stopped');
   });
 
+  it('ends the task as failed when it cannot be set up, so the project takes a new one', async () => {
+    const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
+    const emitted: Array<{ event: string; data: Record<string, unknown> }> = [];
+    bus.addListener('sess-1', (e) => emitted.push(e));
+    const deps = { ...makeDeps(), createVFS: vi.fn().mockRejectedValue(new Error('SQLITE_CANTOPEN')) };
+
+    await runServerGeneration(taskId, makeRequest(), deps).catch(() => {});
+
+    expect(emitted.find((e) => e.event === 'task_complete')?.data).toMatchObject({ result: 'failed' });
+    expect(tm.getTask(taskId)?.status).toBe('failed');
+    expect(tm.createTask('proj-1', 'sess-1', 'sk-test')).toBeDefined();
+  });
+
+  it('runs nothing when a cancel came while it was being set up', async () => {
+    const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
+    const emitted: Array<{ event: string; data: Record<string, unknown> }> = [];
+    bus.addListener('sess-1', (e) => emitted.push(e));
+    let setUp!: () => void;
+    const deps = { ...makeDeps(), createVFS: vi.fn(() => new Promise<VirtualFileSystem>((resolve) => { setUp = () => resolve(mockVFS); })) };
+
+    const run = runServerGeneration(taskId, makeRequest(), deps);
+    await vi.waitFor(() => expect(setUp).toBeDefined());
+    expect(tm.getTask(taskId)?.runnerActive).toBe(true);
+    // As the cancel route leaves a task whose runner has no loop yet.
+    tm.getTask(taskId)!.status = 'stopping';
+    setUp();
+    await run;
+
+    expect(mockExecute).not.toHaveBeenCalled();
+    expect(emitted.filter((e) => e.event === 'task_complete').map((e) => e.data.result)).toEqual(['stopped']);
+    expect(tm.getTask(taskId)?.status).toBe('cancelled');
+    expect(tm.getTask(taskId)?.runnerActive).toBe(false);
+  });
+
+  it('runs nothing for a task a Stop closed before its runner started', async () => {
+    const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
+    const emitted: Array<{ event: string }> = [];
+    bus.addListener('sess-1', (e) => emitted.push(e));
+    await tm.completeTask(taskId, 'cancelled');
+    const deps = makeDeps();
+
+    await runServerGeneration(taskId, makeRequest(), deps);
+
+    expect(deps.createVFS).not.toHaveBeenCalled();
+    expect(mockExecute).not.toHaveBeenCalled();
+    expect(emitted).toEqual([]);
+  });
+
   it('throws when task does not exist', async () => {
     await expect(runServerGeneration('nonexistent', makeRequest(), makeDeps()))
       .rejects.toThrow('Task nonexistent not found');
@@ -262,6 +310,46 @@ describe('runServerGeneration', () => {
     await runServerGeneration(taskId, makeRequest(), makeDeps());
     const options = vi.mocked(MultiAgentOrchestrator).mock.calls[0][3] as { serverContext: { imageGenAvailable?: boolean } };
     expect(options.serverContext.imageGenAvailable).toBeFalsy();
+  });
+
+  it('runs the interview agent on the template the browser sent', async () => {
+    const template = { id: 'custom-x', title: 'Custom X', description: 'd', items: [], artifacts: [{ path: '/.interviews/x.md' }] };
+    const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
+
+    await runServerGeneration(taskId, makeRequest({ mode: 'interview', interviewTemplate: template }), makeDeps());
+
+    const [projectId, agentType, , options] = vi.mocked(MultiAgentOrchestrator).mock.calls[0];
+    expect([projectId, agentType]).toEqual(['proj-1', 'interview']);
+    expect(options).toMatchObject({ interviewTemplateId: 'custom-x', interviewTemplate: template, chatMode: false });
+  });
+
+  it.each([
+    ['chat', 'orchestrator', true],
+    ['code', 'orchestrator', false],
+    [undefined, 'orchestrator', false],
+  ] as const)('runs mode %s as the %s agent, reading only when it is chat', async (mode, agentType, chatMode) => {
+    const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
+
+    await runServerGeneration(taskId, makeRequest({ mode }), makeDeps());
+
+    const [, type, , options] = vi.mocked(MultiAgentOrchestrator).mock.calls[0];
+    expect(type).toBe(agentType);
+    expect((options as { chatMode?: boolean }).chatMode).toBe(chatMode);
+    expect(options).not.toHaveProperty('interviewTemplateId');
+  });
+
+  it.each([
+    ['chat', 'chat'],
+    ['code', 'code'],
+    [undefined, 'code'],
+  ] as const)('reports mode %s with the run\'s ending as %s', async (mode, reported) => {
+    const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
+    const emitted: Array<{ event: string; data: Record<string, unknown> }> = [];
+    bus.addListener('sess-1', (e) => emitted.push(e));
+
+    await runServerGeneration(taskId, makeRequest({ mode }), makeDeps());
+
+    expect(emitted.find((e) => e.event === 'task_complete')?.data.mode).toBe(reported);
   });
 
   it('flushes dirty paths as files_changed on tool_status completed', async () => {

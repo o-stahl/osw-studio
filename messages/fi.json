@@ -285,6 +285,8 @@
     "couldNotOpen": "Tiedostoa {path} ei voitu avata",
     "entryPointSet": "Aloituskohdaksi asetettu {path}",
     "restoredTo": "Palautettu: {description}",
+    "previousChange": "edellinen muutos",
+    "changeAfter": "seuraava muutos",
     "checkpointFallback": "checkpoint",
     "backToView": "{view, select, dashboard {Takaisin dashboardiin} deployments {Takaisin julkaisuihin} templates {Takaisin pohjiin} skills {Takaisin skilleihin} interviews {Takaisin haastatteluihin} docs {Takaisin ohjeisiin} settings {Takaisin asetuksiin} users {Takaisin käyttäjiin} workspaces {Takaisin workspaceihin} other {Takaisin projekteihin}}",
     "openProjectFailed": "Projektia ei voitu avata",
@@ -731,6 +733,7 @@
     "speechUnavailable": "Puheentunnistus ei toimi tässä selaimessa",
     "previewCaptureFailed": "Esikatselun kuvaaminen ei onnistunut. Odota että se latautuu ja yritä uudelleen.",
     "dismissRuntimeErrors": "Piilota ajonaikaiset virheet",
+    "runtimeErrors": "Ajonaikaiset virheet",
     "sendErrorsToAi": "Lähetä virheet AI:lle korjattavaksi",
     "clearChat": "Tyhjennä chat",
     "dismissNotice": "Sulje ilmoitus",
@@ -739,14 +742,10 @@
     "addAttachment": "Lisää liite",
     "recordVoice": "Nauhoita ääni",
     "signInWithHF": "Kirjaudu HuggingFacella",
-    "waitingForResponse": "Odotetaan vastausta…",
-    "projectContext": "Projektin konteksti",
     "interviewComplete": "Haastattelu valmis",
     "allItemsCaptured": "Kaikki tarvittavat kohdat on kirjattu artifactiin.",
     "orClearChat": "Tai tyhjennä chat ja aloita uusi haastattelu.",
     "notCompleteYet": "Ei vielä valmis",
-    "restoreCheckpoint": "Palauta tähän checkpointiin",
-    "restoreAndRetry": "Palauta tiedostot ja yritä uudelleen tästä checkpointista",
     "autoCorrection": "Automaattinen korjaus",
     "placeholder": {
       "selectProvider": "Valitse ensin palveluntarjoaja…",
@@ -758,7 +757,6 @@
     "selectProvider": "Valitse palveluntarjoaja",
     "send": "Lähetä",
     "modeInterview": "Haastattelu",
-    "attachedImage": "Liitetty kuva",
     "loadingConversation": "Ladataan keskustelua…",
     "largeWriteNote": "Suurten tiedostojen kirjoitus voi kestää. Agentti on yhä työssä ja jatkaa heti kun kirjoitus valmistuu.",
     "tryOneOfThese": "Kokeile jotain näistä:",
@@ -774,15 +772,10 @@
     "stop": "Pysäytä",
     "textFile": "Tekstitiedosto",
     "modelsThisProject": "Mallit · tämä projekti",
-    "deny": "Hylkää",
     "stackTrace": "Pinojälki",
     "interviewUnverified": "Haastattelua ei voitu tarkistaa sen muistilistaa vasten — viimeisteltiin silti.",
-    "restore": "Palauta",
     "parameters": "Parametrit",
     "result": "Tulos",
-    "reasoning": "Päättelee…",
-    "thinking": "Ajattelee…",
-    "plan": "Suunnitelma",
     "pills": {
       "portfolio": "Henkilökohtainen portfolio (yksi sivu)",
       "multipage-site": "Monisivuinen sivusto yhteisellä navigaatiolla",
@@ -793,9 +786,7 @@
       "quick-mobile": "Korjaa puhelinnäkymä"
     },
     "moreSuggestions": "{count, plural, one {# ehdotus lisää ja niiden hallinta} other {# ehdotusta lisää ja niiden hallinta}}",
-    "allow": "Salli",
     "textInput": "Tekstisyöte",
-    "agentFallback": "Agentti",
     "attachImage": "Kuva",
     "attachScreenshot": "Kuvakaappaus esikatselusta",
     "unsupported": "ei tuettu",
@@ -819,7 +810,6 @@
       "blocked": "Mikrofonin käyttö estettiin",
       "processFailed": "Tallennetta ei voitu käsitellä"
     },
-    "errorNoDetails": "Tehtävä pysähtyi ilmoittamatta syytä.",
     "connectBeforeAttachments": "Yhdistä malli lähettääksesi liitteitä. Ne pysyvät viestikentässä siihen asti."
   },
   "fileExplorer": {
@@ -832,6 +822,11 @@
     "upload": "Lähetä",
     "newFile": "Uusi tiedosto",
     "newFolder": "Uusi kansio",
+    "create": "Luo",
+    "newItemIn": "Kansioon {folder}",
+    "nameInvalid": "Nimessä ei voi olla merkkiä / tai \\, eikä nimi voi olla . tai ..",
+    "nameTaken": "Tässä kansiossa on jo {name}.",
+    "createFailed": "Kohdetta {name} ei voitu luoda.",
     "downloadProject": "Lataa projekti",
     "importIntoProject": "Tuo tähän projektiin",
     "dropFiles": "Pudota tiedostot tähän",
@@ -1220,8 +1215,7 @@
     "undoThis": "Kumoa tämä",
     "summary": {
       "failed": "Jokin meni pieleen. Kumoa palauttaa entisen tilan.",
-      "stopped": "Pysäytetty.",
-      "changed": "{files, plural, =0 {Valmis muuttamatta yhtään tiedostoa.} one {Muutettiin # tiedosto.} other {Muutettiin # tiedostoa.}}"
+      "stopped": "Pysäytetty."
     },
     "step": {
       "write": "{has, select, yes {Kirjoitettiin {file}} other {Kirjoitettiin tiedosto}}",
@@ -1239,10 +1233,61 @@
       "image": "Luotiin kuva",
       "database": "Käsiteltiin dataa",
       "build": "Rakennettiin sivusto uudelleen",
-      "plan": "Suunniteltiin muutos",
+      "brief": "Päivitettiin brief",
+      "spec": "Lisättiin määrittelyyn",
+      "propose": "Ehdotettiin projektin luomista",
+      "ask": "Pyydettiin sinua valitsemaan",
       "preview": "Tarkistettiin esikatselu",
       "run": "Ajettiin skripti",
-      "other": "Työskennellään"
+      "other": "Ajettiin komento"
+    },
+    "stepRunning": {
+      "write": "{has, select, yes {Kirjoitetaan tiedostoa {file}…} other {Kirjoitetaan tiedostoa…}}",
+      "read": "{has, select, yes {Luetaan tiedostoa {file}…} other {Luetaan tiedostoa…}}",
+      "edit": "{has, select, yes {Muokataan tiedostoa {file}…} other {Muokataan tiedostoa…}}",
+      "create": "{has, select, yes {Luodaan tiedosto {file}…} other {Luodaan tiedosto…}}",
+      "delete": "{has, select, yes {Poistetaan tiedosto {file}…} other {Poistetaan tiedosto…}}",
+      "move": "{has, select, yes {Siirretään tiedosto {file}…} other {Siirretään tiedosto…}}",
+      "copy": "{has, select, yes {Kopioidaan tiedosto {file}…} other {Kopioidaan tiedosto…}}",
+      "list": "Selataan tiedostoja…",
+      "search": "Haetaan projektista…",
+      "evaluate": "Tarkistetaan työtä…",
+      "delegate": "Käydään pyyntöä läpi…",
+      "lookup": "Haetaan tietoa…",
+      "image": "Luodaan kuvaa…",
+      "database": "Käsitellään dataa…",
+      "build": "Rakennetaan sivustoa uudelleen…",
+      "brief": "Päivitetään briefiä…",
+      "spec": "Lisätään määrittelyyn…",
+      "propose": "Ehdotetaan projektia…",
+      "ask": "Pyydetään sinua valitsemaan…",
+      "preview": "Tarkistetaan esikatselua…",
+      "run": "Ajetaan skriptiä…",
+      "other": "Ajetaan komentoa…"
+    },
+    "stepFailed": {
+      "write": "{has, select, yes {Yritettiin kirjoittaa {file}, mutta se epäonnistui} other {Yritettiin kirjoittaa tiedosto, mutta se epäonnistui}}",
+      "read": "{has, select, yes {Yritettiin lukea {file}, mutta se epäonnistui} other {Yritettiin lukea tiedosto, mutta se epäonnistui}}",
+      "edit": "{has, select, yes {Yritettiin muokata tiedostoa {file}, mutta se epäonnistui} other {Yritettiin muokata tiedostoa, mutta se epäonnistui}}",
+      "create": "{has, select, yes {Yritettiin luoda {file}, mutta se epäonnistui} other {Yritettiin luoda tiedosto, mutta se epäonnistui}}",
+      "delete": "{has, select, yes {Yritettiin poistaa {file}, mutta se epäonnistui} other {Yritettiin poistaa tiedosto, mutta se epäonnistui}}",
+      "move": "{has, select, yes {Yritettiin siirtää {file}, mutta se epäonnistui} other {Yritettiin siirtää tiedosto, mutta se epäonnistui}}",
+      "copy": "{has, select, yes {Yritettiin kopioida {file}, mutta se epäonnistui} other {Yritettiin kopioida tiedosto, mutta se epäonnistui}}",
+      "list": "Yritettiin selata tiedostoja, mutta se epäonnistui",
+      "search": "Yritettiin hakea projektista, mutta se epäonnistui",
+      "evaluate": "Yritettiin tarkistaa työ, mutta se epäonnistui",
+      "delegate": "Yritettiin käydä pyyntöä läpi, mutta se epäonnistui",
+      "lookup": "Yritettiin hakea tietoa, mutta se epäonnistui",
+      "image": "Yritettiin luoda kuva, mutta se epäonnistui",
+      "database": "Yritettiin käsitellä dataa, mutta se epäonnistui",
+      "build": "Yritettiin rakentaa sivusto uudelleen, mutta se epäonnistui",
+      "brief": "Yritettiin päivittää brief, mutta se epäonnistui",
+      "spec": "Yritettiin lisätä määrittelyyn, mutta se epäonnistui",
+      "propose": "Yritettiin ehdottaa projektia, mutta se epäonnistui",
+      "ask": "Yritettiin pyytää sinua valitsemaan, mutta se epäonnistui",
+      "preview": "Yritettiin tarkistaa esikatselu, mutta se epäonnistui",
+      "run": "Yritettiin ajaa skripti, mutta se epäonnistui",
+      "other": "Yritettiin ajaa komento, mutta se epäonnistui"
     },
     "collate": {
       "readFile": "{position, select, first {Luettiin {file}} other {luettiin {file}}}",
@@ -1265,7 +1310,10 @@
       "preview": "{position, select, first {Tarkistettiin esikatselu} other {tarkistettiin esikatselu}}",
       "delegate": "{position, select, first {Käytiin pyyntö läpi} other {käytiin pyyntö läpi}}",
       "database": "{position, select, first {Käsiteltiin dataa} other {käsiteltiin dataa}}",
-      "plan": "{position, select, first {Suunniteltiin muutos} other {suunniteltiin muutos}}",
+      "brief": "{position, select, first {Päivitettiin brief} other {päivitettiin brief}}",
+      "spec": "{position, select, first {Lisättiin määrittelyyn} other {lisättiin määrittelyyn}}",
+      "propose": "{position, select, first {Ehdotettiin projektin luomista} other {ehdotettiin projektin luomista}}",
+      "ask": "{position, select, first {Pyydettiin sinua valitsemaan} other {pyydettiin sinua valitsemaan}}",
       "image": "{position, select, first {{count, plural, one {Luotiin kuva} other {Luotiin # kuvaa}}} other {{count, plural, one {luotiin kuva} other {luotiin # kuvaa}}}}",
       "run": "{position, select, first {{count, plural, one {Ajettiin skripti} other {Ajettiin # skriptiä}}} other {{count, plural, one {ajettiin skripti} other {ajettiin # skriptiä}}}}",
       "other": "{position, select, first {{count, plural, one {Ajettiin # komento} other {Ajettiin # komentoa}}} other {{count, plural, one {ajettiin # komento} other {ajettiin # komentoa}}}}",
@@ -1278,6 +1326,19 @@
       "thinking": "Mietitään…",
       "writing": "Kirjoitetaan…",
       "working": "Työskennellään…"
+    },
+    "usage": {
+      "calls": "{count, plural, one {# kutsu} other {# kutsua}}",
+      "in": "{tokens} sisään",
+      "inCached": "{tokens} sisään ({cached} välimuistista)",
+      "out": "{tokens} ulos",
+      "outReasoning": "{tokens} ulos ({reasoning} päättelyä)"
+    },
+    "lines": "{count, plural, one {# rivi} other {# riviä}}",
+    "figures": "Tokenit ja hinta",
+    "status": {
+      "task": "Tehtävä",
+      "remaining": "Jäljellä"
     }
   },
   "generationShelf": {
@@ -1348,9 +1409,21 @@
         "running": "Käännetään",
         "done": "Käännetty"
       },
-      "plan": {
-        "running": "Suunnitellaan",
-        "done": "Suunniteltu"
+      "brief": {
+        "running": "Päivitetään",
+        "done": "Päivitetty"
+      },
+      "spec": {
+        "running": "Lisätään",
+        "done": "Lisätty"
+      },
+      "propose": {
+        "running": "Ehdotetaan",
+        "done": "Ehdotettu"
+      },
+      "ask": {
+        "running": "Kysytään",
+        "done": "Kysytty"
       },
       "preview": {
         "running": "Avataan",
@@ -3166,6 +3239,7 @@
     "serverStartFailed": "Palvelingeneroinnin käynnistys epäonnistui",
     "serverConnectFailed": "Yhteys palvelimeen generointia varten epäonnistui",
     "projectBusy": "Edellinen muutos on vielä kesken. Odota, että se valmistuu, tai pysäytä se ensin.",
+    "projectStopping": "Edellistä muutosta pysäytetään vielä. Hetki vain.",
     "assignmentFailed": "Projektin mallimäärityksiä ei voitu selvittää. Tarkista palveluntarjoajan asetukset."
   },
   "mcpBanner": {

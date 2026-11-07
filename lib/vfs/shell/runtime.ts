@@ -9,6 +9,7 @@
 import { VirtualFileSystem } from '../index';
 import { getFileTypeFromPath, type FileType } from '../types';
 import type { ShellContext, ShellResult } from './types';
+import { normalizePath } from './paths';
 
 const TRUNCATE_CHARS = 100_000;
 
@@ -20,19 +21,7 @@ export function truncate(out: string): string {
   return out.slice(0, TRUNCATE_CHARS) + `\n\n… [${out.length - TRUNCATE_CHARS} chars truncated] …`;
 }
 
-export function normalizePath(p?: string): string | undefined {
-  if (!p) return p;
-  if (p.startsWith('/workspace')) {
-    const rest = p.slice('/workspace'.length);
-    p = rest.length ? rest : '/';
-  }
-  // The VFS is rooted at '/' with no working directory, so the current-dir
-  // forms ('.', './', './x') resolve relative to root.
-  if (p === '.' || p === './') return '/';
-  if (p.startsWith('./')) p = p.slice(2);
-  if (!p.startsWith('/')) p = '/' + p;
-  return p;
-}
+export { normalizePath };
 
 export async function ensureDirectory(vfs: VirtualFileSystem, projectId: string, path: string) {
   if (path === '/' || !path) return;

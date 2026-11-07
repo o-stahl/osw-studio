@@ -1,4 +1,4 @@
-import type { InterviewItem } from './types';
+import type { InterviewHandoff, InterviewItem } from './types';
 
 export interface ItemCheckResult {
   itemId: string;
@@ -11,6 +11,16 @@ export interface ItemSummary {
   elicit: string;
   passed: boolean;
   reason?: string;
+}
+
+/** What the completion check reports to the chat: the `interview_gate` event's data. */
+export interface InterviewGate {
+  complete: boolean;
+  /** The check itself failed, so the interview finished unverified. */
+  errored?: boolean;
+  items?: ItemSummary[];
+  /** The template's follow-up, offered once the interview is complete. */
+  handoff?: InterviewHandoff;
 }
 
 /** Opening of the incomplete-feedback message — also used to skip rendering it twice in the UI. */

@@ -6,7 +6,7 @@
 import { ToolDefinition, ToolCall } from './types';
 import { getActiveVFS } from '@/lib/vfs';
 import { vfsShell } from '@/lib/vfs/cli-shell';
-import { alwaysWriteCommands } from '@/lib/vfs/shell-commands';
+import { alwaysWriteCommands, isScriptCommand, isSedInPlaceFlag } from '@/lib/vfs/shell-commands';
 import { logger } from '../utils';
 import { checkWriteScope } from './write-scope';
 import {
@@ -15,7 +15,7 @@ import {
 } from './json-repair';
 import { scriptRunner } from '@/lib/scripting/script-runner';
 import type { ScriptRuntime } from '@/lib/scripting/types';
-import { classifyGateKey, needsApproval, capabilityLabel, type ApprovalRequest, type ApprovalOutcome } from './permissions';
+import { classifyGateKey, needsApproval, capabilityLabel, sqliteChangesData, type ApprovalRequest, type ApprovalOutcome } from './permissions';
 import { configManager } from '@/lib/config/storage';
 import { apiFetch } from '@/lib/api/backend-status';
 import { readWorkspaceCookie } from '@/lib/web/workspace-cookie';
@@ -49,6 +49,20 @@ Commands:
   Signal the project is ready to create. The brief must contain name, runtime, and template. Enables the user's "Create now" button. The user may continue adjusting after this; call again if needed.
 
 All commands are passed as the command argument to the bash tool. Do NOT call brief, spec, ask, or propose-create as separate tools — they are bash commands, not standalone tools.`;
+
+/**
+ * Shell description for the interview agent: the commands it reads, asks and records with. The
+ * general one offers sub-agents, builds, the database and runtime changes, none of which an interview
+ * may use, and it contradicted the interview prompt's own list.
+ */
+const INTERVIEW_BASH_DESCRIPTION = `Run commands in the virtual file system. Read anywhere; write only into /.interviews/.
+
+Read: cat, head, tail, ls, tree, grep, rg, find, wc.
+Ask the user to choose: ask [--prompt "Question"] "Option A" "Option B" ["Option C" ...]. The iteration ends; their pick is the next message.
+Record findings: cat > /.interviews/<name>.md << 'EOF'\\ncontent\\nEOF, or edit one with ss /.interviews/<name>.md << 'EOF'\\nsearch\\n=======\\nreplacement\\nEOF
+Finish: status --task "..." --done "..." --remaining "none" --complete
+
+Pipes (cmd1 | cmd2), heredocs (<< 'EOF') and chaining (&&, ||, ;) are supported. One command at a time as a single string.`;
 
 interface ToolExecutor {
   /**
@@ -271,12 +285,11 @@ One command at a time as a single string.`,
             }
             if (mainResult) outputs.push(mainResult);
 
-            const lines = trailingCommands.split('\n').map(l => l.trim()).filter(Boolean);
+            // Each line is a command line of its own, read and gated as the whole tool reads one, so a
+            // chain on it is split and every part checked; a comment line runs nothing.
+            const lines = trailingCommands.split('\n').map(l => l.trim()).filter((l) => l && !l.startsWith('#'));
             for (const line of lines) {
-              const trailArray = parseBashCommand(line);
-              if (trailArray.length === 0) continue;
-
-              const trailResult = await executeShellSegment(projectId, trailArray, context);
+              const trailResult = await this.get('bash')!.executor.execute(projectId, { command: line }, context);
               if (trailResult.startsWith('Error')) {
                 return outputs.length > 0
                   ? outputs.join('\n') + '\n' + trailResult
@@ -319,6 +332,9 @@ One command at a time as a single string.`,
     if (!tool) return undefined;
     if (id === 'bash' && agentType === 'setup') {
       return { ...tool.definition, description: SETUP_BASH_DESCRIPTION };
+    }
+    if (id === 'bash' && agentType === 'interview') {
+      return { ...tool.definition, description: INTERVIEW_BASH_DESCRIPTION };
     }
     return tool.definition;
   }
@@ -494,16 +510,20 @@ export async function checkCommandPermission(
   return { allowed: true };
 }
 
+/** Tokens the shell runs the commands on either side of separately. */
+const COMMAND_SEPARATORS = new Set(['|', '&&', '||', ';']);
+
 /**
- * The stages of a pipeline, so each can be checked as the separate command the shell runs it as.
- * A command with no `|` is a single stage, which is why every caller can use this unconditionally.
+ * The commands a token list runs, the stages of a pipeline and the parts of a chain, so each can be
+ * checked as the separate command the shell runs it as. A command with no separator is a single
+ * stage, which is why every caller can use this unconditionally.
  */
 function pipelineStages(cmdArray: string[]): string[][] {
-  if (!cmdArray.includes('|')) return [cmdArray];
+  if (!cmdArray.some((token) => COMMAND_SEPARATORS.has(token))) return [cmdArray];
   const stages: string[][] = [];
   let current: string[] = [];
   for (const token of cmdArray) {
-    if (token === '|') {
+    if (COMMAND_SEPARATORS.has(token)) {
       if (current.length > 0) stages.push(current);
       current = [];
     } else {
@@ -523,9 +543,9 @@ async function executeShellSegment(
   const command = cmdArray[0];
   if (!command) return 'Error: empty command';
 
-  // A pipeline is one command here and several in the shell, which splits on `|` and runs each
-  // stage. Gating only `cmdArray` read the first stage and let every later one through, so
-  // `ls / | rm /file` wrote under a read-only grant. Each stage is checked as its own command.
+  // A pipeline or a chain is one command here and several in the shell, which splits on `|`, `&&`,
+  // `||` and `;` and runs each. Gating only `cmdArray` read the first and let every later one
+  // through, so `ls / | rm /file` wrote under a read-only grant. Each is checked as its own command.
   for (const stage of pipelineStages(cmdArray)) {
     const stageCommand = stage[0];
     if (!stageCommand) continue;
@@ -555,7 +575,7 @@ async function executeShellSegment(
   }
 
   // Script execution commands (python, python3, lua)
-  if (command === 'python' || command === 'python3' || command === 'lua') {
+  if (isScriptCommand(command)) {
     if (typeof window === 'undefined') {
       return `Error: ${command} execution requires the browser runtime (Pyodide/Fengari). This command is not available during server-side generation. Write the script file and it will run when the user opens the preview.`;
     }
@@ -603,9 +623,13 @@ async function executeShellSegment(
         if (typeof f.content === 'string') scanSource = f.content;
       } catch { /* missing entry point is reported by the runner below */ }
     }
-    const writeAdvisory = scriptMayWriteFiles(scanSource, sr)
-      ? '\n\n(note: scripts run in an isolated sandbox — writes to project files are NOT saved (only stdout above and files under /output/ persist). To edit files use ss or cat >.)'
-      : '';
+    // A read-only run may run a script to read its output, but keeps none of the files it writes.
+    const keepOutputFiles = !context.isReadOnly;
+    const writeAdvisory = !scriptMayWriteFiles(scanSource, sr)
+      ? ''
+      : keepOutputFiles
+        ? '\n\n(note: scripts run in an isolated sandbox — writes to project files are NOT saved (only stdout above and files under /output/ persist). To edit files use ss or cat >.)'
+        : '\n\n(note: read-only mode — the files this script writes, /output/ included, are not kept.)';
 
     return new Promise<string>((resolve) => {
       const output: string[] = [];
@@ -630,7 +654,7 @@ async function executeShellSegment(
         }
       });
 
-      scriptRunner.execute(projectId, sr, entryPoint, inlineSource).catch((err) => {
+      scriptRunner.execute(projectId, sr, entryPoint, inlineSource, { keepOutputFiles }).catch((err) => {
         if (!resolved) {
           unsubscribe();
           resolve(`Error: ${err}`);
@@ -686,9 +710,13 @@ async function executeShellSegment(
     }
   }
 
-  // Delegate — handled at orchestrator level, never reaches here in normal flow.
-  // Safety net: if it does, return an error directing to proper usage.
+  // Delegate — the main agent's coordinator takes it before it reaches here. Any other agent (an
+  // interview, a sub-agent) cannot start sub-agents, and is told so rather than shown a usage it
+  // already followed.
   if (command === 'agent' || command === 'delegate') {
+    if (context.agentType && context.agentType !== 'orchestrator') {
+      return 'Error: only the main agent can start sub-agents. Do this yourself with the commands you have.';
+    }
     return 'Error: agent requires a type. Usage: bash({ command: "agent explore|task|plan \'prompt\'" })';
   }
 
@@ -971,12 +999,17 @@ function isWriteOperation(cmd: string[]): boolean {
   }
 
   // sed -i is a write operation (in-place edit), sed without -i is read-only (stdout)
-  if (cmd[0] === 'sed' && cmd.includes('-i')) {
+  if (cmd[0] === 'sed' && cmd.slice(1).some(isSedInPlaceFlag)) {
     return true;
   }
 
   // curl -o/--output writes to a file; plain curl is read-only
   if (cmd[0] === 'curl' && (cmd.includes('-o') || cmd.includes('--output'))) {
+    return true;
+  }
+
+  // A statement that changes a deployment's data is a write, though no file changes.
+  if (sqliteChangesData(cmd)) {
     return true;
   }
 

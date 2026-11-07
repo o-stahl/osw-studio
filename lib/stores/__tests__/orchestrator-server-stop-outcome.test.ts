@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createTestStore, setupOrchestratorMocks } from './test-helpers';
+import { toast } from 'sonner';
 
 setupOrchestratorMocks();
 
@@ -58,5 +59,43 @@ describe('orchestrator slice — a server run stopping on a model', () => {
     await deliver({ provider: 'openrouter', model: 'm', errorCategory: 'auth_expired' });
     await deliver({ provider: 'openrouter', model: 'openrouter/free', errorCategory: 'model_busy' });
     expect(recordModelOutcome).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A finished server run is announced with a toast, except a Chat-mode answer: the reply is already
+ * in the chat, and a toast after every message is noise. The runner reports the mode with the ending.
+ */
+describe('orchestrator slice — the toast at the end of a server run', () => {
+  let store: ReturnType<typeof createTestStore>;
+
+  async function end(data: Record<string, unknown>) {
+    store.setState({
+      generationTasks: new Map([['p1', {
+        projectId: 'p1', projectName: '', prompt: 'q', model: 'm', startedAt: 0, result: null, paused: false,
+        orchestratorInstance: null, persistedInstance: null, serverTaskId: 't1',
+      }]]),
+    });
+    store.getState().connectSSE();
+    const { SSEClient } = await import('@/lib/server-generate/sse-client');
+    const ctor = SSEClient as unknown as { mock: { calls: [{ onEvent: (e: string, d: unknown) => void }][] } };
+    ctor.mock.calls[ctor.mock.calls.length - 1][0].onEvent('task_complete', { sourceProjectId: 'p1', sourceTaskId: 't1', ...data });
+  }
+
+  beforeEach(() => {
+    vi.mocked(toast.success).mockClear();
+    store = createTestStore();
+    store.setState({ projectId: 'p1' });
+  });
+
+  it('says a run finished, or stopped, but not after a Chat-mode answer', async () => {
+    await end({ result: 'success', exitReason: 'answered', mode: 'chat' });
+    expect(toast.success).not.toHaveBeenCalled();
+
+    await end({ result: 'success', exitReason: 'status_complete', mode: 'code' });
+    expect(toast.success).toHaveBeenLastCalledWith('Task completed');
+
+    await end({ result: 'stopped', exitReason: 'stopped', mode: 'chat' });
+    expect(toast.success).toHaveBeenLastCalledWith('Task stopped');
   });
 });

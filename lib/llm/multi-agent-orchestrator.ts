@@ -190,6 +190,8 @@ export class MultiAgentOrchestrator {
   private readVersions = new Map<string, number>();
 
   private stopped = false;
+  /** How to stop each loop running now. A stop reaches all of them, whichever execute began it. */
+  private runningLoops = new Set<() => void>();
   private abortController = new AbortController();
 
   /**
@@ -251,6 +253,7 @@ export class MultiAgentOrchestrator {
   stop(): void {
     this.stopped = true;
     this.abortController.abort();
+    for (const stopLoop of this.runningLoops) stopLoop();
     logger.info('[MultiAgentOrchestrator] Execution stopped by user');
   }
 
@@ -310,14 +313,16 @@ export class MultiAgentOrchestrator {
 
       const serverCtxMeta = this.getVFS().getServerContextMetadata();
       const modelSupportsTools = this.checkModelSupportsTools();
-      let systemPrompt = await buildSystemPrompt(this.chatMode, serverCtxMeta, this.projectId, this.rootAgent.type, modelSupportsTools, this.isImageGenAvailable(), this.isWebSearchAvailable(), !!this.serverContext);
-      if (this.rootAgent.type === 'interview') {
-        systemPrompt = withInterviewAgenda(systemPrompt, this.interviewTemplateId, this.interviewTemplate);
-      }
+      const systemPrompt = await this.rootSystemPrompt(serverCtxMeta, modelSupportsTools);
 
-      const hasExistingSystemMessage = conversation.messages.some(m => m.role === 'system');
+      const systemAt = conversation.messages.findIndex(m => m.role === 'system');
+      const hasExistingSystemMessage = systemAt !== -1;
       if (!hasExistingSystemMessage) {
         this.addMessage(this.currentConversationId, { role: 'system', content: systemPrompt });
+      } else {
+        // A history rebuilt from the thread keeps the prompt of the run that recorded it, which can
+        // be another mode's or predate the deployment picked since. This run's prompt replaces it.
+        conversation.messages[systemAt] = { role: 'system', content: systemPrompt };
       }
 
       // The project context rides on the first user message. A first message dropped as unanswered
@@ -329,6 +334,8 @@ export class MultiAgentOrchestrator {
 
       // 2. Skill evaluation (orchestrator only)
       let skillHint = '';
+      /** The skill check's call, reported once the request is in the conversation, so it counts toward this run. */
+      let skillCheck: UsageInfo | null = null;
       try {
         const evalEnabled = await skillsService.isEvaluationEnabled();
         if (evalEnabled && this.rootAgent.type === 'orchestrator') {
@@ -344,6 +351,7 @@ export class MultiAgentOrchestrator {
               this.totalUsage.totalTokens += evalResult.usage.totalTokens;
               this.taskTokens += evalResult.usage.totalTokens;
               this.getConfig().updateSessionCost({ ...evalResult.usage, cost }, cost);
+              skillCheck = { ...evalResult.usage, cost };
             }
             this.onProgress?.('skill_evaluation', { skills: skillsMeta.map(s => s.id), matched: evalResult.skillIds, usage: evalResult.usage });
             if (evalResult.skillIds.length > 0) {
@@ -442,6 +450,8 @@ export class MultiAgentOrchestrator {
         },
       });
 
+      if (skillCheck) this.reportUsage(skillCheck);
+
       // 4. Run agent loop via extracted modules
       const loopResult = await this.runLoop();
 
@@ -511,9 +521,7 @@ export class MultiAgentOrchestrator {
           if (files.length > 0) fileTreeStr = buildFileTree(files);
         } catch { /* ignore */ }
         const serverCtxMeta = this.getVFS().getServerContextMetadata();
-        const systemPrompt = await buildSystemPrompt(
-          this.chatMode, serverCtxMeta, this.projectId, this.rootAgent.type, this.checkModelSupportsTools(), this.isImageGenAvailable(), this.isWebSearchAvailable(), !!this.serverContext
-        );
+        const systemPrompt = await this.rootSystemPrompt(serverCtxMeta, this.checkModelSupportsTools());
         const projectContext = await buildProjectContext(fileTreeStr, serverCtxMeta);
         return { systemPrompt, projectContext };
       },
@@ -769,20 +777,21 @@ export class MultiAgentOrchestrator {
       cost: costTracker,
     });
 
-    // Propagate stop to coordinator and loop
-    const originalStop = this.stop.bind(this);
-    this.stop = () => {
-      originalStop();
+    // Stop reaches this loop and its sub-agents for as long as it runs, and one pressed while the
+    // run was still setting up reaches it as it starts.
+    const stopLoop = () => {
       loop.stop();
       coordinator.stop();
     };
+    this.runningLoops.add(stopLoop);
+    if (this.stopped) stopLoop();
 
     const userContent = lastUserMsg?.content ?? '';
     let result: AgentLoopResult;
     try {
       result = await loop.run(userContent);
     } finally {
-      this.stop = originalStop;
+      this.runningLoops.delete(stopLoop);
     }
 
     this.toolCallCount += result.toolCount;
@@ -848,6 +857,20 @@ export class MultiAgentOrchestrator {
     // (the search itself is delegated back to the browser). Browser runs read local config.
     if (this.serverContext) return !!this.serverContext.webSearchAvailable;
     return configManager.isWebSearchConfigured();
+  }
+
+  /**
+   * The root agent's system prompt. An interview's carries its template's agenda, at the start and
+   * when a compaction rebuilds the conversation alike, or the agent would carry on without it.
+   */
+  private async rootSystemPrompt(
+    serverCtxMeta: Parameters<typeof buildSystemPrompt>[1],
+    modelSupportsTools: boolean,
+  ): Promise<string> {
+    const prompt = await buildSystemPrompt(this.chatMode, serverCtxMeta, this.projectId, this.rootAgent.type, modelSupportsTools, this.isImageGenAvailable(), this.isWebSearchAvailable(), !!this.serverContext);
+    return this.rootAgent.type === 'interview'
+      ? withInterviewAgenda(prompt, this.interviewTemplateId, this.interviewTemplate)
+      : prompt;
   }
 
   /** Selects the completion gate for the active agent (undefined = no gate). */
@@ -964,6 +987,11 @@ export class MultiAgentOrchestrator {
     this.totalUsage.totalTokens += usage.totalTokens;
     this.taskTokens += usage.totalTokens;
     this.getConfig().updateSessionCost({ ...usage, cost }, cost);
+    this.reportUsage({ ...usage, cost });
+  }
+
+  /** Reports a side call in a `usage` event, at what it cost, with the task's running totals. */
+  private reportUsage(usage: UsageInfo): void {
     this.onProgress?.('usage', {
       usage, totalCost: this.totalCost, totalUsage: { ...this.totalUsage },
       taskCost: this.taskCost, taskTokens: this.taskTokens,

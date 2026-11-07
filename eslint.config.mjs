@@ -40,7 +40,14 @@ const eslintConfig = [
       // Warn on console usage; allow error/warn
       "no-console": ["warn", { allow: ["error", "warn"] }],
       // Apostrophes/quotes in JSX copy are fine — React escapes text content
-      "react/no-unescaped-entities": "off"
+      "react/no-unescaped-entities": "off",
+      // The desktop app's Electron has no window.prompt(): it throws. Ask in the app's own dialog,
+      // as the File Explorer's CreateItemDialog does.
+      "no-restricted-globals": ["error", { name: "prompt", message: "Electron has no window.prompt(); ask in the app's own dialog." }],
+      "no-restricted-properties": ["error",
+        { object: "window", property: "prompt", message: "Electron has no window.prompt(); ask in the app's own dialog." },
+        { object: "globalThis", property: "prompt", message: "Electron has no window.prompt(); ask in the app's own dialog." },
+      ]
     }
   }
 ];

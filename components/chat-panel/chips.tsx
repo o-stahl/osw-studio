@@ -6,10 +6,16 @@ interface ChipsBlockProps {
   options: string[];
   onSelect: (value: string) => void;
   disabled?: boolean;
+  /**
+   * The option that was answered with, when the conversation shows it. A pick held only here is
+   * lost whenever the block mounts again.
+   */
+  picked?: string | null;
 }
 
-export function ChipsBlock({ options, onSelect, disabled }: ChipsBlockProps) {
-  const [selected, setSelected] = useState<string | null>(null);
+export function ChipsBlock({ options, onSelect, disabled, picked }: ChipsBlockProps) {
+  const [clicked, setClicked] = useState<string | null>(null);
+  const selected = picked ?? clicked;
 
   return (
     <div className="flex flex-wrap gap-1.5 mt-2">
@@ -21,7 +27,7 @@ export function ChipsBlock({ options, onSelect, disabled }: ChipsBlockProps) {
             key={option}
             onClick={() => {
               if (!selected && !disabled) {
-                setSelected(option);
+                setClicked(option);
                 onSelect(option);
               }
             }}

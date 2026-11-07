@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   SHELL_COMMANDS,
   alwaysWriteCommands,
+  isSedInPlaceFlag,
   generalCommandNames,
   isKnownShellCommand,
   setupOnlyCommandNames,
@@ -134,5 +135,12 @@ describe('permission gate coverage', () => {
       .filter((c: string) => !isKnownShellCommand(c));
 
     expect(phantom).toEqual([]);
+  });
+});
+
+describe('isSedInPlaceFlag', () => {
+  it('matches the spellings the shell edits in place with, and not combined flags', () => {
+    for (const flag of ['-i', '-i.bak', '-i~']) expect(isSedInPlaceFlag(flag), flag).toBe(true);
+    for (const flag of ['-n', '-e', '-in', '-ie']) expect(isSedInPlaceFlag(flag), flag).toBe(false);
   });
 });

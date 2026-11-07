@@ -1,8 +1,16 @@
 /**
- * Stateful, incremental event processor that transforms DebugEvents into chat Turns.
+ * Stateful, incremental event processor: the tool calls and streamed reasoning a run's events carry,
+ * in turns.
  *
- * Extracted from the ChatPanel useMemo so the logic can be unit-tested without
- * React rendering. The ChatPanel hooks into this via process() on each render.
+ * Two readers: `ChatPanel` counts the turns (the first-message tip, the connect chooser, the
+ * suggestions, the empty state), counts the person's messages (scrolling follows the thread again
+ * after one) and reads the tool calls for the large-write pacing notice; `stepDetail`
+ * (`lib/quick-edit/detail.ts`) reads an opened group's calls and reasoning. The thread itself is
+ * drawn from `splitRuns`.
+ *
+ * A turn starts at each response and at each message the person sends. Anything the agent says or
+ * reports in it, a message, a notice, an error, makes the turn count without becoming an item, since
+ * nothing draws those from here.
  */
 import type { DebugEvent } from '@/lib/stores/types';
 import { classifyCommand } from '@/lib/agent-activity/classify-command';
@@ -20,23 +28,17 @@ export interface ToolCall {
 
 export interface TurnItem {
   id: string;
-  type: 'waiting' | 'reasoning' | 'plan' | 'agent' | 'progress' | 'tool' | 'text' | 'error' | 'error_paused' | 'user' | 'synthetic_error' | 'project_context' | 'compaction' | 'ask' | 'approval' | 'interview_gate' | 'notice' | 'api_stopped';
+  type: 'reasoning' | 'tool';
   timestamp: number;
   data: any;
+  /** The `reasoning_delta` event a streamed stretch of reasoning came in. */
   eventId?: string;
   complete?: boolean;
-  focusContext?: { domPath: string; snippet: string };
-  semanticBlocks?: Array<{ name: string; domPath: string; position: string; description: string }>;
-  attachedFiles?: Array<{ name: string }>;
 }
 
 export interface Turn {
   id: string;
   items: TurnItem[];
-  usage?: any;
-  iteration?: number;
-  checkpointId?: string;
-  taskStartTime?: number;
 }
 
 interface DeltaAccum {
@@ -44,22 +46,33 @@ interface DeltaAccum {
   fragmentCount: number;
 }
 
+/** What else is in the current turn: none of it is an item, but each makes the turn count. */
+interface TurnContent {
+  /** The agent is waiting on a response; gone once something comes back. */
+  waiting: boolean;
+  /** A retry is waiting on the provider; gone with whatever comes next. */
+  retrying: boolean;
+  /** A message, a notice or an error, which stays. */
+  said: boolean;
+}
+
 interface ProcessorState {
   result: Turn[];
   currentTurn: Turn;
+  content: TurnContent;
   currentIterationTools: ToolCall[];
   itemIdCounter: number;
-  taskStartTime: number;
-  prevTaskCumulativeTokens: number;
-  prevTaskCumulativeCost: number;
   textAccum: Map<string, DeltaAccum>;
   toolParamAccum: Map<string, DeltaAccum>;
   toolCmdCache: Map<string, string | null>;
-  /** The model OpenRouter's free router last answered with in this response, so only a change is shown. */
+  /** The model OpenRouter's free router last answered with in this response; only a change counts. */
   lastRouterModel: string | null;
+  /** The messages the person has sent. */
+  requests: number;
 }
 
-function extractPartialCmd(raw: string): string | null {
+/** The command a tool call's arguments carry so far, while the model is still writing them. */
+export function extractPartialCmd(raw: string): string | null {
   const match = raw.match(/^\s*\{\s*"(?:command|cmd)"\s*:\s*"((?:\\.|[^"\\])*)/);
   if (!match) return null;
   try {
@@ -74,8 +87,7 @@ function extractPartialCmd(raw: string): string | null {
  *
  * Reminders, nudges and retries are sent as user messages so they steer the model, and the interview
  * gate's incomplete feedback is too; none of them are anything a person typed, so no surface renders
- * them as one. Kept here, beside the transcript that first needed it, and imported by anything else
- * that cuts the stream by request.
+ * them as one. Imported by anything that cuts the stream by request.
  */
 export function isInjectedUserMessage(content: unknown): boolean {
   if (typeof content !== 'string') return false;
@@ -84,26 +96,51 @@ export function isInjectedUserMessage(content: unknown): boolean {
     || content.includes(INCOMPLETE_PREFIX);
 }
 
+function noContent(): TurnContent {
+  return { waiting: false, retrying: false, said: false };
+}
+
 function freshState(): ProcessorState {
   return {
     result: [],
     currentTurn: { id: `turn-${Date.now()}`, items: [] },
+    content: noContent(),
     currentIterationTools: [],
     itemIdCounter: 0,
-    taskStartTime: 0,
-    prevTaskCumulativeTokens: 0,
-    prevTaskCumulativeCost: 0,
     textAccum: new Map(),
     toolParamAccum: new Map(),
     toolCmdCache: new Map(),
     lastRouterModel: null,
+    requests: 0,
   };
+}
+
+function hasContent(state: ProcessorState): boolean {
+  const { waiting, retrying, said } = state.content;
+  return state.currentTurn.items.length > 0 || waiting || retrying || said;
+}
+
+/** Close the current turn, when it holds anything, and start the next. */
+function nextTurn(state: ProcessorState): void {
+  if (!hasContent(state)) return;
+  state.result.push(state.currentTurn);
+  state.currentTurn = { id: `turn-${Date.now()}-${state.result.length}`, items: [] };
+  state.content = noContent();
+}
+
+function turnsOf(state: ProcessorState): Turn[] {
+  return [...state.result, ...(hasContent(state) ? [state.currentTurn] : [])];
 }
 
 export class EventProcessor {
   private lastProcessedEventId: string | null = null;
   private lastEventVersions = new Map<string, number>();
   private state: ProcessorState = freshState();
+
+  /** How many messages the person has sent, in the events read so far. */
+  get requests(): number {
+    return this.state.requests;
+  }
 
   process(events: DebugEvent[]): Turn[] {
     let state = this.state;
@@ -128,25 +165,6 @@ export class EventProcessor {
       }
     }
 
-    // Check if any conversation_message was updated (e.g. projectContext merged)
-    let needsFullReparse = false;
-    for (let i = 0; i < startIndex; i++) {
-      const evt = events[i];
-      if (evt.event === 'conversation_message' && evt.version) {
-        const storedVersion = this.lastEventVersions.get(evt.id);
-        if (storedVersion !== undefined && storedVersion !== evt.version) {
-          needsFullReparse = true;
-          break;
-        }
-      }
-    }
-    if (needsFullReparse) {
-      this.lastEventVersions = new Map();
-      state = freshState();
-      this.state = state;
-      startIndex = 0;
-    }
-
     const newEventsCount = events.length - startIndex;
 
     // Re-process coalesced events in lookback window
@@ -164,7 +182,7 @@ export class EventProcessor {
     }
 
     if (newEventsCount === 0 && coalescedEvents.length === 0) {
-      return [...state.result, ...(state.currentTurn.items.length > 0 ? [state.currentTurn] : [])];
+      return turnsOf(state);
     }
 
     const eventsToProcess = [
@@ -172,71 +190,46 @@ export class EventProcessor {
       ...events.slice(startIndex),
     ];
 
+    const stopWaiting = () => { state.content.waiting = false; };
+    const markReasoningComplete = () => {
+      state.currentTurn.items.forEach(item => {
+        if (item.type === 'reasoning') item.complete = true;
+      });
+    };
+
     for (const event of eventsToProcess) {
       // "Trying again" only describes the wait it is in. Whatever comes next ends that wait.
-      if (event.event !== 'retry' && event.event !== 'waiting') {
-        state.currentTurn.items = state.currentTurn.items.filter(item => !(item.type === 'notice' && item.data?.kind === 'retrying'));
-      }
+      if (event.event !== 'retry' && event.event !== 'waiting') state.content.retrying = false;
       switch (event.event) {
-        case 'retry': {
-          const last = state.currentTurn.items[state.currentTurn.items.length - 1];
-          const data = { kind: 'retrying', provider: event.data?.provider ?? '', status: event.data?.status ?? 0 };
-          if (last?.type === 'notice' && last.data?.kind === 'retrying') last.data = data;
-          else state.currentTurn.items.push({ id: `item-${state.itemIdCounter++}`, type: 'notice', timestamp: event.timestamp, data });
+        case 'retry':
+          state.content.retrying = true;
           break;
-        }
 
         case 'model_picked':
-          state.currentTurn.items.push({
-            id: `item-${state.itemIdCounter++}`,
-            type: 'notice',
-            timestamp: event.timestamp,
-            data: { kind: 'picked', provider: event.data?.provider ?? '', toModel: event.data?.model ?? '' },
-          });
+          state.content.said = true;
           break;
 
         case 'model_resolved': {
-          // OpenRouter's free router may answer a request with a different model than the last. The
-          // notice goes where that happened, and only when it did, not before every step.
+          // OpenRouter's free router may answer a request with a different model than the last; only
+          // a change is noted.
           const model = event.data?.model ?? '';
           if (model === state.lastRouterModel) break;
           state.lastRouterModel = model;
-          state.currentTurn.items.push({
-            id: `item-${state.itemIdCounter++}`,
-            type: 'notice',
-            timestamp: event.timestamp,
-            data: { kind: 'resolved', provider: event.data?.provider ?? '', toModel: model },
-          });
+          state.content.said = true;
           break;
         }
 
         case 'model_switched':
-          state.currentTurn.items.push({
-            id: `item-${state.itemIdCounter++}`,
-            type: 'notice',
-            timestamp: event.timestamp,
-            data: {
-              kind: 'switched',
-              provider: event.data?.provider ?? '',
-              fromModel: event.data?.fromModel ?? '',
-              toModel: event.data?.toModel ?? '',
-              reason: event.data?.reason ?? 'busy',
-            },
-          });
-          state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
+          state.content.said = true;
+          stopWaiting();
           break;
 
         case 'waiting':
-          state.currentTurn.items.push({
-            id: `item-${state.itemIdCounter++}`,
-            type: 'waiting',
-            timestamp: event.timestamp,
-            data: null,
-          });
+          state.content.waiting = true;
           break;
 
         case 'reasoning_start':
-          state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
+          stopWaiting();
           break;
 
         case 'reasoning_delta': {
@@ -248,7 +241,7 @@ export class EventProcessor {
           accum.fragmentCount = reasoningItems.length;
           state.textAccum.set(event.id, accum);
           if (!accum.text.trim()) {
-            state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
+            stopWaiting();
             break;
           }
           const matchingReasoningItem = state.currentTurn.items.find(
@@ -265,21 +258,17 @@ export class EventProcessor {
               eventId: event.id,
             });
           }
-          state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
+          stopWaiting();
           break;
         }
 
         case 'reasoning_complete':
-          state.currentTurn.items.forEach(item => {
-            if (item.type === 'reasoning') item.complete = true;
-          });
-          state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
+          markReasoningComplete();
+          stopWaiting();
           break;
 
         case 'toolCalls': {
-          state.currentTurn.items.forEach(item => {
-            if (item.type === 'reasoning') item.complete = true;
-          });
+          markReasoningComplete();
           const calls = event.data?.toolCalls || [];
           for (const call of calls) {
             let parameters: Record<string, unknown> = {};
@@ -304,7 +293,7 @@ export class EventProcessor {
             });
             state.currentIterationTools.push(tool);
           }
-          state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
+          stopWaiting();
           break;
         }
 
@@ -397,9 +386,7 @@ export class EventProcessor {
         }
 
         case 'assistant_delta': {
-          state.currentTurn.items.forEach(item => {
-            if (item.type === 'reasoning') item.complete = true;
-          });
+          markReasoningComplete();
           const deltaItems = event.data?.all || [event.data];
           const accum = state.textAccum.get(event.id) || { text: '', fragmentCount: 0 };
           for (let i = accum.fragmentCount; i < deltaItems.length; i++) {
@@ -407,152 +394,37 @@ export class EventProcessor {
           }
           accum.fragmentCount = deltaItems.length;
           state.textAccum.set(event.id, accum);
-          if (accum.text.trim()) {
-            const matchingTextItem = state.currentTurn.items.find(
-              item => item.type === 'text' && item.eventId === event.id
-            );
-            if (matchingTextItem) {
-              matchingTextItem.data = accum.text;
-            } else {
-              state.currentTurn.items.push({
-                id: `item-${state.itemIdCounter++}`,
-                type: 'text',
-                timestamp: event.timestamp,
-                data: accum.text,
-                eventId: event.id,
-              });
-            }
-          }
-          state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
+          if (accum.text.trim()) state.content.said = true;
+          stopWaiting();
           break;
         }
 
         case 'plan_message':
-          state.currentTurn.items.push({
-            id: `item-${state.itemIdCounter++}`,
-            type: 'plan',
-            timestamp: event.timestamp,
-            data: event.data?.content || '',
-          });
-          break;
-
         case 'ask':
-          state.currentTurn.items.push({
-            id: `item-${state.itemIdCounter++}`,
-            type: 'ask',
-            timestamp: event.timestamp,
-            data: {
-              prompt: event.data?.prompt,
-              options: Array.isArray(event.data?.options) ? event.data.options : [],
-            },
-          });
-          break;
-
         case 'approval_required':
-          state.currentTurn.items.push({
-            id: `item-${state.itemIdCounter++}`,
-            type: 'approval',
-            timestamp: event.timestamp,
-            data: {
-              gateKey: event.data?.gateKey,
-              command: event.data?.command,
-              capabilityLabel: event.data?.capabilityLabel,
-            },
-          });
-          break;
-
         case 'agent_message':
-          state.currentTurn.items.push({
-            id: `item-${state.itemIdCounter++}`,
-            type: 'agent',
-            timestamp: event.timestamp,
-            data: event.data?.content || '',
-          });
-          break;
-
         case 'task_progress':
-          state.currentTurn.items.push({
-            id: `item-${state.itemIdCounter++}`,
-            type: 'progress',
-            timestamp: event.timestamp,
-            data: event.data?.content || '',
-          });
-          break;
-
         case 'interview_gate':
-          state.currentTurn.items.push({
-            id: `item-${state.itemIdCounter++}`,
-            type: 'interview_gate',
-            timestamp: event.timestamp,
-            data: event.data,
-          });
+        case 'user_message':
+        case 'compaction':
+          state.content.said = true;
           break;
 
         case 'conversation_message': {
-          if (event.version) this.lastEventVersions.set(event.id, event.version);
           const message = event.data?.message;
           if (message?.role === 'user') {
             if (isInjectedUserMessage(message.content)) break;
+            // An error sent back to the model as the user stays in the response it interrupted.
             const isSyntheticError = message.ui_metadata?.isSyntheticError === true;
-            if (!isSyntheticError && state.currentTurn.items.length > 0) {
-              state.result.push(state.currentTurn);
-              state.currentTurn = {
-                id: `turn-${Date.now()}-${state.result.length}`,
-                items: [],
-              };
-            }
             if (!isSyntheticError) {
+              nextTurn(state);
               state.lastRouterModel = null;
-              state.taskStartTime = event.timestamp;
-              const lastUsageTurn = [...state.result].reverse().find(t => t.usage);
-              if (lastUsageTurn?.usage) {
-                state.prevTaskCumulativeTokens = lastUsageTurn.usage.totalUsage?.totalTokens || lastUsageTurn.usage.usage?.totalTokens || 0;
-                state.prevTaskCumulativeCost = lastUsageTurn.usage.totalCost ?? 0;
-              }
+              state.requests++;
             }
-            const projectContext = message.ui_metadata?.projectContext;
-            if (projectContext && !isSyntheticError) {
-              state.currentTurn.items.push({
-                id: `item-${state.itemIdCounter++}`,
-                type: 'project_context',
-                timestamp: event.timestamp,
-                data: projectContext,
-              });
-            }
-            // Use ?? so an intentionally-empty displayContent (e.g. an audio-only
-            // message) stays empty instead of falling back to the raw content,
-            // which carries the project-context prefix.
-            const displayContent = message.ui_metadata?.displayContent ?? message.content ?? '';
-            state.currentTurn.items.push({
-              id: `item-${state.itemIdCounter++}`,
-              type: isSyntheticError ? 'synthetic_error' : 'user',
-              timestamp: event.timestamp,
-              data: displayContent,
-              focusContext: message.ui_metadata?.focusContext,
-              semanticBlocks: message.ui_metadata?.semanticBlocks,
-              attachedFiles: message.ui_metadata?.attachedFiles,
-            });
+            state.content.said = true;
           } else if (message?.role === 'assistant') {
-            // Reconstruct reasoning and tool calls from buffered conversation_message
-            // (delta events aren't buffered, so on replay this is the only source)
-            if (message.reasoning_details?.length) {
-              for (const detail of message.reasoning_details) {
-                if (detail.text?.trim()) {
-                  const existing = state.currentTurn.items.find(
-                    item => item.type === 'reasoning' && item.data === detail.text
-                  );
-                  if (!existing) {
-                    state.currentTurn.items.push({
-                      id: `item-${state.itemIdCounter++}`,
-                      type: 'reasoning',
-                      timestamp: event.timestamp,
-                      data: detail.text,
-                      complete: true,
-                    });
-                  }
-                }
-              }
-            }
+            // Delta events aren't buffered, so on replay the finished message is the only source of
+            // its tool calls.
             if (message.tool_calls?.length) {
               for (const call of message.tool_calls) {
                 const existingTool = state.currentIterationTools.find(t => t.id === call.id);
@@ -580,23 +452,9 @@ export class EventProcessor {
                 }
               }
             }
-            if (message.content?.trim()) {
-              // Dedup against the streamed assistant_delta text item (same
-              // content already shown live). On replay there is no streamed
-              // item, so this pushes fresh.
-              const existingText = state.currentTurn.items.find(
-                item => item.type === 'text' && item.data === message.content
-              );
-              if (!existingText) {
-                state.currentTurn.items.push({
-                  id: `item-${state.itemIdCounter++}`,
-                  type: 'text',
-                  timestamp: event.timestamp,
-                  data: message.content,
-                });
-              }
-            }
-            state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
+            const thought = (message.reasoning_details ?? []).some((detail: { text?: string }) => detail?.text?.trim());
+            if (thought || message.content?.trim()) state.content.said = true;
+            stopWaiting();
           } else if (message?.role === 'tool') {
             // Match tool result to its tool call
             const matchedTool = state.currentIterationTools.find(t => t.id === message.tool_call_id);
@@ -611,99 +469,22 @@ export class EventProcessor {
           break;
         }
 
-        case 'user_message':
-          state.currentTurn.items.push({
-            id: `item-${state.itemIdCounter++}`,
-            type: 'user',
-            timestamp: event.timestamp,
-            data: event.data?.content || '',
-          });
-          break;
-
         case 'error':
-          state.currentTurn.items.push({
-            id: `item-${state.itemIdCounter++}`,
-            type: 'error',
-            timestamp: event.timestamp,
-            data: event.data,
-          });
-          state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
-          break;
-
         case 'api_stopped':
-          state.currentTurn.items.push({
-            id: `item-${state.itemIdCounter++}`,
-            type: 'api_stopped',
-            timestamp: event.timestamp,
-            data: event.data,
-          });
-          state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
-          break;
-
-        // Earlier versions paused on a provider error instead of stopping. Kept so those threads
-        // still render.
+        // Earlier versions paused on a provider error instead of stopping.
         case 'error_paused':
-          state.currentTurn.items.push({
-            id: `item-${state.itemIdCounter++}`,
-            type: 'error_paused',
-            timestamp: event.timestamp,
-            data: event.data,
-          });
-          state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
+          state.content.said = true;
+          stopWaiting();
           break;
 
         case 'usage':
-          state.currentTurn.usage = {
-            ...event.data,
-            timestamp: event.timestamp,
-            taskTokenOffset: state.prevTaskCumulativeTokens,
-            taskCostOffset: state.prevTaskCumulativeCost,
-            taskTokens: event.data.taskTokens,
-            taskCost: event.data.taskCost,
-          };
-          state.currentTurn.taskStartTime = state.taskStartTime;
-          state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
+          stopWaiting();
           break;
-
-        case 'checkpoint_created': {
-          // Restore and Retry go after the response the checkpoint closes.
-          const items = state.currentTurn.items.filter((item) => item.type !== 'waiting');
-          // A server run snapshots the project before it starts, while the turn holds only the
-          // user's message; that snapshot stays in the checkpoints panel, not under the prompt.
-          if (items.some((item) => item.type === 'user') && items.every((item) => item.type === 'user' || item.type === 'project_context')) break;
-          // A run's last step opens a turn and can end without adding to it, so the checkpoint taken
-          // at the end arrives on an empty turn that the next message would join. It belongs to the
-          // response, which is the last turn already closed.
-          if (items.length === 0) {
-            // Nothing closed yet means the response is older than the events kept here; its
-            // checkpoint has no place in this view, and must not land on the next prompt.
-            if (state.result.length > 0) state.result[state.result.length - 1].checkpointId = event.data?.checkpointId;
-            break;
-          }
-          state.currentTurn.checkpointId = event.data?.checkpointId;
-          break;
-        }
 
         case 'iteration':
-          state.currentTurn.iteration = event.data?.iteration;
-          state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
-          if (state.currentTurn.items.length > 0) {
-            state.result.push(state.currentTurn);
-            state.currentTurn = {
-              id: `turn-${Date.now()}-${state.result.length}`,
-              items: [],
-            };
-          }
+          stopWaiting();
+          nextTurn(state);
           state.currentIterationTools = [];
-          break;
-
-        case 'compaction':
-          state.currentTurn.items.push({
-            id: `compaction-${event.id}`,
-            type: 'compaction',
-            timestamp: event.timestamp,
-            data: event.data,
-          });
           break;
 
         case 'agent_progress': {
@@ -733,7 +514,7 @@ export class EventProcessor {
 
         case 'stopped':
         case 'task_complete': {
-          state.currentTurn.items = state.currentTurn.items.filter(item => item.type !== 'waiting');
+          stopWaiting();
           // A tool still in flight when the run ends never reports back; without this it spins
           // for good.
           for (const turn of [...state.result, state.currentTurn]) {
@@ -751,6 +532,6 @@ export class EventProcessor {
       this.lastProcessedEventId = events[events.length - 1].id;
     }
 
-    return [...state.result, ...(state.currentTurn.items.length > 0 ? [state.currentTurn] : [])];
+    return turnsOf(state);
   }
 }

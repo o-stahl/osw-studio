@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { listInterviewTemplates, getInterviewTemplate, filterInterviewTemplates, isBuiltInInterviewTemplateId } from '../templates';
+import { listInterviewTemplates, getInterviewTemplate, filterInterviewTemplates, isBuiltInInterviewTemplateId, asInterviewTemplate } from '../templates';
 import { renderInterviewAgenda, withInterviewAgenda } from '../agenda';
 
 describe('interview template registry', () => {
@@ -133,5 +133,36 @@ describe('withInterviewAgenda', () => {
     expect(result).toContain('Image generation');
     expect(result).toContain('/.interviews/image-generation.md');
     expect(result).toContain('What type of image');
+  });
+});
+
+describe('asInterviewTemplate', () => {
+  it('takes every built-in as it is', () => {
+    for (const template of listInterviewTemplates()) {
+      expect(asInterviewTemplate(JSON.parse(JSON.stringify(template)))).toEqual(template);
+    }
+  });
+
+  it('leaves the browser\'s bookkeeping behind', () => {
+    const sent = { ...getInterviewTemplate('plan-feature')!, isBuiltIn: false, createdAt: '2026-11-03', lastSyncedAt: null };
+    expect(asInterviewTemplate(sent)).toEqual(getInterviewTemplate('plan-feature'));
+  });
+
+  it('refuses what the agenda or the completion check could not read', () => {
+    const base = getInterviewTemplate('plan-feature')!;
+    expect(asInterviewTemplate(null)).toBeNull();
+    expect(asInterviewTemplate({ ...base, title: 7 })).toBeNull();
+    expect(asInterviewTemplate({ ...base, items: [{ id: 'a', elicit: 'e' }] })).toBeNull();
+    expect(asInterviewTemplate({ ...base, items: [{ id: 'a', elicit: 'e', completion: [{ type: 'nope' }] }] })).toBeNull();
+    expect(asInterviewTemplate({ ...base, items: [{ id: 'a', elicit: 'e', completion: [], required: 'yes' }] })).toBeNull();
+    expect(asInterviewTemplate({ ...base, artifacts: [{ description: 'no path' }] })).toBeNull();
+    expect(asInterviewTemplate({ ...base, handoff: { label: 'l', prompt: 'p', mode: 'interview' } })).toBeNull();
+  });
+
+  it('refuses a check type that only an object\'s own machinery answers to', () => {
+    const base = getInterviewTemplate('plan-feature')!;
+    for (const type of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+      expect(asInterviewTemplate({ ...base, items: [{ id: 'a', elicit: 'e', completion: [{ type }] }] }), type).toBeNull();
+    }
   });
 });

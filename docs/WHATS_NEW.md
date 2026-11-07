@@ -6,6 +6,20 @@ Welcome to OSW Studio! This page highlights the latest features and updates.
 
 ---
 
+## v1.108.0 - A Lighter Studio Chat (2026-11-07)
+
+In the studio, a task's progress is shown with less visual clutter. Instead of rows of shell commands with multiple icons and spinners, each request is shown as a card, with the built-in agent's actions still showing what it did and how the run ended. It's extended from quick edit's chat to cover what more technical users need. With this, the chat panel and its functionality were improved significantly, enabling the kind of turn-by-turn conversation you'd expect from a chat mode and making it much easier to plan work.
+
+### Quick edit
+- **Quick edit shows more of each run**: the agent's reasoning, what each run cost, and the card offering your other providers when one stops a run, still without the commands
+
+### Server Mode and the desktop app
+- **Chat and Interview modes apply**: the mode never reached the server, so a Chat message ran with Code mode's write access and prompt, and an interview ran as an ordinary task
+- **The agent follows your project's `.PROMPT.md`**: runs there never read it, so a project's own instructions didn't reach the model
+- **New File and New Folder work in the desktop app**: both did nothing there, since the desktop app has no browser prompt; they now ask for the name in the app's own dialog
+
+---
+
 ## v1.107.0 - Free OSW Studio Inference on the Demo (2026-11-01)
 
 On the OSW Studio demo at try.oswstudio.com you can now start building without an API key: OSW Studio's own inference is connected from your first visit, free up to a daily limit per visitor, and passes requests to suitable models, mostly through OpenRouter. When it runs out, connect your own provider and the task carries on from where it stopped. A self-hosted server, the desktop app and the HuggingFace Space don't offer it, but update them anyway: this release closes a security gap in Python and Lua projects.

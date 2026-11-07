@@ -18,7 +18,7 @@ import type { InterviewTemplate, InterviewHandoff } from '@/lib/interview/types'
 import { track } from '@/lib/telemetry';
 import { bucketInterviewTemplateId } from '@/lib/telemetry/tool-analytics';
 import { PANEL_MAP, pickEvictionTarget, visiblePanelKeys } from '@/lib/stores/slices/layout';
-import { PROJECT_BUSY_NOTICE } from '@/lib/stores/slices/orchestrator';
+import { busyNotice } from '@/lib/stores/slices/orchestrator';
 import { useCostSettings } from '@/lib/hooks/use-cost-settings';
 import { getModelInputModalities } from '@/lib/llm/providers/registry';
 import { isProjectProviderReady } from '@/lib/llm/models/project-assignment';
@@ -74,9 +74,9 @@ import { ConsolePanel } from '@/components/console';
 import { drainRuntimeErrors, peekRuntimeErrors, formatRuntimeErrors } from '@/lib/preview/runtime-errors';
 import { supportsDirectEditing } from '@/lib/runtimes/registry';
 import { useMobileViewport } from '@/lib/hooks/use-mobile-viewport';
-import { SimpleThread } from '@/components/quick-edit/thread';
+import { ChatThread } from '@/components/quick-edit/thread';
 import { splitRuns } from '@/lib/quick-edit/runs';
-import { undoTarget, redoTarget } from '@/lib/quick-edit/undo';
+import { undoTarget, redoTarget, retryStart } from '@/lib/quick-edit/undo';
 
 interface WorkspaceProps {
   project: Project;
@@ -287,7 +287,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   const mode = useWorkspaceStore(s => s.mode);
   /**
    * Quick edit: the same desktop tree with the studio parts left out. Chat and preview only, no
-   * rail, no Deploy or Settings, the conversation as a thread of runs rather than a transcript.
+   * rail, no Deploy or Settings, and the thread in its simple view.
    * On a phone it is the site with the dock over it instead of the panel switcher.
    */
   const quick = useWorkspaceStore(s => s.quickEdit);
@@ -1825,8 +1825,9 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
    * original still going and about to write over what was just undone.
    */
   const refuseWhileGenerating = useCallback(() => {
-    if (!useWorkspaceStore.getState().isProjectGenerating(project.id)) return false;
-    toast.info(translator()(PROJECT_BUSY_NOTICE));
+    const store = useWorkspaceStore.getState();
+    if (!store.isProjectGenerating(project.id)) return false;
+    toast.info(translator()(busyNotice(store.generationTasks.get(project.id))));
     return true;
   }, [project.id]);
 
@@ -1889,11 +1890,15 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   const handleRetry = useCallback(async (checkpointId: string) => {
     if (refuseWhileGenerating()) return;
     try {
-      // First check if checkpoint exists
-      const exists = await checkpointManager.checkpointExists(checkpointId);
-      if (!exists) {
+      // `checkpointId` is the one the run finished on. Retry starts from the state before the run:
+      // the checkpoint before that one, which is also where Undo goes. A server run snapshots the
+      // project before it starts, so there it is exact; a browser run goes back to the last
+      // checkpoint before it.
+      const ids = (await checkpointManager.getCheckpoints(project.id)).map((c) => c.id).reverse();
+      const startId = retryStart(ids, checkpointId);
+      if (!startId) {
         toast.error(t('checkpointGoneRetry'));
-        logger.warn(`[Workspace] Checkpoint ${checkpointId} no longer exists`);
+        logger.warn(`[Workspace] No checkpoint before ${checkpointId} to retry from`);
         return;
       }
 
@@ -1938,10 +1943,10 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
         return;
       }
 
-      // Restore the checkpoint
-      await runRestore(checkpointId, undefined, async () => {
+      // Restore the state before the run
+      await runRestore(startId, undefined, async () => {
         const success = await saveManager.runWithSuppressedDirty(project.id, () =>
-          checkpointManager.restoreCheckpoint(checkpointId)
+          checkpointManager.restoreCheckpoint(startId)
         );
         if (!success) {
           toast.error(t('restoreCheckpointFailed'));
@@ -1950,7 +1955,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
         await remountBackendContext();
 
         const savedId = saveManager.getSavedCheckpointId(project.id);
-        if (savedId && savedId === checkpointId) {
+        if (savedId && savedId === startId) {
           saveManager.markClean(project.id);
           const latestProject = await vfs.getProject(project.id);
           useWorkspaceStore.setState({ lastSavedAt: latestProject.lastSavedAt ?? null });
@@ -2123,11 +2128,11 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   const undoTargetId = undoTarget(checkpointIds, undoCursor);
   const redoTargetId = redoTarget(checkpointIds, undoCursor);
   const handleUndo = useCallback(() => {
-    if (undoTargetId) void handleRestoreCheckpoint(undoTargetId, 'the previous change');
-  }, [undoTargetId, handleRestoreCheckpoint]);
+    if (undoTargetId) void handleRestoreCheckpoint(undoTargetId, t('previousChange'));
+  }, [undoTargetId, handleRestoreCheckpoint, t]);
   const handleRedo = useCallback(() => {
-    if (redoTargetId) void handleRestoreCheckpoint(redoTargetId, 'the change after');
-  }, [redoTargetId, handleRestoreCheckpoint]);
+    if (redoTargetId) void handleRestoreCheckpoint(redoTargetId, t('changeAfter'));
+  }, [redoTargetId, handleRestoreCheckpoint, t]);
 
   const headerActions: HeaderAction[] = [
     {
@@ -2283,34 +2288,46 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
     </div>
   );
 
-  // Quick edit's derived state. Declared here rather than inside the branch below, so these hooks
-  // run on every render whichever surface is showing. The starters are not among them: passing
-  // `simpleThread` is what puts ChatPanel in simple mode, and it picks QUICK_EDIT_PILLS and scopes
-  // them to the previewed page itself.
-  const quickRuns = useMemo(() => (quick ? splitRuns(debugEvents) : []), [quick, debugEvents]);
-
-  const quickThread = quick ? (
-    <SimpleThread
-      runs={quickRuns}
+  // The conversation, which both views draw as the thread; quick edit's is the simple one. Declared
+  // here rather than inside the branches below, so the hook runs on every render whichever surface
+  // is showing. The starters are not among it: `simple` is what puts ChatPanel in the simple view,
+  // and it picks QUICK_EDIT_PILLS and scopes them to the previewed page itself.
+  const runs = useMemo(() => splitRuns(debugEvents), [debugEvents]);
+  // Which view an approval came from, for telemetry.
+  const approvalVia = quick ? 'quick' : 'chip';
+  // One per composer: an answer is sent the way that composer sends, so on mobile it lets go of
+  // the selection as a typed message does.
+  const threadFor = (send: (prompt: string) => Promise<void>) => (
+    <ChatThread
+      runs={runs}
+      simple={quick}
       generating={generating}
       isDirty={isDirty}
-      onRestore={(id) => { void handleRestoreCheckpoint(id, 'an earlier change'); }}
+      onRestore={(id) => { void handleRestoreCheckpoint(id); }}
+      onRetry={(id) => { void handleRetry(id); }}
+      onContinue={handleContinue}
       onUndoLatest={undoTargetId ? handleUndo : null}
       onRedoLatest={redoTargetId ? handleRedo : null}
       onSave={() => { void handleSave(); }}
       onAllow={(gateKey, label) => {
-        // Mirrors the transcript's Allow: the capability is persisted so the run, and later ones,
-        // proceed without asking again, and the task restarts from history.
-        track('approval_response', { via: 'quick', decision: 'allow', gate: gateKey });
+        // The capability is persisted so the run, and later ones, proceed without asking again,
+        // and the task restarts from history.
+        track('approval_response', { via: approvalVia, decision: 'allow', gate: gateKey });
         configManager.setPermissionOverride(gateKey, 'allow');
-        void handleGenerate(`Approved ${label}. Continue the task.`); // i18n-ignore: sent to the agent as the user's message; English by decision
+        void send(`Approved ${label}. Continue the task.`); // i18n-ignore: sent to the agent as the user's message; English by decision
       }}
-      onDeny={(label) => {
-        track('approval_response', { via: 'quick', decision: 'deny' });
-        void handleGenerate(`I declined ${label}. Continue without it.`); // i18n-ignore: sent to the agent as the user's message; English by decision
+      onDeny={(gateKey, label) => {
+        track('approval_response', { via: approvalVia, decision: 'deny', gate: gateKey });
+        void send(`I declined ${label}. Continue without it.`); // i18n-ignore: sent to the agent as the user's message; English by decision
       }}
+      onAnswer={(value) => {
+        // The option picked is the next message.
+        track('ask_response', { via: 'chip' });
+        void send(value);
+      }}
+      onHandoff={handleHandoff}
     />
-  ) : undefined;
+  );
   return (
     <TooltipProvider>
       <div className="h-app-dvh flex flex-col">
@@ -2673,12 +2690,9 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                 <ChatPanel
                   previewPath={previewPath}
                   events={debugEvents}
-                  onRestore={handleRestoreCheckpoint}
-                  onRetry={handleRetry}
                   generating={generating}
                   onGenerate={handleGenerate}
                   onStop={handleStop}
-                  onContinue={handleContinue}
                   focusContext={includedFocus}
                   onClearFocus={handleDesktopClearFocus}
                   focusPreviewSnippet={focusPreviewSnippet}
@@ -2686,13 +2700,13 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                   setMode={storeSetMode}
                   activeInterview={activeInterview}
                   onStartInterview={handleStartInterview}
-                  onHandoff={handleHandoff}
                   currentModel={currentModel}
                   getModelDisplayName={getModelDisplayName}
                   isTourLockingInput={isTourLockingInput}
                   onClearChat={clearDebugEvents}
                   onClose={quick ? () => setQuickPanels((p) => ({ ...p, chat: false })) : () => useWorkspaceStore.getState().togglePanel('chat')}
-                  simpleThread={quickThread}
+                  thread={threadFor(handleGenerate)}
+                  simple={quick}
                   solo={visiblePanelCount === 1}
                   supportsVision={supportsVision}
                   inputModalities={inputModalities}
@@ -2958,12 +2972,9 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
               <ChatPanel
                 previewPath={previewPath}
                 events={debugEvents}
-                onRestore={handleRestoreCheckpoint}
-                onRetry={handleRetry}
                 generating={generating}
                 onGenerate={handleMobileGenerate}
                 onStop={handleStop}
-                onContinue={handleContinue}
                 focusContext={includedFocus}
                 onClearFocus={handleMobileClearFocus}
                 focusPreviewSnippet={focusPreviewSnippet}
@@ -2971,7 +2982,6 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                 setMode={storeSetMode}
                 activeInterview={activeInterview}
                 onStartInterview={handleStartInterview}
-                onHandoff={handleHandoff}
                 currentModel={currentModel}
                 getModelDisplayName={getModelDisplayName}
                 isTourLockingInput={isTourLockingInput}
@@ -2986,7 +2996,8 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                 onRemovePlacedBlock={handleRemovePlacedBlock}
                 onClearPlacedBlocks={handleClearPlacedBlocks}
                 onCaptureContextScreenshot={handleCaptureContextScreenshot}
-                simpleThread={quickThread}
+                thread={threadFor(handleMobileGenerate)}
+                simple={quick}
               />
             )}
 

@@ -128,3 +128,51 @@ describe('commands the tool layer intercepts', () => {
     expect(result).not.toContain('command not found');
   });
 });
+
+describe('the interview agent\'s shell', () => {
+  it('is described with the commands an interview reads, asks and records with', async () => {
+    const { toolRegistry } = await import('../tool-registry');
+    const [bashDef] = toolRegistry.getDefinitions(['bash'], 'interview');
+    expect(bashDef.description).toContain('/.interviews/');
+    expect(bashDef.description).toContain('ask [--prompt');
+    // The general description offers sub-agents, builds and runtime changes, none of which apply.
+    for (const offered of ['agent', 'build', 'runtime', 'sqlite3']) {
+      expect(bashDef.description).not.toMatch(new RegExp(`\\b${offered}\\b`));
+    }
+  });
+
+  it('is told it cannot start sub-agents, rather than shown a usage it already followed', async () => {
+    const { toolRegistry } = await import('../tool-registry');
+    const result = await toolRegistry.execute(bash('agent task "build the site"'), 'p', interviewCtx);
+    expect(result).toContain('only the main agent');
+    expect(result).not.toContain('requires a type');
+  });
+
+  it('cannot keep what a script writes to /output/, which is outside its scope', async () => {
+    const { toolRegistry } = await import('../tool-registry');
+    const result = await toolRegistry.execute(bash('python /.interviews/count.py'), 'p', interviewCtx);
+    expect(result).toContain('/.interviews/');
+    expect(result).toContain('/output/');
+  });
+});
+
+describe('read-only mode and sed', () => {
+  it('refuses an in-place edit spelled with a backup suffix', async () => {
+    const { toolRegistry } = await import('../tool-registry');
+    const result = await toolRegistry.execute(bash("sed -i.bak 's/a/b/' /index.html"), 'p', { agentType: 'orchestrator', isReadOnly: true });
+    expect(result).toContain('read-only');
+  });
+});
+
+describe('read-only mode and a deployment\'s data', () => {
+  it('refuses a statement that changes data, and lets a query through', async () => {
+    const { toolRegistry } = await import('../tool-registry');
+    const readOnly = { agentType: 'orchestrator', isReadOnly: true };
+    expect(await toolRegistry.execute(bash('sqlite3 "DELETE FROM signups"'), 'p', readOnly)).toContain('read-only');
+    expect(await toolRegistry.execute(bash('sqlite3 "SELECT count(*) FROM signups"'), 'p', readOnly)).not.toContain('read-only');
+    expect(await toolRegistry.execute(bash(`sqlite3 "SELECT replace(title, '-', ' ') FROM posts"`), 'p', readOnly)).not.toContain('read-only');
+    expect(await toolRegistry.execute(bash(`sqlite3 "SELECT * FROM events WHERE action = 'delete'"`), 'p', readOnly)).not.toContain('read-only');
+    expect(await toolRegistry.execute(bash(`sqlite3 "/* it's */ DELETE FROM signups WHERE name = 'bob'"`), 'p', readOnly)).toContain('read-only');
+    expect(await toolRegistry.execute(bash('sqlite3 -- "DELETE FROM signups"'), 'p', readOnly)).toContain('read-only');
+  });
+});

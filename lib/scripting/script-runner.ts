@@ -13,17 +13,27 @@ class ScriptRunner {
   private running = false;
   private listeners = new Set<OutputListener>();
   private timeoutId: ReturnType<typeof setTimeout> | null = null;
+  /** Whether the current run's output files go to the listeners, which save them into the project. */
+  private keepOutputFiles = true;
 
   /**
    * Execute a script project.
    * Gathers text files from VFS and sends them to the worker.
    * If already running, aborts the previous execution first.
    */
-  async execute(projectId: string, runtime: ScriptRuntime, entryPoint: string, inlineSource?: string): Promise<void> {
+  async execute(
+    projectId: string,
+    runtime: ScriptRuntime,
+    entryPoint: string,
+    inlineSource?: string,
+    /** `keepOutputFiles: false` drops what the script writes to /output/, for a run that may not write. */
+    options: { keepOutputFiles?: boolean } = {},
+  ): Promise<void> {
     // Abort any running execution
     if (this.running) {
       this.abort();
     }
+    this.keepOutputFiles = options.keepOutputFiles ?? true;
 
     // Gather VFS files
     await vfs.init();
@@ -129,6 +139,8 @@ class ScriptRunner {
   }
 
   private handleWorkerMessage(msg: ScriptWorkerResponse): void {
+    if (msg.type === 'output-file' && !this.keepOutputFiles) return;
+
     if (msg.type === 'complete') {
       this.running = false;
       this.clearTimeout();

@@ -32,6 +32,8 @@ interface ShellCommandSpec {
   summary: string;
   /** Only available to the setup agent (project discussion), not the general coding loop. */
   setupOnly?: boolean;
+  /** Runs a script in the sandbox, which cannot reach project files; what it writes to /output/ is kept. */
+  script?: boolean;
 }
 
 export const SHELL_COMMANDS: ShellCommandSpec[] = [
@@ -81,8 +83,8 @@ export const SHELL_COMMANDS: ShellCommandSpec[] = [
   { name: 'cd', writes: 'never', handledBy: 'tool', summary: 'Accepted and ignored; the VFS has no working directory' },
   { name: 'preview', writes: 'never', handledBy: 'tool', summary: 'Open a page in the preview pane' },
   // Script writes are detected from the source by scriptMayWriteFiles(), not from argv.
-  { name: 'python', aliases: ['python3'], writes: 'conditional', handledBy: 'tool', summary: 'Run a Python script' },
-  { name: 'lua', writes: 'conditional', handledBy: 'tool', summary: 'Run a Lua script' },
+  { name: 'python', aliases: ['python3'], writes: 'conditional', handledBy: 'tool', script: true, summary: 'Run a Python script' },
+  { name: 'lua', writes: 'conditional', handledBy: 'tool', script: true, summary: 'Run a Lua script' },
   { name: 'agent', aliases: ['delegate'], writes: 'conditional', handledBy: 'tool', summary: 'Run sub-agents (explore, task, plan)' },
 ];
 
@@ -100,6 +102,73 @@ export function allShellCommandNames(): string[] {
 
 export function isKnownShellCommand(name: string): boolean {
   return BY_NAME.has(name);
+}
+
+/** Whether a command runs a script: `python`, `python3` or `lua`. */
+export function isScriptCommand(name: string): boolean {
+  return BY_NAME.get(name)?.script === true;
+}
+
+/**
+ * Whether a `sed` argument asks for an in-place edit: `-i` (GNU), `-i ''` (BSD) or `-i.bak`, but not a
+ * combined flag such as `-in` or `-ie`. The shell's own `sed` and every check of whether a command
+ * writes read it from here, so a spelling the shell edits with cannot pass a check as a read.
+ */
+export function isSedInPlaceFlag(arg: string): boolean {
+  return arg === '-i' || (arg.startsWith('-i') && arg.length > 2 && !/^-i[a-z]$/i.test(arg));
+}
+
+/** A `sed` command line as the shell's `sed` reads it. */
+export interface SedArgs {
+  inPlace: boolean;
+  suppressOutput: boolean;
+  expressions: string[];
+  /** The last argument that is neither a flag nor shaped like an expression, or empty for none. */
+  filePath: string;
+}
+
+/**
+ * `sed`'s arguments, without the `sed`: `[-i] [-n] [-e expr]... 'expr' [file]`. An expression is told
+ * from the file by its shape, wherever it stands, so `sed -i /a.html '/x/d'` edits /a.html. The
+ * shell's `sed` and the write scope both read a command here, so the scope judges the file the shell
+ * edits.
+ */
+export function parseSedArgs(args: string[]): SedArgs {
+  let inPlace = false;
+  let suppressOutput = false;
+  const expressions: string[] = [];
+  let filePath = '';
+
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    // -i (GNU), -i '' (BSD/macOS), -i.bak (backup extension) — all mean in-place
+    if (isSedInPlaceFlag(a)) { inPlace = true; continue; }
+    if (a === '-n') { suppressOutput = true; continue; }
+    if (a === '-e' && args[i + 1]) { expressions.push(args[++i]); continue; }
+    // Substitution expression (s/old/new/g)
+    if (a.startsWith('s') && a.length > 2 && /[\/|#@]/.test(a[1])) {
+      expressions.push(a);
+      continue;
+    }
+    // Address-based expression (/pattern/d, 5,10d, $d, /p1/,/p2/c\text, etc.)
+    // Must distinguish from file paths like /styles/style.css:
+    //   Address: /re/d, /re/p, /re/n         (command letter at end of token)
+    //            /re/c\text, /re/a\text, /re/i\text  (command letter + backslash)
+    //            /re/,/re2/...                (range — comma right after the first addr)
+    //   Path:    /dir/file.ext               (second slash followed by arbitrary text)
+    // The previous heuristic `/^\/[^/]*\/[,dpcians]/` misclassified any path whose
+    // basename began with d/p/c/i/a/n/s (e.g. /src/index.ts → command `i`).
+    if (
+      /^\d+!?[,dpcians{]/.test(a) ||
+      /^[\\$]/.test(a) ||
+      /^\/[^/]*\/(?:!?[dpn]$|!?[cai]\\|!?\{|,)/.test(a)
+    ) {
+      expressions.push(a);
+      continue;
+    }
+    if (!a.startsWith('-') && a) filePath = a;
+  }
+  return { inPlace, suppressOutput, expressions, filePath };
 }
 
 /** Commands that write on every invocation. Conditional writers are argv-inspected by the caller. */

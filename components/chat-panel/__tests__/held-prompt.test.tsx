@@ -6,7 +6,6 @@ import { createRoot, type Root } from 'react-dom/client';
 import { createTranslator } from 'next-intl';
 import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import en from '@/messages/en.json';
-import type { DebugEvent } from '@/lib/stores/types';
 
 /**
  * A message typed before anything is connected is held (in sessionStorage, per project) rather
@@ -58,11 +57,11 @@ afterEach(() => {
   container.remove();
 });
 
-async function render(props: { providerReady: boolean; generating?: boolean; events?: DebugEvent[] }) {
+async function render(props: { providerReady: boolean; generating?: boolean }) {
   await act(async () => {
     root.render(withMessages(
       <ChatPanel
-        events={props.events ?? []}
+        events={[]}
         generating={props.generating ?? false}
         onGenerate={onGenerate}
         onStop={() => {}}
@@ -72,7 +71,7 @@ async function render(props: { providerReady: boolean; generating?: boolean; eve
         setMode={() => {}}
         activeInterview={null}
         onStartInterview={() => {}}
-        onHandoff={() => {}}
+        thread={null}
         currentModel="m"
         getModelDisplayName={(m) => m}
         providerReady={props.providerReady}
@@ -148,27 +147,3 @@ describe('ChatPanel — attachments before a model is connected', () => {
 });
 
 const chat = createTranslator({ locale: 'en', messages: en, namespace: 'chat' });
-const limits = createTranslator({ locale: 'en', messages: en, namespace: 'limits' });
-
-let n = 0;
-const ev = (event: string, data: unknown): DebugEvent =>
-  ({ id: `e${++n}`, timestamp: Date.now() + n, event, data, count: 1, version: 1 }) as DebugEvent;
-const user = (content: string) => ev('conversation_message', { message: { role: 'user', content } });
-const stop = () => ev('api_stopped', { errorCategory: 'rate_limited', provider: 'groq', model: 'm' });
-
-describe('ChatPanel — which stop is live', () => {
-  it('treats the last stop as live when nothing has run since', async () => {
-    await render({ providerReady: true, events: [user('go'), stop()] });
-    expect(container.textContent).toContain(limits('stoppedHere'));
-  });
-
-  it('keeps an earlier stop as history once a later message was sent', async () => {
-    await render({ providerReady: true, events: [user('go'), stop(), user('again')] });
-    expect(container.textContent).not.toContain(limits('stoppedHere'));
-  });
-
-  it('has no live stop while a run is going', async () => {
-    await render({ providerReady: true, generating: true, events: [user('go'), stop()] });
-    expect(container.textContent).not.toContain(limits('stoppedHere'));
-  });
-});

@@ -50,11 +50,18 @@ describe('a stop the user made', () => {
   });
 
   it('is cleared when a new task starts', async () => {
-    runningTask(store, 'p1');
+    let finish!: (value: unknown) => void;
+    mockExecute.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    store.setState({ projectId: 'p1' });
+    const run = store.getState().startGeneration('first', undefined, { projectId: 'p1' });
+    await vi.waitFor(() => expect(mockExecute).toHaveBeenCalled());
     await store.getState().stopGeneration();
+    // A new task can start once the stopped run has returned.
+    finish({ success: false, summary: 'Stopped', exitReason: 'stopped', totalCost: 0, toolCount: 0, turnCount: 1, apiErrorCount: 0 });
+    await run;
     expect(store.getState().userStop).not.toBeNull();
 
-    await store.getState().startGeneration('again');
+    expect(await store.getState().startGeneration('again', undefined, { projectId: 'p1' })).toBe(true);
 
     expect(store.getState().userStop).toBeNull();
   });

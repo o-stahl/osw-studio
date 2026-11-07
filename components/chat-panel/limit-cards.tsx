@@ -34,7 +34,8 @@ const openModelPicker = () => window.dispatchEvent(new CustomEvent(OPEN_MODEL_PI
 
 const providerName = (id: string) => (id ? getProvider(id).name : '');
 
-interface NoticeData {
+/** A note about a provider limit or a model choice, as the event carried it. */
+export interface LimitNoticeData {
   kind: 'retrying' | 'switched' | 'picked' | 'resolved';
   provider: string;
   /** The HTTP status being retried: 429 is a rate limit, 5xx the provider not answering. */
@@ -61,7 +62,7 @@ function ChatNotice({ icon: Icon, iconClassName, children }: {
   );
 }
 
-export function LimitNotice({ data }: { data: NoticeData }) {
+export function LimitNotice({ data }: { data: LimitNoticeData }) {
   const t = useTranslations('limits');
   if (data.kind === 'retrying') {
     return (
@@ -91,7 +92,8 @@ export function LimitNotice({ data }: { data: NoticeData }) {
   );
 }
 
-interface StoppedData {
+/** What a stopped task carries: why, and the ways it could go on. */
+export interface StoppedData {
   message?: string;
   errorCategory?: string;
   provider?: string;

@@ -6,14 +6,14 @@ import { parseCommand } from './parse-command';
  * Four buckets, and they are a display grouping rather than a description: they pick the icon and
  * the heading a tool call gets, and `agent` is also how the processor finds the sub-agent call whose
  * progress it is following. `parseCommand` in this directory answers the other question, what the
- * command did and to which file, in around eighteen kinds.
+ * command did and to which file, in finer kinds.
  *
  * The two are not one function because the coarser answer is not a fold of the finer one:
  *
  * - `echo "---"` parses as an edit, since `echo` is how a file gets appended to, but on its own it
  *   writes nothing and belongs in `bash`. Folding every writing kind into `write` would move it.
- * - `sed -i "s/a/b/" file.txt` names a relative target, which `parseCommand` refuses as a path, so
- *   the presence of a path cannot stand in for "this wrote something" either.
+ * - A read names its file as surely as a write does, so the presence of a path cannot stand in for
+ *   "this wrote something" either.
  * - A heredoc is a write whatever opens it, including a verb `parseCommand` does not know (`tee`).
  *
  * So the `agent` and `status` buckets are derived, which is where the duplication actually cost
@@ -36,7 +36,8 @@ export function classifyCommand(cmd: string | string[] | undefined): CommandCate
   if (/<<-?\s*['"]?\w+/.test(s)) return 'write';
   if (/^cat\s*>/.test(s)) return 'write';
   if (/^cat\b/.test(s) && /(?<![2&])>>?\s*\//.test(s)) return 'write';
-  if (/^sed\s+-i\b/.test(s)) return 'write';
+  // What parseCommand made of it, which reads the in-place flag as the shell's sed does.
+  if (/^sed\s/.test(s) && (kind === 'edit' || kind === 'write')) return 'write';
   if (/^ss\b/.test(s)) return 'write';
   if (/^(mkdir|touch|rm|mv|cp)\b/.test(s)) return 'write';
   // An absolute-path redirect is a write even where the verb reads. `2>` and `&>` are plumbing, not

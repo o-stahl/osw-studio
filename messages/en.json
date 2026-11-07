@@ -285,6 +285,8 @@
     "couldNotOpen": "Could not open {path}",
     "entryPointSet": "Entry point set to {path}",
     "restoredTo": "Restored to: {description}",
+    "previousChange": "the previous change",
+    "changeAfter": "the change after",
     "checkpointFallback": "checkpoint",
     "backToView": "{view, select, dashboard {Back to dashboard} deployments {Back to deployments} templates {Back to templates} skills {Back to skills} interviews {Back to interviews} docs {Back to docs} settings {Back to settings} users {Back to users} workspaces {Back to workspaces} other {Back to projects}}",
     "openProjectFailed": "Could not open project",
@@ -734,6 +736,7 @@
     "speechUnavailable": "Speech recognition is not available in this browser",
     "previewCaptureFailed": "Could not capture the preview. Wait for it to finish loading and try again.",
     "dismissRuntimeErrors": "Dismiss runtime errors",
+    "runtimeErrors": "Runtime errors",
     "sendErrorsToAi": "Send errors to AI for correction",
     "clearChat": "Clear chat",
     "dismissNotice": "Dismiss notice",
@@ -742,14 +745,10 @@
     "addAttachment": "Add attachment",
     "recordVoice": "Record voice",
     "signInWithHF": "Sign in with HuggingFace",
-    "waitingForResponse": "Waiting for response...",
-    "projectContext": "Project context",
     "interviewComplete": "Interview complete",
     "allItemsCaptured": "All required items are captured in the artifact.",
     "orClearChat": "Or clear the chat to start a new interview.",
     "notCompleteYet": "Not complete yet",
-    "restoreCheckpoint": "Restore to this checkpoint",
-    "restoreAndRetry": "Restore files and retry from this checkpoint",
     "autoCorrection": "Auto-correction",
     "placeholder": {
       "selectProvider": "Select a provider to start...",
@@ -761,7 +760,6 @@
     "selectProvider": "Select provider",
     "send": "Send",
     "modeInterview": "Interview",
-    "attachedImage": "Attached image",
     "loadingConversation": "Loading conversation…",
     "largeWriteNote": "Large file writes can take a while. The agent is still working and will continue as soon as the write finishes.",
     "tryOneOfThese": "Try one of these:",
@@ -777,15 +775,10 @@
     "stop": "Stop",
     "textFile": "Text file",
     "modelsThisProject": "Models · this project",
-    "deny": "Deny",
     "stackTrace": "Stack trace",
     "interviewUnverified": "Couldn’t verify the interview against its checklist — finished anyway.",
-    "restore": "Restore",
     "parameters": "Parameters",
     "result": "Result",
-    "reasoning": "Reasoning...",
-    "thinking": "Thinking...",
-    "plan": "Plan",
     "pills": {
       "portfolio": "Personal portfolio (one page)",
       "multipage-site": "Multi-page site with shared nav",
@@ -796,9 +789,7 @@
       "quick-mobile": "Fix it on a phone"
     },
     "moreSuggestions": "{count, plural, one {# more suggestion, and manage them} other {# more suggestions, and manage them}}",
-    "allow": "Allow",
     "textInput": "Text input",
-    "agentFallback": "Agent",
     "attachImage": "Image",
     "attachScreenshot": "Screenshot of the preview",
     "unsupported": "unsupported",
@@ -822,7 +813,6 @@
       "blocked": "Microphone access was blocked",
       "processFailed": "Could not process the recording"
     },
-    "errorNoDetails": "The task stopped without saying why.",
     "connectBeforeAttachments": "Connect a model to send attachments. They stay in the message box until then."
   },
   "fileExplorer": {
@@ -835,6 +825,11 @@
     "upload": "Upload",
     "newFile": "New File",
     "newFolder": "New Folder",
+    "create": "Create",
+    "newItemIn": "In {folder}",
+    "nameInvalid": "A name can't contain / or \\, or be . or ..",
+    "nameTaken": "{name} already exists here.",
+    "createFailed": "Couldn't create {name}.",
     "downloadProject": "Download Project",
     "importIntoProject": "Import into this project",
     "dropFiles": "Drop files here to upload",
@@ -1223,8 +1218,7 @@
     "undoThis": "Undo this",
     "summary": {
       "failed": "Something went wrong. Undo puts it back the way it was.",
-      "stopped": "Stopped.",
-      "changed": "{files, plural, =0 {Finished without changing any files.} one {Changed # file.} other {Changed # files.}}"
+      "stopped": "Stopped."
     },
     "step": {
       "write": "{has, select, yes {Wrote {file}} other {Wrote a file}}",
@@ -1242,10 +1236,61 @@
       "image": "Made an image",
       "database": "Worked on the data",
       "build": "Rebuilt the site",
-      "plan": "Planned the change",
+      "brief": "Updated the brief",
+      "spec": "Added to the spec",
+      "propose": "Proposed creating the project",
+      "ask": "Asked you to choose",
       "preview": "Checked the preview",
       "run": "Ran a script",
-      "other": "Working"
+      "other": "Ran a command"
+    },
+    "stepRunning": {
+      "write": "{has, select, yes {Writing {file}…} other {Writing a file…}}",
+      "read": "{has, select, yes {Reading {file}…} other {Reading a file…}}",
+      "edit": "{has, select, yes {Editing {file}…} other {Editing a file…}}",
+      "create": "{has, select, yes {Creating {file}…} other {Creating a file…}}",
+      "delete": "{has, select, yes {Deleting {file}…} other {Deleting a file…}}",
+      "move": "{has, select, yes {Moving {file}…} other {Moving a file…}}",
+      "copy": "{has, select, yes {Copying {file}…} other {Copying a file…}}",
+      "list": "Looking through the files…",
+      "search": "Searching the project…",
+      "evaluate": "Checking its work…",
+      "delegate": "Working through the request…",
+      "lookup": "Looking something up…",
+      "image": "Making an image…",
+      "database": "Working on the data…",
+      "build": "Rebuilding the site…",
+      "brief": "Updating the brief…",
+      "spec": "Adding to the spec…",
+      "propose": "Proposing the project…",
+      "ask": "Asking you to choose…",
+      "preview": "Checking the preview…",
+      "run": "Running a script…",
+      "other": "Running a command…"
+    },
+    "stepFailed": {
+      "write": "{has, select, yes {Tried to write {file}, but it failed} other {Tried to write a file, but it failed}}",
+      "read": "{has, select, yes {Tried to read {file}, but it failed} other {Tried to read a file, but it failed}}",
+      "edit": "{has, select, yes {Tried to edit {file}, but it failed} other {Tried to edit a file, but it failed}}",
+      "create": "{has, select, yes {Tried to create {file}, but it failed} other {Tried to create a file, but it failed}}",
+      "delete": "{has, select, yes {Tried to delete {file}, but it failed} other {Tried to delete a file, but it failed}}",
+      "move": "{has, select, yes {Tried to move {file}, but it failed} other {Tried to move a file, but it failed}}",
+      "copy": "{has, select, yes {Tried to copy {file}, but it failed} other {Tried to copy a file, but it failed}}",
+      "list": "Tried to look through the files, but it failed",
+      "search": "Tried to search the project, but it failed",
+      "evaluate": "Tried to check its work, but it failed",
+      "delegate": "Tried to work through the request, but it failed",
+      "lookup": "Tried to look something up, but it failed",
+      "image": "Tried to make an image, but it failed",
+      "database": "Tried to work on the data, but it failed",
+      "build": "Tried to rebuild the site, but it failed",
+      "brief": "Tried to update the brief, but it failed",
+      "spec": "Tried to add to the spec, but it failed",
+      "propose": "Tried to propose the project, but it failed",
+      "ask": "Tried to ask you to choose, but it failed",
+      "preview": "Tried to check the preview, but it failed",
+      "run": "Tried to run a script, but it failed",
+      "other": "Tried to run a command, but it failed"
     },
     "collate": {
       "readFile": "{position, select, first {Read {file}} other {read {file}}}",
@@ -1268,7 +1313,10 @@
       "preview": "{position, select, first {Checked the preview} other {checked the preview}}",
       "delegate": "{position, select, first {Worked through the request} other {worked through the request}}",
       "database": "{position, select, first {Worked on the data} other {worked on the data}}",
-      "plan": "{position, select, first {Planned the change} other {planned the change}}",
+      "brief": "{position, select, first {Updated the brief} other {updated the brief}}",
+      "spec": "{position, select, first {Added to the spec} other {added to the spec}}",
+      "propose": "{position, select, first {Proposed creating the project} other {proposed creating the project}}",
+      "ask": "{position, select, first {Asked you to choose} other {asked you to choose}}",
       "image": "{position, select, first {{count, plural, one {Made an image} other {Made # images}}} other {{count, plural, one {made an image} other {made # images}}}}",
       "run": "{position, select, first {{count, plural, one {Ran a script} other {Ran # scripts}}} other {{count, plural, one {ran a script} other {ran # scripts}}}}",
       "other": "{position, select, first {{count, plural, one {Ran # command} other {Ran # commands}}} other {{count, plural, one {ran # command} other {ran # commands}}}}",
@@ -1281,6 +1329,19 @@
       "thinking": "Thinking…",
       "writing": "Writing…",
       "working": "Working…"
+    },
+    "usage": {
+      "calls": "{count, plural, one {# call} other {# calls}}",
+      "in": "{tokens} in",
+      "inCached": "{tokens} in ({cached} cached)",
+      "out": "{tokens} out",
+      "outReasoning": "{tokens} out ({reasoning} reasoning)"
+    },
+    "lines": "{count, plural, one {# line} other {# lines}}",
+    "figures": "Tokens and cost",
+    "status": {
+      "task": "Task",
+      "remaining": "Remaining"
     }
   },
   "generationShelf": {
@@ -1351,9 +1412,21 @@
         "running": "Building",
         "done": "Built"
       },
-      "plan": {
-        "running": "Planning",
-        "done": "Planned"
+      "brief": {
+        "running": "Updating",
+        "done": "Updated"
+      },
+      "spec": {
+        "running": "Adding",
+        "done": "Added"
+      },
+      "propose": {
+        "running": "Proposing",
+        "done": "Proposed"
+      },
+      "ask": {
+        "running": "Asking",
+        "done": "Asked"
       },
       "preview": {
         "running": "Opening",
@@ -3169,6 +3242,7 @@
     "serverStartFailed": "Failed to start server generation",
     "serverConnectFailed": "Failed to connect to server for generation",
     "projectBusy": "Still working on the last change. Wait for it to finish, or stop it first.",
+    "projectStopping": "Still stopping the last change. It will be a moment.",
     "assignmentFailed": "Could not resolve this project's model configuration. Check your provider settings."
   },
   "mcpBanner": {

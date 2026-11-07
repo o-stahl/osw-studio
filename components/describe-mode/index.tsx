@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useMemo } from 'react';
-import { useLocale, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { ChatPanel } from '@/components/chat-panel';
 import { MultiAgentOrchestrator } from '@/lib/llm/multi-agent-orchestrator';
 import { continueAfterStop } from '@/lib/llm/continue-prompt';
@@ -19,20 +19,11 @@ import { BriefSidebar } from './brief-sidebar';
 import { CreateConfirmation } from './create-confirmation';
 import { WELCOME_TEXT } from './welcome';
 import { track } from '@/lib/telemetry';
+import { ChatThread } from '@/components/quick-edit/thread';
+import { splitRuns } from '@/lib/quick-edit/runs';
+import { useStudioView } from '@/components/view-mode-provider';
 
 const WELCOME_ID = 'describe-welcome';
-
-/**
- * The events with the welcome's text swapped for `welcome`. Later deltas can coalesce into its
- * event, so only its first chunk is swapped.
- */
-export function withLocalWelcome(events: DebugEvent[], welcome: string): DebugEvent[] {
-  return events.map((evt) => {
-    if (evt.id !== WELCOME_ID) return evt;
-    const text = { text: welcome };
-    return { ...evt, data: evt.data?.all ? { all: [text, ...evt.data.all.slice(1)] } : text };
-  });
-}
 
 interface DescribeModeProps {
   onProjectCreated: (project: Project) => void;
@@ -41,7 +32,6 @@ interface DescribeModeProps {
 
 export function DescribeMode({ onProjectCreated, onDirtyChange }: DescribeModeProps) {
   const t = useTranslations('describe');
-  const locale = useLocale();
   const [events, setEvents] = useState<DebugEvent[]>([
     {
       id: WELCOME_ID,
@@ -244,9 +234,6 @@ export function DescribeMode({ onProjectCreated, onDirtyChange }: DescribeModePr
     return messages;
   }, [events]);
 
-  // The welcome is kept in English for the transcript above and worded in the app's language here.
-  const displayEvents = useMemo(() => withLocalWelcome(events, t('welcome')), [events, t]);
-
   // ---- Project ready (agent ran propose-create — show confirmation) ----
   // The bash-based propose-create command emits an empty payload; the brief
   // is already accumulated client-side from prior brief_update events.
@@ -296,7 +283,12 @@ export function DescribeMode({ onProjectCreated, onDirtyChange }: DescribeModePr
 
   // ---- Generate handler ----
   const describeDirtyRef = useRef(false);
+  // One run at a time: two presses in the same moment both get here before the composer has
+  // re-rendered, and the runs would share one orchestrator. Set in the same synchronous stretch as
+  // the check, so the second press finds it; a throw before the run never sets it.
+  const runningRef = useRef(false);
   const handleGenerate = useCallback(async (prompt: string) => {
+    if (runningRef.current) return;
     if (!describeDirtyRef.current) {
       describeDirtyRef.current = true;
       onDirtyChange?.(true);
@@ -333,24 +325,35 @@ export function DescribeMode({ onProjectCreated, onDirtyChange }: DescribeModePr
     // Clear any pending confirmation when user sends a new message
     setPendingCreateBrief(null);
 
+    runningRef.current = true;
     setGenerating(true);
     try {
-      await orchestratorRef.current.execute(messageContent, {
+      const result = await orchestratorRef.current.execute(messageContent, {
         displayPrompt: prompt, // UI shows clean prompt, LLM sees context-prepended version
       });
+      // How the run ended, in the event the workspace records it with, so the thread can close it.
+      const stopped = result.exitReason === 'stopped' || result.exitReason === 'error_stop';
+      addEvent('task_complete', result.success
+        ? { result: 'success', exitReason: result.exitReason }
+        : { result: stopped ? 'stopped' : 'failed', exitReason: result.exitReason, ...(stopped ? {} : { error: result.summary }) });
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         toast.error(t('generationFailed', { error: String(err.message ?? err) }));
+        addEvent('task_complete', { result: 'failed', error: String(err.message ?? err) });
+      } else {
+        addEvent('task_complete', { result: 'stopped' });
       }
     } finally {
+      runningRef.current = false;
       setGenerating(false);
     }
   }, [addEvent, applyBriefUpdate, applySpecUpdate, applyProjectReady, systemNote, onDirtyChange, t]);
 
   // ---- Stop handler ----
+  // The run ends the generating state when it returns: until then it can still be writing, and the
+  // next message would run beside it.
   const handleStop = useCallback(() => {
     orchestratorRef.current?.stop();
-    setGenerating(false);
   }, []);
 
   // ---- Sidebar "Create now" button ----
@@ -359,6 +362,31 @@ export function DescribeMode({ onProjectCreated, onDirtyChange }: DescribeModePr
     if (!briefReady || creating) return;
     await doCreateProject(briefState.brief);
   }, [briefReady, creating, briefState.brief, doCreateProject]);
+
+  // The conversation, as the workspace's chat draws it, simple in the simple view. Describe mode has
+  // no checkpoints, saves or gated commands, so the actions for those have nothing to do.
+  const studioView = useStudioView();
+  const runs = useMemo(() => splitRuns(events), [events]);
+  const thread = (
+    <ChatThread
+      runs={runs}
+      simple={!studioView}
+      opening={t('welcome')}
+      generating={generating}
+      isDirty={false}
+      onRestore={() => {}}
+      onContinue={(withModel) => continueAfterStop(withModel, handleGenerate)}
+      onUndoLatest={null}
+      onRedoLatest={null}
+      onSave={() => {}}
+      onAllow={() => {}}
+      onDeny={() => {}}
+      onAnswer={(value) => {
+        track('ask_response', { via: 'chip' });
+        void handleGenerate(value);
+      }}
+    />
+  );
 
   // Composer overlay — replaces the input area when creation is pending
   const composerOverlay = pendingCreateBrief ? (
@@ -374,22 +402,17 @@ export function DescribeMode({ onProjectCreated, onDirtyChange }: DescribeModePr
     <div className="flex h-full w-full">
       {/* Chat panel — no header, no border radius on the right side (sidebar is adjacent) */}
       <div className="flex-1 min-w-0">
-        {/* Keyed by language: the panel keeps text it has already processed, so the welcome's new
-            wording would not show until a remount. */}
         <ChatPanel
-          key={locale}
-          events={displayEvents}
+          events={events}
           generating={generating}
           onGenerate={handleGenerate}
           onStop={handleStop}
-          onContinue={(withModel) => continueAfterStop(withModel, handleGenerate)}
           focusContext={null}
           onClearFocus={() => {}}
           mode="code"
           setMode={() => {}}
           activeInterview={null}
           onStartInterview={() => {}}
-          onHandoff={() => {}}
           currentModel={currentModel}
           getModelDisplayName={getModelDisplayName}
           providerReady={providerReady}
@@ -398,6 +421,7 @@ export function DescribeMode({ onProjectCreated, onDirtyChange }: DescribeModePr
           className="rounded-none border-0"
           composerOverlay={composerOverlay}
           systemNote={systemNote}
+          thread={thread}
         />
       </div>
 

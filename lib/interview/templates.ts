@@ -1,4 +1,5 @@
-import type { InterviewTemplate } from './types';
+import type { InterviewHandoff, InterviewItem, InterviewTemplate } from './types';
+import type { TestAssertion } from '@/lib/testing/types';
 
 /** Built-in interview templates. The format is data, so user-authored templates can slot in later. */
 
@@ -177,4 +178,52 @@ export function filterInterviewTemplates(templates: InterviewTemplate[], query: 
   return templates.filter(
     t => t.title.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)
   );
+}
+
+/** The completion checks a template may name, so a template from elsewhere names only real ones. */
+const ASSERTION_TYPES: Record<TestAssertion['type'], true> = {
+  file_exists: true, file_not_exists: true, file_contains: true, file_not_contains: true,
+  file_matches: true, file_matches_any: true, valid_json: true, tool_used: true, tool_args_match: true,
+  output_matches: true, tool_output_matches: true, any_of: true, judge: true,
+};
+
+/**
+ * A template that arrived from elsewhere, such as a server run's request, in the shape the agenda and
+ * the completion gate read, or null. Custom templates are kept in the browser, so a server run is sent
+ * the template itself; the browser's own bookkeeping fields are left behind.
+ */
+export function asInterviewTemplate(value: unknown): InterviewTemplate | null {
+  const record = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
+  const text = (x: unknown): x is string => typeof x === 'string';
+  if (!record(value) || !text(value.id) || !text(value.title) || !text(value.description)) return null;
+  if (!Array.isArray(value.items) || !Array.isArray(value.artifacts)) return null;
+
+  const items: InterviewItem[] = [];
+  for (const item of value.items) {
+    if (!record(item) || !text(item.id) || !text(item.elicit) || !Array.isArray(item.completion)) return null;
+    if (item.required !== undefined && typeof item.required !== 'boolean') return null;
+    if (!item.completion.every((check) => record(check) && text(check.type) && Object.prototype.hasOwnProperty.call(ASSERTION_TYPES, check.type))) return null;
+    items.push({
+      id: item.id,
+      elicit: item.elicit,
+      completion: item.completion as TestAssertion[],
+      ...(item.required !== undefined ? { required: item.required } : {}),
+    });
+  }
+
+  const artifacts: InterviewTemplate['artifacts'] = [];
+  for (const artifact of value.artifacts) {
+    if (!record(artifact) || !text(artifact.path)) return null;
+    if (artifact.description !== undefined && !text(artifact.description)) return null;
+    artifacts.push({ path: artifact.path, ...(artifact.description !== undefined ? { description: artifact.description } : {}) });
+  }
+
+  let handoff: InterviewHandoff | undefined;
+  if (value.handoff !== undefined) {
+    const h = value.handoff;
+    if (!record(h) || !text(h.label) || !text(h.prompt) || (h.mode !== 'code' && h.mode !== 'chat')) return null;
+    handoff = { label: h.label, prompt: h.prompt, mode: h.mode };
+  }
+
+  return { id: value.id, title: value.title, description: value.description, items, artifacts, ...(handoff ? { handoff } : {}) };
 }

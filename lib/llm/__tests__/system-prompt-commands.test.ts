@@ -53,3 +53,23 @@ describe('system prompt shell documentation', () => {
     expect(SOURCE).toContain('head [-n N|-c N] file');
   });
 });
+
+/**
+ * Chat mode talks about the project rather than working on it. It shared the code agent's opening,
+ * which told it to act on assumptions instead of asking and to finish with build and status, and the
+ * loop then nudged it toward a status command it could not use.
+ */
+describe('the Chat-mode prompt', () => {
+  it('has none of the code agent\'s task rules or editing commands, and keeps the reading ones', async () => {
+    const { buildSystemPrompt } = await import('../system-prompt');
+    const chat = await buildSystemPrompt(true, null, undefined, 'orchestrator');
+    const code = await buildSystemPrompt(false, null, undefined, 'orchestrator');
+
+    for (const codeOnly of ['Bias toward action', 'run build and status', '- Edit: ss', '- Create: mkdir']) {
+      expect(code, codeOnly).toContain(codeOnly);
+      expect(chat, codeOnly).not.toContain(codeOnly);
+    }
+    expect(chat).toContain('- Search: rg');
+    expect(chat).toContain('- Read: head');
+  });
+});

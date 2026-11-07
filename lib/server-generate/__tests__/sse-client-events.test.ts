@@ -43,6 +43,14 @@ describe('SSEClient event subscriptions', () => {
     }
   });
 
+  it('subscribes to the agent\'s questions and the interview\'s check, so a server run can be answered and handed off', () => {
+    new SSEClient({ onEvent: vi.fn() }).connect();
+
+    const subscribed = FakeEventSource.last!.listeners;
+    expect(subscribed.has('ask')).toBe(true);
+    expect(subscribed.has('interview_gate')).toBe(true);
+  });
+
   it('subscribes to the events that say which model "Free models" is on, so a server run shows it too', () => {
     new SSEClient({ onEvent: vi.fn() }).connect();
 

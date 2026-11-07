@@ -21,5 +21,15 @@ export interface GenerationTask {
   paused: boolean;
   orchestratorInstance: MultiAgentOrchestrator | null;
   persistedInstance: MultiAgentOrchestrator | null;
+  /**
+   * The mode `persistedInstance` was built for. A mode picked while a run is going cannot drop the
+   * instance then, so the next message compares and builds a new one when they differ.
+   */
+  persistedFor?: string;
   serverTaskId?: string;
+  /**
+   * Stop was pressed and the run has not ended yet. It keeps the project until it has, so nothing
+   * new starts beside a run that may still be writing.
+   */
+  stopping?: boolean;
 }

@@ -35,6 +35,11 @@ describe('collate', () => {
     expect(collate(of('cat /a.html', 'cat /b.html', 'cat /c.html'))).toBe('Read 3 files');
   });
 
+  it('counts every file a command named, and relative ones from the root', () => {
+    expect(collate(of('cat /a.html b.css'))).toBe('Read 2 files');
+    expect(collate(of('cd / && cat scripts/main.js', 'cat /scripts/main.js'))).toBe('Read main.js');
+  });
+
   it('counts a repeat of one file once', () => {
     expect(collate(of('ss /a.css', 'ss /a.css', 'ss /a.css'))).toBe('Edited a.css');
   });

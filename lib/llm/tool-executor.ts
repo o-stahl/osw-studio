@@ -11,16 +11,13 @@
  */
 
 import type { ToolExecutor, ToolCall, ToolResult, ToolExecContext, ToolDef, ProgressReporter } from './core/types';
+import { STATUS_SEGMENT_RE, parseStatusCommand, type StatusFlags } from './status-command';
 import { toolRegistry, ToolExecutionContext } from './tool-registry';
 import { Agent } from './agent';
 import { generalCommandNames, setupOnlyCommandNames } from '@/lib/vfs/shell-commands';
 import type { ApprovalRequest, ApprovalOutcome, PermissionMode, GateDecision } from './permissions';
 
 const HARMONY_TOKEN_STRIP_RE = /<\|[^|]*\|>/g;
-
-// Matches `status` whether standalone or chained (e.g. `build && status --complete`),
-// so completion is detected in compound commands.
-const STATUS_SEGMENT_RE = /(?:^|&&|\|\||;|\|)\s*status\b/i;
 
 export interface OswsToolExecutorConfig {
   projectId: string;
@@ -248,7 +245,7 @@ export class OswsToolExecutor implements ToolExecutor {
   private extractStatusResult(
     cmd: string,
     output: string
-  ): { task: string; done: string; remaining: string; complete: boolean; hasExplicitFlag: boolean } | null {
+  ): StatusFlags | null {
     // If the output contains an error, the status command failed - don't trust command-level parsing
     const hasError = output && /^Error:\s/im.test(output);
 
@@ -274,30 +271,9 @@ export class OswsToolExecutor implements ToolExecutor {
 
     // 2. Fallback: check the command itself for `status --task ... --done ... --remaining ...`
     // Skip if the output had errors - the command may have been malformed
-    if (!hasError && STATUS_SEGMENT_RE.test(cmd)) {
-      const taskMatch =
-        cmd.match(/--task\s+"([^"]*)"/) ||
-        cmd.match(/--task\s+'([^']*)'/) ||
-        cmd.match(/--task\s+(\S+)/);
-      const doneMatch =
-        cmd.match(/--done\s+"([^"]*)"/) ||
-        cmd.match(/--done\s+'([^']*)'/) ||
-        cmd.match(/--done\s+(\S+)/);
-      const remainingMatch =
-        cmd.match(/--remaining\s+"([^"]*)"/) ||
-        cmd.match(/--remaining\s+'([^']*)'/) ||
-        cmd.match(/--remaining\s+(\S+)/);
-      const hasComplete = /--complete\b/.test(cmd);
-      const hasIncomplete = /--incomplete\b/.test(cmd);
-      if (taskMatch && doneMatch) {
-        return {
-          task: taskMatch[1],
-          done: doneMatch[1],
-          remaining: remainingMatch ? remainingMatch[1] : 'none',
-          complete: hasComplete && !hasIncomplete,
-          hasExplicitFlag: hasComplete || hasIncomplete,
-        };
-      }
+    if (!hasError) {
+      const parsed = parseStatusCommand(cmd);
+      if (parsed) return parsed;
     }
 
     return null;

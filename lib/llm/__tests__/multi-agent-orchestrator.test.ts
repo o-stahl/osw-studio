@@ -153,10 +153,11 @@ vi.mock('../skill-evaluator', () => ({
   evaluateRelevantSkills: vi.fn(async () => ({ skillIds: [] })),
 }));
 
+const skillsMock = vi.hoisted(() => ({ evaluate: false }));
 vi.mock('@/lib/vfs/skills', () => ({
   skillsService: {
-    isEvaluationEnabled: async () => false,
-    getEnabledSkillsMetadata: async () => [],
+    isEvaluationEnabled: async () => skillsMock.evaluate,
+    getEnabledSkillsMetadata: async () => (skillsMock.evaluate ? [{ id: 'seo', name: 'SEO', description: 'Search' }] : []),
   },
 }));
 
@@ -177,6 +178,7 @@ vi.mock('../suggestions/observed', async (orig) => ({ ...(await orig<object>()),
 
 import { MultiAgentOrchestrator, AgentMessage } from '../multi-agent-orchestrator';
 import { runStructuredJudge } from '@/lib/testing/judge';
+import { evaluateRelevantSkills } from '../skill-evaluator';
 import { getInterviewTemplate } from '@/lib/interview/templates';
 
 beforeEach(() => {
@@ -185,6 +187,7 @@ beforeEach(() => {
   h.coordinatorConfigs.length = 0;
   h.agent = h.orchestratorAgent;
   h.loopBehavior.run = async () => ({ ...h.okResult });
+  skillsMock.evaluate = false;
   suggest.rankProviderModels.mockClear();
   suggest.nextModelAfter.mockClear();
   suggest.alternativesTo.mockClear();
@@ -223,6 +226,21 @@ describe('MultiAgentOrchestrator result propagation and lifecycle', () => {
     // CostCalculator mock returns 0.25 per record() call
     expect(result.totalCost).toBe(0.25);
     expect(result.conversation[0].metadata.cost).toBe(0.25);
+  });
+
+  it('reports the skill check\'s call, after the request it was for', async () => {
+    skillsMock.evaluate = true;
+    vi.mocked(evaluateRelevantSkills).mockResolvedValueOnce({
+      skillIds: [], usage: { promptTokens: 300, completionTokens: 10, totalTokens: 310, provider: 'openrouter', model: 'm' },
+    } as Awaited<ReturnType<typeof evaluateRelevantSkills>>);
+    const events: Array<{ event: string; data: Record<string, unknown> }> = [];
+    await new MultiAgentOrchestrator('test-p1', 'orchestrator', (event, data) => events.push({ event, data: data as Record<string, unknown> })).execute('build a site');
+
+    const request = events.findIndex((e) => e.event === 'conversation_message' && (e.data.message as { role?: string }).role === 'user');
+    const check = events.findIndex((e) => e.event === 'usage' && (e.data.usage as { totalTokens?: number }).totalTokens === 310);
+    expect(request).toBeGreaterThan(-1);
+    expect(check).toBeGreaterThan(request);
+    expect(events[check].data).toMatchObject({ usage: { cost: 0.25 }, taskTokens: 310 });
   });
 
   it('stops on a provider error and offers no plain Continue when a resend cannot help', async () => {
@@ -372,6 +390,64 @@ describe('MultiAgentOrchestrator result propagation and lifecycle', () => {
     expect(String(prompt?.content)).toContain('new request');
   });
 
+  it('runs an imported conversation under this run\'s system prompt, not the one it was recorded under', async () => {
+    // A history rebuilt after a mode switch carries the prompt of the mode it ran in: Chat's tells
+    // the model it cannot change files, which a Code run must not be told.
+    let captured: Message[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    h.loopBehavior.run = async (deps: any): Promise<AgentLoopResult> => {
+      captured = deps.context.getMessages();
+      return { ...h.okResult };
+    };
+    const orchestrator = new MultiAgentOrchestrator('test-p1');
+    orchestrator.importConversation([
+      { role: 'system', content: 'CHAT MODE PROMPT' },
+      { role: 'user', content: 'how does the header work?' },
+      { role: 'assistant', content: 'It is a flex row.' },
+    ]);
+    await orchestrator.execute('make it blue');
+
+    expect(captured.filter((m) => m.role === 'system').map((m) => m.content)).toEqual(['SYS PROMPT']);
+  });
+
+  it('stops a loop that registers after Stop was pressed, while the run was still setting up', async () => {
+    // Stop reached only loops already running, so one pressed during the system prompt, skill
+    // evaluation or model choice was lost and the run went on to the end.
+    const { buildSystemPrompt } = await import('../system-prompt');
+    let finishSetup!: () => void;
+    vi.mocked(buildSystemPrompt).mockImplementationOnce(() => new Promise((resolve) => { finishSetup = () => resolve('SYS PROMPT'); }));
+    const orchestrator = new MultiAgentOrchestrator('test-p1');
+
+    const run = orchestrator.execute('build a site');
+    await vi.waitFor(() => expect(finishSetup).toBeDefined());
+    orchestrator.stop();
+    finishSetup();
+    await run;
+
+    expect(h.loops).toHaveLength(1);
+    expect(h.loops[0].stop).toHaveBeenCalled();
+  });
+
+  it('stops every loop it is running, whichever execute started it', async () => {
+    // A run stopped while another began on the same instance used to put back the stop it had
+    // replaced when it returned, unhooking the newer loop: Stop then reached nothing.
+    const releases: Array<() => void> = [];
+    h.loopBehavior.run = () => new Promise((resolve) => { releases.push(() => resolve({ ...h.okResult })); });
+    const orchestrator = new MultiAgentOrchestrator('test-p1');
+    const first = orchestrator.execute('first');
+    await vi.waitFor(() => expect(h.loops).toHaveLength(1));
+    const second = orchestrator.execute('second');
+    await vi.waitFor(() => expect(h.loops).toHaveLength(2));
+
+    releases[0]();
+    await first;
+    orchestrator.stop();
+
+    expect(h.loops[1].stop).toHaveBeenCalled();
+    releases[1]();
+    await second;
+  });
+
   it('keeps an unanswered request when Continue picks it up', async () => {
     let captured: Message[] = [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -428,8 +504,8 @@ describe('MultiAgentOrchestrator result propagation and lifecycle', () => {
       complete: true,
       handoff: expect.objectContaining({ label: expect.any(String), prompt: expect.any(String), mode: 'code' }),
     }));
-    // The judge's token usage is recorded and surfaced via a usage event.
-    expect(progress).toHaveBeenCalledWith('usage', expect.objectContaining({ taskCost: expect.any(Number) }));
+    // The judge's call is recorded and reported in a usage event, at what it cost.
+    expect(progress).toHaveBeenCalledWith('usage', expect.objectContaining({ usage: expect.objectContaining({ totalTokens: 120, cost: 0.25 }), taskCost: 0.25 }));
   });
 
   it('interview completion gate returns feedback naming an unmet required item', async () => {
@@ -511,6 +587,16 @@ describe('MultiAgentOrchestrator result propagation and lifecycle', () => {
     const fresh = await cfg.compactionConfig.getFreshContext();
     expect(fresh.systemPrompt).toBe('SYS PROMPT');
     expect(fresh.projectContext).toBe('PROJECT CTX');
+  });
+
+  it('keeps the interview agenda in the system prompt a compaction rebuilds', async () => {
+    h.agent = { type: 'interview', maxIterations: 30, isReadOnly: false, tools: ['bash'], hasTool: () => true };
+    const orchestrator = new MultiAgentOrchestrator('test-p1', 'interview', undefined, { interviewTemplateId: 'understand-company' });
+    await orchestrator.execute('Understand a company');
+
+    const fresh = await h.coordinatorConfigs[0].compactionConfig.getFreshContext();
+    expect(fresh.systemPrompt).toContain('SYS PROMPT');
+    expect(fresh.systemPrompt).toContain('/.interviews/company-profile.md');
   });
 
   it('moves "Free models" off OpenRouter\'s free router to a free model, even for a paid account', async () => {

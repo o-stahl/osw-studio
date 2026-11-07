@@ -16,6 +16,14 @@ export interface TaskPersistence {
   prune?(olderThan: number): Promise<void>;
 }
 
+/** The project already has a task running, paused or stopping, so a second one is refused. */
+export class ProjectBusyError extends Error {
+  constructor(readonly activeTaskId: string) {
+    super('A task is already running for this project.');
+    this.name = 'ProjectBusyError';
+  }
+}
+
 /** Strip the live-only fields so an in-memory task can be compared/merged with durable rows. */
 function toPersisted(task: ServerTask): PersistedServerTask {
   const { orchestrator: _o, pendingBuildResolve: _p, ...persisted } = task;
@@ -54,9 +62,15 @@ export class TaskManager {
 
   createTask(projectId: string, sessionId: string, apiKey: string, workspaceId?: string): string {
     const scope = workspaceId ?? sessionId;
-    const activeTasks = [...this.tasks.values()].filter(
-      (t) => (t.workspaceId ?? t.sessionId) === scope && (t.status === 'running' || t.status === 'paused'),
-    );
+    const inScope = [...this.tasks.values()].filter((t) => (t.workspaceId ?? t.sessionId) === scope);
+
+    // One task per project. A second would write the same files as the first, and the tab that
+    // started it could stop only one of the two.
+    const onProject = inScope.find((t) => t.projectId === projectId
+      && (t.status === 'running' || t.status === 'paused' || t.status === 'stopping'));
+    if (onProject) throw new ProjectBusyError(onProject.taskId);
+
+    const activeTasks = inScope.filter((t) => t.status === 'running' || t.status === 'paused');
 
     if (activeTasks.length >= this.options.maxConcurrentPerScope) {
       throw new Error(`Concurrent task limit (${this.options.maxConcurrentPerScope}) reached`);

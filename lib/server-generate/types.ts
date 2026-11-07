@@ -5,6 +5,7 @@ import type { MultiAgentOrchestrator } from '@/lib/llm/multi-agent-orchestrator'
 import type { VirtualFileSystem } from '@/lib/vfs';
 import type { ProviderId } from '@/lib/llm/providers/types';
 import type { WebSearchProviderId } from '@/lib/web-search/types';
+import type { InterviewTemplate } from '@/lib/interview/types';
 
 /** Web-search config the client sends so the server can run a search when no browser is
  *  connected (the headless fallback). Carries the provider key, same boundary as the LLM key. */
@@ -82,6 +83,8 @@ export interface ServerTask {
   /** Last status-change time. Drives retention/prune so terminal tasks expire on a terminal clock. */
   updatedAt: number;
   orchestrator: MultiAgentOrchestrator | null;
+  /** True while a runner holds the task, from before its loop exists. Live only, never persisted. */
+  runnerActive?: boolean;
   buildDeferred: boolean;
   /** Resolve function for pending build delegation */
   pendingBuildResolve: ((result: BuildResult) => void) | null;
@@ -138,6 +141,15 @@ export interface StartGenerationRequest {
   webSearch?: ServerWebSearchConfig;
   /** Whether the project has an image-capable model. Generation is delegated back to the browser. */
   imageGenAvailable?: boolean;
+  /**
+   * The mode picked in the chat: `chat` only reads, `interview` runs the interview agent on its
+   * template. Omitted means `code`.
+   */
+  mode?: 'code' | 'chat' | 'interview';
+  /** The interview's template, resolved in the browser, which is where custom templates are kept. */
+  interviewTemplate?: InterviewTemplate;
+  /** The interview template's id, for a built-in the browser could not resolve. */
+  interviewTemplateId?: string;
   conversationHistory: unknown[];
   executeOptions?: {
     images?: Array<{ data: string; mediaType: string }>;

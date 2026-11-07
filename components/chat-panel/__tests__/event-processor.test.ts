@@ -41,82 +41,85 @@ describe('EventProcessor', () => {
       expect(proc.process([])).toEqual([]);
     });
 
-    it('processes a single user message into a turn with one item', () => {
-      const events = [userMsg('hello')];
-      const turns = proc.process(events);
+    it('makes a turn of the person\'s message, with no item: nothing draws the message from here', () => {
+      const turns = proc.process([userMsg('hello')]);
       expect(turns).toHaveLength(1);
-      expect(turns[0].items).toHaveLength(1);
-      expect(turns[0].items[0].type).toBe('user');
-      expect(turns[0].items[0].data).toBe('hello');
+      expect(turns[0].items).toEqual([]);
     });
 
-    it('uses displayContent from ui_metadata when available', () => {
-      const events = [userMsg('ctx\n\nhello', { displayContent: 'hello' })];
-      const turns = proc.process(events);
-      expect(turns[0].items[0].data).toBe('hello');
-    });
-
-    it('shows project_context item when projectContext is in ui_metadata', () => {
-      const events = [userMsg('hello', { displayContent: 'hello', projectContext: 'files: index.html' })];
-      const turns = proc.process(events);
-      expect(turns[0].items).toHaveLength(2);
-      expect(turns[0].items[0].type).toBe('project_context');
-      expect(turns[0].items[0].data).toBe('files: index.html');
-      expect(turns[0].items[1].type).toBe('user');
-    });
-
-    it('skips system messages (no items rendered)', () => {
-      const events = [systemMsg('You are an AI assistant'), userMsg('hello')];
-      const turns = proc.process(events);
+    it('makes no turn of a system message', () => {
+      const turns = proc.process([systemMsg('You are an AI assistant'), userMsg('hello')]);
       expect(turns).toHaveLength(1);
-      expect(turns[0].items).toHaveLength(1);
-      expect(turns[0].items[0].type).toBe('user');
+    });
+  });
+
+  describe('the person\'s messages', () => {
+    it('counts the messages the person sent, not the harness\'s or an error sent back to the model', () => {
+      proc.process([
+        userMsg('make it blue'),
+        evt('iteration', {}),
+        userMsg('<automated_reminder>\nnudge\n</automated_reminder>'),
+        userMsg('Error: no such file', { isSyntheticError: true }),
+        evt('task_complete', {}),
+        userMsg('and green'),
+      ]);
+      expect(proc.requests).toBe(2);
     });
 
-    it('processes waiting event as a spinner item', () => {
-      const events = [userMsg('hello'), evt('waiting')];
-      const turns = proc.process(events);
-      expect(turns[0].items.some(i => i.type === 'waiting')).toBe(true);
+    it('counts from the start again for another conversation', () => {
+      proc.process([userMsg('make it blue')]);
+      proc.process([userMsg('a new chat', undefined, { id: 'other-1' })]);
+      expect(proc.requests).toBe(1);
+    });
+  });
+
+  // ChatPanel counts turns: none is an empty chat.
+  describe('what makes a turn', () => {
+    it('counts a response that answered, noted or failed, though none of that is an item', () => {
+      for (const said of [
+        evt('assistant_delta', { text: 'Hi' }),
+        evt('model_switched', { provider: 'openrouter', fromModel: 'a', toModel: 'b' }),
+        evt('error', { message: 'boom' }),
+      ]) {
+        const turns = new EventProcessor().process([userMsg('hello'), evt('iteration', {}), said]);
+        expect(turns, said.event).toHaveLength(2);
+        expect(turns[1].items).toEqual([]);
+      }
     });
 
-    it('removes waiting indicator when reasoning arrives', () => {
-      const events = [
+    it('counts a response while it waits, and not once the wait ends with nothing to show', () => {
+      const waited = [userMsg('hello'), evt('iteration', {}), evt('waiting')];
+      expect(proc.process(waited)).toHaveLength(2);
+      expect(proc.process([...waited, evt('usage', {})])).toHaveLength(1);
+    });
+
+    it('keeps an error sent back to the model in the response it interrupted', () => {
+      const turns = proc.process([
         userMsg('hello'),
-        evt('waiting'),
-        evt('reasoning_delta', { text: 'thinking...' }),
-      ];
-      const turns = proc.process(events);
-      expect(turns[0].items.some(i => i.type === 'waiting')).toBe(false);
-      expect(turns[0].items.some(i => i.type === 'reasoning')).toBe(true);
+        evt('iteration', {}),
+        evt('toolCalls', { toolCalls: [{ id: 'tc-1', function: { name: 'bash', arguments: '{"command":"cat /nope.html"}' } }] }),
+        userMsg('Error: no such file', { isSyntheticError: true }),
+      ]);
+      expect(turns).toHaveLength(2);
+      expect(turns[1].items.map((i) => i.type)).toEqual(['tool']);
     });
 
-    it('processes error events', () => {
-      const events = [userMsg('hello'), evt('error', { message: 'API failed' })];
-      const turns = proc.process(events);
-      expect(turns[0].items.some(i => i.type === 'error')).toBe(true);
-    });
-
-    it('passes focusContext and semanticBlocks to user item', () => {
-      const fc = { domPath: 'body > h1', snippet: '<h1>Hi</h1>' };
-      const sb = [{ name: 'Header', domPath: 'body > h1', position: 'top', description: 'The header' }];
-      const events = [userMsg('hello', { focusContext: fc, semanticBlocks: sb })];
-      const turns = proc.process(events);
-      expect(turns[0].items[0].focusContext).toEqual(fc);
-      expect(turns[0].items[0].semanticBlocks).toEqual(sb);
+    it('counts a retry only while it waits', () => {
+      const retrying = [userMsg('hello'), evt('iteration', {}), evt('retry', { provider: 'groq', status: 429 })];
+      expect(proc.process(retrying)).toHaveLength(2);
+      expect(proc.process([...retrying, evt('usage', {})])).toHaveLength(1);
     });
   });
 
   describe('incremental processing', () => {
     it('processes new events without reprocessing old ones', () => {
-      const events1 = [userMsg('hello'), evt('waiting')];
-      const turns1 = proc.process(events1);
-      expect(turns1[0].items).toHaveLength(2);
+      const events1 = [userMsg('hello')];
+      expect(proc.process(events1)).toHaveLength(1);
 
       const events2 = [...events1, evt('reasoning_delta', { text: 'think' })];
       const turns2 = proc.process(events2);
-      // waiting removed, reasoning added → user + reasoning
-      expect(turns2[0].items.filter(i => i.type === 'waiting')).toHaveLength(0);
-      expect(turns2[0].items.filter(i => i.type === 'reasoning')).toHaveLength(1);
+      expect(turns2).toHaveLength(1);
+      expect(turns2[0].items.map((i) => i.type)).toEqual(['reasoning']);
     });
 
     it('returns cached result when no new events', () => {
@@ -129,204 +132,41 @@ describe('EventProcessor', () => {
     });
   });
 
-  describe('version-based reparse (projectContext merge)', () => {
-    it('reparsing after version bump preserves user message', () => {
-      // Step 1: initial events — user message without projectContext
-      const userEvt = userMsg('change welcome to hi', { displayContent: 'change welcome to hi' });
-      const waitEvt = evt('waiting');
-      const events1 = [userEvt, waitEvt];
-      const turns1 = proc.process(events1);
-      expect(turns1[0].items.some(i => i.type === 'user')).toBe(true);
-      expect(turns1[0].items.some(i => i.type === 'project_context')).toBe(false);
-
-      // Step 2: more events arrive from server (reasoning, tool calls)
-      const reasonEvt = evt('reasoning_delta', { text: 'analyzing...' });
-      const events2 = [...events1, reasonEvt];
-      proc.process(events2);
-
-      // Step 3: server's user message arrives — client merges projectContext + bumps version
-      const mergedUser: DebugEvent = {
-        ...userEvt,
-        version: 2,
-        data: {
-          message: {
-            role: 'user',
-            content: 'change welcome to hi',
-            ui_metadata: {
-              displayContent: 'change welcome to hi',
-              projectContext: 'files:\n  index.html\n  styles.css',
-            },
-          },
-        },
-      };
-      const events3 = [mergedUser, waitEvt, reasonEvt];
-      const turns3 = proc.process(events3);
-
-      // User message must still be present after reparse
-      const userItems = turns3[0].items.filter(i => i.type === 'user');
-      expect(userItems).toHaveLength(1);
-      expect(userItems[0].data).toBe('change welcome to hi');
-
-      // Project context should now appear
-      const ctxItems = turns3[0].items.filter(i => i.type === 'project_context');
-      expect(ctxItems).toHaveLength(1);
-      expect(ctxItems[0].data).toContain('index.html');
+  // The store merges the server's copy of a request into the one the tab added and bumps its
+  // version. Nothing read from here depends on the message's details, so processing carries on.
+  describe('a message already read, updated in place', () => {
+    const merged = (e: DebugEvent): DebugEvent => ({
+      ...e,
+      version: 2,
+      data: { message: { ...e.data.message, ui_metadata: { ...e.data.message.ui_metadata, projectContext: 'files: index.html' } } },
     });
 
-    it('does not reparse when version has not changed', () => {
-      const userEvt = userMsg('hello');
-      const events = [userEvt, evt('waiting')];
-      const turns1 = proc.process(events);
-
-      // Process same events again (no version change)
-      const turns2 = proc.process(events);
-      expect(turns2).toHaveLength(turns1.length);
-    });
-
-    it('reparse handles multiple events correctly', () => {
-      // Full server-gen scenario: user msg, waiting, reasoning, tool, more reasoning
+    it('keeps the conversation through the update', () => {
+      // A version bump with no new events once reset the state and returned it empty.
       const userEvt = userMsg('add a button', { displayContent: 'add a button' });
-      const events = [
-        userEvt,
+      const rest = [
         evt('waiting'),
         evt('reasoning_delta', { text: 'I will add a button' }),
-        evt('toolCalls', {
-          toolCalls: [{ id: 'tc-1', function: { name: 'bash', arguments: '{"command":"cat /index.html"}' } }],
-        }),
+        evt('toolCalls', { toolCalls: [{ id: 'tc-1', function: { name: 'bash', arguments: '{"command":"cat /index.html"}' } }] }),
         evt('tool_status', { toolIndex: 0, status: 'completed', result: '<html>...</html>' }),
       ];
-      const turns1 = proc.process(events);
+      proc.process([userEvt, ...rest]);
 
-      // Verify initial state is correct
-      expect(turns1[0].items.some(i => i.type === 'user')).toBe(true);
-      expect(turns1[0].items.some(i => i.type === 'tool')).toBe(true);
-
-      // Now merge projectContext via version bump
-      const mergedUser: DebugEvent = {
-        ...userEvt,
-        version: 2,
-        data: {
-          message: {
-            role: 'user',
-            content: 'add a button',
-            ui_metadata: {
-              displayContent: 'add a button',
-              projectContext: 'project files here',
-            },
-          },
-        },
-      };
-      const events2 = [mergedUser, ...events.slice(1)];
-      const turns2 = proc.process(events2);
-
-      // Everything must survive the reparse
-      expect(turns2[0].items.some(i => i.type === 'user')).toBe(true);
-      expect(turns2[0].items.some(i => i.type === 'project_context')).toBe(true);
-      expect(turns2[0].items.some(i => i.type === 'tool')).toBe(true);
-      expect(turns2[0].items.some(i => i.type === 'reasoning')).toBe(true);
+      const turns = proc.process([merged(userEvt), ...rest]);
+      expect(turns).toHaveLength(1);
+      expect(turns[0].items.map((i) => i.type)).toEqual(['reasoning', 'tool']);
+      expect(turns[0].items[1].data).toMatchObject({ id: 'tc-1', status: 'completed' });
     });
 
-    it('reparse with no new events still processes all events', () => {
-      // This is the exact scenario that caused the bug: version bump triggers
-      // reparse but newEventsCount was 0 (computed before startIndex reset),
-      // causing the early-return to fire with empty state.
-      const userEvt = userMsg('hello', { displayContent: 'hello' });
-      const waitEvt = evt('waiting');
-      const reasonEvt = evt('reasoning_delta', { text: 'thinking' });
+    it('carries on with what arrives after the update', () => {
+      const userEvt = userMsg('change welcome to hi');
+      const rest = [evt('waiting'), evt('reasoning_delta', { text: 'analyzing...' })];
+      proc.process([userEvt, ...rest]);
 
-      // Process initial events
-      const events1 = [userEvt, waitEvt, reasonEvt];
-      const turns1 = proc.process(events1);
-      expect(turns1[0].items.some(i => i.type === 'user')).toBe(true);
-
-      // Version bump on user event — same event count, no new events
-      const mergedUser: DebugEvent = {
-        ...userEvt,
-        version: 2,
-        data: {
-          message: {
-            role: 'user',
-            content: 'hello',
-            ui_metadata: {
-              displayContent: 'hello',
-              projectContext: 'file tree',
-            },
-          },
-        },
-      };
-      const events2 = [mergedUser, waitEvt, reasonEvt]; // same length!
-      const turns2 = proc.process(events2);
-
-      // CRITICAL: user message must NOT disappear
-      expect(turns2.length).toBeGreaterThan(0);
-      const allItems = turns2.flatMap(t => t.items);
-      expect(allItems.some(i => i.type === 'user')).toBe(true);
-      expect(allItems.find(i => i.type === 'user')!.data).toBe('hello');
-      expect(allItems.some(i => i.type === 'project_context')).toBe(true);
-    });
-
-    it('stabilizes after reparse — no infinite reparse loop', () => {
-      const userEvt = userMsg('test', { displayContent: 'test' });
-      const events = [userEvt, evt('waiting')];
-      proc.process(events);
-
-      // Trigger reparse via version bump
-      const merged: DebugEvent = { ...userEvt, version: 2 };
-      const events2 = [merged, events[1]];
-      const turns2 = proc.process(events2);
-
-      // Process again with same events — should NOT reparse again
-      const turns3 = proc.process(events2);
-      expect(turns3).toHaveLength(turns2.length);
-    });
-  });
-
-  describe('assistant text deduplication', () => {
-    it('does not duplicate assistant text streamed via delta then finalized via conversation_message', () => {
-      const events = [
-        userMsg('hello'),
-        evt('assistant_delta', { all: [{ text: 'Hi there!' }] }, { id: 'a1' }),
-        evt('conversation_message', { message: { role: 'assistant', content: 'Hi there!' } }),
-      ];
-      const turns = proc.process(events);
-      const textItems = turns.flatMap(t => t.items).filter(i => i.type === 'text');
-      expect(textItems).toHaveLength(1);
-      expect(textItems[0].data).toBe('Hi there!');
-    });
-
-    it('still shows assistant text on replay when only conversation_message is present (no delta)', () => {
-      const events = [
-        userMsg('hello'),
-        evt('conversation_message', { message: { role: 'assistant', content: 'Replayed answer' } }),
-      ];
-      const turns = proc.process(events);
-      const textItems = turns.flatMap(t => t.items).filter(i => i.type === 'text');
-      expect(textItems).toHaveLength(1);
-      expect(textItems[0].data).toBe('Replayed answer');
-    });
-  });
-
-  describe('interview gate surfacing', () => {
-    it('renders an interview_gate event as an interview_gate item', () => {
-      const events = [
-        userMsg('hello'),
-        evt('interview_gate', { complete: true, items: [{ id: 'a', elicit: 'Name', passed: true }] }),
-      ];
-      const item = proc.process(events).flatMap(t => t.items).find(i => i.type === 'interview_gate');
-      expect(item).toBeDefined();
-      expect(item!.data.complete).toBe(true);
-    });
-
-    it('does not render the gate feedback harness message as a user item', () => {
-      const events = [
-        userMsg('hello'),
-        evt('conversation_message', {
-          message: { role: 'user', content: "<automated_reminder>\nNot done yet — these items aren't captured.\n</automated_reminder>" },
-        }),
-      ];
-      const userItems = proc.process(events).flatMap(t => t.items).filter(i => i.type === 'user');
-      expect(userItems).toHaveLength(1);
-      expect(userItems[0].data).toBe('hello');
+      const call = evt('toolCalls', { toolCalls: [{ id: 'tc-2', function: { name: 'bash', arguments: '{"command":"ls /"}' } }] });
+      const turns = proc.process([merged(userEvt), ...rest, call]);
+      expect(turns).toHaveLength(1);
+      expect(turns[0].items.map((i) => i.type)).toEqual(['reasoning', 'tool']);
     });
   });
 
@@ -334,16 +174,15 @@ describe('EventProcessor', () => {
     it('second user message starts a new turn', () => {
       const events = [
         userMsg('first'),
+        evt('iteration', { iteration: 1 }),
         evt('assistant_delta', { text: 'reply' }),
         evt('usage', { totalCost: 0.01 }),
-        evt('iteration', { iteration: 1 }),
+        evt('task_complete', {}),
         userMsg('second'),
       ];
-      const turns = proc.process(events);
-      // First turn has user + assistant text, second turn starts with second user msg
-      expect(turns.length).toBeGreaterThanOrEqual(2);
-      const lastTurn = turns[turns.length - 1];
-      expect(lastTurn.items.some(i => i.type === 'user' && i.data === 'second')).toBe(true);
+      // The first request, its answer, and the second request: no response starts between the
+      // answer and the next request, so the request itself has to.
+      expect(proc.process(events)).toHaveLength(3);
     });
   });
 
@@ -358,9 +197,8 @@ describe('EventProcessor', () => {
         userMsg('msg2', undefined, { id: 'new-1' }),
         evt('waiting', {}, { id: 'new-2' }),
       ];
-      const turns = proc.process(events2);
-      expect(turns).toHaveLength(1);
-      expect(turns[0].items.some(i => i.type === 'user' && i.data === 'msg2')).toBe(true);
+      // Read again from the start: msg1's turn, gone with its events, is not kept beside msg2's.
+      expect(proc.process(events2)).toHaveLength(1);
     });
   });
 
@@ -436,23 +274,20 @@ describe('EventProcessor', () => {
   });
 
   describe('edge cases', () => {
-    it('skips internal status nudge prompts', () => {
+    it('makes no turn of the harness\'s status nudge, which is no message of the person\'s', () => {
       const events = [
+        userMsg('hello'),
         userMsg('Before finishing, run the status command to verify all changes.'),
       ];
-      const turns = proc.process(events);
-      // No user item should be added for nudge prompts
-      const allItems = turns.flatMap(t => t.items);
-      expect(allItems.filter(i => i.type === 'user')).toHaveLength(0);
+      expect(proc.process(events)).toHaveLength(1);
     });
 
-    it('skips harness-injected <automated_reminder> nudges (not user input)', () => {
+    it('makes no turn of a harness <automated_reminder>, the interview gate\'s feedback among them', () => {
       const events = [
+        userMsg('hello'),
         userMsg('<automated_reminder>\nYour previous response contained only reasoning — invoke a tool or reply with text.\n</automated_reminder>'),
       ];
-      const turns = proc.process(events);
-      const allItems = turns.flatMap(t => t.items);
-      expect(allItems.filter(i => i.type === 'user')).toHaveLength(0);
+      expect(proc.process(events)).toHaveLength(1);
     });
 
     it('handles empty events after non-empty (conversation cleared)', () => {
@@ -465,9 +300,7 @@ describe('EventProcessor', () => {
 
       // New conversation
       const events2 = [userMsg('new start', undefined, { id: 'fresh-1' })];
-      const turns2 = proc.process(events2);
-      expect(turns2).toHaveLength(1);
-      expect(turns2[0].items[0].data).toBe('new start');
+      expect(proc.process(events2)).toHaveLength(1);
     });
   });
 });
@@ -520,6 +353,19 @@ describe('reasoning accumulation', () => {
     expect(reasoning!.complete).toBe(true);
   });
 
+  it('marks reasoning complete when assistant_delta arrives', () => {
+    const rid = 'r-ad';
+    const aid = 'a-ad';
+    const events = [
+      userMsg('hi'),
+      evt('reasoning_delta', { text: 'thinking...' }, { id: rid }),
+      evt('assistant_delta', { text: 'Here is my answer' }, { id: aid }),
+    ];
+    const turns = proc.process(events);
+    const reasoning = turns[0].items.find(i => i.type === 'reasoning');
+    expect(reasoning!.complete).toBe(true);
+  });
+
   it('skips reasoning item when text is only whitespace', () => {
     const events = [
       userMsg('hello'),
@@ -528,7 +374,6 @@ describe('reasoning accumulation', () => {
     ];
     const turns = proc.process(events);
     expect(turns[0].items.some(i => i.type === 'reasoning')).toBe(false);
-    expect(turns[0].items.some(i => i.type === 'waiting')).toBe(false);
   });
 });
 
@@ -605,42 +450,6 @@ describe('tool_param_delta accumulation', () => {
   });
 });
 
-describe('assistant_delta accumulation', () => {
-  let proc: EventProcessor;
-
-  beforeEach(() => {
-    proc = new EventProcessor();
-    idCounter = 0;
-  });
-
-  it('accumulates multiple assistant deltas into one text item', () => {
-    const id = 'ad1';
-    const events = [
-      userMsg('hi'),
-      evt('assistant_delta', { text: 'Hello' }, { id }),
-      evt('assistant_delta', { all: [{ text: 'Hello' }, { text: ' world' }] }, { id }),
-      evt('assistant_delta', { all: [{ text: 'Hello' }, { text: ' world' }, { text: '!' }] }, { id }),
-    ];
-    const turns = proc.process(events);
-    const textItems = turns[0].items.filter(i => i.type === 'text');
-    expect(textItems).toHaveLength(1);
-    expect(textItems[0].data).toBe('Hello world!');
-  });
-
-  it('marks reasoning complete when assistant_delta arrives', () => {
-    const rid = 'r-ad';
-    const aid = 'a-ad';
-    const events = [
-      userMsg('hi'),
-      evt('reasoning_delta', { text: 'thinking...' }, { id: rid }),
-      evt('assistant_delta', { text: 'Here is my answer' }, { id: aid }),
-    ];
-    const turns = proc.process(events);
-    const reasoning = turns[0].items.find(i => i.type === 'reasoning');
-    expect(reasoning!.complete).toBe(true);
-  });
-});
-
 describe('conversation_message role=assistant reconstruction', () => {
   let proc: EventProcessor;
 
@@ -649,7 +458,7 @@ describe('conversation_message role=assistant reconstruction', () => {
     idCounter = 0;
   });
 
-  it('creates reasoning items (marked complete) and tool items with parsed parameters', () => {
+  it('rebuilds a replayed message\'s tool calls, with parsed parameters', () => {
     const events = [
       userMsg('make a page'),
       evt('conversation_message', {
@@ -669,11 +478,6 @@ describe('conversation_message role=assistant reconstruction', () => {
       }),
     ];
     const turns = proc.process(events);
-    const reasoning = turns[0].items.find(i => i.type === 'reasoning');
-    expect(reasoning).toBeDefined();
-    expect(reasoning!.data).toBe('I need to create an HTML file');
-    expect(reasoning!.complete).toBe(true);
-
     const toolItems = turns[0].items.filter(i => i.type === 'tool');
     expect(toolItems).toHaveLength(1);
     expect(toolItems[0].data.id).toBe('tc-r1');
@@ -705,22 +509,6 @@ describe('conversation_message role=assistant reconstruction', () => {
     expect(toolItems).toHaveLength(1);
     expect(toolItems[0].data.id).toBe('tc-dup');
     expect(toolItems[0].data.parameters.command).toBe('ls -la /');
-  });
-
-  it('adds assistant text content as a text item', () => {
-    const events = [
-      userMsg('hi'),
-      evt('conversation_message', {
-        message: {
-          role: 'assistant',
-          content: 'Here is my reply.',
-        },
-      }),
-    ];
-    const turns = proc.process(events);
-    const textItems = turns[0].items.filter(i => i.type === 'text');
-    expect(textItems).toHaveLength(1);
-    expect(textItems[0].data).toBe('Here is my reply.');
   });
 });
 
@@ -906,142 +694,6 @@ describe('conversation_message role=tool status transition', () => {
   });
 });
 
-describe('task_complete clears waiting', () => {
-  let proc: EventProcessor;
-
-  beforeEach(() => {
-    proc = new EventProcessor();
-    idCounter = 0;
-  });
-
-  it('removes waiting indicator when task_complete arrives', () => {
-    const events = [
-      userMsg('hello'),
-      evt('waiting'),
-      evt('task_complete', {}),
-    ];
-    const turns = proc.process(events);
-    expect(turns[0].items.some(i => i.type === 'waiting')).toBe(false);
-  });
-});
-
-describe('limit notices', () => {
-  const items = (events: DebugEvent[]) => new EventProcessor().process(events).flatMap((t) => t.items);
-
-  it('shows one "trying again" note through repeated retries, gone once the reply starts', () => {
-    const during = items([evt('waiting'), evt('retry', { provider: 'groq', attempt: 1, status: 429 }), evt('retry', { provider: 'groq', attempt: 2, status: 429 })]);
-    expect(during.filter((i) => i.type === 'notice')).toEqual([expect.objectContaining({ data: { kind: 'retrying', provider: 'groq', status: 429 } })]);
-
-    const after = items([evt('waiting'), evt('retry', { provider: 'groq' }), evt('assistant_delta', { text: 'Hi' })]);
-    expect(after.some((i) => i.type === 'notice')).toBe(false);
-  });
-
-  it('keeps a model switch in the thread', () => {
-    const list = items([
-      evt('waiting'),
-      // Not 'busy', the default, so the event's own reason has to come through.
-      evt('model_switched', { provider: 'openrouter', fromModel: 'a:free', toModel: 'b:free', reason: 'unavailable' }),
-      evt('assistant_delta', { text: 'Hi' }),
-    ]);
-    expect(list.find((i) => i.type === 'notice')?.data).toEqual({ kind: 'switched', provider: 'openrouter', fromModel: 'a:free', toModel: 'b:free', reason: 'unavailable' });
-  });
-});
-
-describe('EventProcessor — where a turn\'s Restore and Retry go', () => {
-  const turnsOf = (events: DebugEvent[]) => new EventProcessor().process(events);
-
-  it('leaves the snapshot a server run takes before it starts off the user\'s message', () => {
-    const turns = turnsOf([
-      userMsg('build it'),
-      evt('checkpoint_created', { checkpointId: 'before' }),
-      evt('iteration', { iteration: 1 }),
-      evt('assistant_delta', { text: 'Done' }),
-      evt('checkpoint_created', { checkpointId: 'after' }),
-    ]);
-    expect(turns.map((t) => t.checkpointId)).toEqual([undefined, 'after']);
-  });
-
-  it('puts the checkpoint taken at the end on the response, not on the next message', () => {
-    // The order saved from a real run: the last step opens a turn and ends empty, the run
-    // completes, then the end checkpoint arrives, then the next prompt.
-    const turns = turnsOf([
-      userMsg('build it'),
-      evt('waiting'),
-      evt('checkpoint_created', { checkpointId: 'before' }),
-      evt('iteration', { iteration: 1 }),
-      evt('assistant_delta', { text: 'Done' }),
-      evt('iteration', { iteration: 2 }),
-      evt('waiting'),
-      evt('task_complete', {}),
-      evt('checkpoint_created', { checkpointId: 'after' }),
-      userMsg('next thing'),
-    ]);
-    const withButtons = turns.filter((t) => t.checkpointId);
-    expect(withButtons).toHaveLength(1);
-    expect(withButtons[0].checkpointId).toBe('after');
-    expect(withButtons[0].items.some((i) => i.type === 'user')).toBe(false);
-    expect(turns.at(-1)?.items.some((i) => i.type === 'user')).toBe(true);
-    expect(turns.at(-1)?.checkpointId).toBeUndefined();
-  });
-
-  it('shows no checkpoint for a response older than the events kept, rather than on the next prompt', () => {
-    // The kept events can begin after a run's end, with its checkpoint as the first thing in view.
-    const turns = turnsOf([
-      evt('task_complete', {}),
-      evt('checkpoint_created', { checkpointId: 'older' }),
-      userMsg('next thing'),
-      evt('iteration', { iteration: 1 }),
-      evt('assistant_delta', { text: 'ok' }),
-    ]);
-    expect(turns.some((t) => t.checkpointId)).toBe(false);
-  });
-
-  it('puts the checkpoint on the stopped card when a run stops before any reply', () => {
-    const turns = turnsOf([
-      userMsg('build it'),
-      evt('checkpoint_created', { checkpointId: 'before' }),
-      evt('iteration', { iteration: 1 }),
-      evt('api_stopped', { errorCategory: 'blocked', provider: 'openrouter' }),
-      evt('checkpoint_created', { checkpointId: 'after' }),
-    ]);
-    expect(turns.at(-1)?.checkpointId).toBe('after');
-    expect(turns[0].checkpointId).toBeUndefined();
-  });
-});
-
-describe('EventProcessor — the model "Free models" picked', () => {
-  it('puts the pick in the thread as a notice', () => {
-    const list = new EventProcessor().process([evt('model_picked', { provider: 'openrouter', model: 'a:free' })]).flatMap((t) => t.items);
-    expect(list.find((i) => i.type === 'notice')?.data).toEqual({ kind: 'picked', provider: 'openrouter', toModel: 'a:free' });
-  });
-
-  it('notes the free router\'s model where it changed, and not again while it stays the same', () => {
-    const list = new EventProcessor().process([
-      userMsg('go'),
-      evt('iteration', { iteration: 1 }),
-      evt('model_resolved', { provider: 'openrouter', model: 'a:free' }),
-      evt('assistant_delta', { text: 'step one' }),
-      evt('iteration', { iteration: 2 }),
-      evt('model_resolved', { provider: 'openrouter', model: 'a:free' }),
-      evt('assistant_delta', { text: 'step two' }),
-      evt('iteration', { iteration: 3 }),
-      evt('model_resolved', { provider: 'openrouter', model: 'b:free' }),
-    ]).flatMap((t) => t.items);
-    expect(list.filter((i) => i.type === 'notice').map((i) => i.data.toModel)).toEqual(['a:free', 'b:free']);
-  });
-
-  it('notes it again at the start of the next response', () => {
-    const list = new EventProcessor().process([
-      userMsg('go'),
-      evt('model_resolved', { provider: 'openrouter', model: 'a:free' }),
-      evt('assistant_delta', { text: 'done' }),
-      userMsg('again'),
-      evt('model_resolved', { provider: 'openrouter', model: 'a:free' }),
-    ]).flatMap((t) => t.items);
-    expect(list.filter((i) => i.type === 'notice')).toHaveLength(2);
-  });
-});
-
 describe('EventProcessor — a run that stops with a tool in flight', () => {
   const tools = (turns: ReturnType<EventProcessor['process']>) =>
     turns.flatMap((t) => t.items).filter((i) => i.type === 'tool').map((i) => i.data.status);
@@ -1059,28 +711,6 @@ describe('EventProcessor — a run that stops with a tool in flight', () => {
       evt(end, {}),
     ]);
     expect(tools(turns)).toEqual(['completed', 'stopped']);
-  });
-});
-
-
-describe('limit notices and stops — waiting indicator', () => {
-  const items = (events: DebugEvent[]) => new EventProcessor().process(events).flatMap((t) => t.items);
-
-  it('keeps the "trying again" note when a waiting indicator follows it', () => {
-    const list = items([evt('retry', { provider: 'groq', status: 429 }), evt('waiting')]);
-    expect(list.filter((i) => i.type === 'notice')).toHaveLength(1);
-  });
-
-  it('drops the waiting indicator when the model is switched', () => {
-    const list = items([evt('waiting'), evt('model_switched', { provider: 'openrouter', fromModel: 'a', toModel: 'b' })]);
-    expect(list.map((i) => i.type)).toEqual(['notice']);
-  });
-
-  it('shows a stop on a provider error as its own item, with the event\'s data, and drops waiting', () => {
-    const data = { message: 'Daily limit reached', errorCategory: 'daily_limit', provider: 'openrouter' };
-    const list = items([evt('waiting'), evt('api_stopped', data)]);
-    expect(list.map((i) => i.type)).toEqual(['api_stopped']);
-    expect(list[0].data).toEqual(data);
   });
 });
 

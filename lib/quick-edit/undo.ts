@@ -25,3 +25,11 @@ export function redoTarget(ids: readonly string[], cursor: string | null): strin
   const index = position(ids, cursor);
   return index < ids.length - 1 ? ids[index + 1] : null;
 }
+
+/**
+ * Where Retry starts a run over: the checkpoint before the one the run finished on, which is where
+ * undo would go from it. Null when that checkpoint is gone, or nothing came before it.
+ */
+export function retryStart(ids: readonly string[], finishedOn: string): string | null {
+  return ids.includes(finishedOn) ? undoTarget(ids, finishedOn) : null;
+}

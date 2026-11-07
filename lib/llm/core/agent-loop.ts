@@ -393,6 +393,15 @@ export class AgentLoop {
           this.context.addAssistantTurn({ content: response.content, reasoningDetails: response.reasoningDetails });
         }
 
+        // A read-only run (Chat mode) changes nothing, so its answer in words is the end of it.
+        // Nudging it toward the status command spent calls on every answer, and a model that took
+        // its prompt at its word, that status is not for it, ran out of nudges and failed.
+        if (this.config.isReadOnly && hasContent) {
+          exitReason = 'answered';
+          this.progress.onEvent('exit_reason', { reason: 'answered', iteration });
+          break;
+        }
+
         // Check structured status result
         if (this.lastStatusResult) {
           if (this.lastStatusResult.complete) {
@@ -563,6 +572,7 @@ export class AgentLoop {
                     exitReason === 'status_complete_post_tool' ||
                     exitReason === 'status_remaining_empty' ||
                     exitReason === 'agent_type_exit' ||
+                    exitReason === 'answered' ||
                     exitReason === 'setup_complete' ||
                     exitReason === 'awaiting_user';
 
@@ -700,6 +710,8 @@ export class AgentLoop {
         return 'Completed (no remaining work)';
       case 'agent_type_exit':
         return `Completed (${this.config.agentType} agent finished)`;
+      case 'answered':
+        return 'Answered (read-only)';
       case 'setup_complete':
         return 'Setup complete';
       case 'awaiting_user':

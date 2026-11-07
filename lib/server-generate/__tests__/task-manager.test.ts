@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { TaskManager, type TaskPersistence } from '../task-manager';
+import { ProjectBusyError, TaskManager, type TaskPersistence } from '../task-manager';
 
 describe('TaskManager', () => {
   let tm: TaskManager;
@@ -82,6 +82,27 @@ describe('TaskManager', () => {
     tm.completeTask(t1, 'completed');
     const t4 = tm.createTask('proj-4', 'sess-1', 'k4', 'ws-1');
     expect(t4).toBeDefined();
+  });
+
+  it('refuses a second task on a project while one is running, paused or stopping', () => {
+    // Two tasks on one project write the same files, and the tab that started the second could
+    // stop only one of them.
+    for (const status of ['running', 'paused', 'stopping'] as const) {
+      const local = new TaskManager({ maxConcurrentPerScope: 3, keyTTLMs: 30 * 60 * 1000 });
+      const first = local.createTask('proj-1', 'session-1', 'sk', 'workspace-1');
+      local.getTask(first)!.status = status;
+
+      expect(() => local.createTask('proj-1', 'session-2', 'sk', 'workspace-1'), status).toThrow(ProjectBusyError);
+      expect(local.createTask('proj-2', 'session-1', 'sk', 'workspace-1')).toBeDefined();
+      local.dispose();
+    }
+  });
+
+  it('takes a new task on a project once its last one has ended', async () => {
+    const first = tm.createTask('proj-1', 'session-1', 'sk', 'workspace-1');
+    await tm.completeTask(first, 'cancelled');
+
+    expect(tm.createTask('proj-1', 'session-1', 'sk', 'workspace-1')).toBeDefined();
   });
 
   it('getTasksForSession returns all tasks for a session', () => {

@@ -9,6 +9,7 @@ const mockVfs = {
 
 vi.mock('@/lib/vfs', () => ({
   vfs: mockVfs,
+  getActiveVFS: () => mockVfs,
 }));
 
 function makeConversation(messages: Array<{

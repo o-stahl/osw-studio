@@ -89,6 +89,118 @@ const backgroundEventsMap = new Map<string, DebugEvent[]>();
 
 let reattaching = false;
 const dismissedServerProjects = new Set<string>();
+
+/**
+ * The start or run in progress for each project, by its task's `startedAt`: from the press until a
+ * browser run returns, or until the server answers a server run's start. A Stop in that time leaves
+ * the task to it; a task with nothing in progress has nothing left that would end it.
+ */
+const startsInProgress = new Map<string, number>();
+
+/**
+ * Server task endings that arrived while the project's start was still waiting for its task id,
+ * by task id. The start applies its own once the id comes back; the rest are dropped with it.
+ */
+const earlyServerEndings = new Map<string, { projectId: string; data: Record<string, unknown> }>();
+
+/** A server task as `/api/server-generate/status` lists it, and as a 409 names the one holding a project. */
+interface ServerTaskSummary {
+  taskId: string;
+  projectId: string;
+  status: string;
+  startedAt: number;
+  prompt?: string;
+  model?: string;
+  projectName?: string;
+}
+
+/** A server task still going, as its project's entry: it shows as running, and Stop reaches it. */
+function goingServerTask(serverTask: ServerTaskSummary): GenerationTask {
+  return {
+    projectId: serverTask.projectId,
+    projectName: serverTask.projectName || '',
+    prompt: serverTask.prompt || '',
+    model: serverTask.model || '',
+    startedAt: serverTask.startedAt,
+    result: null,
+    paused: serverTask.status === 'paused',
+    orchestratorInstance: null,
+    persistedInstance: null,
+    serverTaskId: serverTask.taskId,
+    stopping: serverTask.status === 'stopping',
+  };
+}
+
+/**
+ * Ask the server to stop a task, and any other task left running on its project. True when a live
+ * loop was told to stop, so its `task_complete` is on its way; false when there is none to wait for.
+ */
+async function cancelServerTask(taskId: string, projectId: string): Promise<boolean> {
+  try {
+    const response = await fetch('/api/server-generate/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskId, projectId }),
+    });
+    const body = response.ok ? await response.json().catch(() => ({})) : {};
+    return response.ok && body.hadOrchestrator === true;
+  } catch {
+    return false;
+  }
+}
+
+/** End the server task a project's `task_complete` belongs to: its result, sound, toast and pull. */
+function finishServerTask(
+  task: GenerationTask,
+  data: Record<string, unknown>,
+  get: () => CombinedState,
+  set: (partial: Partial<CombinedState>) => void,
+) {
+  const { projectId } = task;
+  // awaiting_user is a pause (e.g. a gated command awaiting the user's Allow/Deny), not a
+  // finish — the approval prompt is already in the chat. Don't celebrate or pull files.
+  const awaitingUser = data.exitReason === 'awaiting_user';
+  const tasks = new Map(get().generationTasks);
+  const result = data.result === 'success' || data.result === 'stopped'
+    ? 'completed' as const
+    : 'failed' as const;
+  const serverForeground = isTabVisible() && get().projectId === projectId && get().workspaceReady;
+  if (serverForeground) {
+    dismissedServerProjects.add(projectId);
+    tasks.delete(projectId);
+  } else {
+    tasks.set(projectId, { ...task, result, orchestratorInstance: null });
+  }
+  set({ generationTasks: tasks, ...deriveScalarFields(tasks, get().projectId) });
+  if (result === 'completed') {
+    if (data.result !== 'stopped' && !awaitingUser) {
+      playTaskCompleteSound();
+    }
+    if (!awaitingUser) {
+      // A Chat-mode answer is already in the chat, and a toast after every reply is noise.
+      // A stop still says so.
+      if (data.result === 'stopped' || data.mode !== 'chat') {
+        toast.success(translator()(data.result === 'stopped' ? 'orchestrator.taskStopped' : 'orchestrator.taskCompleted'));
+      }
+      pullAndCheckpointServerFiles(projectId, get).catch(err => {
+        logger.warn('[ServerGen] Post-completion pull failed:', err);
+      });
+    }
+  } else if (data.error) {
+    toast.error(String(data.error), { duration: 5000 });
+  }
+}
+/**
+ * Give a withdrawn request back to the composer. The composer empties when a start claims its
+ * project, so a start given up after that, refused by the server or stopped while it was being set
+ * up, would otherwise take the person's words with it. Only to the project on screen, whose composer
+ * it emptied, and only a request that has words of its own: a connector's run has none.
+ */
+function returnToComposer(get: () => CombinedState, projectId: string, displayPrompt: string | undefined) {
+  const text = displayPrompt?.trim();
+  if (text && get().projectId === projectId) get().appendComposerDraft(text);
+}
+
 type QueuedApproval = { req: ApprovalRequest; projectId: string; resolve: (o: ApprovalOutcome) => void };
 let approvalQueue: QueuedApproval[] = [];
 
@@ -253,12 +365,16 @@ function debouncedSave(projectId: string, events: DebugEvent[]) {
   saveDebounceTimers.set(projectId, timer);
 }
 
-function flushSave(projectId: string, events: DebugEvent[]) {
+function cancelSave(projectId: string) {
   const existing = saveDebounceTimers.get(projectId);
   if (existing) {
     clearTimeout(existing);
     saveDebounceTimers.delete(projectId);
   }
+}
+
+function flushSave(projectId: string, events: DebugEvent[]) {
+  cancelSave(projectId);
   Promise.resolve(debugEventsState.saveEvents(projectId, events)).catch(error => {
     logger.error('Failed to flush debug events:', error);
   });
@@ -286,6 +402,14 @@ interface StartGenerationOptions {
   templateId?: string;
   audio?: PendingAudio[];
   files?: PendingFile[];
+  /** Told when the start is refused because the project has a task already, here or on the server. */
+  onBusy?: () => void;
+}
+
+/** The template an interview run follows. Custom templates are kept in this browser, so a server run is sent it too. */
+async function interviewTemplateFor(templateId: string): Promise<InterviewTemplate | undefined> {
+  const { interviewTemplatesService } = await import('@/lib/interview/templates-service');
+  return (await interviewTemplatesService.getTemplate(templateId)) ?? undefined;
 }
 
 export interface OrchestratorSlice {
@@ -356,6 +480,12 @@ export interface OrchestratorSlice {
  * an interview) have to say the same thing.
  */
 export const PROJECT_BUSY_NOTICE = 'orchestrator.projectBusy' as const;
+const PROJECT_STOPPING_NOTICE = 'orchestrator.projectStopping' as const;
+
+/** Why a project takes no new run: one is still going, or still ending after a Stop. */
+export function busyNotice(task: GenerationTask | undefined) {
+  return task?.stopping ? PROJECT_STOPPING_NOTICE : PROJECT_BUSY_NOTICE;
+}
 
 type CombinedState = OrchestratorSlice & {
   projectId: string;
@@ -364,6 +494,7 @@ type CombinedState = OrchestratorSlice & {
   markDirty: () => void;
   bumpRefreshTrigger: () => void;
   updateProjectSettings: (settings: { runtime?: ProjectRuntime }) => void;
+  appendComposerDraft: (text: string) => void;
 };
 
 export const createOrchestratorSlice: StateCreator<CombinedState, [], [], OrchestratorSlice> = (set, get) => ({
@@ -600,7 +731,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     // finishes and lands changes the client sees as another device's. The guard has to sit ahead of
     // both paths.
     if (get().isProjectGenerating(projectId)) {
-      toast.info(translator()(PROJECT_BUSY_NOTICE));
+      toast.info(translator()(busyNotice(get().generationTasks.get(projectId))));
       return false;
     }
 
@@ -632,6 +763,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       paused: false,
       orchestratorInstance: null,
       persistedInstance: get().generationTasks.get(projectId)?.persistedInstance ?? null,
+      persistedFor: get().generationTasks.get(projectId)?.persistedFor,
     };
 
     const newTasks = new Map(get().generationTasks);
@@ -643,6 +775,23 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
 
     // Register persist target before any saves
     persistProjectIds.set(projectId, projectId);
+    startsInProgress.set(projectId, newTask.startedAt);
+
+    /** This run's task is still the project's, rather than one that took the project since. */
+    const ownsTask = () => get().generationTasks.get(projectId)?.startedAt === newTask.startedAt;
+    /** Another run holds the project: what this one records now would land among its events. */
+    const anotherRunHolds = () => {
+      const held = get().generationTasks.get(projectId);
+      return held !== undefined && held.startedAt !== newTask.startedAt;
+    };
+    /** Give the project back before anything ran: a check below failed, or Stop came first. */
+    const abandonStart = () => {
+      if (startsInProgress.get(projectId) === newTask.startedAt) startsInProgress.delete(projectId);
+      if (!ownsTask()) return;
+      const cancelTasks = new Map(get().generationTasks);
+      cancelTasks.delete(projectId);
+      set({ generationTasks: cancelTasks, ...deriveScalarFields(cancelTasks, get().projectId) });
+    };
 
     // Resolve the assignment (async). The task is already in the map, so the
     // synchronous isProjectGenerating() guard above prevents a double-start
@@ -655,9 +804,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     } catch (err) {
       // Resolution failed (e.g. no model template could be created) — clean up the
       // pre-created task so it doesn't leave the project stuck "generating".
-      const cancelTasks = new Map(get().generationTasks);
-      cancelTasks.delete(projectId);
-      set({ generationTasks: cancelTasks, ...deriveScalarFields(cancelTasks, get().projectId) });
+      abandonStart();
       logger.error('[Orchestrator] Failed to resolve project model assignment:', err);
       toast.error(translator()('orchestrator.assignmentFailed'));
       return false;
@@ -668,10 +815,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     const apiKey = configManager.getProviderApiKey(currentProvider);
 
     if (providerConfig.apiKeyRequired && !apiKey) {
-      // Clean up the task we pre-created
-      const cancelTasks = new Map(get().generationTasks);
-      cancelTasks.delete(projectId);
-      set({ generationTasks: cancelTasks, ...deriveScalarFields(cancelTasks, get().projectId) });
+      abandonStart();
       // OAuth providers stop here too rather than sending an empty bearer, and an expired sign-in
       // lands here as well since getProviderApiKey drops it.
       toast.error(providerConfig.usesOAuth
@@ -682,9 +826,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
 
     if (providerConfig.isLocal) {
       if (!assignment.agent.model) {
-        const cancelTasks = new Map(get().generationTasks);
-        cancelTasks.delete(projectId);
-        set({ generationTasks: cancelTasks, ...deriveScalarFields(cancelTasks, get().projectId) });
+        abandonStart();
         toast.error(translator()('orchestrator.noModelForProvider', { provider: providerConfig.name }));
         return false;
       }
@@ -693,9 +835,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     const modelToUse = assignment.agent.model;
 
     if (!modelToUse) {
-      const cancelTasks = new Map(get().generationTasks);
-      cancelTasks.delete(projectId);
-      set({ generationTasks: cancelTasks, ...deriveScalarFields(cancelTasks, get().projectId) });
+      abandonStart();
       toast.error(translator()('orchestrator.noModel'));
       return false;
     }
@@ -739,14 +879,12 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     };
 
     try {
-      let orchestrator = newTask.persistedInstance;
+      // What this message runs as. An instance kept from a run in another mode would run it in that one.
+      const runsFor = options?.mode === 'interview' ? `interview:${options?.templateId ?? ''}` : chatMode ? 'chat' : 'code';
+      let orchestrator = newTask.persistedFor === runsFor ? newTask.persistedInstance : null;
 
       if (!orchestrator) {
-        let interviewTemplate: InterviewTemplate | undefined;
-        if (options?.mode === 'interview' && options?.templateId) {
-          const { interviewTemplatesService } = await import('@/lib/interview/templates-service');
-          interviewTemplate = (await interviewTemplatesService.getTemplate(options.templateId)) ?? undefined;
-        }
+        const interviewTemplate = options?.mode === 'interview' && options.templateId ? await interviewTemplateFor(options.templateId) : undefined;
 
         orchestrator = new MultiAgentOrchestrator(
           projectId,
@@ -769,8 +907,21 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       const tasksWithOrch = new Map(get().generationTasks);
       const currentTask = tasksWithOrch.get(projectId);
       if (currentTask) {
-        tasksWithOrch.set(projectId, { ...currentTask, orchestratorInstance: orchestrator, persistedInstance: orchestrator });
+        tasksWithOrch.set(projectId, { ...currentTask, orchestratorInstance: orchestrator, persistedInstance: orchestrator, persistedFor: runsFor });
         set({ generationTasks: tasksWithOrch, ...deriveScalarFields(tasksWithOrch, get().projectId) });
+      }
+
+      // Stop pressed while the run was being set up: it does not start, and nothing was sent. The
+      // request is added to the thread as the run starts, so there is nothing there to end; it goes
+      // back to the composer.
+      if (get().generationTasks.get(projectId)?.stopping) {
+        track('task_fail', {
+          provider: currentProvider, model: modelToUse, reason: 'stopped',
+          duration_ms: Date.now() - taskStartTime, task_id: taskId,
+        });
+        abandonStart();
+        returnToComposer(get, projectId, options?.displayPrompt);
+        return false;
       }
 
       const imageData = images?.map(img => ({ data: img.data, mediaType: img.mediaType }));
@@ -787,6 +938,12 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
         Object.keys(executeOptions).length > 0 ? executeOptions : undefined,
       );
 
+      // This run's own task, kept through a Stop until now. Should another run hold the project,
+      // its task and its thread are left to it: this run's ending would land among its events.
+      const entry = get().generationTasks.get(projectId);
+      const own = ownsTask();
+      const newerRun = anotherRunHolds();
+
       if (result.success) {
         if (vfs.hasServerContext()) {
           await vfs.refreshServerContext();
@@ -801,41 +958,42 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
           api_error_count: result.apiErrorCount ?? 0,
         });
 
-        const isForeground = isTabVisible() && get().projectId === projectId;
-        const successTasks = new Map(get().generationTasks);
-        if (isForeground) {
-          successTasks.delete(projectId);
-        } else {
-          const successTask = successTasks.get(projectId);
-          if (successTask) {
-            successTasks.set(projectId, { ...successTask, result: 'completed' });
+        if (own) {
+          const isForeground = isTabVisible() && get().projectId === projectId;
+          const successTasks = new Map(get().generationTasks);
+          if (isForeground) {
+            successTasks.delete(projectId);
+          } else {
+            const successTask = successTasks.get(projectId);
+            if (successTask) {
+              successTasks.set(projectId, { ...successTask, result: 'completed' });
+            }
+            if (!awaitingUser) playTaskCompleteSound();
           }
-          if (!awaitingUser) playTaskCompleteSound();
+          set({ generationTasks: successTasks, ...deriveScalarFields(successTasks, get().projectId) });
+          if (isForeground && !awaitingUser) playTaskCompleteSound();
+          // A Chat-mode answer is already in the chat, and a toast after every reply is noise.
+          if (!awaitingUser && !chatMode) toast.success(translator()('orchestrator.taskCompleted'));
         }
-        set({ generationTasks: successTasks, ...deriveScalarFields(successTasks, get().projectId) });
-        if (isForeground && !awaitingUser) playTaskCompleteSound();
-        if (!awaitingUser) toast.success(translator()('orchestrator.taskCompleted'));
+        // How the run ended, in the event a server run reports it with, so the chat reads both alike.
+        if (!newerRun) get().addDebugEvent('task_complete', { result: 'success', exitReason: result.exitReason }, projectId);
       } else {
-        // A user's Stop already tracked task_fail (reason: stopped) in stopGeneration, which marks
-        // the task failed at once; a Stop pressed while a provider error was being handled ends as
-        // error_stop, so the task's mark is what tells them apart. A provider error stop is a
-        // failure for telemetry, but the stopped card in the thread already says so: no toast.
-        // Once stopped, a new run can start before this one returns; the entry is then the new
-        // run's, and this one was stopped.
-        const entry = get().generationTasks.get(projectId);
-        const ownEntry = entry?.startedAt === newTask.startedAt;
-        const userStopped = result.exitReason === 'stopped' || !ownEntry || entry?.result === 'failed';
+        // A user's Stop marks the task `stopping`; a Stop pressed while a provider error was being
+        // handled ends as error_stop, so that mark is what tells them apart. A provider error stop
+        // is a failure for telemetry, but the stopped card in the thread already says so: no toast.
+        // A task that is another run's means this one was stopped. The stop is counted here, where
+        // the run ends, so a task has one ending: one that finished despite a late Stop counts as
+        // finished, above.
+        const userStopped = result.exitReason === 'stopped' || !own || entry?.stopping === true;
         const wasStopped = userStopped || result.exitReason === 'error_stop';
-        if (!userStopped) {
-          track('task_fail', {
-            provider: currentProvider, model: modelToUse, reason: 'api_error',
-            duration_ms: Date.now() - taskStartTime, task_id: taskId,
-            tool_count: result.toolCount ?? 0, turn_count: result.turnCount ?? 0,
-            api_error_count: result.apiErrorCount ?? 0,
-          });
-        }
+        track('task_fail', {
+          provider: currentProvider, model: modelToUse, reason: userStopped ? 'stopped' : 'api_error',
+          duration_ms: Date.now() - taskStartTime, task_id: taskId,
+          tool_count: result.toolCount ?? 0, turn_count: result.turnCount ?? 0,
+          api_error_count: result.apiErrorCount ?? 0,
+        });
 
-        if (ownEntry) {
+        if (own) {
           const failForeground = isTabVisible() && get().projectId === projectId;
           const failTasks = new Map(get().generationTasks);
           if (failForeground) {
@@ -851,6 +1009,13 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
         if (!wasStopped) {
           toast.error(result.summary || translator()('orchestrator.generationFailed'), { duration: 5000, position: 'bottom-center' });
         }
+        if (!newerRun) {
+          get().addDebugEvent('task_complete', {
+            result: wasStopped ? 'stopped' : 'failed',
+            exitReason: result.exitReason,
+            ...(wasStopped ? {} : { error: result.summary }),
+          }, projectId);
+        }
       }
     } catch (error) {
       logger.error('Generation error:', error);
@@ -862,39 +1027,48 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
         duration_ms: Date.now() - taskStartTime, task_id: taskId,
       });
 
-      const errorForeground = isTabVisible() && get().projectId === projectId;
-      const errorTasks = new Map(get().generationTasks);
-      if (errorForeground) {
-        errorTasks.delete(projectId);
-      } else {
-        const errorTask = errorTasks.get(projectId);
-        if (errorTask) {
-          errorTasks.set(projectId, { ...errorTask, result: 'failed' });
+      if (ownsTask()) {
+        const errorForeground = isTabVisible() && get().projectId === projectId;
+        const errorTasks = new Map(get().generationTasks);
+        if (errorForeground) {
+          errorTasks.delete(projectId);
+        } else {
+          const errorTask = errorTasks.get(projectId);
+          if (errorTask) {
+            errorTasks.set(projectId, { ...errorTask, result: 'failed' });
+          }
         }
+        set({ generationTasks: errorTasks, ...deriveScalarFields(errorTasks, get().projectId) });
       }
-      set({ generationTasks: errorTasks, ...deriveScalarFields(errorTasks, get().projectId) });
-      get().addDebugEvent('error', errorMessage ? { message: errorMessage } : {}, projectId);
-      toast.error(errorMessage ?? translator()('orchestrator.generationFailed'), { duration: 5000, position: 'bottom-center' });
+      if (!anotherRunHolds()) {
+        get().addDebugEvent('error', errorMessage ? { message: errorMessage } : {}, projectId);
+        toast.error(errorMessage ?? translator()('orchestrator.generationFailed'), { duration: 5000, position: 'bottom-center' });
+      }
     } finally {
-      // Clear orchestratorInstance but keep persistedInstance
-      const finalTasks = new Map(get().generationTasks);
-      const finalTask = finalTasks.get(projectId);
-      if (finalTask) {
-        finalTasks.set(projectId, { ...finalTask, orchestratorInstance: null });
-        set({ generationTasks: finalTasks, ...deriveScalarFields(finalTasks, get().projectId) });
-      }
+      if (startsInProgress.get(projectId) === newTask.startedAt) startsInProgress.delete(projectId);
+      // A run that holds the project since keeps its instance, its buffered events and its
+      // "generating".
+      if (!anotherRunHolds()) {
+        // Clear orchestratorInstance but keep persistedInstance
+        const finalTasks = new Map(get().generationTasks);
+        const finalTask = finalTasks.get(projectId);
+        if (finalTask) {
+          finalTasks.set(projectId, { ...finalTask, orchestratorInstance: null });
+          set({ generationTasks: finalTasks, ...deriveScalarFields(finalTasks, get().projectId) });
+        }
 
-      // Flush buffered events
-      const buffer = backgroundEventsMap.get(projectId);
-      if (buffer && buffer.length > 0) {
-        flushSave(projectId, buffer);
-      } else {
-        flushSave(projectId, get().debugEvents);
-      }
-      backgroundEventsMap.delete(projectId);
+        // Flush buffered events
+        const buffer = backgroundEventsMap.get(projectId);
+        if (buffer && buffer.length > 0) {
+          flushSave(projectId, buffer);
+        } else {
+          flushSave(projectId, get().debugEvents);
+        }
+        backgroundEventsMap.delete(projectId);
 
-      if (typeof globalThis.dispatchEvent === 'function') {
-        globalThis.dispatchEvent(new CustomEvent('generationStateChanged', { detail: { generating: false, projectId } }));
+        if (typeof globalThis.dispatchEvent === 'function') {
+          globalThis.dispatchEvent(new CustomEvent('generationStateChanged', { detail: { generating: false, projectId } }));
+        }
       }
     }
 
@@ -910,44 +1084,49 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     // Release any waiting approval promises so gated sub-agents don't hang.
     get().clearPendingApprovals();
 
+    // A second press while the run is still ending asks it to stop again, but is not a second stop.
+    const firstPress = task !== undefined && task.result === null && !task.stopping;
+
     // Recorded before either branch: the server path returns early, and the ask is about the
     // person's decision, not about which side of the wire ended the run. Never while telemetry
     // is off: the only reason to ask is to send the answer, and being asked anyway would read as
     // the opt-out not having taken.
-    if (task && task.result === null && isTelemetryActive()) {
+    if (firstPress && isTelemetryActive()) {
       set({ userStop: { projectId: targetId, taskId: targetId, at: Date.now() } });
       track('stop_reason_shown', { task_id: targetId });
+    }
+
+    // The task stays the project's until its run has ended, which the run itself, or the server's
+    // report of it, records. Nothing new starts beside a run that may still be writing.
+    if (firstPress) {
+      const marked = new Map(get().generationTasks);
+      marked.set(targetId, { ...task, stopping: true });
+      set({ generationTasks: marked });
     }
 
     if (task?.serverTaskId) {
       // Soft stop: abort the current inference and let the server emit task_complete. When the
       // server says there is no live loop to stop, no such event is coming, and waiting for it
       // would leave the task marked as running for good; that case is closed locally below.
-      let serverWillComplete = false;
-      try {
-        const response = await fetch('/api/server-generate/cancel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ taskId: task.serverTaskId }),
+      if (await cancelServerTask(task.serverTaskId, targetId)) return;
+    } else {
+      task?.orchestratorInstance?.stop();
+      // A browser run still going, or a start still being set up, ends its own task and counts its
+      // own stop; a server start still waiting for its task id cancels the task once it has one.
+      if (task?.result === null && startsInProgress.get(targetId) === task.startedAt) return;
+      // A task left over with an instance and no run in progress: nothing else will count its stop.
+      if (firstPress && task?.orchestratorInstance) {
+        track('task_fail', {
+          provider: configManager.getSelectedProvider(),
+          model: get().currentModel || configManager.getDefaultModel(),
+          reason: 'stopped',
+          duration_ms: Date.now() - task.startedAt,
+          task_id: targetId,
         });
-        const body = response.ok ? await response.json().catch(() => ({})) : {};
-        serverWillComplete = response.ok && body.hadOrchestrator === true;
-      } catch {
-        serverWillComplete = false;
       }
-      if (serverWillComplete) return;
     }
 
-    if (task?.orchestratorInstance) {
-      task.orchestratorInstance.stop();
-      track('task_fail', {
-        provider: configManager.getSelectedProvider(),
-        model: get().currentModel || configManager.getDefaultModel(),
-        reason: 'stopped',
-        duration_ms: task ? Date.now() - task.startedAt : undefined,
-        task_id: targetId,
-      });
-    }
+    // Nothing left that would end the task: a server task with no loop to stop, or one left over.
     if (task) {
       const newTasks = new Map(get().generationTasks);
       newTasks.set(targetId, { ...task, result: 'failed', orchestratorInstance: null });
@@ -1140,11 +1319,19 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
         // first, which was an unrecoverable delete of the person's own chat (`clearEvents` writes
         // an empty list) triggered by an outside client. A connector may add to the record here;
         // it may not erase it. Only events from the task it started are replayed back to it.
-        const started = await get().startServerGeneration(data.projectId, data.prompt, Boolean(data.chatMode));
+        // One task per project: the connector is told, rather than this tab starting a second one.
+        // The task can be one this tab knows, or one only the server has.
+        let busy = get().isProjectGenerating(data.projectId);
+        const started = !busy && await get().startServerGeneration(data.projectId, data.prompt, Boolean(data.chatMode), undefined, {
+          projectId: data.projectId,
+          onBusy: () => { busy = true; },
+        });
         const taskId = get().generationTasks.get(data.projectId)?.serverTaskId;
         body = started
           ? { requestId: data.requestId, ok: true, taskId }
-          : { requestId: data.requestId, ok: false, error: 'This tab could not start the task. Its provider connection or model may not be set.' };
+          : busy
+            ? { requestId: data.requestId, ok: false, error: 'A task is already running on this project. Try again when it has finished.' }
+            : { requestId: data.requestId, ok: false, error: 'This tab could not start the task. Its provider connection or model may not be set.' };
       } catch (error) {
         body = { requestId: data.requestId, ok: false, error: error instanceof Error ? error.message : 'Unknown error' }; // i18n-ignore: answered to the MCP client
       }
@@ -1229,41 +1416,21 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
           return;
         }
         if (event === 'task_complete') {
-          cancelPendingFileSync();
-          // A run the connector asked for is over, so stop saying it is happening.
-          clearMcpActivity(projectId);
-
-          // awaiting_user is a pause (e.g. a gated command awaiting the user's Allow/Deny), not a
-          // finish — the approval prompt is already in the chat. Don't celebrate or pull files.
-          const awaitingUser = data.exitReason === 'awaiting_user';
-
-          const tasks = new Map(get().generationTasks);
-          const task = [...tasks.values()].find((t) => t.serverTaskId && t.projectId === projectId && t.result === null);
-          if (task) {
-            const result = data.result === 'success' || data.result === 'stopped'
-              ? 'completed' as const
-              : 'failed' as const;
-            const serverForeground = isTabVisible() && get().projectId === projectId && get().workspaceReady;
-            if (serverForeground) {
-              dismissedServerProjects.add(task.projectId);
-              tasks.delete(task.projectId);
-            } else {
-              tasks.set(task.projectId, { ...task, result, orchestratorInstance: null });
-            }
-            set({ generationTasks: tasks, ...deriveScalarFields(tasks, get().projectId) });
-            if (result === 'completed') {
-              if (data.result !== 'stopped' && !awaitingUser) {
-                playTaskCompleteSound();
-              }
-              if (!awaitingUser) {
-                toast.success(translator()(data.result === 'stopped' ? 'orchestrator.taskStopped' : 'orchestrator.taskCompleted'));
-                pullAndCheckpointServerFiles(projectId, get).catch(err => {
-                  logger.warn('[ServerGen] Post-completion pull failed:', err);
-                });
-              }
-            } else if (data.error) {
-              toast.error(String(data.error), { duration: 5000 });
-            }
+          // Only the task the project is running ends with this. Another task's ending is kept in
+          // the thread and leaves the running one as it is, so both stay on screen.
+          const sourceTaskId = data.sourceTaskId as string | undefined;
+          const running = [...get().generationTasks.values()].find((t) => t.projectId === projectId && t.result === null);
+          const ownEnding = !!running?.serverTaskId && (sourceTaskId === undefined || sourceTaskId === running.serverTaskId);
+          if (ownEnding || !running) {
+            cancelPendingFileSync();
+            // A run the connector asked for is over, so stop saying it is happening.
+            clearMcpActivity(projectId);
+          }
+          if (ownEnding) {
+            finishServerTask(running, data, get, set);
+          } else if (running && !running.serverTaskId && sourceTaskId) {
+            // The project's start has not heard back its task id yet, and this may be its ending.
+            earlyServerEndings.set(sourceTaskId, { projectId, data });
           }
           get().addDebugEvent(event, data, projectId);
           return;
@@ -1353,6 +1520,14 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
   },
 
   startServerGeneration: async (projectId: string, prompt: string, chatMode: boolean, images?: PendingImage[], options?: StartGenerationOptions) => {
+    // One task per project, here as well as in startGeneration: a run an MCP client asks for comes
+    // straight here, and would otherwise take a running task's place where Stop cannot reach it.
+    if (get().isProjectGenerating(projectId)) {
+      toast.info(translator()(busyNotice(get().generationTasks.get(projectId))));
+      options?.onBusy?.();
+      return false;
+    }
+
     const projectName = get().projectName || '';
 
     /**
@@ -1366,6 +1541,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
      * The body of an async function runs synchronously up to its first `await`, so setting it here
      * closes the guard in the same tick the press opens it.
      */
+    const startedAt = Date.now();
     const claim = new Map(get().generationTasks);
     claim.set(projectId, {
       projectId,
@@ -1373,17 +1549,26 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       prompt: prompt.trim(),
       // Filled in once the assignment resolves, like the browser path's.
       model: '',
-      startedAt: Date.now(),
+      startedAt,
       result: null,
       paused: false,
       orchestratorInstance: null,
       persistedInstance: null,
     });
     set({ generationTasks: claim, ...deriveScalarFields(claim, get().projectId) });
+    startsInProgress.set(projectId, startedAt);
+
+    /** The start is over: answered by the server, or given up. */
+    const endStart = () => {
+      if (startsInProgress.get(projectId) === startedAt) startsInProgress.delete(projectId);
+      for (const [id, early] of earlyServerEndings) if (early.projectId === projectId) earlyServerEndings.delete(id);
+    };
 
     /** Give the claim back. Every exit before the task is running has to call this, or the project
      *  stays "generating" with nothing running and no way to stop it. */
     const abandonClaim = () => {
+      endStart();
+      if (get().generationTasks.get(projectId)?.startedAt !== startedAt) return;
       const next = new Map(get().generationTasks);
       next.delete(projectId);
       set({ generationTasks: next, ...deriveScalarFields(next, get().projectId) });
@@ -1423,11 +1608,13 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     // one replaces it, as a browser run does. Recorded here, ahead of the new message, so a later run
     // rebuilds the history with the new message in it; dropped by the server instead, the record
     // would land after it and leave it out.
+    let replaced: { messages: unknown[] } | null = null;
     if (prompt !== CONTINUE_AFTER_STOP_PROMPT) {
       const history = conversationFromEvents(get().debugEvents);
       if (history.at(-1)?.role === 'user') {
         while (history.at(-1)?.role === 'user') history.pop();
-        get().addDebugEvent('conversation_replaced', { messages: history }, projectId);
+        replaced = { messages: history };
+        get().addDebugEvent('conversation_replaced', replaced, projectId);
       }
     }
 
@@ -1482,8 +1669,10 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     }
 
     // Snapshot current project state so the user can roll back after server generation
+    let snapshotId: string | null = null;
     try {
       const cp = await checkpointManager.createCheckpoint(projectId, 'Pre-generation snapshot', { kind: 'auto', label: { key: 'preGeneration' } });
+      snapshotId = cp.id;
       get().addDebugEvent('checkpoint_created', {
         checkpointId: cp.id, description: cp.description, timestamp: cp.timestamp,
       }, projectId);
@@ -1525,6 +1714,58 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     if (options?.placedBlocks?.length) executeOptions.semanticBlocks = options.placedBlocks.map((b: any) => ({ name: b.name, domPath: b.domPath, position: b.position, description: b.description }));
     if (options?.displayPrompt) executeOptions.displayPrompt = options.displayPrompt;
 
+    // The mode picked in the chat goes with the run, as it does to the browser's orchestrator.
+    const mode = options?.mode === 'interview' ? 'interview' : chatMode ? 'chat' : 'code';
+    let interviewTemplate: InterviewTemplate | undefined;
+    try {
+      if (mode === 'interview' && options?.templateId) interviewTemplate = await interviewTemplateFor(options.templateId);
+    } catch {
+      toast.error(translator()('orchestrator.serverStartFailed'));
+      abandonClaim();
+      return false;
+    }
+
+    /**
+     * Take back what this start put in the thread, for a run that never began: the request, its
+     * `waiting`, the snapshot's event and the history it replaced. Only this start's own; a running
+     * task's events stay.
+     */
+    const withdrawRequest = () => {
+      const strip = (events: DebugEvent[]) => {
+        const at = events.findLastIndex((e) => e.event === 'conversation_message'
+          && e.data?.message?.role === 'user' && e.data?.message?.ui_metadata?.awaitingServerEcho);
+        if (at === -1) return events;
+        return events.filter((e, i) => (i < at && !(replaced && e.data === replaced)) || (i > at
+          && !(e.event === 'waiting' && !e.data?.sourceTaskId)
+          && !(e.event === 'checkpoint_created' && snapshotId !== null && e.data?.checkpointId === snapshotId)));
+      };
+      if (get().projectId === projectId) {
+        const kept = strip(get().debugEvents);
+        set({ debugEvents: kept });
+        flushSave(projectId, kept);
+      } else {
+        // A project not on screen buffers what arrived since it left the screen, not its whole
+        // chat, so an emptied buffer is dropped rather than saved over the stored chat.
+        const kept = strip(backgroundEventsMap.get(projectId) ?? []);
+        if (kept.length > 0) {
+          backgroundEventsMap.set(projectId, kept);
+          debouncedSave(projectId, kept);
+        } else {
+          backgroundEventsMap.delete(projectId);
+          cancelSave(projectId);
+        }
+      }
+    };
+
+    // Stop pressed while the run was being set up: nothing is sent, and the request goes back to
+    // the composer.
+    if (get().generationTasks.get(projectId)?.stopping) {
+      withdrawRequest();
+      abandonClaim();
+      returnToComposer(get, projectId, options?.displayPrompt);
+      return false;
+    }
+
     let taskId: string;
     try {
       const response = await fetch('/api/server-generate', {
@@ -1543,6 +1784,8 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
           webSearchAvailable: configManager.isWebSearchConfigured(),
           ...(webSearch ? { webSearch } : {}),
           imageGenAvailable: imageModelFor(assignment) !== null,
+          mode,
+          ...(mode === 'interview' ? { interviewTemplateId: options?.templateId, interviewTemplate } : {}),
           conversationHistory,
           ...(Object.keys(executeOptions).length > 0 ? { executeOptions } : {}),
           generationParams: {
@@ -1560,6 +1803,25 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
+        if (response.status === 409) {
+          // The project has a task on the server already, started elsewhere or before a reload. This
+          // one does not start, and its request goes back to the composer. That one, when the answer
+          // names it, is brought in from the answer, so it shows as running and Stop reaches it.
+          withdrawRequest();
+          abandonClaim();
+          toast.info(translator()(PROJECT_BUSY_NOTICE));
+          options?.onBusy?.();
+          const active = (error as { activeTask?: ServerTaskSummary }).activeTask;
+          if (active) {
+            const tasks = new Map(get().generationTasks);
+            tasks.set(projectId, goingServerTask(active));
+            set({ generationTasks: tasks, ...deriveScalarFields(tasks, get().projectId) });
+          }
+          // Last: bringing that task in starts the project generating again, which empties the
+          // composer, and would take the request back out of it.
+          returnToComposer(get, projectId, options?.displayPrompt);
+          return false;
+        }
         toast.error((error as any).error || translator()('orchestrator.serverStartFailed'));
         // Refused on the free allowance: check it again, so Connections stops counting on it if it is gone.
         if (provider === OSWS_PROVIDER) void checkAllowance({ force: true });
@@ -1594,6 +1856,18 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       serverTaskId: taskId,
     });
     set({ generationTasks: tasks, ...deriveScalarFields(tasks, get().projectId) });
+
+    // The task may have ended before its id came back, or Stop been pressed in the meantime.
+    const early = earlyServerEndings.get(taskId);
+    endStart();
+    const started = get().generationTasks.get(projectId);
+    if (early && started?.serverTaskId === taskId && started.result === null) {
+      cancelPendingFileSync();
+      clearMcpActivity(projectId);
+      finishServerTask(started, early.data, get, set);
+    } else if (started?.stopping) {
+      void get().stopGeneration(projectId);
+    }
     return true;
   },
 
@@ -1622,33 +1896,28 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
 
       const serverProjectIds = new Set<string>();
 
-      // Group server tasks by projectId — only keep the latest per project
-      const latestByProject = new Map<string, typeof serverTasks[0]>();
+      // One task per project: the latest still going, or failing that the latest. A task still going
+      // is the one that has to show and that Stop has to reach, even beside a newer one that ended.
+      const going = (status: string) => status === 'running' || status === 'paused' || status === 'stopping';
+      const latestByProject = new Map<string, ServerTaskSummary & { failureReason?: string }>();
       if (serverTasks?.length) {
         for (const t of serverTasks) {
           serverProjectIds.add(t.projectId);
           const existing = latestByProject.get(t.projectId);
-          if (!existing || t.startedAt > existing.startedAt) {
+          if (!existing
+            || (going(t.status) && !going(existing.status))
+            || (going(t.status) === going(existing.status) && t.startedAt > existing.startedAt)) {
             latestByProject.set(t.projectId, t);
           }
         }
       }
 
       for (const [, serverTask] of latestByProject) {
+        // A start still waiting for the server keeps its claim; the server's answer settles it.
+        if (startsInProgress.has(serverTask.projectId)) continue;
 
-        if (serverTask.status === 'running' || serverTask.status === 'paused') {
-          generationTasks.set(serverTask.projectId, {
-            projectId: serverTask.projectId,
-            projectName: serverTask.projectName || '',
-            prompt: serverTask.prompt || '',
-            model: serverTask.model || '',
-            startedAt: serverTask.startedAt,
-            result: null,
-            paused: serverTask.status === 'paused',
-            orchestratorInstance: null,
-            persistedInstance: null,
-            serverTaskId: serverTask.taskId,
-          });
+        if (going(serverTask.status)) {
+          generationTasks.set(serverTask.projectId, goingServerTask(serverTask));
         } else if (serverTask.status === 'completed' || serverTask.status === 'failed') {
           if (dismissedServerProjects.has(serverTask.projectId)) continue;
           const existing = generationTasks.get(serverTask.projectId);

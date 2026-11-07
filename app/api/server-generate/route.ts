@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { verifyWorkspaceAccess } from '@/lib/auth/system-database';
 import { taskManager, eventBus } from '@/lib/server-generate/singleton';
+import { ProjectBusyError } from '@/lib/server-generate/task-manager';
 import { runServerGeneration } from '@/lib/server-generate/server-orchestrator-runner';
 import type { StartGenerationRequest } from '@/lib/server-generate/types';
 import { getProvider } from '@/lib/llm/providers/registry';
 import type { ProviderId } from '@/lib/llm/providers/types';
 import { OSWS_PROVIDER, allowanceFromServer } from '@/lib/inference/allowance';
 import { getAccountToken } from '@/lib/inference/account-token';
+import { asInterviewTemplate } from '@/lib/interview/templates';
 
 export async function POST(request: NextRequest) {
   const session = await getSession();
@@ -25,6 +27,16 @@ export async function POST(request: NextRequest) {
       { error: 'Missing required fields: projectId, prompt, model' },
       { status: 400 },
     );
+  }
+  if (body.mode !== undefined && body.mode !== 'code' && body.mode !== 'chat' && body.mode !== 'interview') {
+    return NextResponse.json({ error: 'Unknown mode' }, { status: 400 });
+  }
+  // The template goes into the run's system prompt and its completion check, so it has to have the
+  // shape both read.
+  if (body.interviewTemplate !== undefined) {
+    const template = asInterviewTemplate(body.interviewTemplate);
+    if (!template) return NextResponse.json({ error: 'Invalid interview template' }, { status: 400 });
+    body.interviewTemplate = template;
   }
   // Local providers (Ollama, LM Studio, llama.cpp) have no key; everything else needs one.
   const providerId = body.providerConfig?.provider as ProviderId | undefined;
@@ -69,6 +81,23 @@ export async function POST(request: NextRequest) {
   try {
     taskId = taskManager.createTask(body.projectId, sessionId, body.apiKey ?? '', workspaceId);
   } catch (error) {
+    // The running task is named to the account that started it, whose tab brings it in so it shows
+    // and Stop reaches it. Another account's is not named.
+    if (error instanceof ProjectBusyError) {
+      const active = taskManager.getTask(error.activeTaskId);
+      const activeTask = active && active.sessionId === sessionId
+        ? {
+          taskId: active.taskId,
+          projectId: active.projectId,
+          status: active.status,
+          startedAt: active.startedAt,
+          prompt: active.prompt,
+          model: active.model,
+          projectName: active.projectName,
+        }
+        : undefined;
+      return NextResponse.json({ error: error.message, ...(activeTask ? { activeTask } : {}) }, { status: 409 });
+    }
     if (error instanceof Error && error.message.includes('limit')) {
       return NextResponse.json({ error: error.message }, { status: 429 });
     }

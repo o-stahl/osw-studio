@@ -65,6 +65,30 @@ describe('orchestrator slice — startServerGeneration model resolution', () => 
     expect(body.providerConfig.provider).toBe('opencode-go');
   });
 
+  it('sends the mode picked in the chat, and an interview\'s template, which only this browser keeps', async () => {
+    await store.getState().startServerGeneration('proj-i', 'Plan a feature', false, undefined, { projectId: 'proj-i', mode: 'interview', templateId: 'plan-feature' });
+    await store.getState().startServerGeneration('proj-c', 'What does main.js do?', true);
+    await store.getState().startServerGeneration('proj-b', 'Make the header blue', false);
+
+    const [interview, chat, code] = fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body));
+    expect(interview).toMatchObject({ mode: 'interview', interviewTemplateId: 'plan-feature', interviewTemplate: { id: 'plan-feature', title: 'Plan a feature' } });
+    expect(chat.mode).toBe('chat');
+    expect(code.mode).toBe('code');
+    expect(chat).not.toHaveProperty('interviewTemplate');
+    expect(code).not.toHaveProperty('interviewTemplate');
+  });
+
+  it('gives the claim back when the interview template cannot be read', async () => {
+    const { interviewTemplatesService } = await import('@/lib/interview/templates-service');
+    vi.spyOn(interviewTemplatesService, 'getTemplate').mockRejectedValueOnce(new Error('IndexedDB unavailable'));
+
+    const started = await store.getState().startServerGeneration('proj-x', 'Plan a feature', false, undefined, { projectId: 'proj-x', mode: 'interview', templateId: 'plan-feature' });
+
+    expect(started).toBe(false);
+    expect(store.getState().generationTasks.has('proj-x')).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   // An unnamed project sends no name, so the server applies its own default rather than storing
   // whichever language's "Untitled" this tab happened to be in.
   it('sends no project name for a project that has none', async () => {
@@ -152,6 +176,8 @@ describe('orchestrator slice — startServerGeneration model resolution', () => 
         e.data?.message?.content === 'new ask' ? { ...e, data: { message: { role: 'user', content: 'new ask' } } } : e),
     });
     add('conversation_message', { message: { role: 'assistant', content: 'answer' } }, 'proj1');
+    // The run ends, as its task_complete would end it: the project takes one task at a time.
+    store.setState({ generationTasks: new Map() });
     await store.getState().startServerGeneration('proj1', 'third ask', false);
     const second = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
     expect(second.conversationHistory.map((m: { content: string }) => m.content)).toEqual(['sys', 'new ask', 'answer']);

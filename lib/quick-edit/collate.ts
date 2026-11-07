@@ -15,13 +15,14 @@ import type { Tally, TallyStep } from './tally';
 
 /** The verb families that read as one activity. */
 type Family = 'read' | 'change' | 'create' | 'delete' | 'move' | 'copy' | 'search' | 'list' | 'lookup'
-  | 'build' | 'evaluate' | 'preview' | 'delegate' | 'image' | 'database' | 'plan' | 'run' | 'other';
+  | 'build' | 'evaluate' | 'preview' | 'delegate' | 'image' | 'database' | 'ask' | 'run' | 'other'
+  | 'brief' | 'spec' | 'propose';
 
 const FAMILY: Record<ActionKind, Family> = {
   read: 'read', write: 'change', edit: 'change', create: 'create', delete: 'delete', move: 'move',
   copy: 'copy', search: 'search', list: 'list', lookup: 'lookup', build: 'build', evaluate: 'evaluate',
-  preview: 'preview', delegate: 'delegate', image: 'image', database: 'database', plan: 'plan',
-  run: 'run', other: 'other',
+  preview: 'preview', delegate: 'delegate', image: 'image', database: 'database',
+  ask: 'ask', run: 'run', other: 'other', brief: 'brief', spec: 'spec', propose: 'propose',
 };
 
 /** Families whose clause names the file, or counts them. */
@@ -29,7 +30,8 @@ const FILE_FAMILIES = new Set<Family>(['read', 'change', 'create', 'delete', 'mo
 
 /** Families whose clause is one fixed phrase however often they ran. */
 const FIXED_FAMILIES = new Set<Family>([
-  'search', 'list', 'lookup', 'build', 'evaluate', 'preview', 'delegate', 'database', 'plan',
+  'search', 'list', 'lookup', 'build', 'evaluate', 'preview', 'delegate', 'database', 'ask',
+  'brief', 'spec', 'propose',
 ]);
 
 /**
@@ -64,8 +66,8 @@ function fileName(path: string): string {
 
 function add(group: Group, step: TallyStep): void {
   group.commands += step.steps;
-  if (step.path) {
-    if (!group.files.includes(step.path)) group.files.push(step.path);
+  if (step.paths.length > 0) {
+    for (const path of step.paths) if (!group.files.includes(path)) group.files.push(path);
   } else {
     group.unnamed += step.steps;
   }
@@ -116,7 +118,8 @@ function toClause(group: Group): Clause {
 type FileClauseKey = `${'read' | 'change' | 'create' | 'delete' | 'move' | 'copy'}${'File' | 'Count'}`;
 export type CollateKey =
   | FileClauseKey
-  | 'search' | 'list' | 'lookup' | 'build' | 'evaluate' | 'preview' | 'delegate' | 'database' | 'plan'
+  | 'search' | 'list' | 'lookup' | 'build' | 'evaluate' | 'preview' | 'delegate' | 'database' | 'ask'
+  | 'brief' | 'spec' | 'propose'
   | 'image' | 'run' | 'other' | 'then' | 'and' | 'total' | 'totalChanged';
 export type CollateTranslator = (key: CollateKey, values?: Record<string, string | number>) => string;
 

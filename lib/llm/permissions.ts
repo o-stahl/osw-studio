@@ -1,3 +1,5 @@
+import { isSedInPlaceFlag } from '@/lib/vfs/shell-commands';
+
 /**
  * Permission gating: pure classification of a parsed command into a "gate key",
  * and resolution of whether that key needs user approval under the current mode.
@@ -70,7 +72,25 @@ export const ALWAYS_ALLOWED_NOTES: { command: string; reason: string }[] = [
   { command: 'propose-create', reason: 'reaches only the setup agent, and proposes a project for the user to accept — the creation itself is the user\'s action.' },
 ];
 
-const WRITE_SQL = /\b(insert|update|delete|create|drop|alter|replace|truncate)\b/i;
+/** A statement verb that changes data; followed by `(` it is a function, as `replace()` is. */
+const WRITE_SQL = /\b(insert|update|delete|create|drop|alter|replace|truncate)\b(?!\s*\()/i;
+
+/**
+ * Quoted strings and names, and comments, in one pass from the left, so a quote inside a comment
+ * and a comment marker inside a string are each taken for what they are.
+ */
+const SQL_NOT_WORDS = /'(?:[^']|'')*'|"(?:[^"]|"")*"|`(?:[^`]|``)*`|\[[^\]]*\]|--[^\n]*|\/\*[\s\S]*?(?:\*\/|$)/g;
+
+/**
+ * Whether a `sqlite3` command line changes a deployment's data rather than reading it, read from the
+ * statements' own words: quoted strings and names, and comments, are left out, so a query for
+ * `action = 'delete'` stays a query. Each argument is read on its own, since the statement that runs
+ * is one argument and a flag-shaped one beside it must not comment it out.
+ */
+export function sqliteChangesData(args: string[]): boolean {
+  if (args[0] !== 'sqlite3') return false;
+  return args.slice(1).some((arg) => WRITE_SQL.test(arg.replace(SQL_NOT_WORDS, ' ')));
+}
 
 export function extractCurlUrls(args: string[]): string[] {
   // Mirror cli-shell.ts curl flag parsing: every non-flag, non-flag-value token, in order.
@@ -112,11 +132,8 @@ export function classifyGateKey(args: string[]): string | null {
     case 'rmdir': return 'rm';
     case 'python3': return 'python'; // shares the python capability toggle
     case 'curl': return isExternalCurl(args) ? 'curl:external' : 'curl:local';
-    case 'sed': return args.includes('-i') ? 'sed:write' : 'sed:read';
-    case 'sqlite3': {
-      const sql = args.slice(1).join(' ');
-      return WRITE_SQL.test(sql) ? 'sqlite3:write' : 'sqlite3:read';
-    }
+    case 'sed': return args.slice(1).some(isSedInPlaceFlag) ? 'sed:write' : 'sed:read';
+    case 'sqlite3': return sqliteChangesData(args) ? 'sqlite3:write' : 'sqlite3:read';
     default: {
       const known = GATE_COMMANDS.some(c => c.command === name);
       return known ? name : null;

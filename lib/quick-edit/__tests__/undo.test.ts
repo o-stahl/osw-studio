@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { undoTarget, redoTarget } from '@/lib/quick-edit/undo';
+import { undoTarget, redoTarget, retryStart } from '@/lib/quick-edit/undo';
 
 const ids = ['cp_0', 'cp_1', 'cp_2'];
 
@@ -27,5 +27,20 @@ describe('undo and redo over checkpoints', () => {
   it('treats a cursor on a checkpoint that has since been pruned as being at the newest', () => {
     expect(undoTarget(ids, 'cp_gone')).toBe('cp_1');
     expect(redoTarget(ids, 'cp_gone')).toBeNull();
+  });
+});
+
+describe('where Retry starts', () => {
+  it('starts from the checkpoint before the one the run finished on, not from that one', () => {
+    expect(retryStart(ids, 'cp_2')).toBe('cp_1');
+    expect(retryStart(ids, 'cp_1')).toBe('cp_0');
+  });
+
+  it('has nowhere to start when the run finished on the first checkpoint', () => {
+    expect(retryStart(ids, 'cp_0')).toBeNull();
+  });
+
+  it('has nowhere to start when the run\'s checkpoint was pruned, rather than guessing from the newest', () => {
+    expect(retryStart(ids, 'cp_gone')).toBeNull();
   });
 });

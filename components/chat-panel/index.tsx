@@ -2,25 +2,23 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback, DragEvent, ClipboardEvent } from 'react';
 import { useTranslations } from 'next-intl';
-import { useLocalFormat } from '@/lib/i18n/use-local-format';
-import { MessageSquare, Loader2, CheckCircle, XCircle, ChevronRight, FileCode, ClipboardList, Bot, RotateCcw, RefreshCw, Send, ChevronUp, ChevronDown, Code, Trash2, Brain, Image as ImageIcon, Type, Mic, Square, Plus, FileText, LogIn, Settings2, Camera } from 'lucide-react';
+import { MessageSquare, Loader2, ClipboardList, Send, ChevronUp, ChevronDown, Code, Trash2, Image as ImageIcon, Type, Mic, Square, Plus, FileText, LogIn, Settings2, Camera } from 'lucide-react';
 import type { WorkspaceMode, ActiveInterview } from '@/lib/stores/slices/project';
 import { InterviewPicker } from './interview-picker';
 import { InterviewTemplatesManager } from '@/components/interview/InterviewTemplatesManager';
 import { interviewTemplatesService } from '@/lib/interview/templates-service';
-import type { InterviewTemplate, InterviewHandoff } from '@/lib/interview/types';
+import type { InterviewTemplate } from '@/lib/interview/types';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import type { DebugEvent } from '@/lib/stores/types';
-import { EventProcessor, type Turn, type ToolCall } from './event-processor';
+import { EventProcessor, type ToolCall } from './event-processor';
+import { useFollowNewest } from './use-follow-newest';
 import { classifyCommand } from '@/lib/agent-activity/classify-command';
 import { shouldShowPacingNotice, type PacingToolItem } from '@/lib/pacing-notice';
 import { STOP_REASONS, shouldShowStopReason, type StopReasonId } from '@/lib/telemetry/stop-reason';
 import { configManager } from '@/lib/config/storage';
 import { X } from 'lucide-react';
-import { MarkdownRenderer } from '@/components/markdown-renderer';
 import { cn } from '@/lib/utils';
 import { pendingImageFromDataUrl } from '@/lib/llm/pending-image';
-import { ChipsBlock } from './chips';
 import { PanelContainer, PanelHeader } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -32,8 +30,7 @@ import { ProjectModelsPanel } from '@/components/providers-models/project-models
 import { hasAnyConnectedProvider } from '@/lib/llm/providers/connection-status';
 import { SUGGESTION_PILLS, QUICK_EDIT_PILLS, INLINE_SUGGESTION_COUNT, type BuiltInPillId } from '@/lib/constants/suggestion-pills';
 import { checkHFCapabilities, loginHF } from '@/lib/auth/hf-auth';
-import type { ModelRef } from '@/lib/llm/models/assignment';
-import { StoppedCard, LimitNotice, OPEN_MODEL_PICKER_EVENT } from './limit-cards';
+import { OPEN_MODEL_PICKER_EVENT } from './limit-cards';
 import { ConnectChooser } from './connect-options';
 import { connectSettled } from '@/lib/llm/models/global-auto-assign';
 import { isFreeModels } from '@/lib/llm/suggestions/free-models';
@@ -44,12 +41,10 @@ import { useAudioRecorder } from '@/lib/audio/use-audio-recorder';
 import { useSpeechRecognition } from '@/lib/audio/use-speech-recognition';
 import { AudioSpectrogram } from './audio-spectrogram';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { ContentBlock } from '@/lib/llm/types';
 import type { PlacedBlock } from '@/lib/semantic-blocks/types';
 import { MessageContext } from '@/components/message-context';
 import { PermissionModeSelector } from '@/components/permissions/PermissionModeSelector';
 import { ApprovalCard } from '@/components/permissions/ApprovalCard';
-import { useApprovalSentence } from '@/lib/i18n/use-approval-sentence';
 import { track } from '@/lib/telemetry';
 import { toast } from 'sonner';
 import { useWorkspaceStore } from '@/lib/stores/workspace';
@@ -58,58 +53,6 @@ import { selectPromptSuggestions } from '@/lib/vfs/suggestion-paths';
 
 type FocusTarget = FocusContextPayload & { timestamp: number };
 
-// Helper to render user message content (string or ContentBlock[])
-function UserMessageContent({ content, hideImages, hideAudio }: { content: string | ContentBlock[]; hideImages?: boolean; hideAudio?: boolean }) {
-  const t = useTranslations('chat');
-  if (typeof content === 'string') {
-    return <div className="whitespace-pre-wrap">{content}</div>;
-  }
-
-  // Separate text and image blocks
-  const textBlocks = content.filter(b => b.type === 'text');
-  const imageBlocks = hideImages ? [] : content.filter(b => b.type === 'image_url');
-  const audioBlocks = hideAudio ? [] : content.filter(b => b.type === 'input_audio');
-
-  return (
-    <div className="space-y-2">
-      {/* Render text blocks */}
-      {textBlocks.map((block, index) => (
-        <div key={`text-${index}`} className="whitespace-pre-wrap">
-          {block.type === 'text' && block.text}
-        </div>
-      ))}
-
-      {/* Render images in a flex container (when not handled by MessageContext) */}
-      {imageBlocks.length > 0 && (
-        <div className="flex flex-wrap gap-2 p-1 rounded-md bg-muted/50">
-          {imageBlocks.map((block, index) => (
-            block.type === 'image_url' && (
-              <img
-                key={`img-${index}`}
-                src={block.image_url.url}
-                alt={t('attachedImage')}
-                className="h-[60px] w-auto rounded border border-border object-cover"
-              />
-            )
-          ))}
-        </div>
-      )}
-
-      {/* Render attached audio clips as inline players */}
-      {audioBlocks.map((block, index) => (
-        block.type === 'input_audio' && (
-          <audio
-            key={`aud-${index}`}
-            controls
-            src={`data:audio/${block.input_audio.format};base64,${block.input_audio.data}`}
-            className="h-9 w-full max-w-[280px]"
-          />
-        )
-      ))}
-    </div>
-  );
-}
-
 interface ChatPanelProps {
   events: DebugEvent[];
   /**
@@ -117,14 +60,10 @@ interface ChatPanelProps {
    * Null before the preview reports one, which selectPromptSuggestions reads as "offer everything".
    */
   previewPath?: string | null;
-  onRestore?: (checkpointId: string) => void;
-  onRetry?: (checkpointId: string) => void;
   // Input functionality
   generating: boolean;
   onGenerate: (prompt: string, images?: PendingImage[], audio?: PendingAudio[], files?: PendingFile[]) => void;
   onStop: () => void;
-  /** Continue a stopped task as a new turn, on `withModel` when given, else on the working selection. */
-  onContinue?: (withModel?: ModelRef) => void;
   /**
    * The selected element **as included in the next message**, not merely as selected.
    *
@@ -145,7 +84,6 @@ interface ChatPanelProps {
   setMode: (mode: WorkspaceMode) => void;
   activeInterview: ActiveInterview | null;
   onStartInterview: (template: InterviewTemplate) => void;
-  onHandoff: (handoff: InterviewHandoff) => void;
   currentModel: string;
   getModelDisplayName: (modelId: string) => string;
   // Tour/lock state
@@ -170,15 +108,18 @@ interface ChatPanelProps {
   // Layout overrides
   hideHeader?: boolean;
   /**
-   * Quick edit's rendering of the conversation, replacing the transcript.
-   *
-   * Its presence is what puts the panel in simple mode: no `PermissionModeSelector` and no interview
-   * template management, the quick-edit starters instead of the build ones, and a placeholder that
-   * asks for a change rather than a site. The model picker and the mode menu stay -- both are
-   * ordinary choices, and the mode is the agent's, not the surface. The thread itself is built by
-   * the owner, which is where the save, restore and undo it offers already live.
+   * The conversation, as the owner draws it: the workspace and describe mode both pass a thread,
+   * built where the save, restore, undo and answers it offers already live.
    */
-  simpleThread?: React.ReactNode;
+  thread: React.ReactNode;
+  /**
+   * The simple view, in quick edit, which hides the panel's more involved controls: no
+   * `PermissionModeSelector` and no interview template management, the quick-edit starters instead
+   * of the build ones and offered after the first message too, and a placeholder that asks for a
+   * change rather than a site. The model picker and the mode menu stay: both are ordinary choices,
+   * and the mode is the agent's, not the surface.
+   */
+  simple?: boolean;
   /**
    * The panel is the only one open, so it has the whole window: the messages and the composer are
    * held to a reading column in the middle rather than stretched across it.
@@ -196,30 +137,12 @@ interface ChatPanelProps {
   systemNote?: string | null;
 }
 
-const toolIcons: Record<string, React.ReactNode> = {
-  bash: <ChevronRight className="h-3 w-3 text-blue-500" />,
-  write: <FileCode className="h-3 w-3 text-orange-500" />,
-  status: <CheckCircle className="h-3 w-3 text-orange-500" />,
-  agent: <Bot className="h-3 w-3 text-purple-500" />,
-};
-
-const statusIcons: Record<string, React.ReactNode> = {
-  pending: <Loader2 className="h-3 w-3 animate-spin text-gray-400" />,
-  executing: <Loader2 className="h-3 w-3 animate-spin text-blue-500" />,
-  completed: <CheckCircle className="h-3 w-3 text-green-500" />,
-  failed: <XCircle className="h-3 w-3 text-red-500" />,
-  stopped: <Square className="h-3 w-3 text-muted-foreground" />,
-};
-
 export function ChatPanel({
   events,
   previewPath,
-  onRestore,
-  onRetry,
   generating,
   onGenerate,
   onStop,
-  onContinue,
   focusContext,
   onClearFocus,
   focusPreviewSnippet,
@@ -227,7 +150,6 @@ export function ChatPanel({
   setMode,
   activeInterview,
   onStartInterview,
-  onHandoff,
   currentModel,
   getModelDisplayName,
   isTourLockingInput = false,
@@ -243,7 +165,8 @@ export function ChatPanel({
   onRemovePlacedBlock,
   onClearPlacedBlocks,
   hideHeader,
-  simpleThread,
+  thread,
+  simple = false,
   solo = false,
   onCaptureContextScreenshot,
   className,
@@ -257,7 +180,6 @@ export function ChatPanel({
   const workspaceReady = useWorkspaceStore(s => s.workspaceReady);
   const modelConfigVersion = useWorkspaceStore(s => s.modelConfigVersion);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [autoScroll, setAutoScroll] = useState(true);
   const [showMobileSettings, setShowMobileSettings] = useState(false);
   const [showSettingsManage, setShowSettingsManage] = useState(false);
   const [settingsManagePane, setSettingsManagePane] = useState<SettingsPane>('models');
@@ -316,7 +238,6 @@ export function ChatPanel({
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, []);
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   // Recomputes on modelConfigVersion changes.
   const resolvedAssignment = useMemo(
@@ -339,7 +260,6 @@ export function ChatPanel({
     chat: { label: tc('terms.chat'), Icon: MessageSquare, iconColor: 'text-green-500' },
     interview: { label: t('modeInterview'), Icon: ClipboardList, iconColor: 'text-blue-500' },
   };
-  const isScrollingProgrammatically = useRef(false);
 
   // Prompt state — owned by ChatPanel, never leaves this component until submit
   const [prompt, setPrompt] = useState('');
@@ -391,7 +311,6 @@ export function ChatPanel({
   // the project's own. Before that it is the slice's empty default, which reads identically to "this
   // project has none" and would show the generic starters for a moment and then swap them out.
   const suggestionsLoaded = useWorkspaceStore(s => s.projectId) !== '';
-  const simple = simpleThread !== undefined;
   const allSuggestions = projectSuggestions.length > 0 ? projectSuggestions : simple ? QUICK_EDIT_PILLS : SUGGESTION_PILLS;
   // Ordered before the inline/overflow split, so a suggestion scoped to this page takes one of the
   // three inline slots ahead of the general ones.
@@ -684,8 +603,12 @@ export function ChatPanel({
 
   const processorRef = useRef(new EventProcessor());
 
-  // Transform events into turns with chronologically ordered items (incremental)
-  const turns = useMemo(() => processorRef.current.process(events), [events]);
+  // Transform events into turns with chronologically ordered items (incremental), counting the
+  // person's messages as it goes.
+  const { turns, requests } = useMemo(() => {
+    const turns = processorRef.current.process(events);
+    return { turns, requests: processorRef.current.requests };
+  }, [events]);
 
   // A one-time tip in the empty chat for someone who has never sent a message: what a suggestion
   // does, and that nothing is sent until they press Send. Read after mount (localStorage), and done
@@ -705,18 +628,6 @@ export function ChatPanel({
   }, []);
   // The empty-thread chooser shows the held message itself; anywhere else it sits above the composer.
   const showConnectChooser = workspaceReady && turns.length === 0 && needsConnection;
-  // Only where the task last stopped can it be continued from; once anything was sent after it,
-  // earlier stops are history.
-  const liveStoppedId = useMemo(() => {
-    for (let i = turns.length - 1; i >= 0; i--) {
-      const items = turns[i].items;
-      for (let j = items.length - 1; j >= 0; j--) {
-        if (items[j].type === 'api_stopped') return items[j].id;
-        if (items[j].type === 'user') return null;
-      }
-    }
-    return null;
-  }, [turns]);
 
   // Pacing notice: reassure the user when a large single-file WRITE has been
   // running for a while (common on models without tool streaming).
@@ -763,7 +674,7 @@ export function ChatPanel({
   }, [generating, pacingItems, isWritePacingItem]);
 
   // "Why did you stop?", asked once after a stop the user made. Same shape and place as the
-  // pacing notice: the newest thing in the transcript, clearly not a message, one tap to answer
+  // pacing notice: the newest thing in the thread, clearly not a message, one tap to answer
   // or dismiss. The ask itself is already counted (stop_reason_shown) when the store records
   // the stop, so what is tracked here is only the answer.
   const viewedProjectId = useWorkspaceStore(s => s.projectId);
@@ -780,64 +691,9 @@ export function ChatPanel({
     setShowPacingNotice(false);
   }, []);
 
-  // Auto-scroll when turns change (throttled with requestAnimationFrame)
-  useEffect(() => {
-    if (!autoScroll || !scrollRef.current) return;
-    // An empty thread reads from the top: what it shows is a page, not the end of a conversation.
-    if (turns.length === 0) return;
-
-    // Use requestAnimationFrame to batch scroll updates and avoid layout thrashing
-    const rafId = requestAnimationFrame(() => {
-      if (scrollRef.current) {
-        isScrollingProgrammatically.current = true;
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        // Reset flag after scroll completes
-        setTimeout(() => {
-          isScrollingProgrammatically.current = false;
-        }, 50);
-      }
-    });
-
-    return () => cancelAnimationFrame(rafId);
-  }, [turns, autoScroll]);
-
-  // Enable auto-scroll when new turns arrive (user sent a message)
-  useEffect(() => {
-    if (turns.length > 0) {
-      setAutoScroll(true);
-    }
-  }, [turns.length]);
-
-  // Scroll position detection
-  useEffect(() => {
-    const scrollEl = scrollRef.current;
-    if (!scrollEl) return;
-
-    const handleScroll = () => {
-      // Ignore programmatic scrolls
-      if (isScrollingProgrammatically.current) return;
-
-      const { scrollTop, scrollHeight, clientHeight } = scrollEl;
-      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 50;
-      setAutoScroll(isAtBottom);
-    };
-
-    scrollEl.addEventListener('scroll', handleScroll);
-    return () => scrollEl.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  // Toggle expanded state for an item
-  const toggleExpanded = (itemId: string) => {
-    setExpandedItems(prev => {
-      const next = new Set(prev);
-      if (next.has(itemId)) {
-        next.delete(itemId);
-      } else {
-        next.add(itemId);
-      }
-      return next;
-    });
-  };
+  // The thread follows its newest content until the person scrolls up, and again once they scroll
+  // back to the bottom, send a message or open another project.
+  useFollowNewest(scrollRef, { content: turns, requests, conversation: viewedProjectId, empty: turns.length === 0 });
 
   // Focus context snippet for unified context component
   const trimmedSnippet = focusPreviewSnippet?.trim() ?? '';
@@ -850,7 +706,7 @@ export function ChatPanel({
     >
       <div className="flex flex-wrap items-center justify-between gap-2 text-foreground">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-xs uppercase tracking-wide text-destructive">runtime errors</span>
+          <span className="font-medium text-xs uppercase tracking-wide text-destructive">{t('runtimeErrors')}</span>
           <span className="inline-flex items-center justify-center rounded-full bg-destructive/15 text-destructive text-[10px] font-medium px-1.5 min-w-[18px] h-[18px]">
             {runtimeErrors.length}
           </span>
@@ -934,66 +790,10 @@ export function ChatPanel({
             held={held}
             onDiscardHeld={() => holdPrompt(null)}
           />
-        ) : simple ? (
-          simpleThread
-        ) : turns.length === 0 ? (
-          <div className="text-xs text-muted-foreground text-center p-4">
-            {t('noMessages')}
-          </div>
         ) : (
-          (() => {
-            // Per-task usage collation: show accumulated usage on the last turn of each task.
-            // Task boundaries: turns containing a non-synthetic user message.
-            const isTaskStart = (t: Turn) => t.items.some(i => i.type === 'user');
-
-            // Build a map: turnIndex → collated usage data for display.
-            // For each task group, the last turn before the next task (or end) gets the usage.
-            const usageMap = new Map<number, { usage: Turn['usage']; startTime?: number }>();
-            let taskLastUsage: Turn['usage'] = undefined;
-            let taskStartTime: number | undefined;
-
-            for (let i = 0; i < turns.length; i++) {
-              if (i > 0 && isTaskStart(turns[i])) {
-                // Task boundary — assign accumulated usage to the last turn of the previous task
-                if (taskLastUsage) {
-                  usageMap.set(i - 1, { usage: taskLastUsage, startTime: taskStartTime });
-                }
-                taskLastUsage = undefined;
-                taskStartTime = undefined;
-              }
-              if (turns[i].usage) {
-                taskLastUsage = turns[i].usage;
-                taskStartTime = turns[i].taskStartTime;
-              }
-            }
-            // Final task group — assign to last turn
-            if (taskLastUsage) {
-              usageMap.set(turns.length - 1, { usage: taskLastUsage, startTime: taskStartTime });
-            }
-
-            return turns.map((turn, idx) => {
-              const collated = usageMap.get(idx);
-              return (
-                <TurnDisplay
-                  key={turn.id}
-                  turn={turn}
-                  collatedUsage={collated?.usage}
-                  collatedTaskStartTime={collated?.startTime}
-                  onRestore={onRestore}
-                  onRetry={onRetry}
-                  onContinue={onContinue}
-                  generating={generating}
-                  liveStoppedId={generating ? null : liveStoppedId}
-                  onGenerate={onGenerate}
-                  onHandoff={onHandoff}
-                  expandedItems={expandedItems}
-                  onToggleExpanded={toggleExpanded}
-                />
-              );
-            });
-          })()
+          thread
         )}
-        {/* Last in the list, not first: the transcript appends downward and scrolls to the
+        {/* Last in the list, not first: the thread appends downward and scrolls to the
             newest item, so a notice at the top is either missed or has to be scrolled back
             away from. It is about what the agent is doing right now, which is the bottom. */}
         {showPacingNotice && (
@@ -1521,703 +1321,5 @@ export function ChatPanel({
       </div>
       )}
     </PanelContainer>
-  );
-}
-
-interface TurnDisplayProps {
-  turn: Turn;
-  collatedUsage?: Turn['usage'];
-  collatedTaskStartTime?: number;
-  onRestore?: (checkpointId: string) => void;
-  onRetry?: (checkpointId: string) => void;
-  onContinue?: (withModel?: ModelRef) => void;
-  generating?: boolean;
-  /** The stopped-task item that can still be continued from; only its actions apply. */
-  liveStoppedId?: string | null;
-  onGenerate?: (prompt: string, images?: PendingImage[]) => void;
-  onHandoff?: (handoff: InterviewHandoff) => void;
-  expandedItems: Set<string>;
-  onToggleExpanded: (itemId: string) => void;
-}
-
-function TurnDisplay({ turn, collatedUsage, collatedTaskStartTime, onRestore, onRetry, onContinue, generating, liveStoppedId, onGenerate, onHandoff, expandedItems, onToggleExpanded }: TurnDisplayProps) {
-  const t = useTranslations('chat');
-  const approvalSentence = useApprovalSentence();
-  const { number } = useLocalFormat();
-  const seconds = (n: number) => number(n, { style: 'unit', unit: 'second', unitDisplay: 'narrow' });
-  const tc = useTranslations('common');
-  return (
-    <div className="space-y-2" {...(turn.checkpointId ? { 'data-checkpoint-id': turn.checkpointId } : {})}>
-      {/* Render items in chronological order */}
-      {turn.items.map((item) => {
-        switch (item.type) {
-          case 'waiting':
-            return (
-              <div key={item.id} className="bg-muted/30 rounded-md p-2 opacity-70">
-                <div className="flex items-center gap-2 px-1">
-                  <Loader2 className="h-3 w-3 animate-spin text-blue-400" />
-                  <span className="text-xs text-muted-foreground">{t('waitingForResponse')}</span>
-                </div>
-              </div>
-            );
-
-          case 'reasoning':
-            return (
-              <ReasoningDisplay
-                key={item.id}
-
-                content={item.data}
-                isComplete={item.complete === true}
-                isExpanded={expandedItems.has(item.id)}
-                onToggle={() => onToggleExpanded(item.id)}
-              />
-            );
-
-          case 'plan':
-            return (
-              <PlanDisplay
-                key={item.id}
-
-                content={item.data}
-                isExpanded={expandedItems.has(item.id)}
-                onToggle={() => onToggleExpanded(item.id)}
-              />
-            );
-
-          case 'agent':
-            return (
-              <AgentDisplay
-                key={item.id}
-
-                content={item.data}
-                isExpanded={expandedItems.has(item.id)}
-                onToggle={() => onToggleExpanded(item.id)}
-              />
-            );
-
-          case 'progress':
-            return (
-              <ProgressDisplay
-                key={item.id}
-
-                content={item.data}
-                isExpanded={expandedItems.has(item.id)}
-                onToggle={() => onToggleExpanded(item.id)}
-              />
-            );
-
-          case 'tool':
-            return (
-              <ToolDisplay
-                key={item.id}
-
-                tool={item.data as ToolCall}
-                isExpanded={expandedItems.has(item.id)}
-                onToggle={() => onToggleExpanded(item.id)}
-              />
-            );
-
-          case 'text':
-            return (
-              <div key={item.id} className="text-sm text-foreground/90 bg-muted/20 px-3 py-2 rounded">
-                <MarkdownRenderer content={item.data} />
-              </div>
-            );
-
-          case 'ask': {
-            const askData = item.data as { prompt?: string; options: string[] };
-            if (!askData.options || askData.options.length === 0) return null;
-            return (
-              <div key={item.id} className="text-sm text-foreground/90 bg-muted/20 px-3 py-2 rounded">
-                {askData.prompt && (
-                  <p className="text-sm text-foreground mb-1">{askData.prompt}</p>
-                )}
-                <ChipsBlock
-                  options={askData.options}
-                  onSelect={(value) => {
-                    track('ask_response', { via: 'chip' });
-                    onGenerate?.(value);
-                  }}
-                  disabled={!!generating}
-                />
-              </div>
-            );
-          }
-
-          case 'approval': {
-            // Server-side generation paused on a gated command. Allow persists the capability so
-            // the run (and future ones) proceed without re-prompting; Deny continues without it.
-            // Either choice restarts the task from history via onGenerate.
-            const appr = item.data as { gateKey?: string; command?: string; capabilityLabel?: string };
-            if (!appr.gateKey) return null;
-            const label = appr.capabilityLabel || appr.gateKey;
-            return (
-              <div key={item.id} className="text-sm bg-amber-500/10 border border-amber-500/30 px-3 py-2 rounded">
-                <p className="text-sm text-foreground mb-0.5">
-                  {approvalSentence(appr.gateKey, label)}
-                </p>
-                {appr.command && (
-                  <p className="text-xs text-muted-foreground font-mono truncate mb-2">{appr.command}</p>
-                )}
-                <div className="flex gap-1.5">
-                  <button
-                    onClick={() => {
-                      if (generating) return;
-                      track('approval_response', { via: 'chip', decision: 'allow', gate: appr.gateKey });
-                      configManager.setPermissionOverride(appr.gateKey!, 'allow');
-                      onGenerate?.(`Approved ${label}. Continue the task.`); // i18n-ignore: sent to the agent as the user's message; English by decision
-                    }}
-                    disabled={!!generating}
-                    className="text-xs px-3 py-1.5 rounded border border-primary/30 bg-primary/10 text-primary font-medium hover:bg-primary/15 transition-colors disabled:opacity-40 disabled:cursor-default"
-                  >
-                    {t('allow')}
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (generating) return;
-                      track('approval_response', { via: 'chip', decision: 'deny', gate: appr.gateKey });
-                      onGenerate?.(`I declined ${label}. Continue without it.`); // i18n-ignore: sent to the agent as the user's message; English by decision
-                    }}
-                    disabled={!!generating}
-                    className="text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors disabled:opacity-40 disabled:cursor-default"
-                  >
-                    {t('deny')}
-                  </button>
-                </div>
-              </div>
-            );
-          }
-
-          case 'project_context':
-            return (
-              <div key={item.id} className={`rounded-md transition-all ${expandedItems.has(item.id) ? 'bg-muted/30 p-2' : 'p-1.5'}`}>
-                <button
-                  onClick={() => onToggleExpanded(item.id)}
-                  className="flex items-center gap-2 w-full text-left hover:bg-muted/30 rounded px-1"
-                >
-                  <ChevronRight className={`h-3 w-3 text-muted-foreground transition-transform ${expandedItems.has(item.id) ? 'rotate-90' : ''}`} />
-                  <FileCode className="h-3 w-3 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">{t('projectContext')}</span>
-                </button>
-                {expandedItems.has(item.id) && (
-                  <div className="mt-2 px-2">
-                    <pre className="text-xs bg-muted/50 p-2 rounded overflow-x-auto whitespace-pre-wrap text-muted-foreground">
-                      {item.data}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            );
-
-          case 'compaction':
-            return (
-              <div key={item.id} className="flex items-center gap-2 py-2 my-1">
-                <div className="flex-1 border-t border-dashed border-muted-foreground/30" />
-                <span className="text-xs text-muted-foreground whitespace-nowrap">
-                  {t('contextCompacted', { before: number(item.data?.preCompactTokens ?? 0, { notation: 'compact' }), after: number(item.data?.postCompactEstimate ?? 0, { notation: 'compact' }) })}
-                </span>
-                <div className="flex-1 border-t border-dashed border-muted-foreground/30" />
-              </div>
-            );
-
-          case 'user': {
-            // Extract image blocks from content if present (to show in unified context)
-            const contentData = item.data;
-            const userImageBlocks = Array.isArray(contentData)
-              ? contentData.filter((b: ContentBlock) => b.type === 'image_url')
-              : [];
-            const userAudioBlocks = Array.isArray(contentData)
-              ? contentData.filter((b: ContentBlock) => b.type === 'input_audio')
-              : [];
-            const messageText = typeof contentData === 'string'
-              ? contentData
-              : Array.isArray(contentData)
-                ? contentData.filter((b: ContentBlock) => b.type === 'text').map((b) => (b.type === 'text' ? b.text : '')).join('')
-                : '';
-            const hasText = messageText.trim().length > 0;
-            const hasAnyContext = !!(item.focusContext || item.semanticBlocks || userImageBlocks.length > 0 || item.attachedFiles?.length || userAudioBlocks.length > 0);
-            return (
-              <div key={item.id} className="text-sm text-foreground bg-primary/10 px-3 py-2 rounded border border-primary/20">
-                <div className="font-semibold text-primary mb-1 text-xs">{tc('labels.user')}</div>
-                <UserMessageContent content={contentData} hideImages={hasAnyContext} hideAudio={hasAnyContext} />
-                {hasAnyContext && (
-                  <MessageContext
-                    focusContext={item.focusContext}
-                    semanticBlocks={item.semanticBlocks}
-                    imageBlocks={userImageBlocks.length > 0 ? userImageBlocks : undefined}
-                    fileNames={item.attachedFiles}
-                    audioBlocks={userAudioBlocks.length > 0 ? userAudioBlocks : undefined}
-                    defaultOpen={userAudioBlocks.length > 0 && !hasText}
-                    readOnly
-                  />
-                )}
-              </div>
-            );
-          }
-
-          case 'synthetic_error':
-            // Auto-injected error message (e.g., malformed tool call correction)
-            // Style it like a collapsible tool call
-            return (
-              <SyntheticErrorDisplay
-                key={item.id}
-                content={item.data}
-                isExpanded={expandedItems.has(item.id)}
-                onToggle={() => onToggleExpanded(item.id)}
-              />
-            );
-
-          case 'error':
-            return (
-              <div key={item.id} className="text-sm bg-destructive/10 border border-destructive/20 px-3 py-2 rounded">
-                <div className="flex items-start gap-2">
-                  <XCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
-                  <div className="flex-1">
-                    <div className="font-semibold text-destructive mb-1">{tc('labels.error')}</div>
-                    <div className="text-destructive/90 whitespace-pre-wrap font-mono text-xs">
-                      {item.data?.message || t('errorNoDetails')}
-                    </div>
-                    {item.data?.stack && (
-                      <details className="mt-2">
-                        <summary className="text-xs text-destructive/70 cursor-pointer hover:text-destructive">
-                          {t('stackTrace')}
-                        </summary>
-                        <pre className="text-[10px] text-destructive/60 mt-1 overflow-x-auto">
-                          {item.data.stack}
-                        </pre>
-                      </details>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-
-          case 'api_stopped':
-          case 'error_paused':
-            return (
-              <StoppedCard
-                key={item.id}
-                data={item.data ?? {}}
-                live={item.id === liveStoppedId}
-                onContinue={onContinue}
-              />
-            );
-
-          case 'notice':
-            return <LimitNotice key={item.id} data={item.data} />;
-
-          case 'interview_gate': {
-            const gate = item.data as { complete: boolean; errored?: boolean; items?: { elicit: string; passed: boolean; reason?: string }[]; handoff?: InterviewHandoff };
-            if (gate.errored) {
-              return (
-                <div key={item.id} className="text-sm bg-muted/50 border border-border px-3 py-2 rounded">
-                  <div className="flex items-start gap-2">
-                    <ClipboardList className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                    <div className="text-xs text-muted-foreground">{t('interviewUnverified')}</div>
-                  </div>
-                </div>
-              );
-            }
-            if (gate.complete) {
-              return (
-                <div key={item.id} className="text-sm bg-green-500/10 border border-green-500/30 px-3 py-2 rounded">
-                  <div className="flex items-start gap-2">
-                    <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
-                    <div className="flex-1">
-                      <div className="font-semibold text-green-700 dark:text-green-400 mb-0.5">{t('interviewComplete')}</div>
-                      <div className="text-xs text-muted-foreground">{t('allItemsCaptured')}</div>
-                      {gate.handoff && (
-                        <button
-                          onClick={() => onHandoff?.(gate.handoff!)}
-                          className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium bg-green-600 hover:bg-green-700 text-white px-2.5 py-1 rounded"
-                        >
-                          <ChevronRight className="h-3 w-3" />
-                          {gate.handoff.label}
-                        </button>
-                      )}
-                      <div className="text-[11px] text-muted-foreground mt-1.5">{t('orClearChat')}</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-            const unmet = (gate.items ?? []).filter(g => !g.passed);
-            return (
-              <div key={item.id} className="text-sm bg-amber-500/10 border border-amber-500/30 px-3 py-2 rounded">
-                <div className="flex items-start gap-2">
-                  <ClipboardList className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                  <div className="flex-1">
-                    <div className="font-semibold text-amber-700 dark:text-amber-400 mb-1">{t('notCompleteYet')}</div>
-                    <ul className="text-xs text-muted-foreground space-y-0.5">
-                      {unmet.map((u, idx) => (
-                        <li key={idx}>• {u.elicit}{u.reason ? ` — ${u.reason}` : ''}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            );
-          }
-
-          default:
-            return null;
-        }
-      })}
-
-      {/* Usage info and checkpoint actions — shown on last turn only */}
-      {(collatedUsage || turn.checkpointId) && (
-        <div className="flex items-center justify-between gap-2">
-          {/* Collated usage info (per-task) */}
-          {collatedUsage && (() => {
-            const cumulativeTokens = (collatedUsage.totalUsage?.totalTokens || collatedUsage.usage?.totalTokens || collatedUsage.totalTokens) || 0;
-            const cumulativeCost = collatedUsage.totalCost ?? collatedUsage.cost ?? 0;
-            const taskTokens = collatedUsage.taskTokens ?? Math.max(0, cumulativeTokens - (collatedUsage.taskTokenOffset || 0));
-            const taskCost = collatedUsage.taskCost ?? Math.max(0, cumulativeCost - (collatedUsage.taskCostOffset || 0));
-            const startTime = collatedTaskStartTime || turn.taskStartTime;
-            const durationMs = startTime && collatedUsage.timestamp
-              ? collatedUsage.timestamp - startTime
-              : 0;
-            const durationSec = durationMs > 0 ? Math.round(durationMs / 1000) : 0;
-            return (
-              <div className="text-xs text-muted-foreground">
-                {t('usageTokens', { tokens: number(taskTokens) })}
-                {taskCost > 0 && ` • ${t('usageCost', { cost: number(taskCost, { style: 'currency', currency: 'USD', minimumFractionDigits: 4, maximumFractionDigits: 4 }) })}`}
-                {durationSec > 0 && ` • ${durationSec < 60 ? seconds(durationSec) : `${number(Math.floor(durationSec / 60), { style: 'unit', unit: 'minute', unitDisplay: 'narrow' })} ${seconds(durationSec % 60)}`}`}
-              </div>
-            );
-          })()}
-
-          {/* Checkpoint actions */}
-          {turn.checkpointId && (
-            <div className="flex items-center gap-1">
-              {/* Both roll the project back, so neither is offered while a run is writing to it.
-                  The handlers refuse it too — the checkpoint panel reaches the same one — and this
-                  is so the button does not look available. */}
-              {onRestore && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onRestore(turn.checkpointId!)}
-                  disabled={!!generating}
-                  className="h-6 px-2 text-xs"
-                  title={t('restoreCheckpoint')}
-                >
-                  <RotateCcw className="h-3 w-3 mr-1" />
-                  {t('restore')}
-                </Button>
-              )}
-              {onRetry && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onRetry(turn.checkpointId!)}
-                  disabled={!!generating}
-                  className="h-6 px-2 text-xs"
-                  title={t('restoreAndRetry')}
-                >
-                  <RefreshCw className="h-3 w-3 mr-1" />
-                  {tc('actions.retry')}
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface ToolDisplayProps {
-  tool: ToolCall;
-  isExpanded: boolean;
-  onToggle: () => void;
-}
-
-function ToolDisplay({ tool, isExpanded, onToggle }: ToolDisplayProps) {
-  const t = useTranslations('chat');
-  const tc = useTranslations('common');
-  const category = (tool.name === 'bash' || tool.name === 'shell') ? classifyCommand(tool.parameters?.command ?? tool.parameters?.cmd) : tool.name;
-  return (
-    <div
-      className={`bg-muted/30 rounded-md transition-all ${
-        tool.status === 'executing' ? 'ring-2 ring-blue-500/20 animate-pulse' : ''
-      } p-1.5`}
-    >
-      <button
-        onClick={onToggle}
-        className="flex items-center gap-2 w-full text-left hover:bg-muted/50 rounded px-1 overflow-hidden"
-      >
-        <div className="flex items-center gap-1.5 shrink-0">
-          {toolIcons[category] || <ChevronRight className="h-3 w-3" />}
-          <span className="text-xs font-mono">{category}</span>
-        </div>
-
-        {/* Tool-specific preview */}
-        {(tool.name === 'bash' || tool.name === 'shell') && (tool.parameters?.command ?? tool.parameters?.cmd) && (
-          <code className="text-xs text-muted-foreground truncate min-w-0">
-            {(() => { const c = tool.parameters.command ?? tool.parameters.cmd; return Array.isArray(c) ? c.slice(1).join(' ') : String(c); })()}
-          </code>
-        )}
-        {(tool.parameters?.path || tool.parameters?.file_path) && (
-          <code className="text-xs text-muted-foreground truncate min-w-0">
-            {tool.parameters.path || tool.parameters.file_path}
-          </code>
-        )}
-
-        <div className="ml-auto shrink-0">
-          {statusIcons[tool.status || 'completed']}
-        </div>
-      </button>
-
-      {/* Expanded view */}
-      {isExpanded && (
-        <div className="mt-2 space-y-2">
-          {/* Parameters */}
-          {tool.parameters && Object.keys(tool.parameters).length > 0 && (
-            <div className="px-2">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-                {t('parameters')}
-              </div>
-              <pre className="text-xs bg-muted/50 p-2 rounded overflow-x-auto">
-                {JSON.stringify(tool.parameters, null, 2)}
-              </pre>
-            </div>
-          )}
-
-          {/* Result */}
-          {tool.result && (
-            <div className="px-2">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-                {t('result')}
-              </div>
-              <pre className="text-xs bg-muted/50 p-2 rounded overflow-x-auto max-h-40 overflow-y-auto">
-                {typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result, null, 2)}
-              </pre>
-            </div>
-          )}
-
-          {/* Error */}
-          {tool.error && (
-            <div className="px-2">
-              <div className="text-[10px] uppercase tracking-wider text-destructive mb-1">
-                {tc('labels.error')}
-              </div>
-              <pre className="text-xs bg-destructive/10 text-destructive p-2 rounded overflow-x-auto">
-                {tool.error}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface SyntheticErrorDisplayProps {
-  content: string;
-  isExpanded: boolean;
-  onToggle: () => void;
-}
-
-function SyntheticErrorDisplay({ content, isExpanded, onToggle }: SyntheticErrorDisplayProps) {
-  const t = useTranslations('chat');
-  return (
-    <div className={`bg-amber-500/10 rounded-md transition-all ${isExpanded ? 'p-2' : 'p-1.5'}`}>
-      <button
-        onClick={onToggle}
-        className="flex items-center gap-2 w-full text-left hover:bg-amber-500/20 rounded px-1"
-      >
-        <div className="flex items-center gap-1.5">
-          <RefreshCw className="h-3 w-3 text-amber-600" />
-          <span className="text-xs font-mono">{t('autoCorrection')}</span>
-        </div>
-        <div className="ml-auto">
-          <CheckCircle className="h-3 w-3 text-amber-600" />
-        </div>
-      </button>
-
-      {/* Expanded view */}
-      {isExpanded && (
-        <div className="mt-2 px-2">
-          <pre className="text-xs bg-muted/50 p-2 rounded overflow-x-auto whitespace-pre-wrap">
-            {content}
-          </pre>
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface ReasoningDisplayProps {
-  content: string;
-  isComplete: boolean;
-  isExpanded: boolean;
-  onToggle: () => void;
-}
-
-function ReasoningDisplay({ content, isComplete, isExpanded, onToggle }: ReasoningDisplayProps) {
-  const t = useTranslations('chat');
-  const lines = (content || '').split('\n').filter(l => l.trim());
-  const headPreview = lines.join(' ').substring(0, 80) || t('reasoning');
-  const tailPreview = lines.length > 0 ? lines.slice(-3).join(' ').slice(-120) : '';
-  const isStreaming = !isComplete;
-  const streamingLabel = tailPreview || t('thinking');
-
-  return (
-    <div className="bg-violet-500/10 rounded-md transition-all p-1.5">
-      <button
-        onClick={onToggle}
-        className="flex items-center gap-2 w-full text-left hover:bg-violet-500/20 rounded px-1"
-      >
-        <div className="flex items-center gap-1.5">
-          {isStreaming ? (
-            <Loader2 className="h-3 w-3 animate-spin text-violet-500" />
-          ) : (
-            <Brain className="h-3 w-3 text-violet-500" />
-          )}
-          <span className="text-xs font-mono">reasoning</span>
-        </div>
-        <code className="text-xs text-muted-foreground truncate flex-1">
-          {isStreaming ? streamingLabel : headPreview}
-        </code>
-        <div className="ml-auto">
-          <ChevronRight className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-        </div>
-      </button>
-
-      {isExpanded && (
-        <div className="mt-2 px-2">
-          <div className="text-xs bg-muted/50 p-2 rounded overflow-x-auto max-h-64 overflow-y-auto">
-            <MarkdownRenderer content={content || t('thinking')} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface PlanDisplayProps {
-  content: string;
-  isExpanded: boolean;
-  onToggle: () => void;
-}
-
-function PlanDisplay({ content, isExpanded, onToggle }: PlanDisplayProps) {
-  const t = useTranslations('chat');
-  // Extract first line for preview
-  const lines = content.split('\n');
-  const preview = lines[0]?.replace(/^\*\*|\*\*$/g, '').substring(0, 50) || t('plan');
-
-  return (
-    <div className="bg-muted/30 rounded-md transition-all p-1.5">
-      <button
-        onClick={onToggle}
-        className="flex items-center gap-2 w-full text-left hover:bg-muted/50 rounded px-1"
-      >
-        <div className="flex items-center gap-1.5">
-          <ClipboardList className="h-3 w-3 text-orange-500" />
-          <span className="text-xs font-mono">plan</span>
-        </div>
-        <code className="text-xs text-muted-foreground truncate flex-1">
-          {preview}
-        </code>
-        <div className="ml-auto">
-          <ChevronRight className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-        </div>
-      </button>
-
-      {isExpanded && (
-        <div className="mt-2 px-2">
-          <pre className="text-xs bg-muted/50 p-2 rounded overflow-x-auto whitespace-pre-wrap">
-            {content}
-          </pre>
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface AgentDisplayProps {
-  content: string;
-  isExpanded: boolean;
-  onToggle: () => void;
-}
-
-function AgentDisplay({ content, isExpanded, onToggle }: AgentDisplayProps) {
-  const t = useTranslations('chat');
-  // Extract first line for preview
-  const lines = content.split('\n');
-  const preview = lines[0]?.replace(/^\*\*|\*\*$/g, '').replace(/^🤖\s*/, '').substring(0, 50) || t('agentFallback');
-
-  return (
-    <div className="bg-muted/30 rounded-md transition-all p-1.5">
-      <button
-        onClick={onToggle}
-        className="flex items-center gap-2 w-full text-left hover:bg-muted/50 rounded px-1"
-      >
-        <div className="flex items-center gap-1.5">
-          <Bot className="h-3 w-3 text-purple-500" />
-          <span className="text-xs font-mono">agent</span>
-        </div>
-        <code className="text-xs text-muted-foreground truncate flex-1">
-          {preview}
-        </code>
-        <div className="ml-auto">
-          <ChevronRight className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-        </div>
-      </button>
-
-      {isExpanded && (
-        <div className="mt-2 px-2">
-          <pre className="text-xs bg-muted/50 p-2 rounded overflow-x-auto whitespace-pre-wrap">
-            {content}
-          </pre>
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface ProgressDisplayProps {
-  content: string;
-  isExpanded: boolean;
-  onToggle: () => void;
-}
-
-function ProgressDisplay({ content, isExpanded, onToggle }: ProgressDisplayProps) {
-  // Detect if this is a completion (✅) or in progress (🔄)
-  const isCompleted = content.includes('✅');
-  const preview = content.replace(/^[✅🔄]\s*/, '').substring(0, 50);
-
-  return (
-    <div className="bg-muted/30 rounded-md transition-all p-1.5">
-      <button
-        onClick={onToggle}
-        className="flex items-center gap-2 w-full text-left hover:bg-muted/50 rounded px-1"
-      >
-        <div className="flex items-center gap-1.5">
-          {isCompleted ? (
-            <CheckCircle className="h-3 w-3 text-green-500" />
-          ) : (
-            <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-          )}
-          <span className="text-xs font-mono">progress</span>
-        </div>
-        <code className="text-xs text-muted-foreground truncate flex-1">
-          {preview}
-        </code>
-        <div className="ml-auto">
-          <ChevronRight className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-        </div>
-      </button>
-
-      {isExpanded && (
-        <div className="mt-2 px-2">
-          <pre className="text-xs bg-muted/50 p-2 rounded overflow-x-auto whitespace-pre-wrap">
-            {content}
-          </pre>
-        </div>
-      )}
-    </div>
   );
 }

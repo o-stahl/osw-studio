@@ -84,32 +84,19 @@ export async function buildSystemPrompt(chatMode?: boolean, serverContext?: Serv
   if (agentType === 'plan') return buildPlanPrompt(serverContext, projectId);
   if (agentType === 'task') return buildTaskAgentPrompt(serverContext, projectId);
   if (chatMode) {
-    return buildChatModePrompt(serverContext, projectId);
+    return buildChatModePrompt(serverContext, projectId, modelSupportsTools);
   }
   return await buildCodeModePrompt(serverContext, projectId, modelSupportsTools, imageGenAvailable, webSearchAvailable, isServerSideGeneration);
 }
 
-/**
- * Shared preamble for both chat and code modes.
- * Contains: role, tool calling, file reading preferences, command list.
- */
-function buildSharedPreamble(isReadOnly: boolean, hasServerContext: boolean, modelSupportsTools = true): string {
-  let prompt = `You are an expert coding assistant helping users build web projects in a sandboxed virtual file system.
-
-Be concise — answer in fewer than 4 lines of prose unless asked for detail.
-Bias toward action: implement with reasonable assumptions rather than asking clarifying questions. Only ask when truly blocked.
-After writing files, run build and status — do not explain what you just did.
-Do not narrate your reasoning process or re-verify already-correct work.
-If you find yourself re-reading the same files without progress, stop and reassess your approach.
-You are allowed ONE self-correction per problem. If you reconsider and reach the same conclusion, commit and act. If analysis is correct but the bug persists, look somewhere new — do not re-examine the same evidence.
-`;
-
+/** How the model calls the shell: function calling, or bash code blocks for a model without tools. */
+function toolCallingNote(modelSupportsTools: boolean): string {
   if (modelSupportsTools) {
-    prompt += `
+    return `
 Invoke tools via function calling — never output tool syntax as text.
 The bash tool accepts a 'command' string parameter: "ls -la /"`;
-  } else {
-    prompt += `To execute commands, write them in a \`\`\`bash code block — one block per command:
+  }
+  return `To execute commands, write them in a \`\`\`bash code block — one block per command:
 
 \`\`\`bash
 cat > /file << 'EOF'
@@ -119,9 +106,11 @@ EOF
 
 Commands will be executed automatically from each code block.
 Do NOT write multiple commands in one block — use separate blocks for each command.`;
-  }
+}
 
-  prompt += `
+/** How to read the project, and the shell commands that read it. Every mode has these. */
+function readCommandsSection(hasServerContext: boolean): string {
+  let section = `
 
 Prefer targeted reads over cat to save tokens:
   rg -C 5 'pattern' /  — search with context (best)
@@ -143,9 +132,62 @@ Shell commands:
 - Search web: search "query" (only when a search provider is configured).`;
 
   if (hasServerContext) {
-    prompt += `
+    section += `
 - Database (Server Mode): sqlite3 "SQL QUERY"`;
   }
+
+  return section;
+}
+
+const GREP_NOTE = `
+
+grep supports -A/-B/-C context flags. Use rg for the best search experience.`;
+
+/**
+ * Chat mode's opening. It talks about the project rather than working on it, so it gets none of the
+ * code agent's task rules: bias toward action, build and status after writing, four lines at most.
+ */
+function buildChatPreamble(hasServerContext: boolean, modelSupportsTools = true): string {
+  let prompt = `You are a collaborator in OSW Studio, talking with the user about their web project. In Chat mode you can read the project but not change it.
+
+How to talk with the user:
+- Converse. Answer what was asked, explain how things work, talk through ideas and trade-offs, and help plan changes.
+- Match the user. A quick question gets a short answer, and "walk me through it" gets the detail. Use plain language, without filler.
+- When a request is unclear, or reads more than one reasonable way, ask a short question instead of guessing.
+- Say when you are unsure, and do not present guesses about code you have not read as facts.
+
+How to look things up:
+- Read what you need to answer a question about this project, and no more. Answer general questions directly, without opening files.
+
+Your reply ends your turn, and the user's next message carries the conversation on. There is no status command in this mode.
+
+You cannot change files, the site's data or its settings here. When the user wants a change, say what you would change and where, and suggest switching to Code mode to make it.
+`;
+  prompt += toolCallingNote(modelSupportsTools);
+  prompt += readCommandsSection(hasServerContext);
+  prompt += `
+- Offer a choice: ask [--prompt "Question"] "Option A" "Option B" — tappable options when the answer is one of a few; the pick becomes the user's next message.`;
+  prompt += GREP_NOTE;
+  return prompt;
+}
+
+/**
+ * Preamble for the code agent and its sub-agents.
+ * Contains: role, tool calling, file reading preferences, command list.
+ */
+function buildSharedPreamble(isReadOnly: boolean, hasServerContext: boolean, modelSupportsTools = true): string {
+  let prompt = `You are an expert coding assistant helping users build web projects in a sandboxed virtual file system.
+
+Be concise — answer in fewer than 4 lines of prose unless asked for detail.
+Bias toward action: implement with reasonable assumptions rather than asking clarifying questions. Only ask when truly blocked.
+After writing files, run build and status — do not explain what you just did.
+Do not narrate your reasoning process or re-verify already-correct work.
+If you find yourself re-reading the same files without progress, stop and reassess your approach.
+You are allowed ONE self-correction per problem. If you reconsider and reach the same conclusion, commit and act. If analysis is correct but the bug persists, look somewhere new — do not re-examine the same evidence.
+`;
+
+  prompt += toolCallingNote(modelSupportsTools);
+  prompt += readCommandsSection(hasServerContext);
 
   if (!isReadOnly) {
     prompt += `
@@ -160,9 +202,7 @@ Shell commands:
 - Ask user: ask [--prompt "Question"] "Option A" "Option B" "Option C" — present tappable chip choices when you need a single decision from the user with 2–5 candidate options. Prefer this over asking in prose for either/or choices: the user gets buttons instead of having to type. For open-ended elicitation (describe your brand, what's the content?), prose is the right shape. Example: ask --prompt "Aesthetic direction?" "Bold geometric" "Soft organic" "Editorial" "Minimal" "You pick". When you call ask, do NOT also run status in the same iteration — ask itself ends the iteration cleanly and the user's selection becomes the next message.`;
   }
 
-  prompt += `
-
-grep supports -A/-B/-C context flags. Use rg for the best search experience.`;
+  prompt += GREP_NOTE;
 
   return prompt;
 }
@@ -283,8 +323,9 @@ async function buildDynamicContent(
   // .PROMPT.md section — only show if content exists
   if (projectId) {
     try {
-      const { vfs } = await import('@/lib/vfs');
-      const promptFile = await vfs.readFile(projectId, '/.PROMPT.md');
+      // The files of the run being built, which on the server are not the browser's `vfs`.
+      const { getActiveVFS } = await import('@/lib/vfs');
+      const promptFile = await getActiveVFS().readFile(projectId, '/.PROMPT.md');
       if (promptFile && typeof promptFile.content === 'string' && promptFile.content.trim()) {
         content += `\n\nDOMAIN INSTRUCTIONS (.PROMPT.md) — do not modify:\n${promptFile.content}\n`;
       }
@@ -366,15 +407,8 @@ All paths are relative to the project root (/).`;
   return prompt;
 }
 
-async function buildChatModePrompt(serverContext?: ServerContextMetadata | null, projectId?: string): Promise<string> {
-  let prompt = buildSharedPreamble(true, !!serverContext);
-
-  prompt += `
-
-Read-only mode — file modifications are disabled.
-Disabled: mkdir, touch, mv, rm, cp, echo >, sed -i, status command.
-Focus on exploration, analysis, and planning.`;
-
+async function buildChatModePrompt(serverContext?: ServerContextMetadata | null, projectId?: string, modelSupportsTools = true): Promise<string> {
+  let prompt = buildChatPreamble(!!serverContext, modelSupportsTools);
   prompt += await buildDynamicContent(projectId, serverContext);
   return prompt;
 }

@@ -1,8 +1,47 @@
 import { describe, it, expect } from 'vitest';
 import {
-  classifyGateKey, needsApproval, ASK_DEFAULT_KEYS, GATE_COMMANDS,
+  classifyGateKey, needsApproval, sqliteChangesData, ASK_DEFAULT_KEYS, GATE_COMMANDS,
   type PermissionMode, type GateDecision,
 } from '../permissions';
+
+describe('sqliteChangesData', () => {
+  it('reads a query as a query, whatever words its strings, comments and functions use', () => {
+    for (const sql of [
+      "SELECT replace(title, '-', ' ') FROM posts",
+      "SELECT * FROM events WHERE action = 'delete'",
+      'SELECT "update" FROM t',
+      '-- drop the old rows later\nSELECT 1',
+    ]) {
+      expect(sqliteChangesData(['sqlite3', sql])).toBe(false);
+    }
+  });
+
+  it('reads a statement that changes data as a change', () => {
+    for (const sql of [
+      "INSERT INTO posts (title) VALUES ('x')",
+      "REPLACE INTO posts VALUES (1, 'x')",
+      "UPDATE posts SET title = 'replace(me)'",
+      'WITH old AS (SELECT id FROM posts) DELETE FROM posts WHERE id IN old',
+    ]) {
+      expect(sqliteChangesData(['sqlite3', sql])).toBe(true);
+    }
+  });
+
+  it('is not talked out of a change by comments and quotes around it, or by a flag-shaped argument', () => {
+    // The statement runs as its own argument, so each is read on its own; a quote inside a comment,
+    // or a comment marker in a flag, used to swallow the statement after it.
+    for (const args of [
+      ['sqlite3', '--', 'DELETE FROM users'],
+      ['sqlite3', '-/*', 'DELETE FROM users'],
+      ['sqlite3', "/* it's */ DELETE FROM users WHERE name = 'bob'"],
+      ['sqlite3', " -- don't\nDELETE FROM users WHERE name = 'bob'"],
+      ['sqlite3', ' -- [\nDELETE FROM users\n-- ]'],
+      ['sqlite3', '/* [ */ DELETE FROM users /* ] */'],
+    ]) {
+      expect(sqliteChangesData(args), args.join(' ')).toBe(true);
+    }
+  });
+});
 
 describe('classifyGateKey', () => {
   it('classifies always-gated commands to their key', () => {
@@ -38,6 +77,8 @@ describe('classifyGateKey', () => {
     expect(classifyGateKey(['sqlite3', 'db', 'INSERT INTO t VALUES(1)'])).toBe('sqlite3:write');
     expect(classifyGateKey(['sed', '-n', '1p', '/f'])).toBe('sed:read');
     expect(classifyGateKey(['sed', '-i', 's/a/b/', '/f'])).toBe('sed:write');
+    // The shell edits in place with a backup suffix too, so the gate has to ask for it.
+    expect(classifyGateKey(['sed', '-i.bak', 's/a/b/', '/f'])).toBe('sed:write');
   });
 
   it('maps ordinary read commands to their own key', () => {

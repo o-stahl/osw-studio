@@ -85,6 +85,6 @@ describe('ToolRegistry chained command execution', () => {
       {},
     );
 
-    expect(result).not.toContain('Error');
+    expect(result).toBe('file1 created\nfile2 created');
   });
 });

@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { parseStructuredVerdicts, extractJudgeUsage } from '../judge';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { parseStructuredVerdicts, extractJudgeUsage, runStructuredJudge } from '../judge';
 
 describe('parseStructuredVerdicts', () => {
   it('parses per-item PASS/FAIL with reasons, in order', () => {
@@ -54,5 +54,37 @@ describe('extractJudgeUsage', () => {
   it('returns undefined when no usage is present', () => {
     expect(extractJudgeUsage('openrouter', 'm', {})).toBeUndefined();
     expect(extractJudgeUsage('gemini', 'g', { candidates: [] })).toBeUndefined();
+  });
+});
+
+/**
+ * The interview's completion check judges the artifact itself. It was sent the first 2,000
+ * characters of each file and allowed a 512-token reply, so a thorough brief lost the sections after
+ * that point and was failed for them, and a model that reasons before answering ran out before its
+ * verdicts and failed every item as unverified.
+ */
+describe('runStructuredJudge', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const answer = () => ({ ok: true, json: async () => ({ choices: [{ message: { content: '1: PASS' } }] }) });
+  const judge = async (artifact: string) => {
+    const fetchMock = vi.fn(async (..._args: unknown[]) => answer());
+    vi.stubGlobal('fetch', fetchMock);
+    await runStructuredJudge(['Lists acceptance criteria'], { prompt: 'Plan a feature', files: { '/.interviews/plan.md': artifact }, summary: 'done' }, { provider: 'openrouter', apiKey: 'k', model: 'm' });
+    return JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body) as { max_tokens: number; messages: Array<{ content: string }> };
+  };
+
+  it('reads an artifact whole, past its first 2,000 characters', async () => {
+    const body = await judge(`${'Notes on the feature. '.repeat(120)}\n## Acceptance criteria\n1. Loads at /status.html`);
+    expect(body.messages[1].content).toContain('## Acceptance criteria');
+    expect(body.messages[1].content).not.toContain('[file cut at');
+  });
+
+  it('says where it cut a file too long to send whole', async () => {
+    const body = await judge('x'.repeat(30_000));
+    expect(body.messages[1].content).toContain('[file cut at 24000 characters]');
+  });
+
+  it('leaves a model that reasons first room for its verdicts', async () => {
+    expect((await judge('short')).max_tokens).toBeGreaterThanOrEqual(4096);
   });
 });

@@ -106,37 +106,67 @@ describe('orchestrator slice — generation lifecycle', () => {
     );
   });
 
-  it('stopGeneration calls stop on orchestrator and sets generating=false', async () => {
+  it('keeps the orchestrator for the next message in the same mode, and builds a new one when the mode changed', async () => {
+    await store.getState().startGeneration('first', undefined, { projectId: 'p1' });
+    await store.getState().startGeneration('second', undefined, { projectId: 'p1' });
+    expect(vi.mocked(MultiAgentOrchestrator)).toHaveBeenCalledTimes(1);
+
+    // A mode picked while a run is going leaves the instance in place; the next message must not run in the old mode.
+    await store.getState().startGeneration('a question', undefined, { projectId: 'p1', chatMode: true });
+    expect(vi.mocked(MultiAgentOrchestrator)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(MultiAgentOrchestrator).mock.calls[1][3]).toMatchObject({ chatMode: true });
+  });
+
+  it('records how a run in the browser ended, as a server run reports it, so the chat reads both alike', async () => {
+    store.setState({ projectId: 'p1' });
+    const endings = () => store.getState().debugEvents.filter((e) => e.event === 'task_complete').map((e) => e.data);
+
+    mockExecute.mockResolvedValueOnce({ success: true, exitReason: 'status_complete', summary: 'done' });
+    await store.getState().startGeneration('build', undefined, { projectId: 'p1' });
+    expect(endings().at(-1)).toEqual({ result: 'success', exitReason: 'status_complete' });
+
+    mockExecute.mockResolvedValueOnce({ success: false, exitReason: 'nudge_exhaustion', summary: 'Exited after 3 nudge attempts without status' });
+    await store.getState().startGeneration('again', undefined, { projectId: 'p1' });
+    expect(endings().at(-1)).toEqual({ result: 'failed', exitReason: 'nudge_exhaustion', error: 'Exited after 3 nudge attempts without status' });
+
+    mockExecute.mockResolvedValueOnce({ success: false, exitReason: 'stopped', summary: 'Stopped by user' });
+    await store.getState().startGeneration('once more', undefined, { projectId: 'p1' });
+    expect(endings().at(-1)).toEqual({ result: 'stopped', exitReason: 'stopped' });
+  });
+
+  it('stopGeneration stops the run, which keeps the project until it has returned', async () => {
     // startGeneration now awaits getProjectAssignment before instantiating the orchestrator,
     // so we must flush the microtask queue before stopGeneration can reach the instance.
     const promise = store.getState().startGeneration('task');
     await Promise.resolve(); // flush: assignment resolves + orchestrator is stored
     store.getState().stopGeneration();
     expect(mockStop).toHaveBeenCalled();
-    // After stop, the task transitions to result: 'failed', so generating becomes false
-    expect(store.getState().generating).toBe(false);
+    // The run can still be writing until it returns, so nothing new starts beside it till then.
+    expect(store.getState().generating).toBe(true);
     await promise;
+    expect(store.getState().generating).toBe(false);
   });
 
-  it('stopGeneration tracks task_fail with duration_ms and task_id', async () => {
-    const projectId = store.getState().projectId || '';
+  it('a stopped run counts its stop as it ends, with duration_ms and its task_id', async () => {
+    let finish!: (value: unknown) => void;
+    mockExecute.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
     const promise = store.getState().startGeneration('task');
-    await Promise.resolve(); // flush: assignment resolves + orchestrator is stored
+    await vi.waitFor(() => expect(mockExecute).toHaveBeenCalled());
 
-    const task = store.getState().generationTasks.get(projectId);
-    expect(task?.startedAt).toEqual(expect.any(Number));
+    await store.getState().stopGeneration();
+    expect(mockStop).toHaveBeenCalled();
+    // The run comes back as a stopped orchestrator returns.
+    finish({ success: false, summary: 'Stopped', exitReason: 'stopped', totalCost: 0, toolCount: 0, turnCount: 1, apiErrorCount: 0 });
+    await promise;
 
-    store.getState().stopGeneration();
-
-    const failCalls = (track as ReturnType<typeof vi.fn>).mock.calls.filter(c => c[0] === 'task_fail');
+    const calls = (track as ReturnType<typeof vi.fn>).mock.calls;
+    const failCalls = calls.filter(c => c[0] === 'task_fail');
     expect(failCalls).toHaveLength(1);
     const payload = failCalls[0][1];
     expect(payload.reason).toBe('stopped');
-    expect(payload.task_id).toBe(projectId);
+    expect(payload.task_id).toBe(calls.find(c => c[0] === 'task_started')![1].task_id);
     expect(typeof payload.duration_ms).toBe('number');
     expect(payload.duration_ms).toBeGreaterThanOrEqual(0);
-
-    await promise;
   });
 
   it('resetOrchestrator clears instances when not generating', () => {
@@ -219,17 +249,26 @@ describe('orchestrator slice — concurrent generation', () => {
     expect(store.getState().isAnyGenerating()).toBe(false);
   });
 
-  it('stopGeneration(projectId) only stops that project', () => {
-    const fakeOrch = { stop: vi.fn() } as any;
-    setActiveTask(store, 'proj-a', { orchestratorInstance: fakeOrch });
-    setActiveTask(store, 'proj-b');
+  it('stopGeneration(projectId) only stops that project', async () => {
+    let finishA!: (value: unknown) => void;
+    mockExecute
+      .mockReturnValueOnce(new Promise((resolve) => { finishA = resolve; }))
+      .mockReturnValueOnce(new Promise(() => {}));
+    const runA = store.getState().startGeneration('a', undefined, { projectId: 'proj-a' });
+    void store.getState().startGeneration('b', undefined, { projectId: 'proj-b' });
+    await vi.waitFor(() => expect(mockExecute).toHaveBeenCalledTimes(2));
 
-    store.getState().stopGeneration('proj-a');
+    await store.getState().stopGeneration('proj-a');
 
-    expect(fakeOrch.stop).toHaveBeenCalled();
-    const taskA = store.getState().generationTasks.get('proj-a');
-    expect(taskA?.result).toBe('failed');
-    // proj-b should still be active
+    expect(mockStop).toHaveBeenCalledTimes(1);
+    // Stopping until its run has returned; the other project's run goes on untouched.
+    expect(store.getState().generationTasks.get('proj-a')).toMatchObject({ result: null, stopping: true });
+    expect(store.getState().generationTasks.get('proj-b')).toMatchObject({ result: null });
+    expect(store.getState().generationTasks.get('proj-b')?.stopping).toBeFalsy();
+
+    finishA({ success: false, summary: 'Stopped', exitReason: 'stopped', totalCost: 0, toolCount: 0, turnCount: 1, apiErrorCount: 0 });
+    await runA;
+    expect(store.getState().isProjectGenerating('proj-a')).toBe(false);
     expect(store.getState().isProjectGenerating('proj-b')).toBe(true);
   });
 

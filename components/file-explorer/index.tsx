@@ -40,6 +40,8 @@ import {
 } from '@/components/ui/context-menu';
 import { Input } from '@/components/ui/input';
 import { ImportDialog, type ImportDialogSource } from '@/components/import-dialog';
+import { CreateItemDialog, type NewItemRequest } from './create-item-dialog';
+import { createNewItem, type NewItemProblem } from './new-item';
 import { pickFolderSource } from '@/components/import-dialog/pick';
 import {
   DropdownMenu,
@@ -78,6 +80,7 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['/']));
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
+  const [createRequest, setCreateRequest] = useState<NewItemRequest | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [draggedItem, setDraggedItem] = useState<FileTreeItem | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -353,32 +356,21 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
     }
   };
 
-  const handleCreateFile = async (dirPath: string = '/') => {
-    const fileName = prompt('Enter file name:');
-    if (!fileName) return;
+  const handleCreateFile = (dirPath: string = '/') => setCreateRequest({ kind: 'file', parentPath: dirPath });
+  const handleCreateDirectory = (parentPath: string = '/') => setCreateRequest({ kind: 'directory', parentPath });
 
-    const filePath = dirPath === '/' ? `/${fileName}` : `${dirPath}/${fileName}`;
-    
-    try {
-      await vfs.createFile(projectId, filePath, '');
-      await loadFiles();
-    } catch (error) {
-      logger.error('Failed to create file:', error);
-    }
-  };
-
-  const handleCreateDirectory = async (parentPath: string = '/') => {
-    const dirName = prompt('Enter directory name:');
-    if (!dirName) return;
-
-    const dirPath = parentPath === '/' ? `/${dirName}` : `${parentPath}/${dirName}`;
-    
-    try {
-      await vfs.createDirectory(projectId, dirPath);
-      await loadFiles();
-    } catch (error) {
-      logger.error('Failed to create directory:', error);
-    }
+  /**
+   * Make what the new-item dialog was asked for. The dialog is done once the item exists; the tree
+   * reloads beside it, and the folder the item went in opens, so it shows.
+   */
+  const createItem = async (name: string): Promise<NewItemProblem | null> => {
+    if (!createRequest) return null;
+    const { kind, parentPath } = createRequest;
+    const problem = await createNewItem(vfs, projectId, kind, parentPath, name);
+    if (problem) return problem;
+    void loadFiles();
+    if (parentPath !== '/') setExpandedDirs((prev) => new Set(prev).add(parentPath));
+    return null;
   };
 
   const handleDownloadProject = async () => {
@@ -1112,6 +1104,8 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
           </TooltipContent>
         </Tooltip>
       )}
+
+      <CreateItemDialog request={createRequest} onClose={() => setCreateRequest(null)} onCreate={createItem} />
 
       {/* Imports into the project this explorer is showing — the only path that can overwrite. */}
       <ImportDialog

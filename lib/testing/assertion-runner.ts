@@ -211,7 +211,9 @@ export async function runAssertions(
   conversation: ConversationNode[],
   assertions: TestAssertion[]
 ): Promise<AssertionResult[]> {
-  const { vfs } = await import('@/lib/vfs');
+  // The VFS of the run being checked: a server run's own, which the browser's `vfs` is not.
+  const { getActiveVFS } = await import('@/lib/vfs');
+  const vfs = getActiveVFS();
   const results: AssertionResult[] = [];
 
   for (const assertion of assertions) {

@@ -285,6 +285,8 @@
     "couldNotOpen": "{path}을(를) 열 수 없었어요",
     "entryPointSet": "진입점을 {path}(으)로 설정했어요",
     "restoredTo": "복원했어요: {description}",
+    "previousChange": "이전 변경",
+    "changeAfter": "다음 변경",
     "checkpointFallback": "체크포인트",
     "backToView": "{view, select, dashboard {대시보드로 돌아가기} deployments {배포로 돌아가기} templates {템플릿으로 돌아가기} skills {스킬로 돌아가기} interviews {인터뷰로 돌아가기} docs {문서로 돌아가기} settings {설정으로 돌아가기} users {사용자로 돌아가기} workspaces {워크스페이스로 돌아가기} other {프로젝트로 돌아가기}}",
     "openProjectFailed": "프로젝트를 열 수 없었어요",
@@ -731,6 +733,7 @@
     "speechUnavailable": "이 브라우저에서는 음성 인식을 사용할 수 없어요",
     "previewCaptureFailed": "미리보기를 캡처할 수 없어요. 로딩이 끝난 뒤 다시 시도해 주세요.",
     "dismissRuntimeErrors": "런타임 오류 숨기기",
+    "runtimeErrors": "런타임 오류",
     "sendErrorsToAi": "오류를 AI에 보내 수정 요청",
     "clearChat": "채팅 지우기",
     "dismissNotice": "알림 닫기",
@@ -739,14 +742,10 @@
     "addAttachment": "첨부 파일 추가",
     "recordVoice": "음성 녹음",
     "signInWithHF": "HuggingFace로 로그인",
-    "waitingForResponse": "응답 기다리는 중…",
-    "projectContext": "프로젝트 컨텍스트",
     "interviewComplete": "인터뷰 완료",
     "allItemsCaptured": "필요한 항목이 모두 아티팩트에 담겼어요.",
     "orClearChat": "또는 채팅을 지우고 새 인터뷰를 시작하세요.",
     "notCompleteYet": "아직 완료되지 않았어요",
-    "restoreCheckpoint": "이 체크포인트로 되돌리기",
-    "restoreAndRetry": "파일을 되돌리고 이 체크포인트에서 다시 시도",
     "autoCorrection": "자동 수정",
     "placeholder": {
       "selectProvider": "먼저 제공자를 선택하세요…",
@@ -758,7 +757,6 @@
     "selectProvider": "제공자 선택",
     "send": "보내기",
     "modeInterview": "인터뷰",
-    "attachedImage": "첨부된 이미지",
     "loadingConversation": "대화를 불러오는 중…",
     "largeWriteNote": "큰 파일 쓰기는 시간이 걸릴 수 있어요. 에이전트는 계속 작업 중이고 쓰기가 끝나는 대로 이어가요.",
     "tryOneOfThese": "이런 걸 해 보세요:",
@@ -774,15 +772,10 @@
     "stop": "정지",
     "textFile": "텍스트 파일",
     "modelsThisProject": "모델 · 이 프로젝트",
-    "deny": "거부",
     "stackTrace": "스택 트레이스",
     "interviewUnverified": "체크리스트로 인터뷰를 확인하지 못했어요 — 그래도 마쳤어요.",
-    "restore": "되돌리기",
     "parameters": "매개변수",
     "result": "결과",
-    "reasoning": "추론 중…",
-    "thinking": "생각 중…",
-    "plan": "계획",
     "pills": {
       "portfolio": "개인 포트폴리오 (한 페이지)",
       "multipage-site": "공유 내비게이션이 있는 다중 페이지 사이트",
@@ -793,9 +786,7 @@
       "quick-mobile": "휴대폰 화면 고치기"
     },
     "moreSuggestions": "{count, plural, other {제안 #개 더 보기 및 관리}}",
-    "allow": "허용",
     "textInput": "텍스트 입력",
-    "agentFallback": "에이전트",
     "attachImage": "이미지",
     "attachScreenshot": "미리보기 스크린샷",
     "unsupported": "지원 안 됨",
@@ -819,7 +810,6 @@
       "blocked": "마이크 접근이 차단됐어요",
       "processFailed": "녹음을 처리할 수 없었어요"
     },
-    "errorNoDetails": "작업이 이유를 알리지 않고 멈췄어요.",
     "connectBeforeAttachments": "첨부 파일을 보내려면 모델을 연결하세요. 그때까지 메시지 입력란에 남아 있어요."
   },
   "fileExplorer": {
@@ -832,6 +822,11 @@
     "upload": "업로드",
     "newFile": "새 파일",
     "newFolder": "새 폴더",
+    "create": "만들기",
+    "newItemIn": "{folder} 안에 만들어요",
+    "nameInvalid": "이름에는 / 나 \\ 를 넣을 수 없고, . 이나 .. 만으로는 쓸 수 없어요.",
+    "nameTaken": "{name}은(는) 여기에 이미 있어요.",
+    "createFailed": "{name}을(를) 만들 수 없었어요.",
     "downloadProject": "프로젝트 다운로드",
     "importIntoProject": "이 프로젝트로 가져오기",
     "dropFiles": "업로드할 파일을 여기에 놓으세요",
@@ -1220,8 +1215,7 @@
     "undoThis": "이것 되돌리기",
     "summary": {
       "failed": "문제가 생겼어요. 되돌리기를 누르면 원래대로 돌아가요.",
-      "stopped": "멈췄어요.",
-      "changed": "{files, plural, =0 {파일을 바꾸지 않고 끝냈어요.} other {파일 {files}개를 바꿨어요.}}"
+      "stopped": "멈췄어요."
     },
     "step": {
       "write": "{has, select, yes {{file} 작성} other {파일 작성}}",
@@ -1239,10 +1233,61 @@
       "image": "이미지 만듦",
       "database": "데이터 작업",
       "build": "사이트 다시 빌드",
-      "plan": "변경 계획",
+      "brief": "개요 업데이트",
+      "spec": "명세 추가",
+      "propose": "프로젝트 생성 제안",
+      "ask": "선택 요청",
       "preview": "미리보기 확인",
       "run": "스크립트 실행",
-      "other": "작업 중"
+      "other": "명령 실행"
+    },
+    "stepRunning": {
+      "write": "{has, select, yes {{file} 작성 중…} other {파일 작성 중…}}",
+      "read": "{has, select, yes {{file} 읽는 중…} other {파일 읽는 중…}}",
+      "edit": "{has, select, yes {{file} 편집 중…} other {파일 편집 중…}}",
+      "create": "{has, select, yes {{file} 만드는 중…} other {파일 만드는 중…}}",
+      "delete": "{has, select, yes {{file} 삭제 중…} other {파일 삭제 중…}}",
+      "move": "{has, select, yes {{file} 옮기는 중…} other {파일 옮기는 중…}}",
+      "copy": "{has, select, yes {{file} 복사 중…} other {파일 복사 중…}}",
+      "list": "파일 둘러보는 중…",
+      "search": "프로젝트 검색 중…",
+      "evaluate": "작업 확인 중…",
+      "delegate": "요청 처리 중…",
+      "lookup": "정보 찾아보는 중…",
+      "image": "이미지 만드는 중…",
+      "database": "데이터 작업 중…",
+      "build": "사이트 다시 빌드 중…",
+      "brief": "개요 업데이트 중…",
+      "spec": "명세 추가 중…",
+      "propose": "프로젝트 생성 제안 중…",
+      "ask": "선택 요청 중…",
+      "preview": "미리보기 확인 중…",
+      "run": "스크립트 실행 중…",
+      "other": "명령 실행 중…"
+    },
+    "stepFailed": {
+      "write": "{has, select, yes {{file} 작성 실패} other {파일 작성 실패}}",
+      "read": "{has, select, yes {{file} 읽기 실패} other {파일 읽기 실패}}",
+      "edit": "{has, select, yes {{file} 편집 실패} other {파일 편집 실패}}",
+      "create": "{has, select, yes {{file} 만들기 실패} other {파일 만들기 실패}}",
+      "delete": "{has, select, yes {{file} 삭제 실패} other {파일 삭제 실패}}",
+      "move": "{has, select, yes {{file} 옮기기 실패} other {파일 옮기기 실패}}",
+      "copy": "{has, select, yes {{file} 복사 실패} other {파일 복사 실패}}",
+      "list": "파일 둘러보기 실패",
+      "search": "프로젝트 검색 실패",
+      "evaluate": "작업 확인 실패",
+      "delegate": "요청 처리 실패",
+      "lookup": "정보 찾기 실패",
+      "image": "이미지 만들기 실패",
+      "database": "데이터 작업 실패",
+      "build": "사이트 다시 빌드 실패",
+      "brief": "개요 업데이트 실패",
+      "spec": "명세 추가 실패",
+      "propose": "프로젝트 생성 제안 실패",
+      "ask": "선택 요청 실패",
+      "preview": "미리보기 확인 실패",
+      "run": "스크립트 실행 실패",
+      "other": "명령 실행 실패"
     },
     "collate": {
       "readFile": "{file} 읽음",
@@ -1265,7 +1310,10 @@
       "preview": "미리보기 확인",
       "delegate": "요청 처리",
       "database": "데이터 작업",
-      "plan": "변경 계획",
+      "brief": "개요 업데이트",
+      "spec": "명세 추가",
+      "propose": "프로젝트 생성 제안",
+      "ask": "선택 요청",
       "image": "이미지 {count}개 만듦",
       "run": "스크립트 {count}개 실행",
       "other": "명령 {count}개 실행",
@@ -1278,6 +1326,19 @@
       "thinking": "생각하는 중…",
       "writing": "쓰는 중…",
       "working": "작업하는 중…"
+    },
+    "usage": {
+      "calls": "{count, plural, other {호출 #회}}",
+      "in": "입력 {tokens}",
+      "inCached": "입력 {tokens} (캐시 {cached})",
+      "out": "출력 {tokens}",
+      "outReasoning": "출력 {tokens} (추론 {reasoning})"
+    },
+    "lines": "{count, plural, other {#줄}}",
+    "figures": "토큰과 비용",
+    "status": {
+      "task": "작업",
+      "remaining": "남은 일"
     }
   },
   "generationShelf": {
@@ -1348,9 +1409,21 @@
         "running": "빌드하는 중",
         "done": "빌드했어요"
       },
-      "plan": {
-        "running": "계획하는 중",
-        "done": "계획했어요"
+      "brief": {
+        "running": "업데이트하는 중",
+        "done": "업데이트했어요"
+      },
+      "spec": {
+        "running": "추가하는 중",
+        "done": "추가했어요"
+      },
+      "propose": {
+        "running": "제안하는 중",
+        "done": "제안했어요"
+      },
+      "ask": {
+        "running": "묻는 중",
+        "done": "물었어요"
       },
       "preview": {
         "running": "여는 중",
@@ -3166,6 +3239,7 @@
     "serverStartFailed": "서버 생성을 시작할 수 없었어요",
     "serverConnectFailed": "생성을 위해 서버에 연결할 수 없었어요",
     "projectBusy": "이전 변경 작업이 아직 진행 중이에요. 끝날 때까지 기다리거나 먼저 멈추세요.",
+    "projectStopping": "이전 변경 작업을 아직 멈추는 중이에요. 잠시만 기다려 주세요.",
     "assignmentFailed": "이 프로젝트의 모델 구성을 확인할 수 없었어요. 제공자 설정을 확인하세요."
   },
   "mcpBanner": {

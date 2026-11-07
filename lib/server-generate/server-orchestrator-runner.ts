@@ -5,7 +5,7 @@ import { serverRunHeaders } from './run-auth';
 import { runWithVFS } from './vfs-context';
 import type { SSEEventBus } from './sse-event-bus';
 import type { TaskManager } from './task-manager';
-import type { ServerGenerationParams, ServerOrchestratorContext, StartGenerationRequest, BuildResult, SearchDelegationResult, ImageDelegationResult, ServerWebSearchConfig } from './types';
+import type { ServerGenerationParams, ServerOrchestratorContext, ServerTask, StartGenerationRequest, BuildResult, SearchDelegationResult, ImageDelegationResult, ServerWebSearchConfig } from './types';
 import { VirtualFileSystem } from '@/lib/vfs';
 import { randomUUID } from 'crypto';
 import { addImageRequest, dropImageRequest } from './image-requests';
@@ -71,9 +71,24 @@ export async function runServerGeneration(
   request: StartGenerationRequest,
   deps: RunnerDeps,
 ): Promise<void> {
-  const { taskManager, eventBus, createVFS, apiBaseUrl } = deps;
-  const task = taskManager.getTask(taskId);
+  const task = deps.taskManager.getTask(taskId);
   if (!task) throw new Error(`Task ${taskId} not found`);
+  // A Stop pressed before the runner started has closed the task already.
+  if (task.status !== 'running') return;
+
+  // Until the loop exists Stop has nothing to call, so the cancel route marks the task stopping and
+  // leaves its ending to this runner.
+  task.runnerActive = true;
+  try {
+    await runTask(task, request, deps);
+  } finally {
+    task.runnerActive = false;
+  }
+}
+
+async function runTask(task: ServerTask, request: StartGenerationRequest, deps: RunnerDeps): Promise<void> {
+  const { taskManager, eventBus, createVFS, apiBaseUrl } = deps;
+  const { taskId } = task;
 
   const params: ServerGenerationParams = {
     // Spread first: the type keeps provider, model, key and address out of generationParams, but a
@@ -87,7 +102,53 @@ export async function runServerGeneration(
 
   const serverConfig = new ServerConfigManager(params, taskId);
   const dirtyPaths = new Set<string>();
-  const serverVFS = trackVFSMutations(await createVFS(request.projectId), dirtyPaths);
+
+  const flushDirtyPaths = () => {
+    if (dirtyPaths.size === 0) return;
+    const paths = Array.from(dirtyPaths);
+    dirtyPaths.clear();
+    eventBus.emit(taskId, request.projectId, 'files_changed', { paths, taskId }, task.sessionId);
+  };
+
+  const stopRequested = () => task.status === 'cancelled' || task.status === 'stopping' || task.status === 'paused';
+
+  const endStopped = async () => {
+    flushDirtyPaths();
+    const session = serverConfig.getSessionCost();
+    eventBus.emit(taskId, request.projectId, 'task_complete', {
+      result: 'stopped',
+      tokens: session.totalPromptTokens + session.totalCompletionTokens,
+      cost: session.totalCost,
+    }, task.sessionId);
+    await taskManager.completeTask(taskId, 'cancelled');
+  };
+
+  // A run that throws, while being set up or in its loop, ends as stopped when Stop was pressed
+  // meanwhile and as failed otherwise. Either way the task closes, so the project takes a new one.
+  const endAfterError = async (error: unknown) => {
+    if (stopRequested()) return endStopped();
+
+    const message = error instanceof Error ? error.message : String(error);
+    eventBus.emit(taskId, request.projectId, 'error', { message, fatal: true }, task.sessionId);
+
+    const session = serverConfig.getSessionCost();
+    eventBus.emit(taskId, request.projectId, 'task_complete', {
+      result: 'failed',
+      tokens: session.totalPromptTokens + session.totalCompletionTokens,
+      cost: session.totalCost,
+      error: message,
+    }, task.sessionId);
+
+    await taskManager.completeTask(taskId, 'failed');
+  };
+
+  let serverVFS: VirtualFileSystem;
+  try {
+    serverVFS = trackVFSMutations(await createVFS(request.projectId), dirtyPaths);
+  } catch (error) {
+    await endAfterError(error);
+    return;
+  }
 
   const serverContext: ServerOrchestratorContext = {
     apiBaseUrl,
@@ -103,13 +164,6 @@ export async function runServerGeneration(
     webSearchAvailable: request.webSearchAvailable,
     onImageRequested: (prompt, opts) => awaitImageResult(taskId, deps, prompt, opts),
     imageGenAvailable: request.imageGenAvailable,
-  };
-
-  const flushDirtyPaths = () => {
-    if (dirtyPaths.size === 0) return;
-    const paths = Array.from(dirtyPaths);
-    dirtyPaths.clear();
-    eventBus.emit(taskId, request.projectId, 'files_changed', { paths, taskId }, task.sessionId);
   };
 
   const progressCallback = (event: string, data?: unknown) => {
@@ -140,23 +194,36 @@ export async function runServerGeneration(
   };
 
   await runWithVFS(serverVFS, async () => {
-    const orchestrator = new MultiAgentOrchestrator(
-      request.projectId,
-      'orchestrator',
-      progressCallback,
-      {
-        model: request.model,
-        serverContext,
-        permissionMode: request.permissionMode,
-        permissionOverrides: request.permissionOverrides,
-        // No auto-deny: the presence of serverContext makes the orchestrator pause gated
-        // commands (awaiting_user) instead, surfacing an Allow/Deny prompt to the client.
-      },
-    );
-
-    task.orchestrator = orchestrator;
-
     try {
+      // The mode picked in the chat decides the agent, as it does for a run in the browser.
+      const interview = request.mode === 'interview';
+      const orchestrator = new MultiAgentOrchestrator(
+        request.projectId,
+        interview ? 'interview' : 'orchestrator',
+        progressCallback,
+        {
+          model: request.model,
+          serverContext,
+          chatMode: request.mode === 'chat',
+          ...(interview ? {
+            interviewTemplateId: request.interviewTemplate?.id ?? request.interviewTemplateId,
+            interviewTemplate: request.interviewTemplate,
+          } : {}),
+          permissionMode: request.permissionMode,
+          permissionOverrides: request.permissionOverrides,
+          // No auto-deny: the presence of serverContext makes the orchestrator pause gated
+          // commands (awaiting_user) instead, surfacing an Allow/Deny prompt to the client.
+        },
+      );
+
+      task.orchestrator = orchestrator;
+
+      // A Stop pressed while the run was being set up had no loop to call and left the task stopping.
+      if (stopRequested()) {
+        await endStopped();
+        return;
+      }
+
       if (request.conversationHistory?.length) {
         orchestrator.importConversation(request.conversationHistory as any[]);
       }
@@ -165,8 +232,7 @@ export async function runServerGeneration(
 
       flushDirtyPaths();
 
-      const wasStopped = task.status === 'cancelled' || task.status === 'stopping' || task.status === 'paused'
-        || result.exitReason === 'stopped' || result.exitReason === 'error_stop';
+      const wasStopped = stopRequested() || result.exitReason === 'stopped' || result.exitReason === 'error_stop';
       const session = serverConfig.getSessionCost();
       const finalResult = wasStopped ? 'stopped' : (result.success ? 'success' : 'failed');
 
@@ -175,6 +241,8 @@ export async function runServerGeneration(
         // exitReason lets the client tell a genuine finish from a pause (awaiting_user, e.g. a
         // gated command awaiting approval) so it doesn't celebrate a run that is actually waiting.
         exitReason: result.exitReason,
+        // The client announces a finished run, except a Chat-mode answer, which is in the chat.
+        mode: request.mode ?? 'code',
         ...(finalResult === 'failed' ? { error: result.summary } : {}),
         tokens: session.totalPromptTokens + session.totalCompletionTokens,
         cost: session.totalCost,
@@ -182,30 +250,7 @@ export async function runServerGeneration(
 
       await taskManager.completeTask(taskId, wasStopped ? 'cancelled' : (result.success ? 'completed' : 'failed'));
     } catch (error) {
-      if (task.status === 'cancelled' || task.status === 'stopping' || task.status === 'paused') {
-        flushDirtyPaths();
-        const session = serverConfig.getSessionCost();
-        eventBus.emit(taskId, request.projectId, 'task_complete', {
-          result: 'stopped',
-          tokens: session.totalPromptTokens + session.totalCompletionTokens,
-          cost: session.totalCost,
-        }, task.sessionId);
-        await taskManager.completeTask(taskId, 'cancelled');
-        return;
-      }
-
-      const message = error instanceof Error ? error.message : String(error);
-      eventBus.emit(taskId, request.projectId, 'error', { message, fatal: true }, task.sessionId);
-
-      const session = serverConfig.getSessionCost();
-      eventBus.emit(taskId, request.projectId, 'task_complete', {
-        result: 'failed',
-        tokens: session.totalPromptTokens + session.totalCompletionTokens,
-        cost: session.totalCost,
-        error: message,
-      }, task.sessionId);
-
-      await taskManager.completeTask(taskId, 'failed');
+      await endAfterError(error);
     }
   });
 }

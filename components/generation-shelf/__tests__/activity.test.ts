@@ -78,7 +78,7 @@ describe('the shelf\'s verbs', () => {
   const KINDS = {
     write: true, read: true, edit: true, list: true, search: true, create: true, delete: true,
     move: true, copy: true, evaluate: true, delegate: true, lookup: true, image: true,
-    database: true, build: true, plan: true, preview: true, run: true, other: true,
+    database: true, build: true, ask: true, brief: true, spec: true, propose: true, preview: true, run: true, other: true,
   } satisfies Record<ActionKind, true>;
 
   it.each(Object.keys(KINDS))('words %s both while running and done', (kind) => {

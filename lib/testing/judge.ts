@@ -98,7 +98,8 @@ async function callOpenAICompatible(
   model: string,
   provider: ProviderId,
   systemPrompt: string,
-  userMessage: string
+  userMessage: string,
+  maxTokens = 512,
 ): Promise<{ text: string; usage?: UsageInfo }> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
@@ -118,7 +119,7 @@ async function callOpenAICompatible(
         { role: 'user', content: userMessage },
       ],
       temperature: 0.2,
-      max_tokens: 512,
+      max_tokens: maxTokens,
       stream: false,
     }),
   });
@@ -136,7 +137,8 @@ async function callAnthropic(
   apiKey: string,
   model: string,
   systemPrompt: string,
-  userMessage: string
+  userMessage: string,
+  maxTokens = 512,
 ): Promise<{ text: string; usage?: UsageInfo }> {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -150,7 +152,7 @@ async function callAnthropic(
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
       temperature: 0.2,
-      max_tokens: 512,
+      max_tokens: maxTokens,
     }),
   });
 
@@ -167,7 +169,8 @@ async function callGemini(
   apiKey: string,
   model: string,
   systemPrompt: string,
-  userMessage: string
+  userMessage: string,
+  maxTokens = 512,
 ): Promise<{ text: string; usage?: UsageInfo }> {
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -179,7 +182,7 @@ async function callGemini(
           { role: 'user', parts: [{ text: systemPrompt }] },
           { role: 'user', parts: [{ text: userMessage }] },
         ],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 512 },
+        generationConfig: { temperature: 0.2, maxOutputTokens: maxTokens },
       }),
     }
   );
@@ -228,9 +231,25 @@ or
 
 Output nothing else.`;
 
+/**
+ * How much of each file the structured judge reads. It judges the artifacts themselves, so it reads
+ * them whole: at 2,000 characters a thorough brief lost its later sections, and the judge failed
+ * items for text it was never shown.
+ */
+const STRUCTURED_FILE_CHARS = 24_000;
+
+/**
+ * The structured judge's reply budget. A reasoning model spends tokens before it answers; at 512 it
+ * could run out before the verdict lines, and every item then failed as unverified.
+ */
+const STRUCTURED_MAX_TOKENS = 4096;
+
 function buildStructuredUserMessage(criteria: string[], context: JudgeContext): string {
   const fileSummary = Object.entries(context.files)
-    .map(([path, content]) => `--- ${path} ---\n${content.substring(0, 2000)}`)
+    .map(([path, content]) => {
+      const cut = content.length > STRUCTURED_FILE_CHARS;
+      return `--- ${path} ---\n${cut ? `${content.substring(0, STRUCTURED_FILE_CHARS)}\n[file cut at ${STRUCTURED_FILE_CHARS} characters]` : content}`;
+    })
     .join('\n\n') || '(no files)';
   const criteriaList = criteria.map((c, i) => `${i + 1}. ${c}`).join('\n');
 
@@ -280,13 +299,13 @@ export async function runStructuredJudge(
 
   let result: { text: string; usage?: UsageInfo };
   if (config.provider === 'anthropic') {
-    result = await callAnthropic(config.apiKey, config.model, STRUCTURED_SYSTEM_PROMPT, userMessage);
+    result = await callAnthropic(config.apiKey, config.model, STRUCTURED_SYSTEM_PROMPT, userMessage, STRUCTURED_MAX_TOKENS);
   } else if (config.provider === 'gemini') {
-    result = await callGemini(config.apiKey, config.model, STRUCTURED_SYSTEM_PROMPT, userMessage);
+    result = await callGemini(config.apiKey, config.model, STRUCTURED_SYSTEM_PROMPT, userMessage, STRUCTURED_MAX_TOKENS);
   } else {
     const baseUrl = providerConfig.baseUrl || 'https://openrouter.ai/api/v1';
     result = await callOpenAICompatible(
-      baseUrl, config.apiKey, config.model, config.provider, STRUCTURED_SYSTEM_PROMPT, userMessage
+      baseUrl, config.apiKey, config.model, config.provider, STRUCTURED_SYSTEM_PROMPT, userMessage, STRUCTURED_MAX_TOKENS
     );
   }
 

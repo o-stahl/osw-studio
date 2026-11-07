@@ -1,6 +1,7 @@
 import type { ShellEnv, ShellResult } from '../types';
 import { SedCommand, addressMatches, parseSedCommand } from '../internals';
 import { applyRedirectGuarded, checkWrite, normalizePath, recordFileVersion, truncate } from '../runtime';
+import { parseSedArgs } from '@/lib/vfs/shell-commands';
 
 /** `sed` — text substitution; -i edits in place. */
 export async function sedCommand(env: ShellEnv): Promise<ShellResult> {
@@ -8,42 +9,7 @@ export async function sedCommand(env: ShellEnv): Promise<ShellResult> {
 
           // sed [-i] [-n] [-e expr]... 'expr' [file]
           // Supports: substitution, range delete, range change, range print
-          let inPlace = false;
-          let suppressOutput = false;
-          const expressions: string[] = [];
-          let filePath = '';
-
-          // Parse arguments
-          for (let i = 0; i < args.length; i++) {
-            const a = args[i];
-            // -i (GNU), -i '' (BSD/macOS), -i.bak (backup extension) — all mean in-place
-            // Guard against combined flags like -in or -ie — only match -i alone or -i with non-alpha suffix (.bak)
-            if (a === '-i' || (a.startsWith('-i') && a.length > 2 && !/^-i[a-z]$/i.test(a))) { inPlace = true; continue; }
-            if (a === '-n') { suppressOutput = true; continue; }
-            if (a === '-e' && args[i + 1]) { expressions.push(args[++i]); continue; }
-            // Substitution expression (s/old/new/g)
-            if (a.startsWith('s') && a.length > 2 && /[\/|#@]/.test(a[1])) {
-              expressions.push(a);
-              continue;
-            }
-            // Address-based expression (/pattern/d, 5,10d, $d, /p1/,/p2/c\text, etc.)
-            // Must distinguish from file paths like /styles/style.css:
-            //   Address: /re/d, /re/p, /re/n         (command letter at end of token)
-            //            /re/c\text, /re/a\text, /re/i\text  (command letter + backslash)
-            //            /re/,/re2/...                (range — comma right after the first addr)
-            //   Path:    /dir/file.ext               (second slash followed by arbitrary text)
-            // The previous heuristic `/^\/[^/]*\/[,dpcians]/` misclassified any path whose
-            // basename began with d/p/c/i/a/n/s (e.g. /src/index.ts → command `i`).
-            if (
-              /^\d+!?[,dpcians{]/.test(a) ||
-              /^[\\$]/.test(a) ||
-              /^\/[^/]*\/(?:!?[dpn]$|!?[cai]\\|!?\{|,)/.test(a)
-            ) {
-              expressions.push(a);
-              continue;
-            }
-            if (!a.startsWith('-') && a) filePath = a;
-          }
+          const { inPlace, suppressOutput, expressions, filePath } = parseSedArgs(args);
 
           if (expressions.length === 0) {
             return {

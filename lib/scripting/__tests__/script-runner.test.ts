@@ -70,6 +70,24 @@ describe('scriptRunner', () => {
     expect(seen.filter((m) => m.type === 'complete')).toEqual([{ type: 'complete', exitCode: 0 }]);
   });
 
+  it('drops what a run that keeps no output files writes to /output/, and passes it on otherwise', async () => {
+    const file = { type: 'output-file', path: '/output/chart.html', content: '<svg/>' } as const;
+    await runMain();
+    h.sandboxes.at(-1)!.handlers.onMessage(file);
+    expect(seen).toContainEqual(file);
+
+    seen.length = 0;
+    h.releaseFiles = null;
+    const run = scriptRunner.execute('p1', 'python', '/main.py', undefined, { keepOutputFiles: false });
+    await vi.waitFor(() => expect(h.releaseFiles).not.toBeNull());
+    h.releaseFiles!();
+    await run;
+    h.sandboxes.at(-1)!.handlers.onMessage(file);
+    h.sandboxes.at(-1)!.handlers.onMessage({ type: 'complete', exitCode: 0 });
+    expect(seen).not.toContainEqual(file);
+    expect(seen).toContainEqual({ type: 'complete', exitCode: 0 });
+  });
+
   it('ends the run once when the sandbox fails to start', async () => {
     await runMain();
     h.sandboxes[0].handlers.onError('Failed to load the script runner: offline');

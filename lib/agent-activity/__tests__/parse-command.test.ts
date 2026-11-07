@@ -36,10 +36,24 @@ describe('parseCommand', () => {
     ['generate-image a cat', 'image'],
     ['sqlite3 SELECT 1', 'database'],
     ['runtime restart', 'build'],
-    ['spec write', 'plan'],
+    ['spec write', 'spec'],
+    ['brief --merge', 'brief'],
+    ['propose-create', 'propose'],
+    ['ask --prompt "Which look?" "Bold" "Soft"', 'ask'],
     ['someunknowncmd --flag', 'other'],
   ])('reads %s as %s and claims no file', (command, kind) => {
     expect(parseCommand(command)).toMatchObject({ kind, path: null });
+  });
+
+  it('reads sed that prints a range, and edits with sed only in place', () => {
+    expect(parseCommand('sed -n 60,400p /index.html')).toMatchObject({ kind: 'read', path: '/index.html' });
+    expect(parseCommand("sed -i.bak 's/a/b/' /index.html")).toMatchObject({ kind: 'edit', path: '/index.html' });
+  });
+
+  it('finds sed\'s file before a quoted script, and never takes the script for a file', () => {
+    expect(parseCommand('sed -i /index.html "/^$/d"')).toMatchObject({ kind: 'edit', path: '/index.html', paths: ['/index.html'] });
+    expect(parseCommand("sed -n /about.html '/<main>/,/<\\/main>/p'")).toMatchObject({ kind: 'read', paths: ['/about.html'] });
+    expect(parseCommand('sed -i "s/old words/new words/" /about.html')).toMatchObject({ kind: 'edit', paths: ['/about.html'] });
   });
 
   it('treats a redirection as a write even when the line opens with a reading command', () => {
@@ -66,8 +80,54 @@ describe('parseCommand', () => {
     expect(parseCommand('sed -i /index.html -e s/a/b/')).toMatchObject({ kind: 'edit', path: '/index.html' });
   });
 
-  it('refuses a relative target as a path, keeping it only as detail', () => {
-    expect(parseCommand('cat notes.txt')).toMatchObject({ kind: 'read', path: null, detail: 'notes.txt' });
+  it('reads a relative target from the project root, as the shell does, where cd changes nothing', () => {
+    expect(parseCommand('cat notes.txt')).toMatchObject({ kind: 'read', path: '/notes.txt', detail: 'notes.txt' });
+    expect(parseCommand('cd / && cat scripts/main.js')).toMatchObject({ kind: 'read', path: '/scripts/main.js' });
+    expect(parseCommand("cd / && sed -n '211,260p' styles/style.css")).toMatchObject({ kind: 'read', path: '/styles/style.css' });
+    expect(parseCommand('cd /styles && cat style.css')).toMatchObject({ path: '/style.css' });
+  });
+
+  it('takes every file a command names when it takes several', () => {
+    expect(parseCommand('cat /a.html b.css')).toMatchObject({ kind: 'read', path: '/a.html', paths: ['/a.html', '/b.css'] });
+    expect(parseCommand('head -n 40 scripts/main.js')).toMatchObject({ paths: ['/scripts/main.js'] });
+    expect(parseCommand('tail -n +5 a.html')).toMatchObject({ paths: ['/a.html'] });
+    expect(parseCommand('rm -f a.html pages/b.html')).toMatchObject({ kind: 'delete', paths: ['/a.html', '/pages/b.html'] });
+  });
+
+  it('names no file above the project root', () => {
+    expect(parseCommand('cat ../../home/user/key.txt')).toMatchObject({ kind: 'read', path: null, paths: [] });
+    expect(parseCommand('cat /../etc/hosts.conf')).toMatchObject({ path: null, paths: [] });
+  });
+
+  it('takes no argument for a file unless it reads as one', () => {
+    // A sed script, a line range, a count and an echo's words all sit where a file could.
+    expect(parseCommand("sed -i 's/a/b/' index.html")).toMatchObject({ kind: 'edit', paths: ['/index.html'] });
+    expect(parseCommand('sed -n 1,80p notes')).toMatchObject({ kind: 'read', path: null, paths: [] });
+    expect(parseCommand('echo hello world')).toMatchObject({ kind: 'edit', path: null, paths: [] });
+    expect(parseCommand('propose-create landing.page')).toMatchObject({ kind: 'propose', path: null, paths: [] });
+  });
+
+  it('reads the setup agent\'s commands as their own, though they carry a heredoc', () => {
+    // Taken as heredoc writes, they read "Wrote a file" in describe mode's thread.
+    expect(parseCommand("brief --merge << 'EOF'")).toMatchObject({ kind: 'brief', path: null });
+    expect(parseCommand(`spec --append "Audience" << 'EOF'`)).toMatchObject({ kind: 'spec', path: null });
+  });
+
+  it('writes to a relative redirect target, past a > inside quoted words', () => {
+    expect(parseCommand("cat > styles/style.css << 'EOF'")).toMatchObject({ kind: 'write', path: '/styles/style.css' });
+    expect(parseCommand('echo "a > b" > out.txt')).toMatchObject({ kind: 'write', path: '/out.txt' });
+  });
+
+  it('reads no redirect inside quotes, where a selector or a comparison puts a >', () => {
+    expect(parseCommand("sed -i 's/.card > img.thumb {/.card > img.cover {/' /styles.css")).toMatchObject({ kind: 'edit', paths: ['/styles.css'] });
+    expect(parseCommand('rg "ul > li.active a" /styles.css')).toMatchObject({ kind: 'search', paths: [] });
+    expect(parseCommand('grep -n "a > b.length &&" /app.js')).toMatchObject({ kind: 'search', paths: [] });
+    expect(parseCommand('echo hi > "notes.md"')).toMatchObject({ kind: 'write', paths: ['/notes.md'] });
+  });
+
+  it('takes an echo\'s file only from an absolute path at its end', () => {
+    expect(parseCommand('echo "See /docs/api.md for details"')).toMatchObject({ kind: 'edit', paths: [] });
+    expect(parseCommand('echo "Saved to /index.html"')).toMatchObject({ kind: 'edit', paths: ['/index.html'] });
   });
 
   it('refuses a glob as a path', () => {

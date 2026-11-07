@@ -339,6 +339,27 @@ describe('AgentLoop', () => {
     expect(malformed.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('ends a read-only run on its answer, without nudging it toward status', async () => {
+    // Chat mode changes nothing, so its answer is the end. Nudged toward status, it spent calls on
+    // every answer, and a model that believed its prompt (status is not for it) ran out and failed.
+    const provider = createMockProvider([{ content: 'main.js wires the save buttons.' }]);
+    const progress = createMockProgress();
+    const loop = new AgentLoop({
+      config: defaultConfig({ isReadOnly: true }),
+      provider,
+      executor: createMockExecutor(),
+      context: createMockContext(),
+      progress,
+      cost: createMockCost(),
+    });
+
+    const result = await loop.run('What does main.js do?');
+    expect(result.exitReason).toBe('answered');
+    expect(result.success).toBe(true);
+    const events = (progress.onEvent as ReturnType<typeof vi.fn>).mock.calls.map(([event]) => event);
+    expect(events).not.toContain('nudge');
+  });
+
   it('interview agent pauses (awaiting_user) on a prose question instead of nudging', async () => {
     // A prose question is content with no tool call and no status — the
     // interview must hand control back to the user, not nudge toward completion.

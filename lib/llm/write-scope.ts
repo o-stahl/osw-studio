@@ -6,7 +6,9 @@
  * has no symlinks, so a plain reject is sufficient.
  */
 
-import { alwaysWriteCommands } from '@/lib/vfs/shell-commands';
+import { alwaysWriteCommands, isScriptCommand, isSedInPlaceFlag, parseSedArgs } from '@/lib/vfs/shell-commands';
+import { sqliteChangesData } from './permissions';
+import { normalizePath } from '@/lib/vfs/shell/paths';
 
 /** Derived from the command registry so a new writing command cannot be missed here. */
 const WRITE_COMMANDS = alwaysWriteCommands();
@@ -15,11 +17,14 @@ function hasRedirect(cmd: string[]): boolean {
   return cmd.includes('>') || cmd.includes('>>');
 }
 
-/** Mirrors isWriteOperation() in tool-registry — which commands mutate the VFS. */
+/**
+ * Which commands change the VFS: tool-registry's isWriteOperation() less its sqlite3 case, a change
+ * to a deployment's data, which checkWriteScope refuses on its own.
+ */
 function isWriteCommand(cmd: string[]): boolean {
   const c = cmd[0];
   if (WRITE_COMMANDS.has(c)) return true;
-  if (c === 'sed' && cmd.includes('-i')) return true;
+  if (c === 'sed' && cmd.slice(1).some(isSedInPlaceFlag)) return true;
   if (c === 'curl' && (cmd.includes('-o') || cmd.includes('--output'))) return true;
   if (hasRedirect(cmd)) return true;
   return false;
@@ -41,11 +46,60 @@ export function commandLineWrites(command: string): boolean {
     .some(segment => isWriteCommand(segment.split(/\s+/)));
 }
 
-/** Normalize a raw command-line path token to an absolute VFS path. */
+/** A path token as the shell resolves it. */
 function toAbsolute(p: string): string {
-  let t = p.replace(/^['"]|['"]$/g, '');
-  if (!t.startsWith('/')) t = '/' + t;
-  return t;
+  return normalizePath(p) || '/';
+}
+
+/** Every value given to one of `flags`. The shell keeps the last, so each one is checked. */
+function flagValues(cmd: string[], flags: string[]): string[] | null {
+  const values = cmd.flatMap((arg, i) => (flags.includes(arg) ? [cmd[i + 1]] : []));
+  return values.every(Boolean) ? values : null;
+}
+
+/** What a command writes from its own arguments, its redirects taken off. */
+function ownTargets(cmd: string[]): string[] | null {
+  const c = cmd[0];
+  const rest = cmd.slice(1);
+  const nonFlags = rest.filter(a => !a.startsWith('-'));
+
+  if (c === 'curl') return flagValues(cmd, ['-o', '--output']);
+
+  if (c === 'generate-image') {
+    // Writes the image to --out/-o when given, otherwise to /.generated/.
+    const outs = flagValues(cmd, ['--out', '-o']);
+    return outs === null ? null : outs.length > 0 ? outs : ['/.generated/'];
+  }
+
+  if (c === 'runtime') {
+    // Changing the runtime rewrites the project's prompt file; the path is not in argv.
+    return ['/.PROMPT.md'];
+  }
+
+  if (c === 'sed') {
+    // A sed that prints writes nothing; one that edits in place writes the file the shell's sed
+    // reads, wherever it stands among the expressions.
+    if (!rest.some(isSedInPlaceFlag)) return [];
+    const file = parseSedArgs(rest).filePath;
+    return file ? [file] : null;
+  }
+
+  if (!WRITE_COMMANDS.has(c)) return [];
+
+  if (c === 'cp') {
+    // cp copies its first operand to its second. A glob in the source expands after this check,
+    // so any match can become the destination, and the source counts as written too.
+    if (nonFlags.length < 2) return null;
+    return /[*?]/.test(nonFlags[0]) ? nonFlags : nonFlags.slice(1);
+  }
+
+  if (c === 'mv') {
+    // A source and a destination at least. A move takes its sources away, so they are written too.
+    return nonFlags.length < 2 ? null : nonFlags;
+  }
+
+  // ss, touch, mkdir, rm, rmdir — non-flag args are the targets
+  return nonFlags.length > 0 ? nonFlags : null;
 }
 
 /**
@@ -57,53 +111,14 @@ function toAbsolute(p: string): string {
 export function writeTargets(cmd: string[]): string[] | null {
   if (!isWriteCommand(cmd)) return [];
 
-  // Redirect: target is the token after the last >/>>
-  if (hasRedirect(cmd)) {
-    const idx = Math.max(cmd.lastIndexOf('>'), cmd.lastIndexOf('>>'));
-    const target = cmd[idx + 1];
-    return target ? [toAbsolute(target)] : null;
-  }
-
-  const c = cmd[0];
-  const rest = cmd.slice(1);
-  const nonFlags = rest.filter(a => !a.startsWith('-'));
-
-  if (c === 'curl') {
-    const i = cmd.findIndex(a => a === '-o' || a === '--output');
-    const target = cmd[i + 1];
-    return target ? [toAbsolute(target)] : null;
-  }
-
-  if (c === 'generate-image') {
-    // Writes the image to --out/-o when given, otherwise to /.generated/.
-    const i = cmd.findIndex(a => a === '--out' || a === '-o');
-    if (i >= 0) {
-      const target = cmd[i + 1];
-      return target ? [toAbsolute(target)] : null;
-    }
-    return ['/.generated/'];
-  }
-
-  if (c === 'runtime') {
-    // Changing the runtime rewrites the project's prompt file; the path is not in argv.
-    return ['/.PROMPT.md'];
-  }
-
-  if (c === 'sed') {
-    // sed -i [script] <file> — the file is the last non-flag arg
-    const file = nonFlags[nonFlags.length - 1];
-    return file ? [toAbsolute(file)] : null;
-  }
-
-  if (c === 'cp' || c === 'mv') {
-    // destination is the last non-flag arg; need at least source + dest
-    if (nonFlags.length < 2) return null;
-    return [toAbsolute(nonFlags[nonFlags.length - 1])];
-  }
-
-  // ss, touch, mkdir, rm, rmdir — non-flag args are the targets
-  if (nonFlags.length === 0) return null;
-  return nonFlags.map(toAbsolute);
+  // Every redirect target, and what the command writes itself. The shell writes to the first
+  // redirect and hands any later one to the command as words, but each has to be in scope.
+  const redirects = flagValues(cmd, ['>', '>>']);
+  if (redirects === null) return null;
+  const isRedirect = (arg: string | undefined) => arg === '>' || arg === '>>';
+  const own = ownTargets(cmd.filter((arg, i) => !isRedirect(arg) && !isRedirect(cmd[i - 1])));
+  if (own === null) return null;
+  return [...own, ...redirects].map(toAbsolute);
 }
 
 /** True if `path` is a file strictly inside `scope` (and contains no `..`). */
@@ -123,7 +138,12 @@ export function checkWriteScope(
   scope: string | undefined,
 ): { allowed: boolean; reason?: string } {
   if (!scope) return { allowed: true };
-  const targets = writeTargets(cmd);
+  if (sqliteChangesData(cmd)) {
+    return { allowed: false, reason: `this agent may only write files within ${scope}, not change a deployment's data` };
+  }
+  // Scripts run in a sandbox that cannot reach project files, but what they write to /output/ is
+  // kept (tool-registry's bash description), so under a scope that is where they write.
+  const targets = isScriptCommand(cmd[0]) ? ['/output/'] : writeTargets(cmd);
   if (targets === null) {
     return { allowed: false, reason: `this agent may only write within ${scope}, and the write target could not be verified` };
   }

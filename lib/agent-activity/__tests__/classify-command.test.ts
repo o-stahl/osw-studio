@@ -2,14 +2,15 @@ import { describe, it, expect } from 'vitest';
 import { classifyCommand } from '@/lib/agent-activity/classify-command';
 
 /**
- * The four buckets the transcript groups tool calls into.
+ * The four buckets a tool call falls into, which the tool row's category (`ToolDisplay`), the
+ * large-write pacing notice and the event processor's sub-agent check read.
  *
  * Moved here with the function, from `components/chat-panel/__tests__/event-processor.test.ts`: the
  * classifier is pure logic over a command string and shares this directory with `parseCommand`,
  * which answers the finer question about the same input.
  *
  * The cases at the bottom are the ones that keep the two from being one function -- an `echo` that
- * writes nothing, a `sed -i` on a relative target -- so they are the ones to read before folding
+ * writes nothing, a read that names its file -- so they are the ones to read before folding
  * `classifyCommand` into `parseCommand`'s kinds.
  */
 
@@ -47,6 +48,12 @@ describe('classifyCommand', () => {
 
   it('returns write for sed -i', () => {
     expect(classifyCommand('sed -i "s/old/new/g" file.txt')).toBe('write');
+  });
+
+  it('reads sed\'s in-place flag wherever it stands, as the shell does, and a print as no write', () => {
+    expect(classifyCommand("sed -n -i 's/a/b/' /x.css")).toBe('write');
+    expect(classifyCommand("sed -i.bak 's/a/b/' /x.css")).toBe('write');
+    expect(classifyCommand("sed -n '1,5p' /x.css")).toBe('bash');
   });
 
   it('returns write for ss', () => {
@@ -110,8 +117,8 @@ describe('classifyCommand, on the shapes the agent actually writes', () => {
   });
 
   it('treats a sed on a relative target as a write', () => {
-    // parseCommand refuses a relative target as a path, so "has a path" cannot stand in for "wrote
-    // something" either. The explicit sed rule is what covers it.
+    // A read names its file as surely as a write does, so "has a path" cannot stand in for "wrote
+    // something"; what parseCommand says the sed did is what covers it.
     expect(classifyCommand('sed -i "s/old/new/g" file.txt')).toBe('write');
   });
 

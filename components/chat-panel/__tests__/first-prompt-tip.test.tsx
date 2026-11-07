@@ -69,7 +69,7 @@ async function render(props: { providerReady: boolean; generating?: boolean; eve
         setMode={() => {}}
         activeInterview={null}
         onStartInterview={() => {}}
-        onHandoff={() => {}}
+        thread={null}
         currentModel="m"
         getModelDisplayName={(m) => m}
         providerReady={props.providerReady}
