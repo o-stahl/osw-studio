@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tip } from '@/components/ui/tooltip';
 import { SchemaViewer } from './schema-viewer';
 import { SqlEditor } from './sql-editor';
 import { FunctionsManager } from './functions-manager';
@@ -19,40 +20,55 @@ interface DatabaseManagerProps {
 
 export function DatabaseManager({ deploymentId, workspaceId }: DatabaseManagerProps) {
   const t = useTranslations('deploymentDetail.nav');
+  const tips = useTranslations('deploymentDetail.navTips');
   const [activeTab, setActiveTab] = useState('schema');
 
   return (
     <div className="h-full flex flex-col">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
         <TabsList className="grid w-full grid-cols-7">
-          <TabsTrigger value="schema" className="flex items-center gap-1.5">
-            <Database className="h-3.5 w-3.5" />
-            {t('schema')}
-          </TabsTrigger>
-          <TabsTrigger value="query" className="flex items-center gap-1.5">
-            <Terminal className="h-3.5 w-3.5" />
-            {t('sql')}
-          </TabsTrigger>
-          <TabsTrigger value="functions" className="flex items-center gap-1.5">
-            <Code2 className="h-3.5 w-3.5" />
-            {t('functions')}
-          </TabsTrigger>
-          <TabsTrigger value="helpers" className="flex items-center gap-1.5">
-            <Wrench className="h-3.5 w-3.5" />
-            {t('helpers')}
-          </TabsTrigger>
-          <TabsTrigger value="secrets" className="flex items-center gap-1.5">
-            <Key className="h-3.5 w-3.5" />
-            {t('secrets')}
-          </TabsTrigger>
-          <TabsTrigger value="schedules" className="flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5" />
-            {t('schedules')}
-          </TabsTrigger>
-          <TabsTrigger value="logs" className="flex items-center gap-1.5">
-            <ScrollText className="h-3.5 w-3.5" />
-            {t('logs')}
-          </TabsTrigger>
+          <Tip label={tips('schema')} side="bottom" wrap wrapClassName="grid">
+            <TabsTrigger value="schema" className="flex items-center gap-1.5">
+              <Database className="h-3.5 w-3.5" />
+              {t('schema')}
+            </TabsTrigger>
+          </Tip>
+          <Tip label={tips('sql')} side="bottom" wrap wrapClassName="grid">
+            <TabsTrigger value="query" className="flex items-center gap-1.5">
+              <Terminal className="h-3.5 w-3.5" />
+              {t('sql')}
+            </TabsTrigger>
+          </Tip>
+          <Tip label={tips('functions')} side="bottom" wrap wrapClassName="grid">
+            <TabsTrigger value="functions" className="flex items-center gap-1.5">
+              <Code2 className="h-3.5 w-3.5" />
+              {t('functions')}
+            </TabsTrigger>
+          </Tip>
+          <Tip label={tips('helpers')} side="bottom" wrap wrapClassName="grid">
+            <TabsTrigger value="helpers" className="flex items-center gap-1.5">
+              <Wrench className="h-3.5 w-3.5" />
+              {t('helpers')}
+            </TabsTrigger>
+          </Tip>
+          <Tip label={tips('secrets')} side="bottom" wrap wrapClassName="grid">
+            <TabsTrigger value="secrets" className="flex items-center gap-1.5">
+              <Key className="h-3.5 w-3.5" />
+              {t('secrets')}
+            </TabsTrigger>
+          </Tip>
+          <Tip label={tips('schedules')} side="bottom" wrap wrapClassName="grid">
+            <TabsTrigger value="schedules" className="flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5" />
+              {t('schedules')}
+            </TabsTrigger>
+          </Tip>
+          <Tip label={tips('logs')} side="bottom" wrap wrapClassName="grid">
+            <TabsTrigger value="logs" className="flex items-center gap-1.5">
+              <ScrollText className="h-3.5 w-3.5" />
+              {t('logs')}
+            </TabsTrigger>
+          </Tip>
         </TabsList>
 
         <div className="flex-1 overflow-hidden mt-4">

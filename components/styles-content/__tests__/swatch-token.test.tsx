@@ -93,11 +93,10 @@ async function openColour(label: string): Promise<void> {
 
 /** The swatch offering this colour, inside the popover that is currently open. */
 function swatch(colour: string): HTMLButtonElement {
-  // By title, which carries `--name — value`. The label is the *token name* now, since that is what
-  // pressing the swatch writes; the colour is still what a test wants to name, so match on the part
-  // of the title that holds it.
-  const button = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-osw-color-popover] button'))
-    .find(el => (el.getAttribute('title') ?? '').includes(colour));
+  // By the colour it carries. The label is the *token name* now, since that is what pressing the
+  // swatch writes; the colour is still what a test wants to name.
+  const button = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-osw-color-popover] [data-osw-swatch]'))
+    .find(el => (el.getAttribute('data-osw-swatch') ?? '').includes(colour));
   if (!button) throw new Error(`no ${colour} swatch in the open popover`);
   return button;
 }
@@ -183,8 +182,7 @@ describe('the swatch the element is wearing', () => {
   /** The open popover's swatches, in order, as `[label, pressed]`. */
   async function swatchesOn(label: string): Promise<Array<[string, string | null]>> {
     await openColour(label);
-    return Array.from(document.querySelectorAll<HTMLButtonElement>('[data-osw-color-popover] button'))
-      .filter(el => el.getAttribute('title'))
+    return Array.from(document.querySelectorAll<HTMLButtonElement>('[data-osw-color-popover] [data-osw-swatch]'))
       .map(el => [el.getAttribute('aria-label') ?? '', el.getAttribute('aria-pressed')]);
   }
 

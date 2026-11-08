@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select';
 import { Section, SectionHeader, SectionBody } from '@/components/ui/section';
 import { SettingRow } from '@/components/ui/setting-row';
+import { Tip } from '@/components/ui/tooltip';
 import { Shield, Info, Cookie } from 'lucide-react';
 
 interface ComplianceTabProps {
@@ -49,13 +50,16 @@ export function ComplianceTab({ settings, onChange }: ComplianceTabProps) {
             title={t('enableConsentBanner')}
             description={t('compliance.bannerHint')}
           >
-            <Switch
-              id="compliance-enabled"
-              checked={settings.compliance.enabled}
-              onCheckedChange={(checked) =>
-                handleComplianceChange('enabled', checked)
-              }
-            />
+            <Tip label={settings.compliance.enabled ? t('tips.bannerOff') : t('tips.bannerOn')} wrap>
+              <Switch
+                id="compliance-enabled"
+                checked={settings.compliance.enabled}
+                onCheckedChange={(checked) =>
+                  handleComplianceChange('enabled', checked)
+                }
+                aria-label={t('enableConsentBanner')}
+              />
+            </Tip>
           </SettingRow>
         </SectionBody>
       </Section>
@@ -232,13 +236,24 @@ export function ComplianceTab({ settings, onChange }: ComplianceTabProps) {
                   {t('compliance.blockAnalyticsHint')}
                 </p>
               </div>
-              <Switch
-                id="block-analytics"
-                checked={settings.compliance.blockAnalytics}
-                onCheckedChange={(checked) =>
-                  handleComplianceChange('blockAnalytics', checked)
+              {/* Only the built-in analytics is held back, and only by the visitor's answer: opt-in
+                  waits for an accept, opt-out stops after a decline. */}
+              <Tip
+                label={
+                  !settings.compliance.blockAnalytics
+                    ? settings.compliance.mode === 'opt-in' ? t('tips.blockOnOptIn') : t('tips.blockOnOptOut')
+                    : t('tips.blockOff')
                 }
-              />
+                wrap
+              >
+                <Switch
+                  id="block-analytics"
+                  checked={settings.compliance.blockAnalytics}
+                  onCheckedChange={(checked) =>
+                    handleComplianceChange('blockAnalytics', checked)
+                  }
+                />
+              </Tip>
             </div>
 
             {settings.compliance.mode === 'opt-in' && (

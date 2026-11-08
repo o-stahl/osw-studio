@@ -7,6 +7,7 @@ import { vfs } from '@/lib/vfs';
 import { getRuntimeBadge } from '@/lib/runtimes/registry';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -92,9 +93,13 @@ export const ProjectTableRow = React.memo(function ProjectTableRow({
       </td>
       <td className="w-full p-[4px_10px] text-[13px] align-middle overflow-hidden" style={{ maxWidth: 0 }}>
         <div className="min-w-0">
-          <span className="block font-medium text-foreground text-[13px] truncate">{project.name}</span>
+          <Tip label={project.name} truncated>
+            <span className="block font-medium text-foreground text-[13px] truncate">{project.name}</span>
+          </Tip>
           {project.description && (
-            <span className="block text-[11px] text-muted-foreground truncate">{project.description}</span>
+            <Tip label={project.description} truncated>
+              <span className="block text-[11px] text-muted-foreground truncate">{project.description}</span>
+            </Tip>
           )}
         </div>
       </td>
@@ -115,13 +120,19 @@ export const ProjectTableRow = React.memo(function ProjectTableRow({
       </td>
       <td className="p-[4px_10px] align-middle whitespace-nowrap text-right" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-end gap-1">
-          <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => onSelect(project)}>
-            <Pencil className="w-3 h-3" />{tc('actions.edit')}
-          </Button>
-          <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => onPreview(project)}>{tc('actions.preview')}</Button>
+          <Tip label={tp('tips.open', { name: project.name })}>
+            <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => onSelect(project)}>
+              <Pencil className="w-3 h-3" />{tc('actions.edit')}
+            </Button>
+          </Tip>
+          <Tip label={tp('tips.preview', { name: project.name })}>
+            <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => onPreview(project)}>{tc('actions.preview')}</Button>
+          </Tip>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="xs" className="px-1"><MoreVertical className="w-3.5 h-3.5" /></Button>
+              <Tip label={tp('tips.more', { name: project.name })} align="end">
+                <Button variant="ghost" size="xs" className="px-1" aria-label={tp('tips.more', { name: project.name })}><MoreVertical className="w-3.5 h-3.5" /></Button>
+              </Tip>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {/* Edit and Preview hide from the row at COMPACT_ROW_WIDTH and appear here instead. */}

@@ -120,13 +120,12 @@ Let's build a simple personal website.
 
    The template sets the project's runtime, and you can change it later in project settings.
 
-You'll see the workspace with 4 panels:
-- **Chat** (left-most) - Talk to AI
-- **File Explorer** (2nd) - Your project files
-- **Code Editor** (3rd) - View and edit code
-- **Preview** (last) - Live preview of your site
+You'll see the workspace with three panels:
+- **Chat** (left) - Talk to AI
+- **Preview** (middle) - Live preview of your site
+- **File Explorer** (right) - Your project files
 
-You can open and close panels from their headers and the sidebar on the workspace.
+Open more from the rail on the left, such as the **Code Editor**, and drag a panel's title to rearrange them: onto another panel to make a tab, or near its top or bottom to stack them.
 
 ### Build With AI
 

@@ -115,6 +115,10 @@
       "previous": "이전 페이지",
       "next": "다음 페이지",
       "page": "{page}페이지"
+    },
+    "viewMode": {
+      "table": "표로 보기",
+      "grid": "카드로 보기"
     }
   },
   "nav": {
@@ -133,7 +137,19 @@
       "permissions": "권한",
       "data": "데이터",
       "mail": "메일",
-      "users": "사용자"
+      "users": "사용자",
+      "tips": {
+        "connections": "AI·웹 검색 제공자와 그 키, 로그인",
+        "models": "에이전트·이미지·음성 모델과 대화 압축",
+        "templates": "바꿔 가며 쓸 수 있는 저장된 모델 구성",
+        "appearance": "스튜디오/간단 보기, 테마, 언어, 사용 통계",
+        "costs": "비용 표시, 지출 한도, 누적 합계",
+        "permissions": "AI가 실행하기 전에 물어볼 명령",
+        "data": "프로젝트 백업과 복원, 설정 지우기",
+        "mcp": "MCP 엔드포인트와 승인한 외부 클라이언트",
+        "mail": "이 워크스페이스가 이메일을 보낼 때 쓰는 메일 서버",
+        "users": "계정과 워크스페이스 멤버, 그리고 역할"
+      }
     },
     "docs": {
       "whats-new": "새로운 소식",
@@ -170,7 +186,9 @@
     "noRecentProjects": "최근 프로젝트가 없어요",
     "serverBuild": "서버, v{version}",
     "notSyncedTitle": "{label} (동기화 안 됨 {count}개)",
-    "notSyncedAria": "{count, plural, other {서버에 동기화되지 않은 프로젝트 #개}}"
+    "notSyncedAria": "{count, plural, other {서버에 동기화되지 않은 프로젝트 #개}}",
+    "expand": "{label} 펼치기",
+    "collapse": "{label} 접기"
   },
   "deployments": {
     "projectMissing": "프로젝트 삭제됨",
@@ -231,7 +249,25 @@
     "confirmDelete": "배포 \"{name}\"을(를) 삭제할까요? 되돌릴 수 없어요.",
     "firstDeploymentHint": "위의 \"새로 만들기\" 버튼을 눌러 첫 배포를 만들어 보세요. 배포로 프로젝트를 배포하고 공개 설정을 따로 관리할 수 있어요.",
     "noFilesToPublish": "이 프로젝트에는 브라우저에 배포할 파일이 없어요. 프로젝트를 열어 파일이 있는지 확인하고 저장한 다음 다시 배포하세요.",
-    "sameOriginWarning": "배포한 사이트가 스튜디오와 같은 주소에서 제공되고 있어요. 그래서 사이트의 스크립트가 사이트를 연 사람의 권한으로 스튜디오를 쓰고, 저장된 API 키도 읽을 수 있어요. <code>SITES_ORIGIN</code>을 설정하면 사이트를 별도 주소에서 제공해요. <link>Server Mode 문서</link>"
+    "sameOriginWarning": "배포한 사이트가 스튜디오와 같은 주소에서 제공되고 있어요. 그래서 사이트의 스크립트가 사이트를 연 사람의 권한으로 스튜디오를 쓰고, 저장된 API 키도 읽을 수 있어요. <code>SITES_ORIGIN</code>을 설정하면 사이트를 별도 주소에서 제공해요. <link>Server Mode 문서</link>",
+    "contextLabel": "AI가 볼 수 있는 배포",
+    "contextTip": "AI가 작업하면서 어느 배포의 데이터베이스와 함수를 볼 수 있는지 골라요",
+    "tips": {
+      "new": "프로젝트의 새 배포를 만들어요",
+      "sortedBy": "정렬 기준: {order}",
+      "edit": "{name} 배포의 설정을 열어요",
+      "publish": "프로젝트를 빌드해서 {name} 배포를 공개해요",
+      "publishChanges": "마지막 배포 이후 저장한 변경 사항으로 {name} 배포를 다시 빌드해요",
+      "republish": "프로젝트의 현재 파일로 {name} 배포를 다시 빌드해 공개 중인 사이트를 바꿔요",
+      "publishing": "지금 배포하고 있어요",
+      "projectMissing": "프로젝트가 삭제됐어요. 설정에서 다른 프로젝트를 고른 뒤 배포하세요",
+      "copyUrl": "{name} 배포의 URL 복사",
+      "viewLive": "{name} 배포를 새 탭에서 열어요",
+      "more": "{name} 작업 더 보기",
+      "create": "배포를 만들어요. 배포해야 사이트가 공개돼요",
+      "chooseProject": "먼저 프로젝트를 골라 주세요",
+      "nameFirst": "먼저 배포 이름을 입력해 주세요"
+    }
   },
   "workspace": {
     "tabs": {
@@ -247,7 +283,6 @@
       "editorShort": "편집기"
     },
     "deploy": "배포",
-    "deployTooltip": "이 프로젝트 배포하기",
     "backToProjects": "프로젝트로 돌아가기",
     "backTo": "{view}(으)로 돌아가기",
     "saving": "저장 중…",
@@ -269,15 +304,11 @@
     "openCheckpointsPanel": "체크포인트 패널 열기",
     "closeCheckpoints": "체크포인트 닫기",
     "allCheckpoints": "모든 체크포인트",
-    "closeInspectorPanel": "인스펙터 패널 닫기",
-    "openInspectorPanel": "인스펙터 패널 열기",
     "checkpointUnpinned": "체크포인트 고정을 해제했어요",
     "checkpointPinned": "체크포인트를 고정했어요",
     "loadingCheckpoints": "체크포인트를 불러오는 중…",
     "noCheckpoints": "아직 체크포인트가 없어요. 체크포인트는 AI가 변경할 때 자동으로 만들어져요.",
     "jump": "이동",
-    "unpinCheckpoint": "체크포인트 고정 해제",
-    "pinCheckpoint": "체크포인트 고정",
     "unpin": "고정 해제",
     "pin": "고정",
     "restore": "복원",
@@ -317,7 +348,104 @@
       "helpHelp": "이 도움말 보기",
       "helpVfs": "VFS 명령어:",
       "helpOperators": "연산자:",
-      "helpOperatorList": "| (파이프), > >> (리디렉션), && || (연결)"
+      "helpOperatorList": "| (파이프), > >> (리디렉션), && || (연결)",
+      "tips": {
+        "run": "{file} 실행",
+        "chooseFile": "실행할 파일을 골라 주세요",
+        "stop": "스크립트 멈추기",
+        "file": "실행할 파일"
+      }
+    },
+    "layout": {
+      "tabs": "이 그룹의 패널",
+      "moreActions": "작업 더 보기",
+      "restore": "레이아웃 복원",
+      "restoreHint": "복원 (더블클릭 또는 Esc)",
+      "handleHint": "끌어서 옮기기 · 더블클릭으로 최대화 · 오른쪽 클릭으로 옵션 보기",
+      "maximizedHint": "더블클릭으로 복원 · 오른쪽 클릭으로 옵션 보기",
+      "dragToMove": "끌어서 옮기기",
+      "dragGroup": "끌어서 그룹 전체 옮기기",
+      "unread": "읽지 않은 출력",
+      "running": "작업 중",
+      "hint": "끌어서 배치 바꾸기 · 오른쪽 클릭으로 옵션 보기",
+      "hintDismiss": "닫기",
+      "menu": {
+        "splitRight": "오른쪽으로 분할",
+        "splitBelow": "아래로 분할",
+        "moveToNewColumn": "새 열로 옮기기",
+        "addAsTabTo": "탭으로 추가",
+        "maximize": "최대화",
+        "restore": "복원",
+        "doubleClick": "더블클릭",
+        "ungroupAll": "그룹 모두 풀기",
+        "close": "닫기",
+        "closeGroup": "그룹 닫기",
+        "alreadyOwnColumn": "이미 자기 열에 있어요",
+        "alreadyAlone": "이미 혼자 있어요",
+        "alreadyLastColumn": "이미 마지막 열이에요"
+      },
+      "presets": {
+        "button": "레이아웃",
+        "columns": "열",
+        "stacked": "쌓기",
+        "tabbed": "탭",
+        "reset": "레이아웃 초기화",
+        "tip": "레이아웃: 모든 패널을 한 번에 배치해요"
+      },
+      "refusal": {
+        "width": "너비가 {px}px 필요해요",
+        "height": "{panel}에는 높이가 {px}px 필요해요",
+        "inspectorPreview": "인스펙터는 미리보기가 보여야 해요"
+      },
+      "target": {
+        "reorder": "탭 순서 바꾸기",
+        "tabIn": "{panel}의 탭으로",
+        "above": "{panel} 위로",
+        "below": "{panel} 아래로",
+        "columnBetween": "{left}와(과) {right} 사이에 새 열",
+        "columnLeftOf": "{panel} 왼쪽에 새 열",
+        "columnRightOf": "{panel} 오른쪽에 새 열",
+        "column": "새 열"
+      },
+      "rail": {
+        "front": "{panel}을(를) 앞으로 가져와요",
+        "close": "{panel}을(를) 닫아요",
+        "openColumn": "새 열로 열려요",
+        "openTab": "{panel}의 탭으로 열려요",
+        "openAbove": "{panel} 위에 열려요",
+        "openBelow": "{panel} 아래에 열려요"
+      },
+      "toast": {
+        "opened": "{panel}을(를) 열었어요",
+        "closed": "{panel}을(를) 닫았어요",
+        "groupClosed": "{panel} 외 {count}개를 닫았어요",
+        "moved": "{panel}을(를) 옮겼어요",
+        "groupMoved": "{panel} 외 {count}개를 옮겼어요",
+        "movedToColumn": "{panel}을(를) 새 열로 옮겼어요",
+        "splitBelow": "{panel}을(를) 아래로 분할했어요",
+        "addedTo": "{panel}을(를) {target}에 탭으로 추가했어요",
+        "preset": "레이아웃: {name}",
+        "reset": "레이아웃을 초기화했어요",
+        "ungrouped": "그룹을 풀었어요",
+        "ungroupedPartly": "그룹을 풀었어요. 공간이 부족해 {count, plural, other {패널 #개}}는 탭으로 남았어요",
+        "ungroupNoRoom": "그룹을 풀 공간이 부족해요",
+        "nothingToUndo": "되돌릴 것이 없어요",
+        "alreadyOwnColumn": "{panel}은(는) 이미 자기 열에 있어요",
+        "undo": "되돌리기"
+      }
+    },
+    "tips": {
+      "save": "프로젝트 저장 ({shortcut})",
+      "saved": "모든 변경 사항이 저장됐어요",
+      "discard": "마지막으로 저장한 상태로 돌아가요",
+      "nothingToDiscard": "저장하지 않은 변경 사항이 없어요",
+      "undo": "마지막 변경을 실행 취소해요",
+      "redo": "실행 취소한 변경을 다시 실행해요",
+      "nothingToUndo": "실행 취소할 항목이 없어요",
+      "nothingToRedo": "다시 실행할 항목이 없어요",
+      "afterRun": "AI가 작업을 마치면 쓸 수 있어요",
+      "deploy": "호스트에 배포하거나 ZIP으로 내보내요",
+      "settings": "앱과 이 프로젝트의 설정"
     }
   },
   "skills": {
@@ -328,8 +456,6 @@
     "loading": "스킬을 불러오는 중…",
     "searchPlaceholder": "스킬과 그룹 검색…",
     "more": "더 보기",
-    "showBuiltIn": "OSW Studio에 기본 포함된 스킬 보이기/숨기기",
-    "showCustom": "내가 만든 스킬 보이기/숨기기",
     "enableAllShown": "지금 보이는 스킬 모두 켜기",
     "disableAllShown": "지금 보이는 스킬 모두 끄기",
     "noSkillsFound": "스킬을 찾을 수 없어요",
@@ -451,7 +577,33 @@
     "groupCount": "그룹 {count}개",
     "groupNamePlaceholder": "예: 웹 개발 스킬",
     "selectedCount": "({count}개 선택됨)",
-    "custom": "사용자"
+    "custom": "사용자",
+    "tips": {
+      "allOn": "스킬 사용 켜기",
+      "allOff": "스킬 사용 끄기",
+      "turnOn": "{name} 사용 켜기",
+      "turnOff": "{name} 사용 끄기",
+      "newGroup": "함께 켜고 끌 스킬을 묶어요",
+      "importExport": "스킬 가져오기 또는 내보내기",
+      "evalOn": "메시지마다 맞는 활성 스킬만 추가해요",
+      "evalOff": "메시지마다 활성 스킬을 모두 추가해요",
+      "needsSkills": "먼저 스킬 시스템을 켜 주세요",
+      "skillsTab": "스킬을 하나씩 켜고 꺼요",
+      "groupsTab": "스킬 묶음을 한 번에 켜고 꺼요",
+      "showBuiltIn": "OSW Studio에 기본 포함된 스킬 보이기",
+      "hideBuiltIn": "OSW Studio에 기본 포함된 스킬 숨기기",
+      "showCustom": "내가 만든 스킬 보이기",
+      "hideCustom": "내가 만든 스킬 숨기기",
+      "noneShown": "보이는 스킬이 없어요",
+      "edit": "{name} 편집",
+      "view": "{name} 보기. 기본 제공 스킬은 바꿀 수 없어요",
+      "delete": "{name} 삭제",
+      "rowMenu": "{name} 작업",
+      "missing": "이 그룹에 있었지만 지금은 없는 스킬",
+      "nameFirst": "먼저 그룹 이름을 입력해 주세요",
+      "close": "저장하지 않고 닫기",
+      "formEditor": "이름, 설명, 내용을 각각의 칸에서 편집해요"
+    }
   },
   "settings": {
     "language": {
@@ -621,7 +773,39 @@
     "codexLoginFailed": "ChatGPT 로그인에 실패했어요",
     "compactionLimitPlaceholder": "예: 128000",
     "signInWithProvider": "{provider}(으)로 로그인",
-    "orPasteKey": "또는 API 키 붙여넣기"
+    "orPasteKey": "또는 API 키 붙여넣기",
+    "tips": {
+      "studio": "전체 편집기예요. 메뉴에 템플릿, 스킬, 인터뷰도 있어요",
+      "simple": "프로젝트가 빠른 편집으로 열리고, 메뉴에서 템플릿, 스킬, 인터뷰가 빠져요",
+      "system": "기기의 라이트/다크 설정을 따라요",
+      "languageEn": "인터페이스를 영어로 보여줘요",
+      "languageKo": "인터페이스를 한국어로 보여줘요",
+      "languageFi": "인터페이스를 핀란드어로 보여줘요",
+      "analyticsOff": "익명 사용 데이터 공유를 멈춰요",
+      "hideCosts": "프로젝트를 편집하는 동안 비용을 표시하지 않아요",
+      "showCosts": "프로젝트를 편집하는 동안 비용을 보여줘요",
+      "resetStats": "누적 합계를 0으로 되돌려요. 되돌릴 수 없어요",
+      "export": ".osws 백업을 다운로드해요. API 키는 포함되지 않아요",
+      "import": ".osws 백업을 복원해요. 지금 데이터를 바꾸거나 합쳐요",
+      "clearAll": "저장된 키, 로그인, 모델 템플릿, 환경설정을 지워요. 프로젝트는 남아요",
+      "about": "OSW Studio 소개와 GitHub, 커뮤니티 링크를 보여줘요",
+      "codexSignIn": "ChatGPT 로그인을 새 탭에서 열어요",
+      "redirectFirst": "먼저 리디렉션 주소를 붙여 넣어 주세요",
+      "checkToken": "HuggingFace에서 토큰을 확인하고 저장해요",
+      "tokenFirst": "먼저 토큰을 붙여 넣어 주세요",
+      "disconnect": "연결과 저장된 키 또는 로그인을 지워요",
+      "mcpRevoke": "{name}의 {workspace} 접근 권한을 취소해요",
+      "mcpRevokeNow": "지금 {name}의 접근 권한을 취소해요",
+      "checkSetup": "서버, 모델, 도구 지원, 컨텍스트 길이를 확인해요",
+      "copyCommand": "명령 복사",
+      "validate": "{provider}에서 키를 확인해요",
+      "keyFirst": "먼저 키를 입력해 주세요",
+      "sameChatModel": "채팅에도 코드 모델을 써요",
+      "separateChatModel": "채팅과 계획에 쓸 별도 모델을 골라요",
+      "dark": "항상 다크 테마를 써요",
+      "light": "항상 라이트 테마를 써요",
+      "hfSignIn": "이 탭에서 Hugging Face 로그인을 열고, 끝나면 대시보드로 돌아와요"
+    }
   },
   "dashboard": {
     "loading": "대시보드를 불러오는 중…",
@@ -642,7 +826,16 @@
     "noErrors": "기록된 오류가 없어요",
     "whatsNewIn": "v{version} 새로운 소식",
     "topDeployments": "인기 배포 (24시간)",
-    "loadFailed": "대시보드를 불러오지 못했어요"
+    "loadFailed": "대시보드를 불러오지 못했어요",
+    "tips": {
+      "newProject": "템플릿으로 프로젝트를 시작하거나 AI에게 설명해요",
+      "projects": "모든 프로젝트를 열어요",
+      "deployments": "모든 배포를 열어요",
+      "tour": "데모 프로젝트로 짧은 투어를 시작해요",
+      "docs": "가이드, 자주 묻는 질문, 문제 해결을 열어요",
+      "readAll": "모든 버전의 새로운 소식을 열어요",
+      "refresh": "대시보드를 새로 고쳐요"
+    }
   },
   "projects": {
     "searchPlaceholder": "프로젝트 검색…",
@@ -724,7 +917,19 @@
     "limitReached": "프로젝트 한도에 도달했어요 ({max}). 새로 만들려면 프로젝트를 삭제하세요.",
     "confirmDelete": "“{name}”을(를) 삭제할까요? 되돌릴 수 없어요.",
     "discardUnsavedConfirm": "저장하지 않은 변경 사항이 있어요. 버릴까요?",
-    "firstSiteName": "내 첫 사이트"
+    "firstSiteName": "내 첫 사이트",
+    "tips": {
+      "new": "템플릿으로 프로젝트를 만들거나 AI와 함께 계획해요",
+      "sort": "프로젝트 정렬 순서를 바꿔요",
+      "import": "ZIP, JSON 내보내기 파일, 폴더에서 프로젝트를 가져와요",
+      "back": "프로젝트 양식으로 돌아가요",
+      "rename": "{name}의 이름과 설명 편집",
+      "saveDetails": "이름과 설명 저장",
+      "cancelEdit": "저장하지 않고 편집 끝내기",
+      "more": "{name} 작업 더 보기",
+      "open": "{name} 열기",
+      "preview": "{name} 미리보기"
+    }
   },
   "chat": {
     "startInterview": "인터뷰 시작하기",
@@ -810,7 +1015,25 @@
       "blocked": "마이크 접근이 차단됐어요",
       "processFailed": "녹음을 처리할 수 없었어요"
     },
-    "connectBeforeAttachments": "첨부 파일을 보내려면 모델을 연결하세요. 그때까지 메시지 입력란에 남아 있어요."
+    "connectBeforeAttachments": "첨부 파일을 보내려면 모델을 연결하세요. 그때까지 메시지 입력란에 남아 있어요.",
+    "tips": {
+      "interviewBadge": "인터뷰 진행 중: {title}",
+      "send": "보내기 ({shortcut})",
+      "stop": "작업 멈추기",
+      "connect": "모델을 고르려면 제공자를 연결해 주세요",
+      "writeFirst": "먼저 메시지를 써 주세요",
+      "modeCode": "AI가 프로젝트 파일을 바꿀 수 있어요",
+      "modeChat": "AI가 파일을 바꾸지 않고 읽고 답해요",
+      "modeInterview": "AI가 질문하며 무엇을 만들지 정리해요",
+      "connectFirst": "먼저 제공자를 연결해 주세요",
+      "newInterview": "새 인터뷰 템플릿",
+      "doubleClickToStart": "더블클릭해서 시작해요",
+      "pickInterview": "먼저 인터뷰를 골라 주세요",
+      "showCorrection": "무엇을 고쳤는지 보기",
+      "hideCorrection": "수정 내용 숨기기",
+      "handoff": "인터뷰에서 정리한 내용으로 빌드를 시작해요",
+      "answer": "이걸 답으로 보내요"
+    }
   },
   "fileExplorer": {
     "preparingDownload": "다운로드 준비 중…",
@@ -864,7 +1087,14 @@
     "hiddenSummary": "{parts} 숨김",
     "confirmDelete": "{type, select, directory {폴더} other {파일}} \"{path}\"을(를) 삭제할까요?",
     "readOnlyKind": "읽기 전용 {kind, select, server {서버 컨텍스트} other {스킬}}",
-    "generated": "(생성됨)"
+    "generated": "(생성됨)",
+    "tips": {
+      "serverContext": "AI가 보는 이 프로젝트의 백엔드예요. 프로젝트의 백엔드 설정에서 바꿔요",
+      "skills": "AI가 읽을 수 있는 스킬이에요. 스킬 패널에서 바꿔요",
+      "generated": "미리보기를 실행할 때 소스 파일로 만들어져요. 소스 파일을 고쳐 주세요",
+      "entry": "미리보기가 처음 여는 페이지예요",
+      "aiPrompt": "이 프로젝트에서 AI가 작업할 때마다 따르는 지침이에요"
+    }
   },
   "deployDialog": {
     "chooseWhere": "이 프로젝트를 어디에 배포할지 고르세요.",
@@ -905,7 +1135,21 @@
     "terminalRuntimeRefused": "이 프로젝트 유형은 정적 Space로 배포할 수 없어요. 대신 ZIP으로 내보내세요.",
     "publishFailed": "배포에 실패했어요",
     "builtWithFooter": "“Built with OSW Studio” 푸터",
-    "zipExportFailed": "ZIP으로 내보내지 못했어요"
+    "zipExportFailed": "ZIP으로 내보내지 못했어요",
+    "tips": {
+      "learnMore": "배포 문서를 새 탭에서 열어요",
+      "connect": "Hugging Face 토큰을 추가하는 설정을 열어요",
+      "signIn": "Hugging Face에 로그인한 뒤 여기로 돌아와요",
+      "newTab": "새 탭에서 열려요",
+      "createDeployment": "이 프로젝트의 새 배포를 시작한 채로 배포 화면을 열어요",
+      "zip": "컴파일한 사이트를 ZIP으로 다운로드해요",
+      "updateExisting": "이 프로젝트가 이미 가진 Space에 덮어써서 배포해요",
+      "publishAsNew": "새 Space에 배포하고 기존 Space는 그대로 둬요",
+      "visibilityKept": "기존 Space는 공개 범위를 유지해요. Hugging Face에서 바꿔 주세요",
+      "toHuggingFace": "Hugging Face를 연 뒤 여기로 돌아와 배포해요",
+      "nameFirst": "먼저 Space 이름을 입력해 주세요",
+      "publish": "사이트를 빌드해서 Space에 올려요"
+    }
   },
   "importDialog": {
     "compareVersions": "버전 비교",
@@ -1022,12 +1266,20 @@
       "globalStyles": "전역 스타일",
       "databaseSchema": "데이터베이스 스키마"
     },
-    "entriesCount": "항목 {count}개"
+    "entriesCount": "항목 {count}개",
+    "tips": {
+      "compare": "두 버전의 크기와 날짜를 보여줘요",
+      "hideCompare": "비교 숨기기",
+      "keepMine": "내 것을 유지하고 아카이브 버전은 건너뛰어요",
+      "replace": "내 것을 아카이브 버전으로 덮어써요",
+      "keepBoth": "아카이브 버전을 새 이름으로 가져와요",
+      "keepAsFile": "zip을 풀지 않고 프로젝트에 파일로 추가해요",
+      "skipFirst": "먼저 차단된 항목 건너뛰기를 선택하세요",
+      "waitImport": "가져오기가 끝날 때까지 기다려 주세요"
+    }
   },
   "sync": {
     "loadingStatus": "동기화 상태를 불러오는 중…",
-    "pushToServer": "서버로 보내기",
-    "pullFromServer": "서버에서 가져오기",
     "pushTemplateFailed": "템플릿을 보낼 수 없었어요",
     "pullTemplateFailed": "템플릿을 가져올 수 없었어요",
     "pushSkillFailed": "스킬을 보낼 수 없었어요",
@@ -1078,6 +1330,24 @@
       "forbidden": "이 워크스페이스에서 내 역할로는 삭제할 수 없어서 아무것도 삭제하지 않았어요.",
       "in_use": "배포가 이 프로젝트를 쓰고 있어서 아무것도 삭제하지 않았어요. 먼저 배포의 프로젝트를 바꾸거나 배포를 삭제해 주세요.",
       "failed": "서버가 삭제를 확인하지 않아서 이 기기의 사본은 그대로 두었어요. 다시 시도해 주세요."
+    },
+    "tips": {
+      "pushReplace": "서버의 {name}을(를) 로컬 버전으로 바꿔요",
+      "pushNew": "{name}을(를) 서버에 복사해요",
+      "pullReplace": "로컬 {name}을(를) 서버 버전으로 바꿔요",
+      "pullNew": "서버에서 {name}을(를) 복사해요",
+      "keepBoth": "내 사본을 새 프로젝트로 저장한 뒤 서버 버전을 가져와요",
+      "busy": "진행 중인 동기화가 끝날 때까지 기다려 주세요",
+      "inSync": "이미 동기화됐어요",
+      "serverOnly": "서버에만 있어요. 이 줄의 버튼으로 가져오세요",
+      "selectAll": "동기화되지 않은 항목을 모두 선택해요",
+      "pushSelected": "선택한 항목을 서버로 보내요",
+      "pullSelected": "선택한 항목을 서버에서 가져와요",
+      "refresh": "동기화 상태를 다시 확인해요",
+      "skillsTab": "직접 만든 스킬이에요. 기본 제공 스킬은 동기화하지 않아요",
+      "templatesTab": "직접 만든 템플릿이에요. 기본 제공 템플릿은 동기화하지 않아요",
+      "modelsTab": "직접 만든 모델 템플릿이에요. 기본 제공 템플릿은 동기화하지 않아요",
+      "interviewsTab": "직접 만든 인터뷰 템플릿이에요. 기본 제공 템플릿은 동기화하지 않아요"
     }
   },
   "models": {
@@ -1160,7 +1430,40 @@
     "perImage": "이미지당",
     "usesAgentModel": "에이전트 모델을 써요",
     "sendsRecordingAsAudio": "녹음을 오디오로 에이전트에 보내요",
-    "browserVoiceMeta": "무료 · 브라우저에서 동작 · 설정 필요 없음"
+    "browserVoiceMeta": "무료 · 브라우저에서 동작 · 설정 필요 없음",
+    "tips": {
+      "reasoningOn": "{model}의 추론 켜기",
+      "reasoningOff": "{model}의 추론 끄기",
+      "switchTemplate": "다른 템플릿으로 바꿔요. 그 모델이 모든 프로젝트에 적용돼요",
+      "switchDiscards": "템플릿을 바꾸면 저장하지 않은 변경 사항이 사라져요",
+      "saveTo": "변경 사항을 저장하고 모든 프로젝트에 바로 적용해요",
+      "saveAs": "이 설정을 편집할 수 있는 새 템플릿으로 저장해요",
+      "changeAgent": "다른 에이전트 모델 고르기",
+      "changeImage": "다른 이미지 모델 고르기",
+      "changeVoice": "음성 입력을 텍스트로 바꿀 방법 고르기",
+      "setImage": "AI가 이미지를 만들 수 있도록 모델을 골라요",
+      "setVoice": "음성 입력에 쓸 브라우저나 모델을 골라요",
+      "compactOff": "긴 대화를 더 이상 요약하지 않아요",
+      "compactOn": "대화가 컨텍스트 한도에 가까워지면 요약해요",
+      "nameFirst": "먼저 템플릿 이름을 입력해 주세요",
+      "saveNew": "새 템플릿을 저장하고 활성 템플릿으로 만들어요",
+      "agentNoImages": "에이전트 모델은 이미지를 만들 수 없어요",
+      "agentNoAudio": "에이전트 모델은 오디오를 받을 수 없어요",
+      "showAll": "이 자리에 맞지 않는 모델도 보여줘요",
+      "showFitting": "이 자리에 맞는 모델만 보여줘요",
+      "reset": "“{name}”에 저장된 모델로 되돌려요",
+      "saveInto": "이 모델을 “{name}”에 저장해요",
+      "showGroup": "{name} 모델 보기",
+      "hideGroup": "{name} 모델 숨기기",
+      "inUse": "{model} 사용 중",
+      "useForAgent": "에이전트 모델로 {model} 사용",
+      "useForImage": "이미지 생성에 {model} 사용",
+      "useForVoice": "음성 입력에 {model} 사용",
+      "hideModels": "모델 목록 숨기기",
+      "chooseAgent": "에이전트가 쓸 모델 고르기",
+      "chooseImage": "이미지 생성 모델 고르기",
+      "chooseVoice": "음성 입력 모델 고르기"
+    }
   },
   "preview": {
     "livePreview": "라이브 미리보기",
@@ -1174,7 +1477,17 @@
     "navigatedAwayHint": "링크, 폼 또는 스크립트가 미리보기를 다른 페이지로 보냈어요.",
     "reload": "미리보기 다시 불러오기",
     "compileFailed": "프로젝트를 컴파일할 수 없었어요",
-    "openExternalLink": "외부 링크를 열까요?"
+    "openExternalLink": "외부 링크를 열까요?",
+    "tips": {
+      "back": "뒤로",
+      "forward": "앞으로",
+      "home": "홈 페이지",
+      "semanticBlocks": "시맨틱 블록: 섹션을 페이지에 끌어다 놓으면 AI가 만들어요",
+      "page": "페이지로 이동",
+      "phone": "휴대폰 너비 (375px)",
+      "tablet": "태블릿 너비 (768px)",
+      "desktop": "데스크톱 너비 (최대 1440px)"
+    }
   },
   "editor": {
     "noFilesOpen": "열린 파일이 없어요",
@@ -1185,7 +1498,12 @@
     "confirmCloseUnsaved": "{name}을(를) 저장하지 않고 닫을까요?",
     "imageNotEditable": "이미지 파일은 텍스트 편집기에서 편집할 수 없어요",
     "videoNotEditable": "동영상 파일은 텍스트 편집기에서 편집할 수 없어요",
-    "unsupportedTypeHint": "이 파일 형식은 텍스트 편집기에서 편집할 수 없어요. 바이너리 파일과 일부 문서 형식은 여기서 표시할 수 없어요."
+    "unsupportedTypeHint": "이 파일 형식은 텍스트 편집기에서 편집할 수 없어요. 바이너리 파일과 일부 문서 형식은 여기서 표시할 수 없어요.",
+    "tips": {
+      "save": "파일 저장 ({shortcut})",
+      "tabModified": "{path} · 저장하지 않은 변경 사항",
+      "closeFile": "{name} 닫기"
+    }
   },
   "quickEdit": {
     "you": "나",
@@ -1339,6 +1657,14 @@
     "status": {
       "task": "작업",
       "remaining": "남은 일"
+    },
+    "tips": {
+      "undoThis": "이 작업이 바꾼 내용을 실행 취소해요",
+      "redoThis": "이 작업의 변경을 다시 적용해요",
+      "retry": "이 작업을 실행 취소하고 같은 메시지를 다시 보내요",
+      "restore": "이 작업이 끝난 뒤의 프로젝트 상태로 돌아가요",
+      "allow": "허용하고 이건 더 묻지 않아요",
+      "dont": "거절해요. AI는 이것 없이 계속해요"
     }
   },
   "generationShelf": {
@@ -1440,7 +1766,13 @@
     },
     "actionsCost": "작업 {count}개 · {cost}",
     "tokens": "토큰 {tokens}개",
-    "earlierActions": "+ 이전 작업 {count}개"
+    "earlierActions": "+ 이전 작업 {count}개",
+    "tips": {
+      "open": "{name} 열기",
+      "openPaused": "{name}을(를) 열어 작업에 필요한 것을 확인해요",
+      "dismiss": "{name}의 작업을 이 목록에서 지워요",
+      "stop": "{name}의 작업을 멈춰요"
+    }
   },
   "elementsPanel": {
     "noElements": "아직 요소가 없어요",
@@ -1460,7 +1792,8 @@
     "collapse": "{tag} 접기",
     "expand": "{tag} 펼치기",
     "sharedSource": "이 소스는 렌더링된 요소 {count}개가 공유해요 — 편집하면 모두에 영향을 줘요.",
-    "moreNotShown": "표시되지 않은 요소 {count}개 더 있음"
+    "moreNotShown": "표시되지 않은 요소 {count}개 더 있음",
+    "sourceOffset": "{file} (오프셋 {offset})"
   },
   "telemetry": {
     "title": "익명 사용 통계",
@@ -1525,7 +1858,13 @@
     "collected": "수집하는 것:",
     "randomId": "브라우저에 저장된 무작위 ID로 순 방문자 수를 세요.",
     "disable": "분석 끄기",
-    "gotIt": "확인"
+    "gotIt": "확인",
+    "tips": {
+      "source": "GitHub의 osw-analytics를 새 탭에서 열어요",
+      "details": "수집하는 것과 절대 수집하지 않는 것",
+      "disable": "설정의 외관에서 분석을 다시 켤 수 있어요",
+      "gotIt": "분석을 켠 채로 닫아요"
+    }
   },
   "permissions": {
     "mode": "권한 모드",
@@ -1569,6 +1908,12 @@
       "brief": "프로젝트를 시작할 때 설정 에이전트에만 전달되고, 프로젝트를 건드리지 않고 사용자에게 알려요.",
       "spec": "프로젝트를 시작할 때 설정 에이전트에만 전달되고, 프로젝트를 건드리지 않고 합의한 계획을 기록해요.",
       "proposeCreate": "설정 에이전트에만 전달되고, 사용자가 수락할 프로젝트를 제안해요 — 실제 생성은 사용자가 해요."
+    },
+    "tips": {
+      "ask": "AI가 {command}을(를) 실행하기 전에 물어봐요",
+      "allow": "AI가 묻지 않고 {command}을(를) 실행해요",
+      "reset": "선택을 지우고 확인 모드로 바꿔요",
+      "allowOnce": "이번만 허용하고 다음에 다시 물어봐요"
     }
   },
   "connections": {
@@ -1669,7 +2014,39 @@
       "brave": "유료: 매달 $5 크레딧이 있고 카드가 필요해요.",
       "searxng": "직접 운영하는 SearXNG 인스턴스를 지정하세요 (JSON API가 켜져 있어야 해요)."
     },
-    "searchWarnDuckduckgo": "비공식이라 최선을 다하는 수준이에요. 특히 모든 사용자가 한 주소를 같이 쓰는 공용 또는 호스팅 인스턴스에서는 검색 요청이 제한되거나 막힐 수 있어요. 많이 쓴다면 키 기반 제공자를 추가하세요."
+    "searchWarnDuckduckgo": "비공식이라 최선을 다하는 수준이에요. 특히 모든 사용자가 한 주소를 같이 쓰는 공용 또는 호스팅 인스턴스에서는 검색 요청이 제한되거나 막힐 수 있어요. 많이 쓴다면 키 기반 제공자를 추가하세요.",
+    "tips": {
+      "showKey": "키 보기",
+      "hideKey": "키 숨기기",
+      "showToken": "토큰 보기",
+      "hideToken": "토큰 숨기기",
+      "optionsFor": "{name} 옵션",
+      "checking": "연결을 확인하는 중이에요",
+      "testLocal": "{name}이(가) 응답하는지 확인하고 모델 목록을 가져와요",
+      "testCustom": "제공자를 저장한 뒤 모델 목록을 가져와요",
+      "nameEndpointFirst": "먼저 이름과 엔드포인트를 입력해 주세요",
+      "tokenFirst": "API 토큰을 입력하거나 API 토큰 요구를 꺼 주세요",
+      "tokenOptional": "토큰이 필요 없는 엔드포인트를 위해 토큰을 선택 사항으로 바꿔요",
+      "tokenRequired": "이 엔드포인트를 쓰려면 토큰이 필요하게 해요",
+      "deleteProvider": "{name}을(를) 토큰, 헤더와 함께 바로 삭제해요",
+      "saveCustom": "변경 사항을 저장하고 모델 목록을 다시 가져와요",
+      "removeHeader": "{name} 헤더 삭제",
+      "keyFirst": "먼저 API 키를 입력해 주세요",
+      "urlFirst": "먼저 인스턴스 URL을 입력해 주세요",
+      "apply": "모든 프로젝트에 “{name}”의 모델을 써요",
+      "inUse": "“{name}”이(가) 이미 활성 템플릿이에요",
+      "rename": "“{name}” 이름 바꾸기",
+      "duplicate": "“{name}”의 편집 가능한 사본을 만들어요",
+      "deleteTemplate": "“{name}”을(를) 영구히 삭제해요",
+      "onlyTemplate": "하나뿐인 템플릿은 삭제할 수 없어요",
+      "addProvider": "클라우드, 구독, 로컬, 사용자 지정 제공자 중에서 골라요",
+      "addSearchProvider": "고른 제공자로 AI가 웹을 검색하게 해요",
+      "backToList": "제공자 목록으로 돌아가요",
+      "chooseKey": "API 키로 연결해요",
+      "chooseSubscription": "구독 계정에 로그인해서 연결해요",
+      "chooseLocal": "이 컴퓨터에서 실행 중인 모델 서버를 연결해요",
+      "chooseCustom": "OpenAI 호환 API 서버를 주소로 연결해요"
+    }
   },
   "templatesUi": {
     "nameLength": "템플릿 이름은 1~50자여야 해요",
@@ -1808,6 +2185,18 @@
       "console": "이 템플릿은 콘솔에서 실행돼서 미리 볼 페이지가 없어요.",
       "loadFailed": "이 템플릿을 불러올 수 없어요.",
       "renderFailed": "이 템플릿을 렌더링할 수 없어요."
+    },
+    "tips": {
+      "manage": "템플릿 페이지를 열고 이 창을 닫아요",
+      "docs": "문서를 열고 이 창을 닫아요",
+      "select": "이 템플릿을 골라요. 아직 아무것도 만들지 않아요",
+      "typeFilter": "백엔드 기능이 있거나 없는 템플릿만 보여줘요",
+      "sort": "템플릿 정렬 순서를 바꿔요",
+      "import": ".oswt 파일에서 템플릿을 가져와요",
+      "use": "{name}(으)로 프로젝트를 만들어요",
+      "more": "{name} 작업 더 보기",
+      "authorSite": "작성자 사이트를 새 탭에서 열어요",
+      "saveAsTemplate": "템플릿 페이지에 추가해서 새 프로젝트를 시작할 수 있어요"
     }
   },
   "publishSettings": {
@@ -1927,7 +2316,6 @@
     "live": "공개 중",
     "reviewModeNote": "배포하면 댓글 위젯이 들어간 비공개 사본이 하나 더 만들어져요. 공개 사이트는 그대로이고 위젯이 들어가지 않아요.",
     "copy": "복사",
-    "publishFirst": "먼저 배포하세요 — 리뷰용 사본이 아직 만들어지지 않았어요",
     "open": "열기",
     "setOnSave": "저장할 때 설정돼요",
     "clearedOnSave": "저장할 때 지워져요",
@@ -2049,7 +2437,53 @@
     "cdnNameUrlRequired": "CDN 리소스의 이름과 URL을 모두 입력하세요",
     "cdnInvalidUrl": "올바른 URL을 입력하세요",
     "confirmDeleteScript": "이 스크립트를 정말 삭제할까요?",
-    "scriptNameRequired": "스크립트 이름을 입력하세요"
+    "scriptNameRequired": "스크립트 이름을 입력하세요",
+    "tips": {
+      "underConstructionOn": "다음 배포부터 방문자에게 점검 페이지를 보여줘요",
+      "underConstructionOff": "다음 배포부터 사이트를 다시 보여줘요",
+      "include": "배포 페이지에 {name} 넣기",
+      "leaveOut": "배포 페이지에서 {name} 빼기",
+      "edit": "{name} 편집",
+      "remove": "{name} 삭제",
+      "asyncOn": "async 추가: 스크립트를 다운로드하는 즉시 실행해요",
+      "asyncOff": "스크립트 태그에서 async 빼기",
+      "deferOn": "defer 추가: 페이지를 다 읽은 뒤 스크립트를 실행해요",
+      "deferOff": "스크립트 태그에서 defer 빼기",
+      "analyticsOn": "다음 배포부터 방문자 추적을 시작해요",
+      "analyticsOff": "다음 배포부터 방문자 추적을 멈춰요",
+      "turnOn": "{name} 켜기",
+      "turnOff": "{name} 끄기",
+      "bannerOn": "다음 배포부터 쿠키 동의 배너를 보여줘요",
+      "bannerOff": "다음 배포부터 동의 배너를 없애요",
+      "blockOnOptIn": "방문자가 동의한 뒤에만 기본 제공 분석을 실행해요",
+      "blockOnOptOut": "거부한 방문자에게는 기본 제공 분석을 멈춰요",
+      "blockOff": "방문자의 응답과 상관없이 기본 제공 분석을 실행해요",
+      "reviewOn": "다음 배포 때 댓글을 달 수 있는 리뷰 사본을 만들어요",
+      "reviewOff": "리뷰 사본을 닫아요. 댓글은 남아요",
+      "copyAddress": "리뷰어에게 보낼 주소를 복사해요",
+      "openReview": "리뷰 사본을 새 탭에서 열어요",
+      "publishFirst": "먼저 배포해야 리뷰 사본이 만들어져요",
+      "saveThenPublish": "저장하고 배포해야 리뷰 사본이 만들어져요",
+      "passwordDone": "이 비밀번호를 써요. 저장하면 설정돼요",
+      "setPassword": "리뷰어에게 비밀번호를 물어요",
+      "changePassword": "리뷰어용 새 비밀번호를 정해요",
+      "clearPassword": "저장하면 비밀번호를 없애요. 주소만으로 사본이 열려요",
+      "keepPassword": "지금 저장된 비밀번호 설정을 그대로 둬요",
+      "notifyOn": "새 댓글을 참여자 모두에게 한 시간에 한 번까지 이메일로 보내요",
+      "notifyOff": "요약 이메일을 멈춰요. 대기 중인 것도 사라져요",
+      "checkingMail": "메일을 보낼 수 있는지 확인하고 있어요",
+      "noMail": "메일 서버가 설정되지 않았어요",
+      "publishNow": "사이트와 리뷰 사본을 빌드해요",
+      "showOpen": "열린 댓글만 보기",
+      "showResolved": "해결된 댓글만 보기",
+      "showAll": "모든 댓글 보기",
+      "reply": "{n}번 댓글에 답글 달기",
+      "showComment": "리뷰 사본의 {n}번 댓글 위치를 새 탭에서 열어요",
+      "resolve": "{n}번 댓글을 해결됨으로 표시",
+      "reopen": "{n}번 댓글 다시 열기",
+      "postReply": "팀 배지를 달고 답글을 올려요",
+      "writeReply": "먼저 답글을 써 주세요"
+    }
   },
   "admin": {
     "usersServerOnly": "사용자 관리는 서버 모드에서만 쓸 수 있어요",
@@ -2086,7 +2520,6 @@
     "addMemberTitle": "멤버 추가",
     "userEmail": "사용자 이메일",
     "passwordOnlyNewAccount": "새 계정을 만들 때만 필요해요",
-    "removeMember": "멤버 삭제",
     "workspacesServerOnly": "워크스페이스 관리는 서버 모드에서만 쓸 수 있어요",
     "loadingWorkspaces": "워크스페이스를 불러오는 중…",
     "newWorkspace": "새 워크스페이스",
@@ -2179,7 +2612,23 @@
     "viewHelp": "스튜디오는 네 패널로 된 전체 편집기예요. 간단 보기는 프로젝트와 배포만 보여주고, 프로젝트를 열면 바로 빠른 편집으로 들어가요. 보이는 것만 바뀌고 할 수 있는 일은 바뀌지 않으며, 본인이 직접 바꿀 수 있어요.",
     "roleViewer": "뷰어",
     "workspaceSummary": "프로젝트 {projects}개 · 배포 {deployments}개 · {created}에 만듦",
-    "storageUsedMb": "{mb, number}MB"
+    "storageUsedMb": "{mb, number}MB",
+    "tips": {
+      "actionsFor": "{name} 작업",
+      "adminOn": "이 계정을 인스턴스 관리자로 만들어요",
+      "adminOff": "이 계정의 인스턴스 관리자 권한을 회수해요",
+      "deactivate": "계정을 비활성화해 로그인할 수 없게 해요",
+      "reactivate": "계정을 다시 활성화해 로그인할 수 있게 해요",
+      "generatePassword": "16자 무작위 비밀번호를 채우고 보여줘요",
+      "showPassword": "비밀번호 보기",
+      "hidePassword": "비밀번호 숨기기",
+      "grant": "{name}에 {role} 역할로 추가해요",
+      "chooseWorkspace": "먼저 워크스페이스를 고르세요",
+      "removeMember": "{email}을(를) 이 워크스페이스에서 제거해요. 계정은 그대로 남아요",
+      "studioOn": "전체 스튜디오로 시작해요",
+      "studioOff": "간단 보기로 시작해요",
+      "switchWorkspace": "다른 워크스페이스로 전환해요"
+    }
   },
   "backend": {
     "edgeFunctions": "엣지 함수",
@@ -2330,7 +2779,15 @@
       "rows": "{count}개 행",
       "rowsAffected": "{count}개 행이 변경됐어요",
       "success": "쿼리를 실행했어요",
-      "error": "쿼리 오류"
+      "error": "쿼리 오류",
+      "tips": {
+        "writeQuery": "먼저 쿼리를 작성하세요",
+        "runOnDeployment": "배포 데이터베이스에서 실행해요. 변경 사항은 바로 적용돼요",
+        "runOnProject": "프로젝트 데이터베이스에서 실행해요",
+        "showHistory": "이 브라우저에 저장된 최근 쿼리를 보여줘요",
+        "hideHistory": "최근 쿼리 숨기기",
+        "noHistory": "아직 실행한 쿼리가 없어요"
+      }
     },
     "updatedOn": "{date} 업데이트",
     "loadFunctionsFailed": "함수를 불러오지 못했어요",
@@ -2398,7 +2855,40 @@
     "noDeploymentId": "선택한 배포가 없어요",
     "confirmClearLogs": "함수 실행 로그를 모두 지울까요? 되돌릴 수 없어요.",
     "ddlHint": "CREATE TABLE, ALTER TABLE 같은 DDL 문",
-    "apply": "적용"
+    "apply": "적용",
+    "tips": {
+      "everyPage": "모든 페이지에서 이 제안을 보여줘요",
+      "somePages": "고른 페이지에서만 보여줘요",
+      "ruleKind": "한 페이지, 디렉터리, 패턴 중 하나와 맞춰요",
+      "removeRule": "이 규칙 삭제",
+      "saveSuggestions": "제안 저장",
+      "noChanges": "저장할 변경 사항이 없어요",
+      "projectTab": "런타임, 미리보기 진입점, 채팅 제안",
+      "backendOff": "이 프로젝트의 백엔드 기능을 꺼요",
+      "backendOn": "함수, 시크릿, 일정, 데이터베이스를 켜요",
+      "manageSettings": "앱 설정을 열어요: 연결, 모델, 모양 등",
+      "actionsFor": "{name} 작업",
+      "copyFunctionUrl": "{name}을(를) 호출하는 URL 복사",
+      "functionDisabled": "다시 켤 때까지 호출이 거부돼요",
+      "helperDisabled": "다시 켤 때까지 엣지 함수가 호출할 수 없어요",
+      "scheduleDisabled": "다시 켤 때까지 실행되지 않아요",
+      "valueNotSet": "편집해서 값을 설정하세요. 그전까지 함수는 이 값을 읽을 수 없어요",
+      "showValue": "값 보기",
+      "hideValue": "값 숨기기",
+      "showSystemTables": "파일, 함수, 시크릿, 로그를 담은 내부 테이블도 보여줘요",
+      "hideSystemTables": "내 테이블만 보여줘요",
+      "refreshLogs": "최근 항목 200개를 다시 불러와요",
+      "clearLogs": "이 배포의 로그 항목을 모두 삭제해요",
+      "noLogs": "지울 로그가 없어요",
+      "projectTables": "프로젝트 데이터베이스의 테이블과 열",
+      "projectSql": "프로젝트 데이터베이스에서 SQL 쿼리를 실행해요",
+      "projectDdl": "테이블을 만들거나 바꾸고, AI가 읽는 스키마에 추가해요",
+      "applyDdl": "실행하고 AI가 읽는 스키마에 추가해요",
+      "writeDdl": "먼저 DDL 문을 작성하세요",
+      "swapWait": "분석이 끝날 때까지 기다려 주세요",
+      "swapFailed": "변경 사항을 분석하지 못해서 교체할 수 없어요",
+      "schemaTab": "프로젝트 데이터베이스: 테이블, SQL, DDL"
+    }
   },
   "mail": {
     "serverOnly": "메일은 서버 모드에서만 쓸 수 있어요",
@@ -2497,12 +2987,26 @@
     },
     "invalidPort": "포트는 1에서 65535 사이의 정수여야 해요.",
     "instanceServerDesc": "설정할 게 없어요. 보내는 사람 이름은 바꿀 수 있지만 주소는 인스턴스 주소 그대로예요. 그래야 메일이 스팸함으로 가지 않아요.",
-    "displayNameHint": "인스턴스의 보내는 사람 주소 앞에 표시돼요. 다른 사람의 릴레이를 거쳐 워크스페이스 전용 주소로 보내면 SPF와 DKIM 검사에 실패해 스팸함으로 가는 일이 많아서 여기에는 주소 칸이 없어요. 보내는 사람 주소를 직접 정하려면 내 서버를 쓰세요."
+    "displayNameHint": "인스턴스의 보내는 사람 주소 앞에 표시돼요. 다른 사람의 릴레이를 거쳐 워크스페이스 전용 주소로 보내면 SPF와 DKIM 검사에 실패해 스팸함으로 가는 일이 많아서 여기에는 주소 칸이 없어요. 보내는 사람 주소를 직접 정하려면 내 서버를 쓰세요.",
+    "tips": {
+      "adminOnly": "인스턴스 관리자에게만 보이는 섹션이에요",
+      "offerOff": "이 서버를 워크스페이스에 더는 제공하지 않아요",
+      "stopSending": "이 워크스페이스에서 메일 보내기를 멈춰요",
+      "noChanges": "저장할 변경 사항이 없어요",
+      "discard": "저장된 설정으로 되돌려요",
+      "sendTestTo": "{email}(으)로 테스트 메시지를 한 통 보내요",
+      "saveFirst": "먼저 저장하세요. 테스트는 저장된 설정을 써요",
+      "sendNow": "다음 발송 주기를 기다리지 않고 지금 발송해요",
+      "changePassword": "새 비밀번호를 입력해요. 저장하면 적용돼요",
+      "clearPassword": "저장할 때 저장된 비밀번호를 지워요",
+      "keepPassword": "비밀번호를 원래대로 둬요",
+      "donePassword": "이 비밀번호를 써요. 저장하면 적용돼요",
+      "useAddressName": "표시 이름을 지워 주소에 적힌 이름이 보이게 해요"
+    }
   },
   "interviews": {
     "deleteFailed": "인터뷰 템플릿을 삭제할 수 없었어요",
     "templates": "인터뷰 템플릿",
-    "removeItem": "항목 삭제",
     "question": "질문",
     "required": "필수",
     "handoffAction": "인계 동작",
@@ -2567,7 +3071,22 @@
     "saveFailed": "인터뷰 템플릿을 저장할 수 없었어요",
     "builtInOverwrite": "기본 제공 템플릿은 덮어쓸 수 없어요.",
     "builtInEdit": "기본 제공 템플릿은 수정할 수 없어요.",
-    "builtInDelete": "기본 제공 템플릿은 삭제할 수 없어요."
+    "builtInDelete": "기본 제공 템플릿은 삭제할 수 없어요.",
+    "tips": {
+      "showBuiltIn": "OSW Studio에 기본 포함된 템플릿 보이기",
+      "hideBuiltIn": "OSW Studio에 기본 포함된 템플릿 숨기기",
+      "showCustom": "내가 만든 템플릿 보이기",
+      "hideCustom": "내가 만든 템플릿 숨기기",
+      "view": "{title} 보기",
+      "duplicate": "{title}의 편집 가능한 사본 만들기",
+      "delete": "{title} 삭제",
+      "rowMenu": "{title} 작업",
+      "back": "목록으로 돌아가기",
+      "backUnsaved": "저장하지 않고 목록으로 돌아가기",
+      "addItem": "인터뷰에서 알아낼 항목을 하나 더 추가해요",
+      "removeItem": "항목 {n} 삭제",
+      "required": "이 항목을 다룰 때까지 인터뷰를 끝낼 수 없어요"
+    }
   },
   "deploymentDetail": {
     "underConstruction": "공사 중",
@@ -2599,7 +3118,28 @@
     "settingsFallback": "설정",
     "updateExisting": "기존 항목 업데이트",
     "saveFailed": "설정을 저장하지 못했어요. 다시 시도해 주세요.",
-    "confirmLeaveUnsaved": "저장하지 않은 변경 사항이 있어요. 그래도 돌아갈까요?"
+    "confirmLeaveUnsaved": "저장하지 않은 변경 사항이 있어요. 그래도 돌아갈까요?",
+    "navTips": {
+      "functions": "엣지 함수: 배포한 사이트가 호출하는 REST 엔드포인트",
+      "helpers": "엣지 함수가 server 객체로 호출하는 재사용 코드",
+      "secrets": "함수가 읽는 API 키 같은 암호화된 값",
+      "schedules": "cron 일정에 따라 실행되는 엣지 함수",
+      "schema": "배포 데이터베이스의 테이블",
+      "general": "점검 페이지, 원본 프로젝트, 공개 URL, 커스텀 도메인, 버전",
+      "scripts": "추적 코드처럼 모든 배포 페이지에 넣는 스크립트",
+      "cdn": "모든 페이지에 CDN으로 연결하는 CSS와 JavaScript 라이브러리",
+      "seo": "검색과 공유를 위한 메타 태그, Open Graph, 트위터 카드",
+      "analytics": "방문자 추적: 제공자, 기능, 데이터 보관 기간, 개인정보",
+      "compliance": "쿠키 동의 배너와 동의 전 분석 차단 여부",
+      "review": "리뷰어가 댓글을 남기는 사이트의 비공개 사본",
+      "sql": "배포 데이터베이스에 실행하는 SQL 쿼리",
+      "logs": "최근 엣지 함수 호출과 그 상태, 소요 시간"
+    },
+    "tips": {
+      "back": "모든 배포 목록으로 돌아가요",
+      "save": "설정을 저장해요. 공개 중인 사이트는 배포할 때 바뀌어요",
+      "saveFirst": "먼저 저장하세요. 배포에는 저장된 설정만 쓰여요"
+    }
   },
   "analytics": {
     "dashboard": "분석 대시보드",
@@ -2655,7 +3195,16 @@
     "loadStorageFailed": "저장 공간 정보를 불러오지 못했어요: {error}",
     "notAvailableHint": "배포를 처음 배포한 뒤에 분석 데이터를 볼 수 있어요. 분석 데이터베이스는 배포할 때 만들어져요.",
     "confirmClear": "분석 데이터를 모두 지울까요? 되돌릴 수 없어요.",
-    "directReferrer": "(직접 방문)"
+    "directReferrer": "(직접 방문)",
+    "tips": {
+      "export": "모든 분석 데이터를 CSV 파일로 다운로드해요",
+      "clear": "수집한 분석 데이터를 모두 영구히 삭제해요",
+      "notPublished": "배포한 뒤에 쓸 수 있어요",
+      "overview": "페이지뷰, 방문자, 이탈률, 인기 페이지, 유입 경로, 기기",
+      "heatmaps": "방문자가 각 페이지에서 클릭하는 위치",
+      "sessions": "방문자가 페이지 사이를 이동하는 경로",
+      "engagement": "페이지 체류 시간, 스크롤 깊이, 랜딩·이탈 페이지"
+    }
   },
   "heatmap": {
     "loadFailed": "히트맵 데이터를 불러올 수 없었어요",
@@ -2676,7 +3225,10 @@
     "lowActivity": "낮은 활동",
     "recapture": "다시 캡처",
     "noData": "히트맵 데이터가 없어요",
-    "sampleSizeCount": "{count, plural, other {표본 크기: 상호작용 <b>#</b>회}}"
+    "sampleSizeCount": "{count, plural, other {표본 크기: 상호작용 <b>#</b>회}}",
+    "tips": {
+      "recapture": "배포한 페이지의 스크린샷을 새로 찍어요"
+    }
   },
   "engagement": {
     "loadFailed": "참여 지표를 불러올 수 없었어요",
@@ -2716,7 +3268,12 @@
     "creatingAccount": "계정 만드는 중…",
     "createAccount": "계정 만들기",
     "registrationFailed": "가입에 실패했어요",
-    "genericError": "오류가 발생했어요. 다시 시도해 주세요."
+    "genericError": "오류가 발생했어요. 다시 시도해 주세요.",
+    "tips": {
+      "generatePassword": "16자 무작위 비밀번호를 채우고 보여줘요",
+      "showPassword": "비밀번호 보기",
+      "hidePassword": "비밀번호 숨기기"
+    }
   },
   "templateCatalog": {
     "blank": {
@@ -2819,11 +3376,9 @@
     }
   },
   "tooltips": {
-    "capture": "캡처",
     "captureScreenshot": "스크린샷 찍기",
     "uploadImage": "이미지 업로드",
     "removeThumbnail": "썸네일 삭제",
-    "dragToReorder": "끌어서 순서 바꾸기",
     "closePalette": "팔레트 닫기",
     "removeBlock": "블록 삭제",
     "removeFile": "파일 삭제",
@@ -3033,7 +3588,10 @@
     "templateLabel": "템플릿",
     "creating": "만드는 중…",
     "specSections": "명세 ({count, plural, other {섹션 #개}})",
-    "createNow": "지금 만들기"
+    "createNow": "지금 만들기",
+    "tips": {
+      "createNow": "지금까지의 개요로 프로젝트를 만들고 열어요"
+    }
   },
   "runtimes": {
     "static": "순수 HTML, CSS, JavaScript",
@@ -3159,7 +3717,18 @@
     "editTextDesc": "이 요소의 문구를 바꿔요.",
     "tokenSuperseded": "{label}: 이 요소의 색상은 {file}에 선언된 {token}에서 왔어요. 이 요소만 바뀌었고, 토큰과 그것을 쓰는 나머지는 그대로예요.",
     "colourOf": "{label} 색상",
-    "sharedInstances": "×{count} 공유됨"
+    "sharedInstances": "×{count} 공유됨",
+    "sidesOf": "{label} 각 변",
+    "valueOf": "{label} 값",
+    "unitOf": "{label} 단위",
+    "tips": {
+      "showSides": "각 변을 따로 설정해요",
+      "hideSides": "각 변 숨기기",
+      "typeValue": "클릭해서 값을 입력해요",
+      "pickColour": "원하는 색을 골라요",
+      "resetColour": "이 요소의 색 지정을 지워서 다시 스타일시트를 따르게 해요",
+      "askAgent": "보낼 수 있게 채팅에 요청을 적어 둬요"
+    }
   },
   "about": {
     "tagline": "브라우저 기반 웹사이트 빌더",
@@ -3169,7 +3738,12 @@
     "linksCommunity": "링크 및 커뮤니티",
     "githubRepo": "GitHub 저장소",
     "liveDemo": "라이브 데모",
-    "discussions": "커뮤니티 토론"
+    "discussions": "커뮤니티 토론",
+    "tips": {
+      "discussions": "GitHub Discussions를 새 탭에서 열어요",
+      "repo": "GitHub의 소스 코드를 새 탭에서 열어요",
+      "demo": "온라인 데모를 새 탭에서 열어요"
+    }
   },
   "providerCatalog": {
     "descriptions": {
@@ -3225,7 +3799,15 @@
     "contentBlocksPreview": "[콘텐츠 블록 {count}개]",
     "reasoningOnlyPreview": "[추론만 있음]",
     "emptyPreview": "[비어 있음]",
-    "hasReasoningDetails": "reasoning_details가 있어요"
+    "hasReasoningDetails": "reasoning_details가 있어요",
+    "tips": {
+      "events": "작업마다 보고한 내용을 일어난 순서대로 보여줘요",
+      "messages": "마지막 요청이 모델에 보낸 메시지",
+      "showOnly": "{event}만 보기",
+      "showAll": "모든 이벤트 보기",
+      "autoScroll": "새 이벤트가 오면 따라가요"
+    },
+    "memoryTip": "JS 힙: {limit}MB 중 {used}MB 사용 중 ({percent}%)"
   },
   "orchestrator": {
     "noPrompt": "프롬프트를 입력하세요",
@@ -3247,7 +3829,11 @@
     "deploy": "<b>{client}</b>이(가) MCP 커넥터로 {action, select, created {{project} 배포를 만들었어요} published {{project}을(를) 배포했어요} unpublished {{project} 배포를 취소했어요} updated {{project} 배포를 업데이트했어요} other {{project} 배포를 변경했어요}}.",
     "edit": "<b>{client}</b>이(가) MCP 커넥터로 {project}의 파일을 편집했어요.",
     "unknownClient": "MCP 클라이언트",
-    "deployUnnamed": "<b>{client}</b>이(가) MCP 커넥터로 {action, select, created {배포를 만들었어요} published {배포했어요} unpublished {배포를 취소했어요} updated {배포를 업데이트했어요} other {배포를 변경했어요}}."
+    "deployUnnamed": "<b>{client}</b>이(가) MCP 커넥터로 {action, select, created {배포를 만들었어요} published {배포했어요} unpublished {배포를 취소했어요} updated {배포를 업데이트했어요} other {배포를 변경했어요}}.",
+    "tips": {
+      "stop": "{project}의 에이전트 작업을 멈춰요",
+      "dismiss": "이 알림을 숨겨요. 이후 알림은 계속 보여요"
+    }
   },
   "messageContext": {
     "summaryNote": "메모",
@@ -3265,7 +3851,12 @@
     "filesCount": "파일 ({count})",
     "voiceCount": "음성 ({count})",
     "voiceNote": "음성 메모",
-    "attached": "첨부"
+    "attached": "첨부",
+    "tips": {
+      "show": "메시지와 함께 보낼 내용 보기",
+      "hide": "자세한 내용 숨기기",
+      "clear": "메시지에서 빼기"
+    }
   },
   "mcpConsent": {
     "connectFailed": "연결을 완료할 수 없었어요.",
@@ -3289,6 +3880,11 @@
       "deploy": "배포를 만들고, 배포하고, 끄고, 설정(분석, 데이터베이스)을 바꾸기. 배포를 삭제하지는 않아요.",
       "analytics": "분석이 켜진 배포의 개요 통계 읽기",
       "workspaceAdmin": "워크스페이스에 접근할 수 있는 사람을 보고 바꾸기"
+    },
+    "tips": {
+      "deny": "거절해요. {client}은(는) 접근 권한을 받지 못해요",
+      "approve": "{workspace}에서 선택한 권한을 {client}에 줘요",
+      "tickOne": "먼저 권한을 하나 이상 선택하세요"
     }
   },
   "skillGroups": {
@@ -3364,7 +3960,16 @@
     "afterFailure": "실패 후: {prompt}",
     "pinned": "고정됨",
     "kindManual": "저장",
-    "kindAuto": "자동"
+    "kindAuto": "자동",
+    "tips": {
+      "pinned": "고정을 해제할 때까지 남아 있어요",
+      "manual": "저장하거나 가져오기 전에 만들어졌어요. 채팅을 지워도 남아요",
+      "auto": "자동으로 만들어졌어요. 채팅을 지우면 사라져요",
+      "pin": "이 체크포인트를 남겨요. 고정하지 않은 체크포인트는 최신 {count}개만 남아요",
+      "unpin": "고정 해제해요. 더 새로운 체크포인트가 {count}개 생기면 사라져요",
+      "jump": "이 체크포인트가 나온 채팅 메시지를 보여줘요",
+      "restore": "프로젝트를 이 체크포인트로 복원해요"
+    }
   },
   "imagePicker": {
     "titleGenerating": "에이전트가 작업 중이에요",
@@ -3392,7 +3997,11 @@
     "replaceIt": "바꾸기",
     "reading": "이 프로젝트의 이미지를 읽는 중…",
     "noImages": "이 프로젝트에는 아직 이미지 파일이 없어요. 여기서 쓰려면 하나 업로드하세요.",
-    "upload": "이미지 업로드"
+    "upload": "이미지 업로드",
+    "tips": {
+      "use": "{path} 사용",
+      "upload": "이 컴퓨터의 이미지를 추가해서 여기에 써요"
+    }
   },
   "textPopover": {
     "titleGenerating": "에이전트가 작업 중이에요",
@@ -3417,7 +4026,10 @@
     "confirmMany": "이 텍스트는 {count}번 렌더링돼요. 바꾸면 {count}곳 모두 바뀌어요.",
     "confirmManyFrom": "{file}의 이 텍스트는 {count}번 렌더링돼요. 바꾸면 {count}곳 모두 바뀌어요.",
     "confirmShared": "이 텍스트는 공유되어 있어요. 바꾸면 렌더링되는 모든 곳이 바뀌어요.",
-    "confirmSharedFrom": "{file}의 이 텍스트는 공유되어 있어요. 바꾸면 렌더링되는 모든 곳이 바뀌어요."
+    "confirmSharedFrom": "{file}의 이 텍스트는 공유되어 있어요. 바꾸면 렌더링되는 모든 곳이 바뀌어요.",
+    "tips": {
+      "save": "새 텍스트를 소스 파일에 써요"
+    }
   },
   "syncSummary": {
     "synced": "{count}개 동기화됨",
@@ -3436,7 +4048,10 @@
     "canStillChange": "거절해도 계속 수정할 수 있어요.",
     "notYet": "아직 아니요",
     "selectModel": "모델 선택",
-    "welcome": "무엇을 만들고 있나요?\n\n생각하고 있는 것을 알려 주세요. 몇 가지를 물어보고 프로젝트를 만들어 드릴게요."
+    "welcome": "무엇을 만들고 있나요?\n\n생각하고 있는 것을 알려 주세요. 몇 가지를 물어보고 프로젝트를 만들어 드릴게요.",
+    "tips": {
+      "create": "프로젝트를 만들고 열어요"
+    }
   },
   "docsActions": {
     "copyPage": "페이지 복사",
@@ -3457,7 +4072,11 @@
   "statusBanner": {
     "backendDown": "백엔드에 연결할 수 없어요. AI 생성, 프로젝트 동기화, 배포를 쓸 수 없어요. 작업은 로컬에 저장돼 있어요. 서버가 돌아오면 페이지를 새로 고치고 프로젝트를 다시 저장하세요.",
     "sessionExpired": "세션이 만료됐어요. 다시 로그인할 때까지 자동 동기화와 서버 기능이 멈춰요.",
-    "logIn": "로그인"
+    "logIn": "로그인",
+    "tips": {
+      "refresh": "서버가 돌아왔는지 확인해요",
+      "dismiss": "이 경고를 잠시 숨겨요"
+    }
   },
   "docs": {
     "loadFailed": "문서를 불러오지 못했어요: {status}",
@@ -3523,7 +4142,18 @@
     "popupBlocked": "로그인 창이 차단됐어요. 이 사이트의 팝업을 허용한 뒤 다시 시도해 주세요.",
     "relayWorking": "로그인을 마무리하고 있어요…",
     "relayDone": "이 창을 닫고 OSW Studio로 돌아가도 돼요.",
-    "relayClose": "이 창을 닫아도 돼요."
+    "relayClose": "이 창을 닫아도 돼요.",
+    "tips": {
+      "useLocal": "이 컴퓨터에서 실행 중인 {name} 연결",
+      "findLocal": "이 컴퓨터에서 Ollama, LM Studio, llama.cpp 찾기",
+      "signIn": "{name}에 로그인하고 연결된 채로 돌아와요",
+      "getKey": "{name} 키 페이지를 새 탭에서 열어요",
+      "connectKey": "키를 확인하고 제공자를 연결해요",
+      "pasteFirst": "먼저 키를 붙여 넣어 주세요",
+      "connectAs": "{name} 키로 연결해요",
+      "moreOptions": "설정의 연결 화면을 열어요",
+      "discardHeld": "대기 중인 메시지를 보내지 않아요"
+    }
   },
   "limits": {
     "retrying": "{provider}에서 요청을 제한하고 있어요. 곧 다시 시도해요…",
@@ -3571,10 +4201,19 @@
     "titleAllowanceMonth": "이번 달 OSW Studio 무료 추론을 다 썼어요.",
     "allowanceMonthBody": "{when} 다시 채워져요. 계속하려면 직접 제공자를 연결하세요.",
     "titleAllowanceCheck": "OSW Studio 추론 전 확인을 통과하지 못했어요.",
-    "allowanceCheckBody": "잠시 후 다시 계속하거나 직접 제공자를 연결하세요."
+    "allowanceCheckBody": "잠시 후 다시 계속하거나 직접 제공자를 연결하세요.",
+    "tips": {
+      "billing": "HuggingFace 결제 페이지를 새 탭에서 열어요",
+      "continue": "멈춘 곳에서 작업을 이어가요",
+      "continueOn": "{model}에서 계속하기",
+      "chooseAnother": "모델 선택을 열어요"
+    }
   },
   "pageLayout": {
-    "storageWarning": "워크스페이스 저장 공간의 {percent, number, percent}를 사용했어요 ({used, number}MB / {max, number}MB)"
+    "storageWarning": "워크스페이스 저장 공간의 {percent, number, percent}를 사용했어요 ({used, number}MB / {max, number}MB)",
+    "tips": {
+      "dismiss": "이 경고를 잠시 숨겨요"
+    }
   },
   "demo": {
     "notice": "OSW Studio 데모예요. 프로젝트는 이 브라우저에 저장돼요. 서버에 보관하려면 OSW Studio Hosted에 로그인하세요.",
@@ -3584,7 +4223,12 @@
     "cardTitle": "OSW Studio 데모",
     "cardBody": "프로젝트는 이 브라우저에 저장돼요. 내보내서 사본을 보관하거나, OSW Studio Hosted에 로그인해 서버에 보관하고 배포할 수 있어요.",
     "publishHere": "여기에 배포하려면 OSW Studio Hosted 계정이 필요해요.",
-    "publishSubtitle": "OSW Studio Hosted에서 배포하고 그곳의 배포 화면에서 관리해요."
+    "publishSubtitle": "OSW Studio Hosted에서 배포하고 그곳의 배포 화면에서 관리해요.",
+    "tips": {
+      "signUp": "OSW Studio Hosted 가입 페이지를 새 탭에서 열어요",
+      "signIn": "OSW Studio Hosted 로그인 페이지를 새 탭에서 열어요",
+      "dismiss": "이 안내를 다시 표시하지 않아요"
+    }
   },
   "demoImport": {
     "offerTitle": "워크스페이스에 오신 걸 환영해요",
@@ -3615,7 +4259,13 @@
     "noThanks": "괜찮아요",
     "cancel": "취소",
     "close": "닫기",
-    "fromDemo": "데모에서"
+    "fromDemo": "데모에서",
+    "tips": {
+      "noThanks": "다시 묻지 않아요. 프로젝트는 데모에 남아요",
+      "pickFirst": "먼저 프로젝트를 골라 주세요",
+      "remove": "데모의 사본을 삭제해요. 워크스페이스의 사본은 남아요",
+      "openDemo": "데모를 새 탭에서 열어요"
+    }
   },
   "allowance": {
     "title": "OSW Studio 추론",
@@ -3625,5 +4275,11 @@
     "statusChecking": "확인하는 중…",
     "statusUnavailable": "사용할 수 없음",
     "unavailableBody": "지금은 연결할 수 없어요. 1분마다 다시 확인해요."
+  },
+  "guidedTour": {
+    "tips": {
+      "end": "투어 끝내기",
+      "wait": "이 단계가 끝날 때까지 기다려 주세요"
+    }
   }
 }

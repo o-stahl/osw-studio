@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Logo } from '@/components/ui/logo';
+import { Tip } from '@/components/ui/tooltip';
 import { ChevronDown, ChevronUp, Menu } from 'lucide-react';
 
 export interface HeaderAction {
@@ -16,6 +17,8 @@ export interface HeaderAction {
   disabled?: boolean;
   content?: React.ReactNode;
   dataTourId?: string;
+  /** The desktop tooltip, where it says more than the label: a shortcut, a state, or why it is off. */
+  tip?: string;
 }
 
 export interface ViewTab {
@@ -29,6 +32,8 @@ interface AppHeaderProps {
   subtitle?: string;
   badge?: string;
   onLogoClick?: () => void;
+  /** What the logo button does, as its tooltip. */
+  logoTip?: string;
   actions?: HeaderAction[];
   mobileMenuContent?: React.ReactNode;
   desktopOnlyContent?: React.ReactNode; // Content shown only on desktop
@@ -51,6 +56,7 @@ export function AppHeader({
   subtitle,
   badge,
   onLogoClick,
+  logoTip,
   actions = [],
   mobileMenuContent,
   desktopOnlyContent,
@@ -87,18 +93,20 @@ export function AppHeader({
 
         {/* Left side - Logo + text (desktop), empty (mobile with sidebar) */}
         {!hideLogo && !showMobileMenu && (
-          <button
-            onClick={onLogoClick}
-            className="flex items-center gap-2 p-1 pr-2 hover:ring-1 hover:ring-border rounded-sm transition-all"
-          >
-            <Logo width={24} height={24} />
-            {leftText && (
-              <div className="flex flex-col items-start min-w-0">
-                <span className="font-semibold text-sm md:text-lg truncate max-w-[160px] md:max-w-none">{leftText}</span>
-                {leftSubtext && <span className="text-xs text-muted-foreground md:hidden">{leftSubtext}</span>}
-              </div>
-            )}
-          </button>
+          <Tip label={logoTip} side="bottom" align="start">
+            <button
+              onClick={onLogoClick}
+              className="flex items-center gap-2 p-1 pr-2 hover:ring-1 hover:ring-border rounded-sm transition-all"
+            >
+              <Logo width={24} height={24} />
+              {leftText && (
+                <div className="flex flex-col items-start min-w-0">
+                  <span className="font-semibold text-sm md:text-lg truncate max-w-[160px] md:max-w-none">{leftText}</span>
+                  {leftSubtext && <span className="text-xs text-muted-foreground md:hidden">{leftSubtext}</span>}
+                </div>
+              )}
+            </button>
+          </Tip>
         )}
 
         {/* Center - View tabs or leftText/title (desktop only now) */}
@@ -146,18 +154,19 @@ export function AppHeader({
               action.content ? (
                 <div key={action.id}>{action.content}</div>
               ) : (
-                <Button
-                  key={action.id}
-                  variant={action.variant || 'outline'}
-                  size={action.size || 'sm'}
-                  onClick={action.onClick}
-                  disabled={action.disabled}
-                  className="justify-start"
-                  data-tour-id={action.dataTourId}
-                >
-                  {action.icon && <action.icon className="h-4 w-4 mr-2" />}
-                  {action.label}
-                </Button>
+                <Tip key={action.id} label={action.tip} side="bottom">
+                  <Button
+                    variant={action.variant || 'outline'}
+                    size={action.size || 'sm'}
+                    onClick={action.onClick}
+                    disabled={action.disabled}
+                    className="justify-start"
+                    data-tour-id={action.dataTourId}
+                  >
+                    {action.icon && <action.icon className="h-4 w-4 mr-2" />}
+                    {action.label}
+                  </Button>
+                </Tip>
               )
             ))}
             {desktopOnlyContent}

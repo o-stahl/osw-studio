@@ -44,6 +44,7 @@ import {
 import { SettingRow } from '@/components/ui/setting-row';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
+import { Tip } from '@/components/ui/tooltip';
 import { getLoginUrl } from '@/lib/config/storage';
 import { cn, logger } from '@/lib/utils';
 
@@ -249,20 +250,24 @@ function PasswordControl({
           placeholder={tp('newPassword')}
           className="h-9 w-full max-w-[220px]"
         />
-        <Button variant="accent" size="sm" onClick={() => setEditing(false)}>
-          {tcm('actions.done')}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            setEditing(false);
-            setValue('');
-            onChange(undefined);
-          }}
-        >
-          {tcm('actions.cancel')}
-        </Button>
+        <Tip label={t('tips.donePassword')}>
+          <Button variant="accent" size="sm" onClick={() => setEditing(false)}>
+            {tcm('actions.done')}
+          </Button>
+        </Tip>
+        <Tip label={t('tips.keepPassword')}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setEditing(false);
+              setValue('');
+              onChange(undefined);
+            }}
+          >
+            {tcm('actions.cancel')}
+          </Button>
+        </Tip>
       </div>
     );
   }
@@ -278,25 +283,31 @@ function PasswordControl({
               ? t('stored')
               : tp('notSet')}
       </span>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => {
-          setValue('');
-          setEditing(true);
-        }}
-      >
-        {passwordSet || state === 'pending-set' ? tcm('actions.change') : tp('set')}
-      </Button>
-      {state === 'set' && (
-        <Button variant="ghost" size="sm" onClick={() => onChange(null)}>
-          {tcm('actions.clear')}
+      <Tip label={t('tips.changePassword')}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setValue('');
+            setEditing(true);
+          }}
+        >
+          {passwordSet || state === 'pending-set' ? tcm('actions.change') : tp('set')}
         </Button>
+      </Tip>
+      {state === 'set' && (
+        <Tip label={t('tips.clearPassword')}>
+          <Button variant="ghost" size="sm" onClick={() => onChange(null)}>
+            {tcm('actions.clear')}
+          </Button>
+        </Tip>
       )}
       {(state === 'pending-set' || state === 'pending-clear') && (
-        <Button variant="ghost" size="sm" onClick={() => onChange(undefined)}>
-          {tcm('actions.undo')}
-        </Button>
+        <Tip label={t('tips.keepPassword')}>
+          <Button variant="ghost" size="sm" onClick={() => onChange(undefined)}>
+            {tcm('actions.undo')}
+          </Button>
+        </Tip>
       )}
     </div>
   );
@@ -913,13 +924,17 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
             <SectionHeader icon={Server} title={t('instanceMailServer')}>
               {/* No sending badge here: the queue row below carries that state, and saying it twice
                   in one card reads as two different facts. */}
-              <Badge variant="secondary">{t('admin')}</Badge>
-              <Switch
-                id="inst-enabled"
-                aria-label={t('offerToWorkspaces')}
-                checked={instDraft.enabled}
-                onCheckedChange={(enabled) => setInstDraft({ ...instDraft, enabled })}
-              />
+              <Tip label={t('tips.adminOnly')}>
+                <Badge variant="secondary">{t('admin')}</Badge>
+              </Tip>
+              <Tip label={instDraft.enabled ? t('tips.offerOff') : t('offerToWorkspaces')} align="end" wrap>
+                <Switch
+                  id="inst-enabled"
+                  aria-label={t('offerToWorkspaces')}
+                  checked={instDraft.enabled}
+                  onCheckedChange={(enabled) => setInstDraft({ ...instDraft, enabled })}
+                />
+              </Tip>
             </SectionHeader>
 
             <SectionBody className="flex flex-col gap-1.5 text-xs leading-relaxed text-muted-foreground">
@@ -958,22 +973,26 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
 
             <SectionBody className="border-t border-border">
               <div className="flex items-center gap-2">
-                <Button
-                  variant="accent"
-                  size="sm"
-                  disabled={!instDirty || instSaving}
-                  onClick={saveInstance}
-                >
-                  {instSaving ? tcm('actions.saving') : tcm('actions.save')}
-                </Button>
-                {instDirty && !instSaving && (
+                <Tip label={!instDirty && !instSaving ? t('tips.noChanges') : undefined}>
                   <Button
-                    variant="ghost"
+                    variant="accent"
                     size="sm"
-                    onClick={() => instBaseline && setInstDraft(instBaseline)}
+                    disabled={!instDirty || instSaving}
+                    onClick={saveInstance}
                   >
-                    {tcm('actions.discard')}
+                    {instSaving ? tcm('actions.saving') : tcm('actions.save')}
                   </Button>
+                </Tip>
+                {instDirty && !instSaving && (
+                  <Tip label={t('tips.discard')}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => instBaseline && setInstDraft(instBaseline)}
+                    >
+                      {tcm('actions.discard')}
+                    </Button>
+                  </Tip>
                 )}
               </div>
             </SectionBody>
@@ -993,14 +1012,24 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
                     : t('testExplain')
                 }
               >
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={instTesting || instDirty}
-                  onClick={testInstance}
+                <Tip
+                  label={
+                    instTesting ? undefined
+                      : instDirty ? t('tips.saveFirst')
+                      : viewer.email ? t('tips.sendTestTo', { email: viewer.email })
+                      : undefined
+                  }
+                  align="end"
                 >
-                  {instTesting ? t('sendingTest') : t('sendTest')}
-                </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={instTesting || instDirty}
+                    onClick={testInstance}
+                  >
+                    {instTesting ? t('sendingTest') : t('sendTest')}
+                  </Button>
+                </Tip>
               </SettingRow>
 
               {instTest && (
@@ -1013,9 +1042,11 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
                 stats={instQueue}
                 scope="instance"
                 action={
-                  <Button variant="outline" size="sm" disabled={instFlushing} onClick={flushQueue}>
-                    {instFlushing ? t('sendingTest') : t('sendNow')}
-                  </Button>
+                  <Tip label={instFlushing ? undefined : t('tips.sendNow')} align="end">
+                    <Button variant="outline" size="sm" disabled={instFlushing} onClick={flushQueue}>
+                      {instFlushing ? t('sendingTest') : t('sendNow')}
+                    </Button>
+                  </Tip>
                 }
               />
             </SectionBody>
@@ -1038,12 +1069,14 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
           <Section>
             <SectionHeader icon={Send} title={t('sendingForWorkspace')}>
               <StatusBadge state={sending.state} />
-              <Switch
-                id="ws-enabled"
-                aria-label={t('sendFromWorkspace')}
-                checked={wsDraft.enabled}
-                onCheckedChange={(enabled) => setWsDraft({ ...wsDraft, enabled })}
-              />
+              <Tip label={wsDraft.enabled ? t('tips.stopSending') : t('sendFromWorkspace')} align="end" wrap>
+                <Switch
+                  id="ws-enabled"
+                  aria-label={t('sendFromWorkspace')}
+                  checked={wsDraft.enabled}
+                  onCheckedChange={(enabled) => setWsDraft({ ...wsDraft, enabled })}
+                />
+              </Tip>
             </SectionHeader>
 
             <SectionBody className="flex flex-col gap-1.5 text-xs leading-relaxed text-muted-foreground">
@@ -1111,13 +1144,15 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
                             <span>
                               {t('displayNameOverrides', { name: wsDraft.displayName.trim() })}
                             </span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setWsDraft({ ...wsDraft, displayName: '' })}
-                            >
-                              {t('useAddressName')}
-                            </Button>
+                            <Tip label={t('tips.useAddressName')}>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setWsDraft({ ...wsDraft, displayName: '' })}
+                              >
+                                {t('useAddressName')}
+                              </Button>
+                            </Tip>
                           </span>
                         ) : (
                           t('fromFormatHint')
@@ -1137,17 +1172,21 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
 
             <SectionBody className="border-t border-border">
               <div className="flex items-center gap-2">
-                <Button variant="accent" size="sm" disabled={!wsDirty || wsSaving} onClick={saveWorkspace}>
-                  {wsSaving ? tcm('actions.saving') : tcm('actions.save')}
-                </Button>
-                {wsDirty && !wsSaving && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => wsBaseline && setWsDraft(wsBaseline)}
-                  >
-                    {tcm('actions.discard')}
+                <Tip label={!wsDirty && !wsSaving ? t('tips.noChanges') : undefined}>
+                  <Button variant="accent" size="sm" disabled={!wsDirty || wsSaving} onClick={saveWorkspace}>
+                    {wsSaving ? tcm('actions.saving') : tcm('actions.save')}
                   </Button>
+                </Tip>
+                {wsDirty && !wsSaving && (
+                  <Tip label={t('tips.discard')}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => wsBaseline && setWsDraft(wsBaseline)}
+                    >
+                      {tcm('actions.discard')}
+                    </Button>
+                  </Tip>
                 )}
               </div>
             </SectionBody>
@@ -1168,14 +1207,24 @@ export function MailView({ workspaceId }: { workspaceId?: string }) {
                       : t('testExplain')
                   }
                 >
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={wsTesting || wsDirty}
-                    onClick={testWorkspace}
+                  <Tip
+                    label={
+                      wsTesting ? undefined
+                        : wsDirty ? t('tips.saveFirst')
+                        : viewer.email ? t('tips.sendTestTo', { email: viewer.email })
+                        : undefined
+                    }
+                    align="end"
                   >
-                    {wsTesting ? t('sendingTest') : t('sendTest')}
-                  </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={wsTesting || wsDirty}
+                      onClick={testWorkspace}
+                    >
+                      {wsTesting ? t('sendingTest') : t('sendTest')}
+                    </Button>
+                  </Tip>
                 </SettingRow>
 
                 {wsTest && (

@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tip } from '@/components/ui/tooltip';
 import { Loader2, AlertCircle, Eye, EyeOff, Info } from 'lucide-react';
 
 const KEY_EXAMPLE = 'sk_live_...'; // i18n-ignore: the shape of an API key, not prose
@@ -134,19 +135,22 @@ export function SecretEditor({
                 placeholder={secret ? t('newValuePlaceholder') : KEY_EXAMPLE}
                 className="pr-10 font-mono"
               />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
-                onClick={() => setShowValue(!showValue)}
-              >
-                {showValue ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-              </Button>
+              <Tip label={showValue ? t('tips.hideValue') : t('tips.showValue')}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+                  onClick={() => setShowValue(!showValue)}
+                  aria-label={showValue ? t('tips.hideValue') : t('tips.showValue')}
+                >
+                  {showValue ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+              </Tip>
             </div>
             <p className="text-xs text-muted-foreground">
               {secret ? t('leaveEmptyHelp') : t('encryptedHelp')}

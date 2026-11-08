@@ -14,6 +14,8 @@ import { MarkdownRenderer } from '@/components/markdown-renderer';
 import { useApprovalSentence } from '@/lib/i18n/use-approval-sentence';
 import { CompactionNotice, InterviewGateCard, SyntheticErrorDisplay, UsageLine, useDuration } from '@/components/chat-panel/transcript-items';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tip } from '@/components/ui/tooltip';
+import { modShortcut } from '@/lib/platform';
 import { LimitNotice, StoppedCard } from '@/components/chat-panel/limit-cards';
 import { ChipsBlock } from '@/components/chat-panel/chips';
 import type { InterviewHandoff } from '@/lib/interview/types';
@@ -244,14 +246,17 @@ function ErrorRow({ error, fallback }: { error: Run['error']; fallback: string }
 function ShortFigures({ usage }: { usage: RunUsage }) {
   const t = useTranslations('quickEdit');
   const duration = useDuration();
+  const [open, setOpen] = useState(false);
   return (
     <div className="flex items-center gap-1 text-xs text-muted-foreground">
       {Math.round(usage.ms / 1000) > 0 && <span>{duration(usage.ms)}</span>}
-      <Popover>
+      <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <button type="button" aria-label={t('figures')} className="flex rounded p-0.5 cursor-pointer hover:text-foreground">
-            <Info className="h-3 w-3" />
-          </button>
+          <Tip label={open ? undefined : t('figures')}>
+            <button type="button" aria-label={t('figures')} className="flex rounded p-0.5 cursor-pointer hover:text-foreground">
+              <Info className="h-3 w-3" />
+            </button>
+          </Tip>
         </PopoverTrigger>
         <PopoverContent side="top" className="w-fit px-3 py-1.5 border-primary/40 bg-[color-mix(in_oklab,var(--primary)_15%,var(--popover))]">
           <UsageLine tokens={usage.totalTokens} cost={usage.cost} ms={0} className="text-primary" />
@@ -317,6 +322,7 @@ export function ChatThread({ runs, simple = false, opening, generating, isDirty,
   const tchat = useTranslations('chat');
   const t = useTranslations('quickEdit');
   const tsum = useTranslations('quickEdit.summary');
+  const tw = useTranslations('workspace');
   const wantsTo = useApprovalSentence();
   if (runs.length === 0 && !opening) {
     return (
@@ -416,8 +422,12 @@ export function ChatThread({ runs, simple = false, opening, generating, isDirty,
                     )}
                     <p className="text-[11px] text-muted-foreground">{t('canUndo')}</p>
                     <div className="flex gap-1.5 pt-0.5">
-                      <Button variant="accent" size="xs" onClick={() => onAllow(run.approval!.gateKey, run.approval!.capabilityLabel)} disabled={generating}>{t('allow')}</Button>
-                      <Button variant="outline" size="xs" onClick={() => onDeny(run.approval!.gateKey, run.approval!.capabilityLabel)} disabled={generating}>{t('dont')}</Button>
+                      <Tip label={t('tips.allow')}>
+                        <Button variant="accent" size="xs" onClick={() => onAllow(run.approval!.gateKey, run.approval!.capabilityLabel)} disabled={generating}>{t('allow')}</Button>
+                      </Tip>
+                      <Tip label={t('tips.dont')}>
+                        <Button variant="outline" size="xs" onClick={() => onDeny(run.approval!.gateKey, run.approval!.capabilityLabel)} disabled={generating}>{t('dont')}</Button>
+                      </Tip>
                     </div>
                   </div>
                 )}
@@ -453,40 +463,52 @@ export function ChatThread({ runs, simple = false, opening, generating, isDirty,
                           {/* The button flips with the project: once the change is undone, the same
                               spot offers to put it back. */}
                           {onRedoLatest ? (
-                            <Button variant="outline" size="xs" onClick={onRedoLatest} disabled={generating}>
-                              <Redo2 className="h-3 w-3 mr-1" />
-                              {t('redoThis')}
-                            </Button>
+                            <Tip label={t('tips.redoThis')}>
+                              <Button variant="outline" size="xs" onClick={onRedoLatest} disabled={generating}>
+                                <Redo2 className="h-3 w-3 mr-1" />
+                                {t('redoThis')}
+                              </Button>
+                            </Tip>
                           ) : onUndoLatest && (
-                            <Button variant="outline" size="xs" onClick={onUndoLatest} disabled={generating}>
-                              <Undo2 className="h-3 w-3 mr-1" />
-                              {t('undoThis')}
-                            </Button>
+                            <Tip label={t('tips.undoThis')}>
+                              <Button variant="outline" size="xs" onClick={onUndoLatest} disabled={generating}>
+                                <Undo2 className="h-3 w-3 mr-1" />
+                                {t('undoThis')}
+                              </Button>
+                            </Tip>
                           )}
                           {onRetry && run.checkpointId && (
-                            <Button variant="outline" size="xs" onClick={() => onRetry(run.checkpointId!)} disabled={generating}>
-                              <RefreshCw className="h-3 w-3 mr-1" />
-                              {tc('actions.retry')}
-                            </Button>
+                            <Tip label={t('tips.retry')}>
+                              <Button variant="outline" size="xs" onClick={() => onRetry(run.checkpointId!)} disabled={generating}>
+                                <RefreshCw className="h-3 w-3 mr-1" />
+                                {tc('actions.retry')}
+                              </Button>
+                            </Tip>
                           )}
                           {isDirty && (
-                            <Button variant="accent" size="xs" onClick={onSave} disabled={generating}>
-                              <Check className="h-3 w-3 mr-1" />
-                              {tc('actions.save')}
-                            </Button>
+                            <Tip label={tw('tips.save', { shortcut: modShortcut('S') })}>
+                              <Button variant="accent" size="xs" onClick={onSave} disabled={generating}>
+                                <Check className="h-3 w-3 mr-1" />
+                                {tc('actions.save')}
+                              </Button>
+                            </Tip>
                           )}
                         </>
                       ) : run.checkpointId && (
                         <>
-                          <Button variant="outline" size="xs" onClick={() => onRestore(run.checkpointId!)} disabled={generating}>
-                            <Undo2 className="h-3 w-3 mr-1" />
-                            {tc('actions.restore')}
-                          </Button>
-                          {!simple && onRetry && (
-                            <Button variant="outline" size="xs" onClick={() => onRetry(run.checkpointId!)} disabled={generating}>
-                              <RefreshCw className="h-3 w-3 mr-1" />
-                              {tc('actions.retry')}
+                          <Tip label={t('tips.restore')}>
+                            <Button variant="outline" size="xs" onClick={() => onRestore(run.checkpointId!)} disabled={generating}>
+                              <Undo2 className="h-3 w-3 mr-1" />
+                              {tc('actions.restore')}
                             </Button>
+                          </Tip>
+                          {!simple && onRetry && (
+                            <Tip label={t('tips.retry')}>
+                              <Button variant="outline" size="xs" onClick={() => onRetry(run.checkpointId!)} disabled={generating}>
+                                <RefreshCw className="h-3 w-3 mr-1" />
+                                {tc('actions.retry')}
+                              </Button>
+                            </Tip>
                           )}
                         </>
                       )}

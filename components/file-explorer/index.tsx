@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { PanelHeader } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tip } from '@/components/ui/tooltip';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -43,12 +43,6 @@ import { ImportDialog, type ImportDialogSource } from '@/components/import-dialo
 import { CreateItemDialog, type NewItemRequest } from './create-item-dialog';
 import { createNewItem, type NewItemProblem } from './new-item';
 import { pickFolderSource } from '@/components/import-dialog/pick';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 
 interface FileExplorerProps {
@@ -782,10 +776,26 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
             ) : (
               <span className={cn("text-sm flex-1", (isTransient || isGenerated || isHiddenDotFile) && "italic text-muted-foreground")}>
                 {item.name}
-                {isTransient && <span className="text-xs text-muted-foreground ml-1">{t('readOnly')}</span>}
-                {isGenerated && <span className="text-xs text-muted-foreground ml-1">{t('generated')}</span>}
-                {item.path === (entryPoint || '/index.html') && <span className="text-xs text-emerald-500 ml-1">{t('entry')}</span>}
-                {item.name === '.PROMPT.md' && <span className="text-xs text-amber-500 ml-1">{t('aiPrompt')}</span>}
+                {isTransient && (
+                  <Tip label={isServerContext ? t('tips.serverContext') : t('tips.skills')}>
+                    <span className="text-xs text-muted-foreground ml-1">{t('readOnly')}</span>
+                  </Tip>
+                )}
+                {isGenerated && (
+                  <Tip label={t('tips.generated')}>
+                    <span className="text-xs text-muted-foreground ml-1">{t('generated')}</span>
+                  </Tip>
+                )}
+                {item.path === (entryPoint || '/index.html') && (
+                  <Tip label={t('tips.entry')}>
+                    <span className="text-xs text-emerald-500 ml-1">{t('entry')}</span>
+                  </Tip>
+                )}
+                {item.name === '.PROMPT.md' && (
+                  <Tip label={t('tips.aiPrompt')}>
+                    <span className="text-xs text-amber-500 ml-1">{t('aiPrompt')}</span>
+                  </Tip>
+                )}
               </span>
             )}
             </div>
@@ -905,73 +915,22 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
         color="var(--button-files-active)"
         onClose={onClose}
         panelKey="files"
-        actions={
-          <>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 md:h-5 md:w-5 md:px-0 md:border-0 md:bg-transparent md:rounded-md"
-              onClick={() => fileInputRef.current?.click()}
-              title={t('uploadFiles')}
-            >
-              <Upload className="h-2.5 w-2.5 md:h-3 md:w-3" />
-              <span className="text-xs md:hidden">{t('upload')}</span>
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 md:h-5 md:w-5 md:px-0 md:border-0 md:bg-transparent md:rounded-md"
-              onClick={() => handleCreateFile('/')}
-              title={t('newFile')}
-            >
-              <File className="h-2.5 w-2.5 md:h-3 md:w-3" />
-              <span className="text-xs md:hidden">{t('newFile')}</span>
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 md:h-5 md:w-5 md:px-0 md:border-0 md:bg-transparent md:rounded-md"
-              onClick={() => handleCreateDirectory('/')}
-              title={t('newFolder')}
-            >
-              <Folder className="h-2.5 w-2.5 md:h-3 md:w-3" />
-              <span className="text-xs md:hidden">{t('newFolder')}</span>
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 md:h-5 md:w-5 md:px-0 md:border-0 md:bg-transparent md:rounded-md"
-              onClick={handleDownloadProject}
-              title={t('downloadProject')}
-            >
-              <Download className="h-2.5 w-2.5 md:h-3 md:w-3" />
-              <span className="text-xs md:hidden">{tc('actions.download')}</span>
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 md:h-5 md:w-5 md:px-0 md:border-0 md:bg-transparent md:rounded-md"
-                  title={t('importIntoProject')}
-                >
-                  <Import className="h-2.5 w-2.5 md:h-3 md:w-3" />
-                  <span className="text-xs md:hidden">{tc('actions.import')}</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => importInputRef.current?.click()}>
-                  <FileArchive className="h-4 w-4 mr-2" />
-                  {tp('fromFile')}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => pickFolderSource(openImport)}>
-                  <FolderOpen className="h-4 w-4 mr-2" />
-                  {tp('fromFolder')}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
-        }
+        actions={[
+          { id: 'upload', icon: Upload, label: t('uploadFiles'), text: t('upload'), onSelect: () => fileInputRef.current?.click() },
+          { id: 'new-file', icon: File, label: t('newFile'), onSelect: () => handleCreateFile('/') },
+          { id: 'new-folder', icon: Folder, label: t('newFolder'), onSelect: () => handleCreateDirectory('/') },
+          { id: 'download', icon: Download, label: t('downloadProject'), text: tc('actions.download'), onSelect: handleDownloadProject },
+          {
+            id: 'import',
+            icon: Import,
+            label: t('importIntoProject'),
+            text: tc('actions.import'),
+            items: [
+              { id: 'file', icon: FileArchive, label: tp('fromFile'), onSelect: () => importInputRef.current?.click() },
+              { id: 'folder', icon: FolderOpen, label: tp('fromFolder'), onSelect: () => pickFolderSource(openImport) },
+            ],
+          },
+        ]}
       />
       <ContextMenu>
         <ContextMenuTrigger asChild>
@@ -1080,29 +1039,24 @@ export function FileExplorer({ projectId, onFileSelect, onClose, entryPoint, onS
 
       {/* Hidden files bar */}
       {(hiddenFileCount > 0 || hiddenFolderCount > 0) && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={() => setShowHidden(!showHidden)}
-              className="shrink-0 w-full flex items-center gap-1.5 px-3 py-1.5 border-t border-border text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-            >
-              {showHidden ? (
-                <><EyeOff className="h-3 w-3 shrink-0" />{t('hideHidden')}</>
-              ) : (
-                <><Eye className="h-3 w-3 shrink-0" />{(() => {
-                  const parts: string[] = [];
-                  if (hiddenFileCount > 0) parts.push(t('hiddenFiles', { count: hiddenFileCount }));
-                  if (hiddenFolderCount > 0) parts.push(t('hiddenFolders', { count: hiddenFolderCount }));
-                  return t('hiddenSummary', { parts: parts.join(', ') });
-                })()}</>
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-[240px] text-xs">
-            {t('dotFilesNote')}
-          </TooltipContent>
-        </Tooltip>
+        <Tip label={t('dotFilesNote')}>
+          <button
+            type="button"
+            onClick={() => setShowHidden(!showHidden)}
+            className="shrink-0 w-full flex items-center gap-1.5 px-3 py-1.5 border-t border-border text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+          >
+            {showHidden ? (
+              <><EyeOff className="h-3 w-3 shrink-0" />{t('hideHidden')}</>
+            ) : (
+              <><Eye className="h-3 w-3 shrink-0" />{(() => {
+                const parts: string[] = [];
+                if (hiddenFileCount > 0) parts.push(t('hiddenFiles', { count: hiddenFileCount }));
+                if (hiddenFolderCount > 0) parts.push(t('hiddenFolders', { count: hiddenFolderCount }));
+                return t('hiddenSummary', { parts: parts.join(', ') });
+              })()}</>
+            )}
+          </button>
+        </Tip>
       )}
 
       <CreateItemDialog request={createRequest} onClose={() => setCreateRequest(null)} onCreate={createItem} />

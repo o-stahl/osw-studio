@@ -24,6 +24,7 @@ import {
   SelectTrigger,
 } from '@/components/ui/select';
 import { InfoTip } from '@/components/ui/info-tip';
+import { Tip } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { logger } from '@/lib/utils';
 import { emitViewChanged } from '@/lib/view-mode-event';
@@ -179,9 +180,11 @@ export function WorkspaceMembers({
                   <div key={member.userId} className="flex items-center gap-3 px-4 py-2.5">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-[13px] font-medium truncate">
-                          {member.displayName || member.email}
-                        </span>
+                        <Tip label={member.displayName || member.email} truncated>
+                          <span className="text-[13px] font-medium truncate">
+                            {member.displayName || member.email}
+                          </span>
+                        </Tip>
                         {member.role === 'owner' && (
                           <Badge className="text-[11px] px-[7px] py-[1px] h-auto rounded-full bg-primary/15 text-primary border-primary/40">
                             {t('roleOwner')}
@@ -189,9 +192,11 @@ export function WorkspaceMembers({
                         )}
                       </div>
                       {member.displayName && (
-                        <span className="block text-[11px] text-muted-foreground truncate">
-                          {member.email}
-                        </span>
+                        <Tip label={member.email} truncated>
+                          <span className="block text-[11px] text-muted-foreground truncate">
+                            {member.email}
+                          </span>
+                        </Tip>
                       )}
                     </div>
 
@@ -202,9 +207,11 @@ export function WorkspaceMembers({
                           patchMember(member.userId, { studioView: value === 'studio' }, t('changeViewFailed'))
                         }
                       >
-                        <SelectTrigger size="sm" className="w-[104px]" aria-label={t('viewFor', { email: member.email })}>
-                          <span className="text-xs">{member.studioView === 1 ? ts('studio') : ts('simple')}</span>
-                        </SelectTrigger>
+                        <Tip label={t('interfaceNote')} wrap>
+                          <SelectTrigger size="sm" className="w-[104px]" aria-label={t('viewFor', { email: member.email })}>
+                            <span className="text-xs">{member.studioView === 1 ? ts('studio') : ts('simple')}</span>
+                          </SelectTrigger>
+                        </Tip>
                         <SelectContent>
                           <SelectItem value="studio">{ts('studio')}</SelectItem>
                           <SelectItem value="simple">{ts('simple')}</SelectItem>
@@ -226,14 +233,16 @@ export function WorkspaceMembers({
                         </SelectContent>
                       </Select>
 
-                      <Button
-                        variant="ghost" size="sm" className="px-2"
-                        aria-label={t('removeEmail', { email: member.email })}
-                        disabled={busy}
-                        onClick={() => removeMember(member)}
-                      >
-                        {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                      </Button>
+                      <Tip label={busy ? undefined : t('tips.removeMember', { email: member.email })} align="end">
+                        <Button
+                          variant="ghost" size="sm" className="px-2"
+                          aria-label={t('removeEmail', { email: member.email })}
+                          disabled={busy}
+                          onClick={() => removeMember(member)}
+                        >
+                          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                        </Button>
+                      </Tip>
                     </div>
                   </div>
                 );
@@ -299,13 +308,20 @@ export function WorkspaceMembers({
                 {t('openFullStudio')}
               </Label>
               <InfoTip>{t('viewHelp')}</InfoTip>
-              <Switch
-                id="member-studio-view"
-                className="ml-auto"
-                checked={form.studioView}
-                onCheckedChange={(studioView) => setForm({ ...form, studioView })}
-                disabled={adding}
-              />
+              <Tip
+                label={adding ? undefined : form.studioView ? t('tips.studioOff') : t('tips.studioOn')}
+                align="end"
+                wrap
+                wrapClassName="ml-auto inline-flex"
+              >
+                <Switch
+                  id="member-studio-view"
+                  className="ml-auto"
+                  checked={form.studioView}
+                  onCheckedChange={(studioView) => setForm({ ...form, studioView })}
+                  disabled={adding}
+                />
+              </Tip>
             </div>
           </div>
 
@@ -313,9 +329,11 @@ export function WorkspaceMembers({
             <Button variant="ghost" size="sm" onClick={() => setShowAdd(false)} disabled={adding}>
               {tc('actions.cancel')}
             </Button>
-            <Button size="sm" onClick={addMember} disabled={adding || !form.email.trim()}>
-              {adding ? (<><Loader2 className="w-3 h-3 animate-spin mr-1" />{tc('actions.adding')}</>) : t('addMember')}
-            </Button>
+            <Tip label={!adding && !form.email.trim() ? t('enterEmail') : undefined} wrapClassName="grid">
+              <Button size="sm" onClick={addMember} disabled={adding || !form.email.trim()}>
+                {adding ? (<><Loader2 className="w-3 h-3 animate-spin mr-1" />{tc('actions.adding')}</>) : t('addMember')}
+              </Button>
+            </Tip>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tip } from '@/components/ui/tooltip';
 
 interface CreateDeploymentModalProps {
   projects: Project[];
@@ -166,9 +167,22 @@ export function CreateDeploymentModal({
           <Button variant="outline" onClick={handleClose} disabled={isCreating}>
             {tc('actions.cancel')}
           </Button>
-          <Button onClick={handleCreate} disabled={isCreating || !projectId || !name}>
-            {isCreating ? tc('actions.creating') : t('create.submit')}
-          </Button>
+          <Tip
+            label={
+              isCreating
+                ? undefined
+                : !projectId
+                  ? t('tips.chooseProject')
+                  : !name
+                    ? t('tips.nameFirst')
+                    : t('tips.create')
+            }
+            wrapClassName="grid"
+          >
+            <Button onClick={handleCreate} disabled={isCreating || !projectId || !name}>
+              {isCreating ? tc('actions.creating') : t('create.submit')}
+            </Button>
+          </Tip>
         </DialogFooter>
       </DialogContent>
     </Dialog>

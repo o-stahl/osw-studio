@@ -57,6 +57,7 @@ import {
   Segmented,
   SETTING_OPTIONS,
   useFileOptionLabels,
+  useFileOptionTips,
   useSettingOptionLabels,
 } from './primitives';
 
@@ -222,6 +223,7 @@ function FileConflictRow({
 }) {
   const t = useTranslations('importDialog');
   const fileOptionLabels = useFileOptionLabels();
+  const fileOptionTips = useFileOptionTips();
   const copy = useImportCopy();
   const { recent } = useLocalFormat();
   const when = (date: Date | undefined) => (date ? recent(date) : t('unknownTime'));
@@ -247,6 +249,7 @@ function FileConflictRow({
           // option that cannot be carried out is worse than two that can.
           options={fileOptionsFor(conflict)}
           labels={fileOptionLabels}
+          tips={fileOptionTips}
           onChange={onChange}
         />
       }
@@ -305,6 +308,7 @@ export function BackendSection({
 }) {
   const t = useTranslations('importDialog');
   const fileOptionLabels = useFileOptionLabels();
+  const fileOptionTips = useFileOptionTips();
   const kind = (k: BackendKind) => t(`backendKind.${k}`);
   const describe = (record: { kind: BackendKind; detail: string; disabled?: true }) => describeBackendRecord(t, record);
 
@@ -358,6 +362,7 @@ export function BackendSection({
                 value={value}
                 options={ALL_FILE_OPTIONS}
                 labels={fileOptionLabels}
+                tips={fileOptionTips}
                 // Keyed by kind and name: an edge function and a schedule share one name grammar,
                 // so 'nightly' alone would have one decision quietly governing both.
                 onChange={(next) =>

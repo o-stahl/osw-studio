@@ -50,7 +50,7 @@ afterEach(() => {
 async function deleteMine(rejection: Error) {
   service.deleteTemplate.mockRejectedValue(rejection);
   await act(async () => { root.render(withMessages(<InterviewTemplatesPanel />)); });
-  const open = container.querySelector<HTMLButtonElement>(`button[title="${en.common.actions.delete}"]`);
+  const open = container.querySelector<HTMLButtonElement>(`button[aria-label="${en.interviews.tips.delete.replace('{title}', CUSTOM.title)}"]`);
   expect(open).not.toBeNull();
   await act(async () => { open!.click(); });
   // The confirm dialog renders in a portal.

@@ -1,19 +1,61 @@
 import { StateCreator } from 'zustand';
+import {
+  activatePanel as activateInLayout,
+  bumpRecent,
+  checkLayout,
+  closeCell,
+  defaultLayout,
+  findCell,
+  findPanel,
+  fold,
+  isPanelKey,
+  layoutFromLegacy,
+  maximizedView,
+  movePanel as moveInLayout,
+  openPanels,
+  planOpen,
+  presetLayout,
+  removePanel,
+  ungroup,
+  validateLayout,
+  type Box,
+  type DragSource,
+  type DropTarget,
+  type LastPlace,
+  type LayoutPreset,
+  type PanelKey,
+  type WorkspaceLayout,
+} from '@/lib/workspace-layout';
 
 type MobilePanelType = 'chat' | 'files' | 'editor' | 'preview' | 'elements' | 'checkpoints' | 'console' | 'skills' | 'debug';
 
+const LAYOUT_KEY = 'osw-workspace-layout';
+const HINT_KEY = 'osw-workspace-layout-hint';
+
+/** Used until the workspace reports the size of its panel area. */
+const FALLBACK_BOX: Box = { w: 1200, h: 700 };
+
+/** How many layout changes Undo can take back. */
+const HISTORY_MAX = 40;
+
+type LastPlaces = Partial<Record<PanelKey, LastPlace>>;
+
+/** What an Undo puts back. */
+interface LayoutSnapshot {
+  layout: WorkspaceLayout;
+  lastPlace: LastPlaces;
+  recentPanels: PanelKey[];
+}
+
 /**
- * Left to right, for whichever panels are open.
- *
- * Chat and preview lead because they are the pair that stays open: the work is asking for a change
- * and looking at the result, and everything else is opened to answer a question and closed again.
- * Order decides eviction as well as position, since `pickEvictionTarget` walks from the right, so
- * putting them first is what makes a third panel take the third slot instead of replacing preview.
- *
- * Only the default. A saved order wins (`loadPanelOrder`), so this changes nothing for anyone who
- * already has one.
+ * What the workspace draws for a control under the pointer: `rail`, what a rail button would do (open
+ * the panel somewhere, bring it to the front, or close it); `reveal`, what putting it on screen would
+ * do, which for a panel already in front is its outline; `outline`, the panel's outline alone.
  */
-const DEFAULT_PANEL_ORDER = ['chat', 'preview', 'files', 'editor', 'skills', 'console', 'elements', 'checkpoints', 'debug'];
+export type PanelHint = { kind: 'outline' | 'rail' | 'reveal'; panel: PanelKey };
+
+/** What a rail button did. */
+export type PanelChange = 'opened' | 'closed' | 'front' | null;
 
 export interface LayoutSlice {
   showChat: boolean;
@@ -25,6 +67,33 @@ export interface LayoutSlice {
   showSkillsPanel: boolean;
   showDebugPanel: boolean;
   showElements: boolean;
+  /**
+   * Where the open panels are: columns of cells of tabs. Saved under `osw-workspace-layout`; the
+   * show flags above are derived from it in the same `set()`, so their readers see one state. A flag
+   * says a panel is open, which for a background tab is not the same as on screen.
+   */
+  layout: WorkspaceLayout;
+  /**
+   * Counts the changes to the layout other than divider drags. The workspace keys its splitters by it:
+   * they take their sizes from the layout only when they mount.
+   */
+  layoutEpoch: number;
+  /** Where each closed panel was, so the rail can open it there again. Saved with the layout. */
+  lastPlace: LastPlaces;
+  /** Panels by how recently they were in front, most recent first. Saved with the layout. */
+  recentPanels: PanelKey[];
+  /** The cell filling the workspace, or null. A view: never saved. */
+  maximizedCell: string | null;
+  /** The layouts Undo goes back to, oldest first. This session only. */
+  layoutHistory: LayoutSnapshot[];
+  /**
+   * The panel area's size in pixels, reported by the workspace. Opening a column works out its width
+   * in pixels, so that no column is squeezed under its minimum while another has room to give.
+   */
+  workspaceBox: Box | null;
+  panelHint: PanelHint | null;
+  /** The one-time "drag to rearrange" tip has been dismissed, or a panel dragged. */
+  layoutHintDone: boolean;
   showProjectSettingsModal: boolean;
   /**
    * A section of the project settings dialog to bring into view once it opens, or null.
@@ -34,11 +103,6 @@ export interface LayoutSlice {
    */
   projectSettingsSection: string | null;
   fullscreenPreview: boolean;
-  panelOrder: string[];
-  draggingPanel: string | null;
-  dropTarget: number | null;
-  panelReplacePreview: string | null;
-  panelInsertPreview: number | null;
   activeMobilePanel: MobilePanelType;
   mobileOverflowOpen: boolean;
   hasUnreadConsole: boolean;
@@ -55,64 +119,44 @@ export interface LayoutSlice {
    */
   focusToolHinted: boolean;
 
-  togglePanel: (panel: string) => void;
-  setPanelOrder: (order: string[]) => void;
+  /** The rail: opens a closed panel, brings a background tab to the front, closes the front panel. */
+  togglePanel: (panel: string) => PanelChange;
+  /** Puts a panel on screen: opens it if closed, brings it to the front if behind. Never closes. */
+  revealPanel: (panel: string) => PanelChange;
+  closePanel: (panel: PanelKey) => boolean;
+  /** Closes a cell and every panel in it. */
+  closeGroup: (cellId: string) => boolean;
+  /** Brings a background tab to the front. Not on the Undo stack. */
+  activatePanel: (panel: PanelKey) => boolean;
+  /** Moves a panel or a tab group; false when the move would change nothing or can't be shown. */
+  movePanel: (source: DragSource, target: DropTarget) => boolean;
+  applyLayoutPreset: (name: LayoutPreset) => void;
+  /** The layout a workspace starts with, forgetting closed panels' places. */
+  resetPanelLayout: () => void;
+  /** Ungroup all; null when nothing could come out of the group. */
+  ungroupCell: (cellId: string) => { stayed: PanelKey[] } | null;
+  /** False when there is nothing to undo. */
+  undoLayout: () => boolean;
+  /** Maximizes a cell, or restores the layout when it is the maximized one or null. */
+  toggleMaximize: (cellId: string | null) => void;
+  /** The column widths in percent, as the panel group reports them after a resize. */
+  setColumnSizes: (sizes: number[]) => void;
+  /** A column's cell heights in percent, as its panel group reports them after a resize. */
+  setCellSizes: (columnId: string, sizes: number[]) => void;
+  setWorkspaceBox: (box: Box) => void;
+  setPanelHint: (hint: PanelHint | null) => void;
+  dismissLayoutHint: () => void;
   setActiveMobilePanel: (panel: MobilePanelType) => void;
-  startDrag: (panel: string) => void;
-  endDrag: () => void;
-  setDropTarget: (target: number | null) => void;
   setFullscreenPreview: (v: boolean) => void;
   setShowProjectSettingsModal: (v: boolean, section?: string) => void;
   clearProjectSettingsSection: () => void;
   setHasUnreadConsole: (v: boolean) => void;
   setPaletteOpen: (v: boolean) => void;
   setMobileOverflowOpen: (v: boolean) => void;
-  setPanelReplacePreview: (panel: string | null) => void;
-  setPanelInsertPreview: (idx: number | null) => void;
   setFocusToolArmed: (armed: boolean) => void;
   setFocusToolHinted: (hinted: boolean) => void;
   initLayout: () => void;
   resetLayout: () => void;
-}
-
-function loadSavedPanels(): Record<string, boolean> | null {
-  try {
-    const stored = localStorage.getItem('osw-workspace-panels');
-    return stored ? JSON.parse(stored) : null;
-  } catch { return null; }
-}
-
-function loadPanelOrder(): string[] {
-  try {
-    const stored = localStorage.getItem('osw-workspace-panel-order');
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      const all = new Set(DEFAULT_PANEL_ORDER);
-      const ordered = parsed.filter((k: string) => all.has(k));
-      for (const k of DEFAULT_PANEL_ORDER) {
-        if (!ordered.includes(k)) ordered.push(k);
-      }
-      return ordered;
-    }
-  } catch {}
-  return [...DEFAULT_PANEL_ORDER];
-}
-
-function persistPanels(state: LayoutSlice) {
-  try {
-    localStorage.setItem('osw-workspace-panels', JSON.stringify({
-      chat: state.showChat, files: state.showFiles, editor: state.showEditor,
-      preview: state.showPreview, checkpoints: state.showCheckpoints,
-      debug: state.showDebugPanel, skills: state.showSkillsPanel,
-      console: state.showConsole, elements: state.showElements,
-    }));
-  } catch {}
-}
-
-function persistPanelOrder(order: string[]) {
-  try {
-    localStorage.setItem('osw-workspace-panel-order', JSON.stringify(order));
-  } catch {}
 }
 
 export const PANEL_MAP: Record<string, keyof LayoutSlice> = {
@@ -121,54 +165,185 @@ export const PANEL_MAP: Record<string, keyof LayoutSlice> = {
   debug: 'showDebugPanel', skills: 'showSkillsPanel',
 };
 
-/** Elements needs Preview open; opening Elements must not evict Preview. */
-const PANEL_COMPANION: Record<string, string> = { elements: 'preview' };
-
-/** Single panel registry; visibility derived from it. */
-export function visiblePanelKeys(state: LayoutSlice, order: string[] = state.panelOrder): string[] {
-  return order.filter(k => {
-    const flag = PANEL_MAP[k];
-    return flag ? !!state[flag] : false;
-  });
+/** The open panels, left to right. */
+export function visiblePanelKeys(state: Pick<LayoutSlice, 'layout'>): string[] {
+  return openPanels(state.layout);
 }
 
 /**
- * Which open panel to close to make room for `opening`, walking from the right. Returns null when
- * there is nothing to evict. `opening`'s companion (see PANEL_COMPANION) is passed over unless it
- * is the only candidate left, in which case taking it beats refusing to open the panel at all.
+ * The layout as the workspace shows it: the saved one, or a narrow window's fold of it. Changes are
+ * made to what is shown, since that is what the person acted on.
  */
-export function pickEvictionTarget(panels: { key: string; open: boolean }[], opening: string): string | null {
-  const companion = PANEL_COMPANION[opening];
-  for (let i = panels.length - 1; i >= 0; i--) {
-    if (panels[i].open && panels[i].key !== opening && panels[i].key !== companion) return panels[i].key;
+export function layoutView(state: Pick<LayoutSlice, 'layout' | 'workspaceBox'>): WorkspaceLayout {
+  return fold(state.layout, state.workspaceBox ?? FALLBACK_BOX).layout;
+}
+
+/** The size the layout operations work to: the panel area's, or a stand-in until it is measured. */
+export const layoutBox = (state: Pick<LayoutSlice, 'workspaceBox'>): Box => state.workspaceBox ?? FALLBACK_BOX;
+
+/** What is on screen: the view, or the maximized cell alone. */
+export function shownLayout(state: Pick<LayoutSlice, 'layout' | 'workspaceBox' | 'maximizedCell'>): WorkspaceLayout {
+  const view = layoutView(state);
+  return (state.maximizedCell && maximizedView(view, state.maximizedCell)) || view;
+}
+
+/** The panel is on screen: open, in front of its cell, and not behind a maximized cell. */
+export function panelOnScreen(state: Pick<LayoutSlice, 'layout' | 'workspaceBox' | 'maximizedCell'>, panel: PanelKey): boolean {
+  const at = findPanel(shownLayout(state), panel);
+  return !!at && at.cell.active === panel;
+}
+
+/** The show flags for a layout: a panel is shown when it is anywhere in it. */
+function flagsFor(layout: WorkspaceLayout): Partial<LayoutSlice> {
+  const open = new Set<string>(openPanels(layout));
+  const flags: Record<string, boolean> = {};
+  for (const [key, flag] of Object.entries(PANEL_MAP)) flags[flag] = open.has(key);
+  return flags as Partial<LayoutSlice>;
+}
+
+function readJson(key: string): unknown {
+  try {
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : null;
+  } catch { return null; }
+}
+
+function validLastPlaces(raw: unknown): LastPlaces {
+  const out: LastPlaces = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const p = value as Partial<LastPlace> | null;
+    if (!isPanelKey(key) || !p || typeof p.cell !== 'string' || typeof p.column !== 'string') continue;
+    if (typeof p.index !== 'number' || typeof p.cellIndex !== 'number' || typeof p.alone !== 'boolean') continue;
+    if (p.before !== null && typeof p.before !== 'string') continue;
+    out[key] = { cell: p.cell, column: p.column, index: p.index, cellIndex: p.cellIndex, alone: p.alone, before: p.before ?? null };
   }
-  for (let i = panels.length - 1; i >= 0; i--) {
-    if (panels[i].open && panels[i].key !== opening) return panels[i].key;
-  }
-  return null;
+  return out;
+}
+
+const validRecent = (raw: unknown): PanelKey[] => (Array.isArray(raw) ? [...new Set(raw.filter(isPanelKey))] : []);
+
+interface Stored {
+  layout: WorkspaceLayout;
+  lastPlace: LastPlaces;
+  recentPanels: PanelKey[];
+}
+
+/**
+ * The saved layout with the closed panels' places and the recent order, or, for a workspace saved
+ * before there was one, a layout built from the panel order, the open panels and the column widths
+ * react-resizable-panels kept. The old keys are only read, never removed.
+ */
+function load(): Stored {
+  const raw = readJson(LAYOUT_KEY) as { last?: unknown; recent?: unknown } | null;
+  const layout = validateLayout(raw);
+  if (layout) return { layout, lastPlace: validLastPlaces(raw?.last), recentPanels: validRecent(raw?.recent) };
+  return {
+    layout: layoutFromLegacy(readJson('osw-workspace-panel-order'), readJson('osw-workspace-panels'), readJson('react-resizable-panels:workspace-slots')),
+    lastPlace: {},
+    recentPanels: [],
+  };
+}
+
+function persist({ layout, lastPlace, recentPanels }: Stored) {
+  try {
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify({ ...layout, last: lastPlace, recent: recentPanels }));
+  } catch {}
+}
+
+/** Sizes change on every keypress of a keyboard resize, so they are written once they settle. */
+let sizeTimer: ReturnType<typeof setTimeout> | null = null;
+function persistSoon(stored: Stored) {
+  if (sizeTimer) clearTimeout(sizeTimer);
+  sizeTimer = setTimeout(() => {
+    sizeTimer = null;
+    persist(stored);
+  }, 150);
+}
+
+const readHintDone = () => {
+  try { return localStorage.getItem(HINT_KEY) === '1'; } catch { return false; }
+};
+
+const changed = (sizes: number[], items: { size: number }[]) =>
+  sizes.length === items.length && sizes.some((size, i) => Math.abs(size - items[i].size) > 0.05);
+
+interface CommitOptions {
+  /** Goes on the Undo stack. */
+  undoable?: boolean;
+  /** A maximized cell stays maximized (a tab switch inside it). */
+  keepMax?: boolean;
+  lastPlace?: LastPlaces;
+  recentPanels?: PanelKey[];
 }
 
 export const createLayoutSlice: StateCreator<LayoutSlice> = (set, get) => {
-  const saved = loadSavedPanels();
+  const initial = load();
+  const box = () => get().workspaceBox ?? FALLBACK_BOX;
+
+  const commit = (next: WorkspaceLayout, opts: CommitOptions = {}) => {
+    if (sizeTimer) { clearTimeout(sizeTimer); sizeTimer = null; }
+    const s = get();
+    const lastPlace = opts.lastPlace ?? s.lastPlace;
+    const recentPanels = opts.recentPanels ?? s.recentPanels;
+    const history = opts.undoable
+      ? [...s.layoutHistory, { layout: s.layout, lastPlace: s.lastPlace, recentPanels: s.recentPanels }].slice(-HISTORY_MAX)
+      : s.layoutHistory;
+    const keepMax = opts.keepMax && s.maximizedCell && findCell(next, s.maximizedCell) ? s.maximizedCell : null;
+    set({
+      layout: next,
+      layoutEpoch: s.layoutEpoch + 1,
+      ...flagsFor(next),
+      lastPlace,
+      recentPanels,
+      layoutHistory: history,
+      maximizedCell: keepMax,
+    } as Partial<LayoutSlice>);
+    persist({ layout: next, lastPlace, recentPanels });
+  };
+
+  /** Opens a closed panel where `planOpen` says. */
+  const open = (panel: PanelKey, undoable: boolean): boolean => {
+    const s = get();
+    const plan = planOpen(layoutView(s), panel, box(), { lastPlace: s.lastPlace[panel], recent: s.recentPanels });
+    if (!plan) return false;
+    commit(plan.layout, { undoable, recentPanels: bumpRecent(s.recentPanels, panel) });
+    return true;
+  };
+
+  /** Brings a panel forward; with a different cell maximized, the layout comes back so it shows. */
+  const bringForward = (panel: PanelKey): boolean => {
+    const s = get();
+    const view = layoutView(s);
+    const at = findPanel(view, panel);
+    if (!at) return false;
+    const hidden = s.maximizedCell !== null && s.maximizedCell !== at.cell.id;
+    const next = activateInLayout(view, panel);
+    if (next) {
+      commit(next, { keepMax: !hidden, recentPanels: bumpRecent(s.recentPanels, panel) });
+      return true;
+    }
+    if (hidden) {
+      set({ maximizedCell: null });
+      return true;
+    }
+    return false;
+  };
 
   return {
-    showChat: saved?.chat ?? true,
-    showFiles: saved?.files ?? true,
-    showEditor: saved?.editor ?? false,
-    showPreview: saved?.preview ?? true,
-    showCheckpoints: saved?.checkpoints ?? false,
-    showConsole: saved?.console ?? false,
-    showSkillsPanel: saved?.skills ?? false,
-    showDebugPanel: saved?.debug ?? false,
-    showElements: saved?.elements ?? false,
+    ...(flagsFor(initial.layout) as Pick<LayoutSlice, 'showChat' | 'showFiles' | 'showEditor' | 'showPreview' | 'showCheckpoints' | 'showConsole' | 'showSkillsPanel' | 'showDebugPanel' | 'showElements'>),
+    layout: initial.layout,
+    layoutEpoch: 0,
+    lastPlace: initial.lastPlace,
+    recentPanels: initial.recentPanels,
+    maximizedCell: null,
+    layoutHistory: [],
+    workspaceBox: null,
+    panelHint: null,
+    layoutHintDone: readHintDone(),
     showProjectSettingsModal: false,
     projectSettingsSection: null,
     fullscreenPreview: false,
-    panelOrder: loadPanelOrder(),
-    draggingPanel: null,
-    dropTarget: null,
-    panelReplacePreview: null,
-    panelInsertPreview: null,
     activeMobilePanel: 'preview',
     mobileOverflowOpen: false,
     hasUnreadConsole: false,
@@ -177,67 +352,133 @@ export const createLayoutSlice: StateCreator<LayoutSlice> = (set, get) => {
     focusToolArmed: false,
     focusToolHinted: false,
 
-    togglePanel: (panel: string) => {
-      const key = PANEL_MAP[panel];
-      if (!key) return;
-      const state = get();
-      const isOpen = !!state[key];
-
-      if (isOpen) {
-        // Closing — always allowed
-        const patch: Partial<LayoutSlice> = { [key]: false, panelReplacePreview: null, panelInsertPreview: null };
-        set(patch as any);
-        persistPanels({ ...state, ...patch } as LayoutSlice);
-        return;
-      }
-
-      // Opening — check max 3 visible constraint
-      const allPanels = state.panelOrder
-        .filter(k => PANEL_MAP[k] !== undefined)
-        .map(k => ({ key: k, open: !!state[PANEL_MAP[k] as keyof LayoutSlice] }));
-      const visibleCount = allPanels.filter(p => p.open).length;
-
-      const MAX_VISIBLE_PANELS = 3;
-      let newOrder = state.panelOrder;
-      const patch: Partial<LayoutSlice> = { [key]: true, panelReplacePreview: null, panelInsertPreview: null };
-
-      if (visibleCount >= MAX_VISIBLE_PANELS) {
-        // Close the rightmost evictable panel and insert new one at its position
-        const closedKey = pickEvictionTarget(allPanels, panel);
-        if (closedKey) {
-          const closedPanelKey = PANEL_MAP[closedKey] as keyof LayoutSlice;
-          (patch as any)[closedPanelKey] = false;
-          // Move the new panel to the closed panel's position in order
-          newOrder = newOrder.filter(k => k !== panel);
-          const insertIdx = newOrder.indexOf(closedKey);
-          if (insertIdx >= 0) {
-            newOrder.splice(insertIdx, 0, panel);
-          } else {
-            newOrder.push(panel);
-          }
-        }
-      } else {
-        // Room available — open as the rightmost panel
-        newOrder = newOrder.filter(k => k !== panel);
-        newOrder.push(panel);
-      }
-
-      patch.panelOrder = newOrder;
-      set(patch as any);
-      persistPanels({ ...state, ...patch } as LayoutSlice);
-      persistPanelOrder(newOrder);
+    togglePanel: (panel) => {
+      if (!isPanelKey(panel)) return null;
+      const s = get();
+      const at = findPanel(layoutView(s), panel);
+      if (!at) return open(panel, true) ? 'opened' : null;
+      const hidden = s.maximizedCell !== null && s.maximizedCell !== at.cell.id;
+      if (at.cell.active !== panel || hidden) return bringForward(panel) ? 'front' : null;
+      return get().closePanel(panel) ? 'closed' : null;
     },
 
-    setPanelOrder: (order: string[]) => {
-      set({ panelOrder: order });
-      persistPanelOrder(order);
+    revealPanel: (panel) => {
+      if (!isPanelKey(panel)) return null;
+      if (!findPanel(layoutView(get()), panel)) return open(panel, false) ? 'opened' : null;
+      return bringForward(panel) ? 'front' : null;
+    },
+
+    closePanel: (panel) => {
+      const s = get();
+      const removed = removePanel(layoutView(s), panel, { recent: s.recentPanels });
+      if (!removed) return false;
+      commit(removed.layout, { undoable: true, lastPlace: { ...s.lastPlace, [panel]: removed.place } });
+      return true;
+    },
+
+    closeGroup: (cellId) => {
+      const s = get();
+      const closed = closeCell(layoutView(s), cellId);
+      if (!closed) return false;
+      commit(closed.layout, { undoable: true, lastPlace: { ...s.lastPlace, ...closed.places } });
+      return true;
+    },
+
+    activatePanel: (panel) => bringForward(panel),
+
+    movePanel: (source, target) => {
+      const s = get();
+      const view = layoutView(s);
+      const next = moveInLayout(view, source, target, box(), { recent: s.recentPanels });
+      if (!next || checkLayout(next, box())) return false;
+      const front = 'panel' in source ? source.panel : findCell(view, source.cell)?.cell.active;
+      commit(next, { undoable: true, recentPanels: front ? bumpRecent(s.recentPanels, front) : s.recentPanels });
+      return true;
+    },
+
+    applyLayoutPreset: (name) => {
+      commit(presetLayout(name, get().layout.seq ?? 0), { undoable: true });
+    },
+
+    resetPanelLayout: () => {
+      commit(defaultLayout(get().layout.seq ?? 0), { undoable: true, lastPlace: {}, recentPanels: [] });
+    },
+
+    ungroupCell: (cellId) => {
+      const s = get();
+      const result = ungroup(layoutView(s), cellId, box(), s.recentPanels);
+      if (!result) return null;
+      commit(result.layout, { undoable: true });
+      return { stayed: result.stayed };
+    },
+
+    undoLayout: () => {
+      const s = get();
+      const last = s.layoutHistory[s.layoutHistory.length - 1];
+      if (!last) return false;
+      if (sizeTimer) { clearTimeout(sizeTimer); sizeTimer = null; }
+      set({
+        layout: last.layout,
+        layoutEpoch: s.layoutEpoch + 1,
+        ...flagsFor(last.layout),
+        lastPlace: last.lastPlace,
+        recentPanels: last.recentPanels,
+        layoutHistory: s.layoutHistory.slice(0, -1),
+        maximizedCell: null,
+      } as Partial<LayoutSlice>);
+      persist(last);
+      return true;
+    },
+
+    toggleMaximize: (cellId) => {
+      const s = get();
+      const next = cellId && cellId !== s.maximizedCell && findCell(layoutView(s), cellId) ? cellId : null;
+      if (next !== s.maximizedCell) set({ maximizedCell: next, panelHint: null });
+    },
+
+    setColumnSizes: (sizes) => {
+      const s = get();
+      const view = layoutView(s);
+      if (!changed(sizes, view.columns)) return;
+      // A resize while a narrow window is folded saves what is shown, like any other change made then.
+      const next = { ...view, columns: view.columns.map((col, i) => ({ ...col, size: sizes[i] })) };
+      set({ layout: next });
+      persistSoon({ layout: next, lastPlace: s.lastPlace, recentPanels: s.recentPanels });
+    },
+
+    setCellSizes: (columnId, sizes) => {
+      const s = get();
+      const view = layoutView(s);
+      const col = view.columns.find((c) => c.id === columnId);
+      if (!col || !changed(sizes, col.cells)) return;
+      const next = {
+        ...view,
+        columns: view.columns.map((c) => (c.id === columnId ? { ...c, cells: c.cells.map((cell, i) => ({ ...cell, size: sizes[i] })) } : c)),
+      };
+      set({ layout: next });
+      persistSoon({ layout: next, lastPlace: s.lastPlace, recentPanels: s.recentPanels });
+    },
+
+    setWorkspaceBox: (next) => {
+      const current = get().workspaceBox;
+      if (current && Math.abs(current.w - next.w) < 1 && Math.abs(current.h - next.h) < 1) return;
+      set({ workspaceBox: next });
+    },
+
+    setPanelHint: (hint) => {
+      const current = get().panelHint;
+      if (current === hint || (current && hint && current.kind === hint.kind && current.panel === hint.panel)) return;
+      set({ panelHint: hint });
+    },
+
+    dismissLayoutHint: () => {
+      if (get().layoutHintDone) return;
+      set({ layoutHintDone: true });
+      try { localStorage.setItem(HINT_KEY, '1'); } catch {}
     },
 
     setActiveMobilePanel: (panel) => set({ activeMobilePanel: panel, mobileOverflowOpen: false }),
 
-    startDrag: (panel: string) => set({ draggingPanel: panel }),
-    endDrag: () => set({ draggingPanel: null, dropTarget: null }),
-    setDropTarget: (target) => set({ dropTarget: target }),
     setFullscreenPreview: (v) => set({ fullscreenPreview: v }),
     setShowProjectSettingsModal: (v, section) =>
       set({ showProjectSettingsModal: v, projectSettingsSection: v ? section ?? null : null }),
@@ -245,21 +486,27 @@ export const createLayoutSlice: StateCreator<LayoutSlice> = (set, get) => {
     setHasUnreadConsole: (v) => set({ hasUnreadConsole: v }),
     setPaletteOpen: (v) => set({ paletteOpen: v }),
     setMobileOverflowOpen: (v) => set({ mobileOverflowOpen: v }),
-    setPanelReplacePreview: (panel) => set({ panelReplacePreview: panel }),
-    setPanelInsertPreview: (idx) => set({ panelInsertPreview: idx }),
     setFocusToolArmed: (armed) => set({ focusToolArmed: armed }),
     setFocusToolHinted: (hinted) => set({ focusToolHinted: hinted }),
 
     initLayout: () => {
-      set({ panelOrder: loadPanelOrder() });
+      const next = load();
+      set({
+        layout: next.layout,
+        layoutEpoch: get().layoutEpoch + 1,
+        ...flagsFor(next.layout),
+        lastPlace: next.lastPlace,
+        recentPanels: next.recentPanels,
+        layoutHistory: [],
+        maximizedCell: null,
+        layoutHintDone: readHintDone(),
+      } as Partial<LayoutSlice>);
     },
 
     resetLayout: () => {
       set({
-        draggingPanel: null,
-        dropTarget: null,
-        panelReplacePreview: null,
-        panelInsertPreview: null,
+        panelHint: null,
+        maximizedCell: null,
         mobileOverflowOpen: false,
         showProjectSettingsModal: false,
         fullscreenPreview: false,

@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { ChevronDown, Minus, Plus, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import {
   UNIT_LABELS,
@@ -316,40 +317,47 @@ export function Stepper({
   return (
     <div className={ROW}>
       {expandable ? (
-        <button
-          type="button"
-          data-osw-stepper-expand
-          aria-expanded={Boolean(expanded)}
-          aria-label={`${label} sides`}
-          onClick={onToggleExpand}
-          className={cn(LABEL, 'flex items-center gap-1 text-left hover:text-foreground cursor-pointer')}
-        >
-          <ChevronDown className={cn('size-3 shrink-0 transition-transform', !expanded && '-rotate-90')} />
-          {label}
-        </button>
+        <Tip label={expanded ? t('tips.hideSides') : t('tips.showSides')} side="left">
+          <button
+            type="button"
+            data-osw-stepper-expand
+            aria-expanded={Boolean(expanded)}
+            aria-label={t('sidesOf', { label })}
+            onClick={onToggleExpand}
+            className={cn(LABEL, 'flex items-center gap-1 text-left hover:text-foreground cursor-pointer')}
+          >
+            <ChevronDown className={cn('size-3 shrink-0 transition-transform', !expanded && '-rotate-90')} />
+            {label}
+          </button>
+        </Tip>
       ) : (
         <span className={cn(LABEL, isPart && 'pl-4')}>{label}</span>
       )}
       <div className={GROUP}>
-        <Button
-          type="button"
-          // `ghost`, not `outline`: the wrapper draws the one border the group has, and an `outline`
-          // button would bring a second one back — plus a `border-r-0` that `twMerge` then drops.
-          variant="ghost"
-          size="xs"
-          aria-label={t('decrease', { label })}
-          disabled={disabled || atMin}
-          onClick={() => onStep(-1)}
-          className={SEGMENT_BUTTON}
-        >
-          <Minus className="size-3" />
-        </Button>
+        {/* No tooltip while a step is off: the span a disabled button needs would break the group's
+            segment borders, and an end of the ladder needs no explaining. */}
+        <Tip label={disabled || atMin ? undefined : t('decrease', { label })}>
+          <Button
+            type="button"
+            // `ghost`, not `outline`: the wrapper draws the one border the group has, and an `outline`
+            // button would bring a second one back — plus a `border-r-0` that `twMerge` then drops.
+            variant="ghost"
+            size="xs"
+            aria-label={t('decrease', { label })}
+            disabled={disabled || atMin}
+            onClick={() => onStep(-1)}
+            className={SEGMENT_BUTTON}
+          >
+            <Minus className="size-3" />
+          </Button>
+        </Tip>
 
         {draft === null ? (
+          <Tip label={disabled ? undefined : t('tips.typeValue')}>
           <button
             type="button"
             data-osw-stepper-value
-            aria-label={`${label} value`}
+            aria-label={t('valueOf', { label })}
             disabled={disabled}
             // The value the field opens on is what is on screen, so clicking and typing over it
             // starts from what the element actually is rather than from an empty box.
@@ -365,12 +373,13 @@ export function Stepper({
           >
             {value ?? placeholder(Boolean(mixed), t('mixed'))}
           </button>
+          </Tip>
         ) : (
           <input
             type="text"
             inputMode="decimal"
             data-osw-stepper-input
-            aria-label={`${label} value`}
+            aria-label={t('valueOf', { label })}
             autoFocus
             value={draft}
             onChange={event => setDraft(event.target.value)}
@@ -395,10 +404,11 @@ export function Stepper({
 
         {/* A native select: the app already uses one for the console's entry point and the
             workspaces view's role picker, it needs no portal, and its popup is the platform's. */}
+        <Tip label={disabled ? undefined : t('unitOf', { label })}>
         <div className={cn('relative flex items-center', UNIT_WIDTH, SEGMENT)}>
           <select
             data-osw-stepper-unit
-            aria-label={`${label} unit`}
+            aria-label={t('unitOf', { label })}
             disabled={disabled}
             value={unit}
             onChange={event => onUnit(event.target.value as StyleUnit)}
@@ -412,18 +422,21 @@ export function Stepper({
           </select>
           <ChevronDown className="size-3 absolute right-0.5 pointer-events-none opacity-60" />
         </div>
+        </Tip>
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          aria-label={t('increase', { label })}
-          disabled={disabled || atMax}
-          onClick={() => onStep(1)}
-          className={SEGMENT_BUTTON}
-        >
-          <Plus className="size-3" />
-        </Button>
+        <Tip label={disabled || atMax ? undefined : t('increase', { label })}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            aria-label={t('increase', { label })}
+            disabled={disabled || atMax}
+            onClick={() => onStep(1)}
+            className={SEGMENT_BUTTON}
+          >
+            <Plus className="size-3" />
+          </Button>
+        </Tip>
       </div>
     </div>
   );
@@ -522,20 +535,21 @@ export function SwatchRow({
       <span className={cn(LABEL, 'shrink-0')}>{label}</span>
       <Popover>
         <PopoverTrigger asChild>
-          <button
-            type="button"
-            data-osw-color-trigger
-            aria-label={t('colourOf', { label })}
-            title={current?.name ? `${current.name} — ${current.value}` : (pickerValue ?? t('noSingleColour'))}
-            disabled={disabled}
-            className="h-6 shrink-0 inline-flex items-center gap-1 rounded-full border px-1.5 bg-background hover:bg-accent disabled:opacity-40 disabled:pointer-events-none"
-          >
-            <span
-              className="size-4 rounded-full border"
-              style={pickerValue ? { background: pickerValue } : undefined}
-            />
-            <ChevronDown className="size-3 text-muted-foreground" />
-          </button>
+          <Tip label={current?.name ? `${current.name} — ${current.value}` : (pickerValue ?? t('noSingleColour'))} align="end">
+            <button
+              type="button"
+              data-osw-color-trigger
+              aria-label={t('colourOf', { label })}
+              disabled={disabled}
+              className="h-6 shrink-0 inline-flex items-center gap-1 rounded-full border px-1.5 bg-background hover:bg-accent disabled:opacity-40 disabled:pointer-events-none"
+            >
+              <span
+                className="size-4 rounded-full border"
+                style={pickerValue ? { background: pickerValue } : undefined}
+              />
+              <ChevronDown className="size-3 text-muted-foreground" />
+            </button>
+          </Tip>
         </PopoverTrigger>
 
         <PopoverContent align="end" className="w-64 p-3" data-osw-color-popover>
@@ -546,20 +560,21 @@ export function SwatchRow({
               two identically-coloured squares tell themselves apart. */}
           <div className="mt-1.5 flex flex-wrap gap-1">
             {swatches.map(swatch => (
-              <button
-                key={`${swatch.name ?? ''}:${swatch.value}`}
-                type="button"
-                aria-label={swatch.name ?? swatch.value}
-                aria-pressed={selected === swatch.value}
-                title={swatch.name ? `${swatch.name} — ${swatch.value}` : swatch.value}
-                disabled={disabled}
-                onClick={() => onSelect(swatch.value)}
-                className={cn(
-                  'size-5 rounded border disabled:opacity-40 disabled:pointer-events-none',
-                  selected === swatch.value && 'ring-2 ring-primary ring-offset-1',
-                )}
-                style={{ background: swatch.value }}
-              />
+              <Tip key={`${swatch.name ?? ''}:${swatch.value}`} label={swatch.name ? `${swatch.name} — ${swatch.value}` : swatch.value}>
+                <button
+                  type="button"
+                  data-osw-swatch={swatch.value}
+                  aria-label={swatch.name ?? swatch.value}
+                  aria-pressed={selected === swatch.value}
+                  disabled={disabled}
+                  onClick={() => onSelect(swatch.value)}
+                  className={cn(
+                    'size-5 rounded border disabled:opacity-40 disabled:pointer-events-none',
+                    selected === swatch.value && 'ring-2 ring-primary ring-offset-1',
+                  )}
+                  style={{ background: swatch.value }}
+                />
+              </Tip>
             ))}
           </div>
           {current?.name ? (
@@ -572,6 +587,7 @@ export function SwatchRow({
             {tc('labels.custom')}
           </div>
           <div className="mt-1.5 flex items-center gap-2">
+            <Tip label={disabled ? undefined : t('tips.pickColour')}>
             <input
               type="color"
               data-osw-color-picker
@@ -581,6 +597,7 @@ export function SwatchRow({
               onChange={event => onSelect(event.target.value)}
               className="size-6 rounded border bg-transparent p-0 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
             />
+            </Tip>
             <span className="font-mono text-[11px] text-muted-foreground">
               {pickerValue ?? '—'}
             </span>
@@ -591,18 +608,20 @@ export function SwatchRow({
 
           {onReset ? (
             <div className="mt-3 flex justify-end border-t pt-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                data-osw-color-reset
-                aria-label={t('resetColour', { label })}
-                disabled={disabled}
-                onClick={onReset}
-              >
-                <RotateCcw className="size-3" />
-                {t('reset')}
-              </Button>
+              <Tip label={t('tips.resetColour')}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  data-osw-color-reset
+                  aria-label={t('resetColour', { label })}
+                  disabled={disabled}
+                  onClick={onReset}
+                >
+                  <RotateCcw className="size-3" />
+                  {t('reset')}
+                </Button>
+              </Tip>
             </div>
           ) : null}
         </PopoverContent>

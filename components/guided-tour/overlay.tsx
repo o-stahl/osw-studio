@@ -4,6 +4,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { useTranslations } from 'next-intl';
 import { useGuidedTour } from './context';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import { Loader2 } from 'lucide-react';
 import { GUIDED_TOUR_STEPS } from './steps';
 
@@ -24,6 +25,7 @@ interface HighlightRect {
 
 export function GuidedTourOverlay({ location }: GuidedTourOverlayProps) {
   const tc = useTranslations('common');
+  const tt = useTranslations('guidedTour');
   const { state, next, previous, skip } = useGuidedTour();
   const { status, currentStep, stepKey, isBusy, stepIndex } = state;
   const [rect, setRect] = useState<HighlightRect | null>(null);
@@ -145,19 +147,25 @@ export function GuidedTourOverlay({ location }: GuidedTourOverlayProps) {
 
           <div className="mt-6 flex items-center justify-between">
             {currentStep.showBack ? (
-              <Button variant="ghost" onClick={previous} disabled={isBusy}>
-                {tc('actions.back')}
-              </Button>
+              <Tip label={isBusy ? tt('tips.wait') : undefined}>
+                <Button variant="ghost" onClick={previous} disabled={isBusy}>
+                  {tc('actions.back')}
+                </Button>
+              </Tip>
             ) : (
               <div />
             )}
             <div className="flex items-center gap-2">
-              <Button variant="ghost" onClick={skip}>
-                {secondaryLabel}
-              </Button>
-              <Button onClick={next} disabled={disableNext}>
-                {primaryLabel}
-              </Button>
+              <Tip label={tt('tips.end')}>
+                <Button variant="ghost" onClick={skip}>
+                  {secondaryLabel}
+                </Button>
+              </Tip>
+              <Tip label={disableNext ? tt('tips.wait') : undefined}>
+                <Button onClick={next} disabled={disableNext}>
+                  {primaryLabel}
+                </Button>
+              </Tip>
             </div>
           </div>
         </div>

@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useStylePropLabels } from '@/lib/i18n/use-style-prop-labels';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Tip } from '@/components/ui/tooltip';
 import { Crosshair } from 'lucide-react';
 import { cn, logger } from '@/lib/utils';
 import type { FocusContextPayload, PreviewHostMessage, PreviewMessage } from '@/lib/preview/types';
@@ -648,6 +649,7 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
           {ts('noSelectionHint')}
         </p>
         {props.onSelectElement ? (
+          <Tip label={props.focusToolArmed ? ts('cancelSelectionLong') : twx('selectElement')}>
           <Button
             variant={props.focusToolArmed ? 'secondary' : 'outline'}
             size="sm"
@@ -663,13 +665,13 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
             // (`controls.tsx`, `InterviewTemplatesPanel`) rather than as a second data attribute.
             aria-pressed={!!props.focusToolArmed}
             // Both are worth changing. The label is what the user reads without hovering, and the
-            // title matches the header crosshair's wording word for word, since it is the same tool.
-            title={props.focusToolArmed ? ts('cancelSelectionLong') : twx('selectElement')}
+            // tooltip matches the header crosshair's wording word for word, since it is the same tool.
             data-osw-select-element
           >
             <Crosshair className="h-3 w-3" />
             {props.focusToolArmed ? ts('cancelSelection') : twx('selectElement')}
           </Button>
+          </Tip>
         ) : null}
       </div>
     );
@@ -701,12 +703,11 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
             className="size-12 shrink-0 rounded border bg-muted bg-contain bg-center bg-no-repeat"
             style={props.imageUrl ? { backgroundImage: `url("${props.imageUrl}")` } : undefined}
           />
-          <span
-            className="min-w-0 flex-1 truncate text-[11px] font-mono text-muted-foreground"
-            title={imageSrc || undefined}
-          >
-            {resolveImageSrc(imageSrc) ? imageSrc : 'no src'}
-          </span>
+          <Tip label={imageSrc || undefined} truncated>
+            <span className="min-w-0 flex-1 truncate text-[11px] font-mono text-muted-foreground">
+              {resolveImageSrc(imageSrc) ? imageSrc : 'no src'}
+            </span>
+          </Tip>
           <Button
             data-osw-content-replace
             size="sm"
@@ -731,13 +732,15 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
               tone={textRefused.reason === 'generating' ? 'quiet' : 'danger'}
               title={textRefusalTitle(textRefused, ttp)}
               actions={textRefusalOffersAgent(textRefused) ? (
-                <Button
-                  size="sm"
-                  className="h-6 text-xs"
-                  onClick={() => props.onAskAgent(textRefusalAgentPrompt(textRefused))}
-                >
-                  {ts('askAgent')}
-                </Button>
+                <Tip label={ts('tips.askAgent')}>
+                  <Button
+                    size="sm"
+                    className="h-6 text-xs"
+                    onClick={() => props.onAskAgent(textRefusalAgentPrompt(textRefused))}
+                  >
+                    {ts('askAgent')}
+                  </Button>
+                </Tip>
               ) : undefined}
             >
               {textRefusalMessage(textRefused, ttp)}
@@ -813,12 +816,11 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
           <span className="font-semibold truncate">{summary.tag}</span>
           {summary.className ? <span className="text-sky-600 dark:text-sky-400 truncate">{summary.className}</span> : null}
           {summary.instances > 1 ? (
-            <span
-              className="px-1 rounded-sm bg-amber-500/15 text-amber-700 dark:text-amber-400 font-semibold shrink-0"
-              title={ts('rendersTimes', { count: summary.instances })}
-            >
-              {ts('sharedInstances', { count: summary.instances })}
-            </span>
+            <Tip label={ts('rendersTimes', { count: summary.instances })}>
+              <span className="px-1 rounded-sm bg-amber-500/15 text-amber-700 dark:text-amber-400 font-semibold shrink-0">
+                {ts('sharedInstances', { count: summary.instances })}
+              </span>
+            </Tip>
           ) : null}
           {summary.source ? (
             <span className="ml-auto text-muted-foreground truncate shrink-0">{summary.source}</span>
@@ -854,9 +856,11 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
             actions={
               <>
                 {offer ? (
-                  <Button size="sm" className="h-6 text-xs" onClick={() => dispatch({ type: 'act-on-refusal' })}>
-                    {offer.kind === 'ask-agent' ? ts('askAgent') : offer.kind === 'refresh' ? ts('offerRefresh') : ts('offerOpenFile', { path: offer.path })}
-                  </Button>
+                  <Tip label={offer.kind === 'ask-agent' ? ts('tips.askAgent') : undefined}>
+                    <Button size="sm" className="h-6 text-xs" onClick={() => dispatch({ type: 'act-on-refusal' })}>
+                      {offer.kind === 'ask-agent' ? ts('askAgent') : offer.kind === 'refresh' ? ts('offerRefresh') : ts('offerOpenFile', { path: offer.path })}
+                    </Button>
+                  </Tip>
                 ) : null}
                 <Button
                   size="sm"
@@ -883,11 +887,19 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
               return (
                 <div
                   key={entry.id}
-                  // A marker, not a message: the message is the one banner at the foot of the panel,
-                  // and this is only what lets the user find the row it is talking about.
-                  className={cn(loss && '-ml-1.5 pl-1 border-l-2 border-destructive/70')}
-                  title={loss ? ts('overrideNotInForce') : undefined}
+                  className={cn(loss && 'relative -ml-1.5 pl-1.5')}
+                  data-osw-loss={loss ? '' : undefined}
                 >
+                  {/* A marker, not a message: the message is the one banner at the foot of the panel,
+                      and this is only what lets the user find the row it is talking about. Its tip is
+                      on the bar alone, so the row's controls keep their own. */}
+                  {loss && (
+                    <Tip label={ts('overrideNotInForce')} side="left">
+                      <span className="absolute inset-y-0 left-0 w-1.5">
+                        <span className="absolute inset-y-0 left-0 w-0.5 bg-destructive/70" />
+                      </span>
+                    </Tip>
+                  )}
                   {entry.control === 'stepper' ? (
                     <>
                       <Stepper
@@ -972,13 +984,15 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
               tone="danger"
               title={ts('changesNotApplied', { count: lost.length })}
               actions={
-                <Button
-                  size="sm"
-                  className="h-6 text-xs"
-                  onClick={() => props.onAskAgent(lossAgentPrompt(lost, state.declarations))}
-                >
-                  {ts('askAgent')}
-                </Button>
+                <Tip label={ts('tips.askAgent')}>
+                  <Button
+                    size="sm"
+                    className="h-6 text-xs"
+                    onClick={() => props.onAskAgent(lossAgentPrompt(lost, state.declarations))}
+                  >
+                    {ts('askAgent')}
+                  </Button>
+                </Tip>
               }
             >
               {lossMessage(lost, ts)}
@@ -993,17 +1007,19 @@ export const StylesContent = forwardRef<StylesContentHandle, StylesContentProps>
               title={ts('tokenNotChanged', { token: tokenNote.token.name })}
               actions={
                 <>
-                  <Button
-                    data-osw-token-note-agent
-                    size="sm"
-                    className="h-6 text-xs"
-                    onClick={() => {
-                      props.onAskAgent(tokenAgentPrompt(tokenNote.entry, tokenNote.token, tokenNote.next));
-                      setTokenNote(null);
-                    }}
-                  >
-                    {ts('changeTokenInstead')}
-                  </Button>
+                  <Tip label={ts('tips.askAgent')}>
+                    <Button
+                      data-osw-token-note-agent
+                      size="sm"
+                      className="h-6 text-xs"
+                      onClick={() => {
+                        props.onAskAgent(tokenAgentPrompt(tokenNote.entry, tokenNote.token, tokenNote.next));
+                        setTokenNote(null);
+                      }}
+                    >
+                      {ts('changeTokenInstead')}
+                    </Button>
+                  </Tip>
                   <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setTokenNote(null)}>
                     {ts('dismiss')}
                   </Button>

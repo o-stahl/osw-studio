@@ -27,17 +27,19 @@ describe('basename', () => {
 });
 
 describe('sourceTitle', () => {
+  const t = (_key: 'sourceOffset', v: { file: string; offset: number }) => `${v.file} @${v.offset}`;
+
   it('carries the full path, which is what the badge cannot show', () => {
-    expect(sourceTitle({ file: '/partials/nav.hbs', line: undefined })).toBe('/partials/nav.hbs');
+    expect(sourceTitle({ file: '/partials/nav.hbs', line: undefined }, t)).toBe('/partials/nav.hbs');
   });
 
   it('labels the offset as one, because it is not a line number', () => {
-    expect(sourceTitle({ file: '/partials/nav.hbs', line: 120 })).toBe('/partials/nav.hbs (offset 120)');
-    expect(sourceTitle({ file: '/index.hbs', line: 0 })).toBe('/index.hbs (offset 0)');
+    expect(sourceTitle({ file: '/partials/nav.hbs', line: 120 }, t)).toBe('/partials/nav.hbs @120');
+    expect(sourceTitle({ file: '/index.hbs', line: 0 }, t)).toBe('/index.hbs @0');
   });
 
   it('has nothing to say for an element with no source', () => {
-    expect(sourceTitle({ file: undefined, line: undefined })).toBeUndefined();
+    expect(sourceTitle({ file: undefined, line: undefined }, t)).toBeUndefined();
   });
 });
 

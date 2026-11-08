@@ -6,6 +6,7 @@ import { Eye, EyeOff, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tip } from '@/components/ui/tooltip';
 import { isForbiddenHeaderName } from '@/lib/llm/providers/custom-headers';
 
 export interface HeaderRow {
@@ -86,14 +87,16 @@ export function CustomHeadersEditor({
           <span className="text-muted-foreground text-xs ml-1">{tc('labels.optionalParen')}</span>
         </Label>
         {rows.length > 0 && (
-          <Button
-            size="icon" variant="ghost" className="h-7 w-7"
-            onClick={() => setShowValues(!showValues)}
-            aria-label={showValues ? t('hideHeaderValues') : t('showHeaderValues')}
-            disabled={disabled}
-          >
-            {showValues ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          </Button>
+          <Tip label={disabled ? undefined : showValues ? t('hideHeaderValues') : t('showHeaderValues')}>
+            <Button
+              size="icon" variant="ghost" className="h-7 w-7"
+              onClick={() => setShowValues(!showValues)}
+              aria-label={showValues ? t('hideHeaderValues') : t('showHeaderValues')}
+              disabled={disabled}
+            >
+              {showValues ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </Button>
+          </Tip>
         )}
       </div>
       <p className="text-xs text-muted-foreground mt-1">
@@ -125,14 +128,16 @@ export function CustomHeadersEditor({
                 className="flex-1"
                 disabled={disabled}
               />
-              <Button
-                size="icon" variant="ghost" className="h-8 w-8 shrink-0"
-                onClick={() => onChange(rows.filter((r) => r.id !== row.id))}
-                aria-label={t('removeHeader')}
-                disabled={disabled}
-              >
-                <X className="h-4 w-4" />
-              </Button>
+              <Tip label={disabled ? undefined : row.name.trim() ? t('tips.removeHeader', { name: row.name.trim() }) : t('removeHeader')}>
+                <Button
+                  size="icon" variant="ghost" className="h-8 w-8 shrink-0"
+                  onClick={() => onChange(rows.filter((r) => r.id !== row.id))}
+                  aria-label={t('removeHeader')}
+                  disabled={disabled}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </Tip>
             </div>
           );
         })}

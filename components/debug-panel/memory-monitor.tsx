@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
+import { Tip } from '@/components/ui/tooltip';
 
 interface MemoryInfo {
   usedMB: number;
@@ -14,6 +16,7 @@ interface MemoryInfo {
  * Only shows in development and on browsers that support performance.memory
  */
 export function MemoryMonitor() {
+  const t = useTranslations('debug');
   const [memory, setMemory] = useState<MemoryInfo | null>(null);
   const [isSupported, setIsSupported] = useState(false);
 
@@ -60,15 +63,14 @@ export function MemoryMonitor() {
   };
 
   return (
-    <div
-      className={`text-xs font-mono ${getColor()} flex items-center gap-1`}
-      title={`JS Heap: ${memory.usedMB}MB used / ${memory.totalMB}MB limit (${memory.percent}%)`}
-    >
-      <span className="opacity-60">MEM:</span>
-      <span>{memory.usedMB}MB</span>
-      {memory.percent > 60 && (
-        <span className="opacity-60">({memory.percent}%)</span>
-      )}
-    </div>
+    <Tip label={t('memoryTip', { used: memory.usedMB, limit: memory.totalMB, percent: memory.percent })} side="bottom">
+      <div className={`text-xs font-mono ${getColor()} flex items-center gap-1`}>
+        <span className="opacity-60">MEM:</span>
+        <span>{memory.usedMB}MB</span>
+        {memory.percent > 60 && (
+          <span className="opacity-60">({memory.percent}%)</span>
+        )}
+      </div>
+    </Tip>
   );
 }

@@ -15,6 +15,7 @@ import { TerminalRuntimeError } from '@/lib/publishing/compile-static-site';
 import { suggestSpaceSlug, isValidSpaceSlug } from '@/lib/publishing/hf-slug';
 import { hasPublishScope, loginHF, checkHFCapabilities } from '@/lib/auth/hf-auth';
 import { configManager } from '@/lib/config/storage';
+import { Tip } from '@/components/ui/tooltip';
 
 type PublishMode = 'update' | 'new';
 type Status = 'idle' | 'needsScope' | 'staleAuth' | 'publishing' | 'done' | 'error';
@@ -221,18 +222,22 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
           <div className="text-sm text-muted-foreground">{t('liveAt')}</div>
           <div className="flex items-center gap-2 rounded border p-2 text-sm">
             <span className="flex-1 truncate">{resultUrl}</span>
-            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={handleCopyUrl} title={tc('actions.copyUrl')}>
-              <Copy className="h-3 w-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0"
-              onClick={() => window.open(resultUrl, '_blank', 'noopener,noreferrer')}
-              title={t('openInNewTab')}
-            >
-              <ExternalLink className="h-3 w-3" />
-            </Button>
+            <Tip label={tc('actions.copyUrl')}>
+              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={handleCopyUrl} aria-label={tc('actions.copyUrl')}>
+                <Copy className="h-3 w-3" />
+              </Button>
+            </Tip>
+            <Tip label={t('openInNewTab')}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0"
+                onClick={() => window.open(resultUrl, '_blank', 'noopener,noreferrer')}
+                aria-label={t('openInNewTab')}
+              >
+                <ExternalLink className="h-3 w-3" />
+              </Button>
+            </Tip>
           </div>
           {copied && <p className="text-xs text-muted-foreground">{t('copiedToClipboard')}</p>}
         </div>
@@ -260,6 +265,7 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
             <div className="grid gap-2">
               <Label>{t('publishMode')}</Label>
               <div className="flex gap-2">
+                <Tip label={t('tips.updateExisting')}>
                 <Button
                   type="button"
                   variant={mode === 'update' ? 'secondary' : 'outline'}
@@ -278,6 +284,8 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
                 >
                   {tdd('updateExisting')}
                 </Button>
+                </Tip>
+                <Tip label={t('tips.publishAsNew')}>
                 <Button
                   type="button"
                   variant={mode === 'new' ? 'secondary' : 'outline'}
@@ -291,6 +299,7 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
                 >
                   {t('publishAsNew')}
                 </Button>
+                </Tip>
               </div>
             </div>
           )}
@@ -327,12 +336,14 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
               <Label htmlFor="hf-private">{t('privateSpace')}</Label>
               <p className="text-xs text-muted-foreground">{t('onlyYouCanView')}</p>
             </div>
-            <Switch
-              id="hf-private"
-              checked={isPrivate}
-              onCheckedChange={setIsPrivate}
-              disabled={isPublishing || mode === 'update'}
-            />
+            <Tip label={mode === 'update' ? t('tips.visibilityKept') : undefined} wrap>
+              <Switch
+                id="hf-private"
+                checked={isPrivate}
+                onCheckedChange={setIsPrivate}
+                disabled={isPublishing || mode === 'update'}
+              />
+            </Tip>
           </div>
 
           <div className="flex items-center justify-between">
@@ -371,23 +382,29 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
             <Button variant="outline" onClick={handleClose}>
               {tc('actions.cancel')}
             </Button>
-            <Button onClick={handleGrantPermission}>{t('grantPermission')}</Button>
+            <Tip label={t('tips.toHuggingFace')}>
+              <Button onClick={handleGrantPermission}>{t('grantPermission')}</Button>
+            </Tip>
           </>
         ) : status === 'staleAuth' ? (
           <>
             <Button variant="outline" onClick={handleClose}>
               {tc('actions.cancel')}
             </Button>
-            <Button onClick={handleGrantPermission}>{t('reconnect')}</Button>
+            <Tip label={t('tips.toHuggingFace')}>
+              <Button onClick={handleGrantPermission}>{t('reconnect')}</Button>
+            </Tip>
           </>
         ) : (
           <>
             <Button variant="outline" onClick={handleClose} disabled={isPublishing}>
               {tc('actions.cancel')}
             </Button>
-            <Button onClick={handlePublish} disabled={isPublishing || !slug || !slugValid}>
-              {isPublishing ? tdd('publishing') : tc('actions.publish')}
-            </Button>
+            <Tip label={isPublishing ? undefined : !slug ? t('tips.nameFirst') : !slugValid ? t('spaceNameRule') : t('tips.publish')} wrapClassName="grid">
+              <Button onClick={handlePublish} disabled={isPublishing || !slug || !slugValid}>
+                {isPublishing ? tdd('publishing') : tc('actions.publish')}
+              </Button>
+            </Tip>
           </>
         )}
       </DialogFooter>

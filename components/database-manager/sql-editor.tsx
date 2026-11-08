@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import MonacoEditor from '@monaco-editor/react';
 import { Play, Loader2, AlertCircle, CheckCircle2, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import { useTheme } from 'next-themes';
 import { useTranslations } from 'next-intl';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
@@ -126,46 +127,61 @@ export function SqlEditor({ deploymentId, queryEndpoint, workspaceId }: SqlEdito
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Button
-              onClick={executeQuery}
-              disabled={executing || !sql.trim()}
-              size="sm"
+            <Tip
+              label={
+                executing ? undefined
+                  : !sql.trim() ? t('tips.writeQuery')
+                  : queryEndpoint ? t('tips.runOnProject')
+                  : t('tips.runOnDeployment')
+              }
             >
-              {executing ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-1" />
-              ) : (
-                <Play className="h-4 w-4 mr-1" />
-              )}
-              {t('execute')}
-            </Button>
+              <Button
+                onClick={executeQuery}
+                disabled={executing || !sql.trim()}
+                size="sm"
+              >
+                {executing ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                ) : (
+                  <Play className="h-4 w-4 mr-1" />
+                )}
+                {t('execute')}
+              </Button>
+            </Tip>
             <span className="text-xs text-muted-foreground">
               Ctrl/Cmd + Enter
             </span>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowHistory(!showHistory)}
+          <Tip
+            label={history.length === 0 ? t('tips.noHistory') : showHistory ? t('tips.hideHistory') : t('tips.showHistory')}
+            align="end"
           >
-            <History className="h-4 w-4 mr-1" />
-            {t('history')}
-          </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowHistory(!showHistory)}
+            >
+              <History className="h-4 w-4 mr-1" />
+              {t('history')}
+            </Button>
+          </Tip>
         </div>
 
         {/* History dropdown */}
         {showHistory && history.length > 0 && (
           <div className="border rounded-lg bg-background shadow-lg max-h-40 overflow-auto">
             {history.map((query, i) => (
-              <button
-                key={i}
-                onClick={() => {
-                  setSql(query);
-                  setShowHistory(false);
-                }}
-                className="w-full text-left px-3 py-2 text-sm font-mono hover:bg-muted border-b last:border-0 truncate"
-              >
-                {query}
-              </button>
+              <Tip key={i} label={query} truncated>
+                <button
+                  onClick={() => {
+                    setSql(query);
+                    setShowHistory(false);
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm font-mono hover:bg-muted border-b last:border-0 truncate"
+                >
+                  {query}
+                </button>
+              </Tip>
             ))}
           </div>
         )}

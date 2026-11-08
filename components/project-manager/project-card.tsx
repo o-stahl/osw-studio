@@ -9,6 +9,7 @@ import { vfs } from '@/lib/vfs';
 import { logger } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Tip } from '@/components/ui/tooltip';
 import { SyncStatusBadge } from './sync-status-badge';
 import { useProjectSyncState } from '@/lib/hooks/use-project-sync-state';
 import { Input } from '@/components/ui/input';
@@ -243,12 +244,16 @@ export const ProjectCard = React.memo(function ProjectCard({
                         maxLength={50}
                         placeholder={t('nameLabel')}
                       />
-                      <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={saveEdits}>
-                        <Check className="h-3 w-3" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={cancelEdit}>
-                        <X className="h-3 w-3" />
-                      </Button>
+                      <Tip label={t('tips.saveDetails')}>
+                        <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={saveEdits} aria-label={t('tips.saveDetails')}>
+                          <Check className="h-3 w-3" />
+                        </Button>
+                      </Tip>
+                      <Tip label={t('tips.cancelEdit')}>
+                        <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={cancelEdit} aria-label={t('tips.cancelEdit')}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </Tip>
                     </div>
                     <span className="text-xs text-muted-foreground">{editedName.length}/50</span>
                   </div>
@@ -271,22 +276,27 @@ export const ProjectCard = React.memo(function ProjectCard({
                 <>
                   {/* Title row */}
                   <div className="flex items-center gap-2">
-                    <h3 className="font-semibold truncate">{project.name}</h3>
+                    <Tip label={project.name} truncated>
+                      <h3 className="font-semibold truncate">{project.name}</h3>
+                    </Tip>
                     <Badge className={`text-xs px-1.5 py-0 h-auto shrink-0 ${runtimeBadge.className}`}>{runtimeBadge.label}</Badge>
                     {syncStatus && syncStatus !== 'synced' && (
                       <SyncStatusBadge status={syncStatus} showLabel={false} />
                     )}
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsEditing(true);
-                      }}
-                    >
-                      <Edit2 className="h-3 w-3" />
-                    </Button>
+                    <Tip label={t('tips.rename', { name: project.name })}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label={t('tips.rename', { name: project.name })}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsEditing(true);
+                        }}
+                      >
+                        <Edit2 className="h-3 w-3" />
+                      </Button>
+                    </Tip>
                   </div>
 
                   {/* Description */}
@@ -347,9 +357,11 @@ export const ProjectCard = React.memo(function ProjectCard({
                 onClick={(e) => e.stopPropagation()}
                 data-tour-id={highlightExport ? 'project-actions-trigger' : undefined}
               >
-                <Button size="icon" variant="ghost" className="h-8 w-8">
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
+                <Tip label={t('tips.more', { name: project.name })} align="end">
+                  <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={t('tips.more', { name: project.name })}>
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </Tip>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={(e) => {
@@ -465,41 +477,52 @@ export const ProjectCard = React.memo(function ProjectCard({
                   autoFocus
                   maxLength={50}
                 />
-                <Button size="icon" variant="ghost" className="h-5 w-5" onClick={saveEdits}>
-                  <Check className="h-3 w-3" />
-                </Button>
-                <Button size="icon" variant="ghost" className="h-5 w-5" onClick={cancelEdit}>
-                  <X className="h-3 w-3" />
-                </Button>
+                <Tip label={t('tips.saveDetails')}>
+                  <Button size="icon" variant="ghost" className="h-5 w-5" onClick={saveEdits} aria-label={t('tips.saveDetails')}>
+                    <Check className="h-3 w-3" />
+                  </Button>
+                </Tip>
+                <Tip label={t('tips.cancelEdit')}>
+                  <Button size="icon" variant="ghost" className="h-5 w-5" onClick={cancelEdit} aria-label={t('tips.cancelEdit')}>
+                    <X className="h-3 w-3" />
+                  </Button>
+                </Tip>
               </div>
               <span className="text-xs text-muted-foreground mt-1">{editedName.length}/50</span>
             </div>
           ) : (
-            <div className="flex items-center gap-2 flex-1">
-              <h3 className="font-semibold text-lg truncate flex-1">{project.name}</h3>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsEditing(true);
-                }}
-              >
-                <Edit2 className="h-3 w-3" />
-              </Button>
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <Tip label={project.name} truncated>
+                <h3 className="font-semibold text-lg truncate flex-1">{project.name}</h3>
+              </Tip>
+              <Tip label={t('tips.rename', { name: project.name })}>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                  aria-label={t('tips.rename', { name: project.name })}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsEditing(true);
+                  }}
+                >
+                  <Edit2 className="h-3 w-3" />
+                </Button>
+              </Tip>
             </div>
           )}
-          
+
           <DropdownMenu open={forceMenuOpen ? true : menuOpen} onOpenChange={handleMenuOpenChange}>
             <DropdownMenuTrigger
               asChild
               onClick={(e) => e.stopPropagation()}
               data-tour-id={highlightExport ? 'project-actions-trigger' : undefined}
             >
-              <Button size="icon" variant="ghost" className="h-8 w-8">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
+              <Tip label={t('tips.more', { name: project.name })} align="end">
+                <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={t('tips.more', { name: project.name })}>
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </Tip>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={(e) => {

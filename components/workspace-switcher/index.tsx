@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
+import { Tip } from '@/components/ui/tooltip';
 import { writeWorkspaceCookie } from '@/lib/web/workspace-cookie';
 
 interface WorkspaceInfo {
@@ -92,18 +93,24 @@ export function WorkspaceSwitcher({ workspaceId }: WorkspaceSwitcherProps) {
 
   if (workspaces.length === 0) return null;
 
+  const shownName = currentWorkspace?.name || cachedName || workspaces[0]?.name || tc('labels.workspace');
+  // With other workspaces to go to, the tip says so; with one, it only shows a name cut short.
+  const canSwitch = workspaces.length > 1;
+
   // Always show as dropdown — single workspace gets manage option, multiple gets switcher
   return (
     <div className="border-b border-border/50">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="w-full justify-start gap-2 px-3 py-2.5 h-auto rounded-none hover:bg-accent/50">
-            <Building2 className="h-4 w-4 text-foreground shrink-0" />
-            <span className="truncate font-medium text-sm text-foreground">
-              {currentWorkspace?.name || cachedName || workspaces[0]?.name || tc('labels.workspace')}
-            </span>
-            <ChevronDown className="h-3 w-3 ml-auto text-muted-foreground shrink-0" />
-          </Button>
+          <Tip label={canSwitch ? ta('tips.switchWorkspace') : shownName} side="right" truncated={!canSwitch}>
+            <Button variant="ghost" className="w-full justify-start gap-2 px-3 py-2.5 h-auto rounded-none hover:bg-accent/50">
+              <Building2 className="h-4 w-4 text-foreground shrink-0" />
+              <span className="truncate font-medium text-sm text-foreground">
+                {shownName}
+              </span>
+              <ChevronDown className="h-3 w-3 ml-auto text-muted-foreground shrink-0" />
+            </Button>
+          </Tip>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-64">
           {workspaces.map(ws => (

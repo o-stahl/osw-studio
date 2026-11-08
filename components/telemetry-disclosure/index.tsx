@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Tip } from '@/components/ui/tooltip';
 import { ChevronDown } from 'lucide-react';
 import { setTelemetryOptIn, track } from '@/lib/telemetry';
 import { getDisclosureLines } from '@/lib/telemetry/events';
@@ -56,27 +57,31 @@ export function TelemetryDisclosure({ open, onDismiss }: TelemetryDisclosureProp
           <p className="text-sm">
             {t.rich('builtWith', {
               link: (chunks) => (
-                <a
-                  href="https://github.com/o-stahl/osw-analytics"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded bg-primary/15 px-1 py-0.5 text-primary no-underline hover:bg-primary/25"
-                >
-                  {chunks}
-                </a>
+                <Tip label={t('tips.source')}>
+                  <a
+                    href="https://github.com/o-stahl/osw-analytics"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded bg-primary/15 px-1 py-0.5 text-primary no-underline hover:bg-primary/25"
+                  >
+                    {chunks}
+                  </a>
+                </Tip>
               ),
             })}
           </p>
 
           <Collapsible>
             <div className="rounded-lg bg-muted/50">
-              <CollapsibleTrigger className="flex items-center gap-1.5 w-full p-3 text-xs text-foreground hover:text-foreground transition-colors group">
-                <ChevronDown className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]:rotate-180" />
-                {t('details')}
-                <span className="ml-auto rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                  {t('updated', { date: updated })}
-                </span>
-              </CollapsibleTrigger>
+              <Tip label={t('tips.details')} wrap wrapClassName="flex w-full">
+                <CollapsibleTrigger className="flex items-center gap-1.5 w-full p-3 text-xs text-foreground hover:text-foreground transition-colors group">
+                  <ChevronDown className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                  {t('details')}
+                  <span className="ml-auto rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                    {t('updated', { date: updated })}
+                  </span>
+                </CollapsibleTrigger>
+              </Tip>
               <CollapsibleContent>
                 <div className="px-4 pb-4 space-y-3 text-sm text-muted-foreground">
                   <div>
@@ -124,12 +129,16 @@ export function TelemetryDisclosure({ open, onDismiss }: TelemetryDisclosureProp
         </div>
 
         <DialogFooter className="flex items-center justify-between sm:justify-between gap-2">
-          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={handleDisable}>
-            {t('disable')}
-          </Button>
-          <Button variant="accent" onClick={() => { track('telemetry_accepted'); onDismiss(); }}>
-            {t('gotIt')}
-          </Button>
+          <Tip label={t('tips.disable')}>
+            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={handleDisable}>
+              {t('disable')}
+            </Button>
+          </Tip>
+          <Tip label={t('tips.gotIt')} align="end">
+            <Button variant="accent" onClick={() => { track('telemetry_accepted'); onDismiss(); }}>
+              {t('gotIt')}
+            </Button>
+          </Tip>
         </DialogFooter>
       </DialogContent>
     </Dialog>

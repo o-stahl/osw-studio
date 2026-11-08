@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
@@ -218,9 +219,11 @@ export function SessionViewer({ deploymentId }: SessionViewerProps) {
           >
             <div className="flex justify-between items-start mb-4">
               <h3 className="text-lg font-medium">{t('sessionJourney')}</h3>
-              <Button variant="ghost" size="sm" onClick={() => setSelectedSession(null)} aria-label={t('close')}>
-                ✕
-              </Button>
+              <Tip label={t('close')}>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedSession(null)} aria-label={t('close')}>
+                  ✕
+                </Button>
+              </Tip>
             </div>
 
             <div className="space-y-4">

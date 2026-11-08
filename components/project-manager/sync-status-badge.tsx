@@ -4,12 +4,7 @@ import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { ItemSyncStatus } from '@/lib/vfs/sync-types';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tip } from '@/components/ui/tooltip';
 import {
   CheckCircle,
   ArrowUp,
@@ -130,16 +125,7 @@ export function SyncStatusBadge({
     </span>
   );
 
-  return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>{badge}</TooltipTrigger>
-        <TooltipContent side="top" className="max-w-xs">
-          <p className="text-sm">{copy.description}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
+  return <Tip label={copy.description}>{badge}</Tip>;
 }
 
 export function getStatusPriority(status: ItemSyncStatus): number {

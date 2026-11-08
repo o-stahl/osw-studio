@@ -52,9 +52,19 @@ Your 3 most recent projects appear in the sidebar for quick access.
 
 ## Project Workspace
 
-The workspace displays up to 3 panels side-by-side. Open, close, and reorder panels from the sidebar or panel headers — drag the grip handle in a panel header to rearrange. Panel widths, order, and visibility persist between sessions.
+The workspace shows its panels in columns. Panels can share a place as tabs, or stack above and below each other in a column, with a divider between them that sets their heights.
 
-Available panels: Chat, File Explorer, Code Editor, Preview, Console (Python/Lua), Skills, Checkpoints, Debug, Settings. When you open a 4th panel, the rightmost panel is replaced.
+- **Open and close panels** from the rail on the left. A closed panel opens where it was before. The first time, it joins a related panel (File Explorer, Skills and Inspector; Console, Debug Events and Checkpoints) or takes a new column, up to three columns; after that it opens as a tab. Opening a panel never closes another. A panel behind another tab comes to the front.
+- **Drag a panel by its title or tab.** Drop it on another panel's header or middle to make a tab, near its top or bottom to stack it, or on a bar between panels to make a new column. The grip (⋮⋮) of a tab group moves the whole group. A drop that doesn't fit says why.
+- **Right-click a title or tab** for the same moves as commands: Split right (Ctrl+\\), Split below, Move to new column, Add as tab to, Maximize, Ungroup all, Close and Close group. The **Layout** button at the bottom of the rail has preset layouts and Reset layout.
+- **Undo** a change from the toast that follows it, or with Ctrl+Z (⌘Z on a Mac) while the workspace has focus. In the code editor, the chat or a text field, the key keeps its usual meaning.
+- **Maximize** a panel by double-clicking its title or tab. Double-click again, use the restore button or press Esc to bring the layout back.
+- When a header runs out of room, its buttons move into a ⋯ menu.
+- In a narrow window, the rightmost columns show as tabs until the window is wide enough again. Your layout is kept.
+
+The layout, the panel sizes and where closed panels were are saved between sessions.
+
+Available panels: Chat, File Explorer, Code Editor, Preview, Inspector, Console, Skills, Checkpoints, Debug.
 
 ### Workspace Header
 

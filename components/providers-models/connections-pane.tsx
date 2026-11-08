@@ -18,6 +18,7 @@ import { isProviderConnected } from '@/lib/llm/providers/connection-status';
 import { assertPublicHttpUrl } from '@/lib/llm/providers/url-safety';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
+import { Tip } from '@/components/ui/tooltip';
 import { ConnectionBadge } from '@/components/settings/connection-badge';
 import { loadProviderModels } from '@/lib/llm/models/model-catalog';
 import { CodexAuthPanel } from '@/components/settings/codex-auth-panel';
@@ -233,14 +234,17 @@ export function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectCo
                 placeholder={providerConfig.apiKeyPlaceholder || t('authOnlyIfRequired')}
                 className="pr-10"
               />
-              <Button
-                size="icon"
-                variant="ghost"
-                className="absolute right-1 top-1 h-7 w-7"
-                onClick={() => setShowApiKey(!showApiKey)}
-              >
-                {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </Button>
+              <Tip label={showApiKey ? t('tips.hideKey') : t('tips.showKey')}>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="absolute right-1 top-1 h-7 w-7"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  aria-label={showApiKey ? t('tips.hideKey') : t('tips.showKey')}
+                >
+                  {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </Tip>
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
@@ -249,12 +253,16 @@ export function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectCo
         </div>
 
         <div className="flex gap-2 justify-end pt-2">
-          <Button variant="ghost" size="sm" onClick={onBack} disabled={testing}>
-            {tc('actions.back')}
-          </Button>
-          <Button size="sm" onClick={handleLocalConnect} disabled={testing}>
-            {testing ? t('testing') : t('testAndConnect')}
-          </Button>
+          <Tip label={testing ? undefined : t('tips.backToList')}>
+            <Button variant="ghost" size="sm" onClick={onBack} disabled={testing}>
+              {tc('actions.back')}
+            </Button>
+          </Tip>
+          <Tip label={testing ? undefined : t('tips.testLocal', { name: providerConfig.name })}>
+            <Button size="sm" onClick={handleLocalConnect} disabled={testing}>
+              {testing ? t('testing') : t('testAndConnect')}
+            </Button>
+          </Tip>
         </div>
       </div>
     );
@@ -266,9 +274,11 @@ export function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectCo
 
       {canSignIn && (
         <>
-          <Button onClick={signIn} disabled={!signInReady} className="w-full gap-2" variant="outline">
-            {ts('signInWithProvider', { provider: providerConfig.name })}
-          </Button>
+          <Tip label={signInReady ? tconnect('tips.signIn', { name: providerConfig.name }) : undefined}>
+            <Button onClick={signIn} disabled={!signInReady} className="w-full gap-2" variant="outline">
+              {ts('signInWithProvider', { provider: providerConfig.name })}
+            </Button>
+          </Tip>
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <span className="w-full border-t" />
@@ -294,43 +304,50 @@ export function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectCo
               className="pr-10"
               disabled={validatingKey}
             />
-            <Button
-              size="icon"
-              variant="ghost"
-              className="absolute right-1 top-1 h-7 w-7"
-              onClick={() => setShowApiKey(!showApiKey)}
-            >
-              {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </Button>
+            <Tip label={showApiKey ? t('tips.hideKey') : t('tips.showKey')}>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="absolute right-1 top-1 h-7 w-7"
+                onClick={() => setShowApiKey(!showApiKey)}
+                aria-label={showApiKey ? t('tips.hideKey') : t('tips.showKey')}
+              >
+                {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+            </Tip>
           </div>
-          <Button
-            onClick={handleConnect}
-            disabled={validatingKey || !currentApiKey.trim()}
-            size="sm"
-          >
-            {validatingKey ? (
-              <>
-                <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                {t('connecting')}
-              </>
-            ) : (
-              t('connect')
-            )}
-          </Button>
+          <Tip label={validatingKey ? undefined : currentApiKey.trim() ? tconnect('tips.connectKey') : tconnect('tips.pasteFirst')}>
+            <Button
+              onClick={handleConnect}
+              disabled={validatingKey || !currentApiKey.trim()}
+              size="sm"
+            >
+              {validatingKey ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  {t('connecting')}
+                </>
+              ) : (
+                t('connect')
+              )}
+            </Button>
+          </Tip>
         </div>
         {providerConfig.apiKeyHelpUrl && (
           <p className="text-sm text-muted-foreground mt-2">
             {ts.rich('getApiKeyFrom', {
               provider: providerConfig.name,
               link: (chunks) => (
-                <a
-                  href={providerConfig.apiKeyHelpUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline inline-flex items-center gap-1"
-                >
-                  {chunks} <ExternalLink className="h-3 w-3" />
-                </a>
+                <Tip label={tconnect('tips.getKey', { name: providerConfig.name })}>
+                  <a
+                    href={providerConfig.apiKeyHelpUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline inline-flex items-center gap-1"
+                  >
+                    {chunks} <ExternalLink className="h-3 w-3" />
+                  </a>
+                </Tip>
               ),
             })}
           </p>
@@ -338,9 +355,11 @@ export function ConnectConfigBody({ providerId, onConnected, onBack }: ConnectCo
       </div>
 
       <div className="flex gap-2 justify-end pt-2">
-        <Button variant="ghost" size="sm" onClick={onBack}>
-          {tc('actions.back')}
-        </Button>
+        <Tip label={t('tips.backToList')}>
+          <Button variant="ghost" size="sm" onClick={onBack}>
+            {tc('actions.back')}
+          </Button>
+        </Tip>
       </div>
     </div>
   );
@@ -481,15 +500,18 @@ function ConnectCustomBody({ onConnected, onBack }: ConnectCustomBodyProps) {
               className="pr-10"
               disabled={testing}
             />
-            <Button
-              size="icon"
-              variant="ghost"
-              className="absolute right-1 top-1 h-7 w-7"
-              onClick={() => setShowApiKey(!showApiKey)}
-              disabled={testing}
-            >
-              {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </Button>
+            <Tip label={testing ? undefined : showApiKey ? t('tips.hideToken') : t('tips.showToken')}>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="absolute right-1 top-1 h-7 w-7"
+                onClick={() => setShowApiKey(!showApiKey)}
+                disabled={testing}
+                aria-label={showApiKey ? t('tips.hideToken') : t('tips.showToken')}
+              >
+                {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+            </Tip>
           </div>
         </div>
       </div>
@@ -505,28 +527,41 @@ function ConnectCustomBody({ onConnected, onBack }: ConnectCustomBodyProps) {
         <Label htmlFor="custom-require-key" className="text-sm font-normal cursor-pointer">
           {t('requireApiToken')}
         </Label>
-        <Switch
-          id="custom-require-key"
-          checked={requireApiKey}
-          onCheckedChange={setRequireApiKey}
-          disabled={testing}
-        />
+        <Tip label={testing ? undefined : requireApiKey ? t('tips.tokenOptional') : t('tips.tokenRequired')} wrap>
+          <Switch
+            id="custom-require-key"
+            checked={requireApiKey}
+            onCheckedChange={setRequireApiKey}
+            disabled={testing}
+          />
+        </Tip>
       </div>
 
       <div className="flex gap-2 justify-end pt-2">
-        <Button variant="ghost" size="sm" onClick={onBack} disabled={testing}>
-          {tc('actions.back')}
-        </Button>
-        <Button size="sm" onClick={handleConnect} disabled={testing || !name.trim() || !baseUrl.trim() || (requireApiKey && !currentApiKey.trim())}>
-          {testing ? (
-            <>
-              <Loader2 className="h-3 w-3 animate-spin mr-1" />
-              {t('testing')}
-            </>
-          ) : (
-            t('testAndConnect')
-          )}
-        </Button>
+        <Tip label={testing ? undefined : t('tips.backToList')}>
+          <Button variant="ghost" size="sm" onClick={onBack} disabled={testing}>
+            {tc('actions.back')}
+          </Button>
+        </Tip>
+        <Tip
+          label={
+            testing ? undefined
+              : !name.trim() || !baseUrl.trim() ? t('tips.nameEndpointFirst')
+              : requireApiKey && !currentApiKey.trim() ? t('tips.tokenFirst')
+              : t('tips.testCustom')
+          }
+        >
+          <Button size="sm" onClick={handleConnect} disabled={testing || !name.trim() || !baseUrl.trim() || (requireApiKey && !currentApiKey.trim())}>
+            {testing ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                {t('testing')}
+              </>
+            ) : (
+              t('testAndConnect')
+            )}
+          </Button>
+        </Tip>
       </div>
     </div>
   );
@@ -559,8 +594,8 @@ function ConnectChooseBody({ onChoose, onChooseCustom }: ConnectChooseBodyProps)
     : unconnected;
 
   const customCard = (
+    <Tip key="__custom__" label={t('tips.chooseCustom')} side="left">
     <button
-      key="__custom__"
       type="button"
       onClick={onChooseCustom}
       className={cn(
@@ -585,6 +620,7 @@ function ConnectChooseBody({ onChoose, onChooseCustom }: ConnectChooseBodyProps)
       </div>
       <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
     </button>
+    </Tip>
   );
 
   const archetypeLabel: Record<string, string> = {
@@ -593,6 +629,14 @@ function ConnectChooseBody({ onChoose, onChooseCustom }: ConnectChooseBodyProps)
     subscription: t('subscription'),
     local: t('localEndpoint'),
     custom: t('customEndpoint'),
+  };
+  // How each kind connects, as the row's tooltip.
+  const archetypeTip: Record<string, string> = {
+    aggregator: t('tips.chooseKey'),
+    cloud: t('tips.chooseKey'),
+    subscription: t('tips.chooseSubscription'),
+    local: t('tips.chooseLocal'),
+    custom: t('tips.chooseCustom'),
   };
 
   return (
@@ -619,8 +663,8 @@ function ConnectChooseBody({ onChoose, onChooseCustom }: ConnectChooseBodyProps)
             const archetype = getProviderArchetype(p.id);
             const label = archetypeLabel[archetype] ?? archetype;
             return (
+              <Tip key={p.id} label={archetypeTip[archetype]} side="left">
               <button
-                key={p.id}
                 type="button"
                 onClick={() => onChoose(p.id)}
                 className={cn(
@@ -646,6 +690,7 @@ function ConnectChooseBody({ onChoose, onChooseCustom }: ConnectChooseBodyProps)
 
                 <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
               </button>
+              </Tip>
             );
           })
         )}
@@ -745,9 +790,11 @@ function AllowanceRow() {
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="ghost" className="size-7" title={tc('labels.connectionOptions')} disabled={checking}>
-                <MoreVertical className="h-4 w-4" />
-              </Button>
+              <Tip label={checking ? t('tips.checking') : t('tips.optionsFor', { name: getProvider(OSWS_PROVIDER).name })} align="end">
+                <Button size="icon" variant="ghost" className="size-7" aria-label={t('tips.optionsFor', { name: getProvider(OSWS_PROVIDER).name })} disabled={checking}>
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </Tip>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={() => { void checkAllowance({ force: true }); }}>
@@ -784,7 +831,9 @@ function ConnectionRow({ providerId, onDisconnect, onEdit, onRevalidate }: Conne
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-sm">{cfg.name}</div>
         {cred && (
-          <div className="text-xs text-muted-foreground font-mono mt-0.5 truncate">{cred}</div>
+          <Tip label={cred} truncated>
+            <div className="text-xs text-muted-foreground font-mono mt-0.5 truncate">{cred}</div>
+          </Tip>
         )}
       </div>
 
@@ -793,9 +842,11 @@ function ConnectionRow({ providerId, onDisconnect, onEdit, onRevalidate }: Conne
         <span className="text-xs font-semibold text-green-500 mr-1">{tc('labels.connected')}</span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="icon" variant="ghost" className="size-7" title={tc('labels.connectionOptions')} disabled={revalidating}>
-              {revalidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreVertical className="h-4 w-4" />}
-            </Button>
+            <Tip label={revalidating ? t('tips.checking') : t('tips.optionsFor', { name: cfg.name })} align="end">
+              <Button size="icon" variant="ghost" className="size-7" aria-label={t('tips.optionsFor', { name: cfg.name })} disabled={revalidating}>
+                {revalidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreVertical className="h-4 w-4" />}
+              </Button>
+            </Tip>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onSelect={onEdit}>
@@ -828,6 +879,7 @@ interface EditConfigBodyProps {
 }
 
 function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyProps) {
+  const tconnect = useTranslations('connect');
   const t = useTranslations('connections');
   const tc = useTranslations('common');
   const ts = useTranslations('settings');
@@ -986,15 +1038,18 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
                 className="pr-10"
                 disabled={savingCustom}
               />
-              <Button
-                size="icon"
-                variant="ghost"
-                className="absolute right-1 top-1 h-7 w-7"
-                onClick={() => setShowCustomKey(!showCustomKey)}
-                disabled={savingCustom}
-              >
-                {showCustomKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </Button>
+              <Tip label={savingCustom ? undefined : showCustomKey ? t('tips.hideToken') : t('tips.showToken')}>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="absolute right-1 top-1 h-7 w-7"
+                  onClick={() => setShowCustomKey(!showCustomKey)}
+                  disabled={savingCustom}
+                  aria-label={showCustomKey ? t('tips.hideToken') : t('tips.showToken')}
+                >
+                  {showCustomKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </Tip>
             </div>
           </div>
         </div>
@@ -1010,37 +1065,43 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
           <Label htmlFor="edit-custom-require-key" className="text-sm font-normal cursor-pointer">
             {t('requireApiToken')}
           </Label>
-          <Switch
-            id="edit-custom-require-key"
-            checked={customRequireKey}
-            onCheckedChange={setCustomRequireKey}
-            disabled={savingCustom}
-          />
+          <Tip label={savingCustom ? undefined : customRequireKey ? t('tips.tokenOptional') : t('tips.tokenRequired')} wrap>
+            <Switch
+              id="edit-custom-require-key"
+              checked={customRequireKey}
+              onCheckedChange={setCustomRequireKey}
+              disabled={savingCustom}
+            />
+          </Tip>
         </div>
 
         <div className="flex gap-2 justify-end pt-2">
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={handleDisconnect}
-            disabled={disconnecting || savingCustom}
-          >
-            {disconnecting ? t('deleting') : tc('actions.delete')}
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleSaveCustom}
-            disabled={savingCustom || !customName.trim() || !customUrl.trim()}
-          >
-            {savingCustom ? (
-              <>
-                <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                {tc('actions.saving')}
-              </>
-            ) : (
-              tc('actions.save')
-            )}
-          </Button>
+          <Tip label={disconnecting || savingCustom ? undefined : t('tips.deleteProvider', { name: providerConfig.name })}>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleDisconnect}
+              disabled={disconnecting || savingCustom}
+            >
+              {disconnecting ? t('deleting') : tc('actions.delete')}
+            </Button>
+          </Tip>
+          <Tip label={savingCustom ? undefined : !customName.trim() || !customUrl.trim() ? t('tips.nameEndpointFirst') : t('tips.saveCustom')}>
+            <Button
+              size="sm"
+              onClick={handleSaveCustom}
+              disabled={savingCustom || !customName.trim() || !customUrl.trim()}
+            >
+              {savingCustom ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  {tc('actions.saving')}
+                </>
+              ) : (
+                tc('actions.save')
+              )}
+            </Button>
+          </Tip>
         </div>
       </div>
     );
@@ -1077,14 +1138,16 @@ function EditConfigBody({ providerId, onDone, onDisconnected }: EditConfigBodyPr
         extra={existingKey ? `···${existingKey.slice(-4)}` : undefined}
         info={
           providerConfig.apiKeyHelpUrl ? (
-            <a
-              href={providerConfig.apiKeyHelpUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline inline-flex items-center gap-0.5"
-            >
-              {ts('manageOn', { provider: providerConfig.name })} <ExternalLink className="h-2.5 w-2.5" />
-            </a>
+            <Tip label={tconnect('tips.getKey', { name: providerConfig.name })}>
+              <a
+                href={providerConfig.apiKeyHelpUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline inline-flex items-center gap-0.5"
+              >
+                {ts('manageOn', { provider: providerConfig.name })} <ExternalLink className="h-2.5 w-2.5" />
+              </a>
+            </Tip>
           ) : undefined
         }
         onDisconnect={handleDisconnect}
@@ -1229,6 +1292,7 @@ export function ConnectionsPane() {
               {t('inferenceProvidersHint')}
             </p>
           </div>
+          <Tip label={t('tips.addProvider')} align="end">
           <Button
             variant="default"
             size="sm"
@@ -1243,6 +1307,7 @@ export function ConnectionsPane() {
             <Plus className="h-3.5 w-3.5" />
             {t('addProvider')}
           </Button>
+          </Tip>
         </div>
 
         {allowanceOffered && <AllowanceRow />}

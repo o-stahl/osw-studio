@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { Tip } from '@/components/ui/tooltip';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -168,12 +168,17 @@ function Section({
   pickerValue,
   onPick,
 }: SectionProps) {
+  const tm = useTranslations('models');
   return (
     <div className="rounded-lg border border-border bg-muted">
       {/* Clickable header */}
+      <Tip
+        label={expanded ? tm('tips.hideModels') : slot === 'agent' ? tm('tips.chooseAgent') : slot === 'imageGen' ? tm('tips.chooseImage') : tm('tips.chooseVoice')}
+      >
       <button
         type="button"
         onClick={onToggle}
+        aria-expanded={expanded}
         className={cn(
           // Padding is constant in both states so toggling doesn't shift the header;
           // the bottom divider only appears when the picker is shown below.
@@ -200,6 +205,7 @@ function Section({
           )}
         />
       </button>
+      </Tip>
 
       {/* Inline picker — rendered only when expanded */}
       {expanded && (
@@ -225,6 +231,8 @@ export function ProjectModelsPanel({ onManageSettings, onDone }: ProjectModelsPa
   const copy = useModelTemplateCopy();
   const tcn = useTranslations('connections');
   const tt = useTranslations('tooltips');
+  const tb = useTranslations('backend');
+  const tconnect = useTranslations('connect');
   // Re-resolve whenever the global model config changes. The root-mounted useModelConfigSignal
   // listens to the `modelConfigChanged` window event (dispatched by configManager writes) and
   // bumps this counter, which re-renders this panel so the display stays in sync.
@@ -322,11 +330,13 @@ export function ProjectModelsPanel({ onManageSettings, onDone }: ProjectModelsPa
             {tc('terms.models')}
           </p>
           <Select value={active.id} onValueChange={handleTemplateSelect}>
-            <SelectTrigger size="sm" className="rounded-full gap-1.5 text-[13px] font-medium text-foreground min-w-0 max-w-[220px]">
-              {/* SelectValue mirrors the selected option's content (incl. its lock for built-ins),
-                  so the trigger must not render its own lock or it shows twice. */}
-              <SelectValue />
-            </SelectTrigger>
+            <Tip label={tm('tips.switchTemplate')} wrap wrapClassName="inline-flex min-w-0">
+              <SelectTrigger size="sm" className="rounded-full gap-1.5 text-[13px] font-medium text-foreground min-w-0 max-w-[220px]">
+                {/* SelectValue mirrors the selected option's content (incl. its lock for built-ins),
+                    so the trigger must not render its own lock or it shows twice. */}
+                <SelectValue />
+              </SelectTrigger>
+            </Tip>
             <SelectContent>
               {sortedTemplates.map((t) => (
                 <SelectItem key={t.id} value={t.id}>
@@ -343,45 +353,44 @@ export function ProjectModelsPanel({ onManageSettings, onDone }: ProjectModelsPa
 
           {/* Reset: revert working selection to the loaded template. */}
           {isDirty && (
-            <button
-              type="button"
-              onClick={handleReset}
-              className={cn(
-                'flex items-center gap-1 text-[11px] font-medium shrink-0',
-                'text-muted-foreground hover:text-foreground',
-                'bg-transparent border-none cursor-pointer transition-colors',
-              )}
-            >
-              <RotateCcw size={12} strokeWidth={2} />
-              {tc('actions.reset')}
-            </button>
+            <Tip label={tm('tips.reset', { name: copy(active).name })}>
+              <button
+                type="button"
+                onClick={handleReset}
+                className={cn(
+                  'flex items-center gap-1 text-[11px] font-medium shrink-0',
+                  'text-muted-foreground hover:text-foreground',
+                  'bg-transparent border-none cursor-pointer transition-colors',
+                )}
+              >
+                <RotateCcw size={12} strokeWidth={2} />
+                {tc('actions.reset')}
+              </button>
+            </Tip>
           )}
 
           {/* Save: persist working selection into the loaded template. Disabled with a
               tooltip for built-ins (read-only) and when there's nothing to save. */}
           {isBuiltin ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="shrink-0" tabIndex={0}>
-                  <Button variant="default" size="sm" disabled className="h-7 text-xs pointer-events-none">
-                    {tc('actions.save')}
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                {tt('builtInTemplatesLocked')}
-              </TooltipContent>
-            </Tooltip>
+            <Tip label={tt('builtInTemplatesLocked')} align="end">
+              <span className="shrink-0" tabIndex={0}>
+                <Button variant="default" size="sm" disabled className="h-7 text-xs pointer-events-none">
+                  {tc('actions.save')}
+                </Button>
+              </span>
+            </Tip>
           ) : (
-            <Button
-              variant="default"
-              size="sm"
-              disabled={!isDirty}
-              onClick={handleSave}
-              className="h-7 text-xs shrink-0"
-            >
-              {tc('actions.save')}
-            </Button>
+            <Tip label={isDirty ? tm('tips.saveInto', { name: copy(active).name }) : tb('tips.noChanges')} align="end" wrapClassName="inline-flex shrink-0">
+              <Button
+                variant="default"
+                size="sm"
+                disabled={!isDirty}
+                onClick={handleSave}
+                className="h-7 text-xs shrink-0"
+              >
+                {tc('actions.save')}
+              </Button>
+            </Tip>
           )}
         </div>
       </div>
@@ -430,19 +439,21 @@ export function ProjectModelsPanel({ onManageSettings, onDone }: ProjectModelsPa
         <p className="text-xs text-muted-foreground leading-relaxed">
           {tm.rich('appliesToAll', { b: (chunks) => <strong className="text-muted-foreground font-semibold">{chunks}</strong> })}
         </p>
-        <button
-          type="button"
-          onClick={onManageSettings}
-          className={cn(
-            'inline-flex items-center gap-[6px]',
-            'text-xs font-medium text-foreground',
-            'bg-transparent border-none cursor-pointer transition-colors',
-            'hover:text-primary',
-          )}
-        >
-          {tm('manageProvidersTemplates')}
-          <ChevronRight size={13} strokeWidth={2} />
-        </button>
+        <Tip label={tconnect('tips.moreOptions')}>
+          <button
+            type="button"
+            onClick={onManageSettings}
+            className={cn(
+              'inline-flex items-center gap-[6px]',
+              'text-xs font-medium text-foreground',
+              'bg-transparent border-none cursor-pointer transition-colors',
+              'hover:text-primary',
+            )}
+          >
+            {tm('manageProvidersTemplates')}
+            <ChevronRight size={13} strokeWidth={2} />
+          </button>
+        </Tip>
 
         {/* Mobile action row: Done */}
         {onDone && (

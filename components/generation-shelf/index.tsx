@@ -7,6 +7,7 @@ import { Project } from '@/lib/vfs/types';
 import type { DebugEvent } from '@/lib/stores/types';
 import type { GenerationTask } from '@/lib/stores/types';
 import { ChevronDown } from 'lucide-react';
+import { Tip } from '@/components/ui/tooltip';
 import { parseToolArgs, type ActionKind } from '@/lib/agent-activity/parse-command';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
 
@@ -189,7 +190,9 @@ function GenerationShelfEntry({ task, expanded, onToggleExpand, onNavigateToProj
                   return (
                     <div key={i} className={`flex items-center gap-2 py-0.5 font-mono text-xs ${isCurrent ? 'text-foreground' : 'text-muted-foreground/50'}`}>
                       <span className={`shrink-0 ${isCurrent ? verbColor : ''}`}>{verb(item)}</span>
-                      <span className="truncate">{item.target}</span>
+                      <Tip label={item.target} align="start" truncated>
+                        <span className="truncate">{item.target}</span>
+                      </Tip>
                     </div>
                   );
                 })}
@@ -200,48 +203,60 @@ function GenerationShelfEntry({ task, expanded, onToggleExpand, onNavigateToProj
           {/* Action buttons */}
           {hasResult ? (
             <div className="flex gap-2">
-              <button
-                className="flex-1 py-2 rounded-lg border border-border text-[13px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                onClick={handleNavigate}
-              >
-                {t('openProject')}
-              </button>
-              <button
-                className="px-3 py-2 rounded-lg border border-border text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                onClick={handleDismiss}
-              >
-                {tc('actions.dismiss')}
-              </button>
+              <Tip label={t('tips.open', { name: projectName })}>
+                <button
+                  className="flex-1 py-2 rounded-lg border border-border text-[13px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  onClick={handleNavigate}
+                >
+                  {t('openProject')}
+                </button>
+              </Tip>
+              <Tip label={t('tips.dismiss', { name: projectName })} align="end">
+                <button
+                  className="px-3 py-2 rounded-lg border border-border text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  onClick={handleDismiss}
+                >
+                  {tc('actions.dismiss')}
+                </button>
+              </Tip>
             </div>
           ) : task.paused ? (
             <div className="flex gap-2">
-              <button
-                className="flex-1 py-2 rounded-lg border border-yellow-500/50 text-[13px] font-medium text-yellow-500 hover:bg-yellow-500/10 transition-colors"
-                onClick={handleNavigate}
-              >
-                {t('openProject')}
-              </button>
-              <button
-                className="px-3 py-2 rounded-lg border border-destructive/50 text-[13px] text-destructive hover:bg-destructive/10 transition-colors"
-                onClick={handleStop}
-              >
-                {tc('actions.cancel')}
-              </button>
+              <Tip label={t('tips.openPaused', { name: projectName })}>
+                <button
+                  className="flex-1 py-2 rounded-lg border border-yellow-500/50 text-[13px] font-medium text-yellow-500 hover:bg-yellow-500/10 transition-colors"
+                  onClick={handleNavigate}
+                >
+                  {t('openProject')}
+                </button>
+              </Tip>
+              <Tip label={t('tips.stop', { name: projectName })} align="end">
+                <button
+                  className="px-3 py-2 rounded-lg border border-destructive/50 text-[13px] text-destructive hover:bg-destructive/10 transition-colors"
+                  onClick={handleStop}
+                >
+                  {tc('actions.cancel')}
+                </button>
+              </Tip>
             </div>
           ) : (
             <div className="flex gap-2">
-              <button
-                className="flex-1 py-2 rounded-lg border border-border text-[13px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                onClick={handleNavigate}
-              >
-                {t('openProject')}
-              </button>
-              <button
-                className="px-3 py-2 rounded-lg border border-destructive/50 text-[13px] text-destructive hover:bg-destructive/10 transition-colors"
-                onClick={handleStop}
-              >
-                {tChat('stop')}
-              </button>
+              <Tip label={t('tips.open', { name: projectName })}>
+                <button
+                  className="flex-1 py-2 rounded-lg border border-border text-[13px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  onClick={handleNavigate}
+                >
+                  {t('openProject')}
+                </button>
+              </Tip>
+              <Tip label={t('tips.stop', { name: projectName })} align="end">
+                <button
+                  className="px-3 py-2 rounded-lg border border-destructive/50 text-[13px] text-destructive hover:bg-destructive/10 transition-colors"
+                  onClick={handleStop}
+                >
+                  {tChat('stop')}
+                </button>
+              </Tip>
             </div>
           )}
         </div>

@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import { Loader2, FolderPlus } from 'lucide-react';
 
 interface CreateConfirmationProps {
@@ -22,7 +23,9 @@ export function CreateConfirmation({ name, onConfirm, onDecline, creating }: Cre
           <FolderPlus className="h-4 w-4 text-primary" />
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-medium truncate">{tdx('readyToCreate', { name })}</p>
+          <Tip label={tdx('readyToCreate', { name })} align="start" truncated>
+            <p className="text-sm font-medium truncate">{tdx('readyToCreate', { name })}</p>
+          </Tip>
           <p className="text-xs text-muted-foreground">{tdx('canStillChange')}</p>
         </div>
       </div>
@@ -35,17 +38,19 @@ export function CreateConfirmation({ name, onConfirm, onDecline, creating }: Cre
         >
           {tdx('notYet')}
         </Button>
-        <Button
-          size="sm"
-          onClick={onConfirm}
-          disabled={creating}
-        >
-          {creating ? (
-            <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />{tc('actions.creating')}</>
-          ) : (
-            tpx('create')
-          )}
-        </Button>
+        <Tip label={creating ? undefined : tdx('tips.create')} align="end">
+          <Button
+            size="sm"
+            onClick={onConfirm}
+            disabled={creating}
+          >
+            {creating ? (
+              <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />{tc('actions.creating')}</>
+            ) : (
+              tpx('create')
+            )}
+          </Button>
+        </Tip>
       </div>
     </div>
   );

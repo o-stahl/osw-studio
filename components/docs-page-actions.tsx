@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Check, ChevronDown, Copy, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,21 +48,25 @@ export function DocsPageActions({ markdown }: DocsPageActionsProps) {
 
   return (
     <div className="flex items-center shrink-0">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={copyPage}
-        className="rounded-r-none border-r-0"
-        aria-label={tda('copyPage')}
-      >
-        {copied ? <Check className="h-4 w-4 sm:mr-2" /> : <Copy className="h-4 w-4 sm:mr-2" />}
-        <span className="hidden sm:inline">{copied ? tc('labels.copied') : tda('copyPage')}</span>
-      </Button>
+      <Tip label={tda('copyPageHint')}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={copyPage}
+          className="rounded-r-none border-r-0"
+          aria-label={tda('copyPage')}
+        >
+          {copied ? <Check className="h-4 w-4 sm:mr-2" /> : <Copy className="h-4 w-4 sm:mr-2" />}
+          <span className="hidden sm:inline">{copied ? tc('labels.copied') : tda('copyPage')}</span>
+        </Button>
+      </Tip>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="rounded-l-none px-2" aria-label={tda('pageActions')}>
-            <ChevronDown className="h-4 w-4" />
-          </Button>
+          <Tip label={tda('pageActions')} align="end">
+            <Button variant="outline" size="sm" className="rounded-l-none px-2" aria-label={tda('pageActions')}>
+              <ChevronDown className="h-4 w-4" />
+            </Button>
+          </Tip>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-72">
           <DropdownMenuItem onSelect={copyPage} className="items-start gap-3 py-2">

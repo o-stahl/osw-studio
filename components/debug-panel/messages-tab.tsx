@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronUp, ChevronsUpDown, ChevronsDownUp, Copy, Trash2 } from 'lucide-react';
 import { requestSnapshotStore } from '@/lib/llm/request-snapshot';
@@ -60,7 +61,9 @@ function MessageRow({ msg, index, force }: { msg: Message; index: number; force?
           <span className="text-muted-foreground font-mono shrink-0">{index}</span>
           <span className={`font-semibold shrink-0 ${ROLE_COLORS[msg.role] ?? 'text-foreground'}`}>{msg.role}</span>
           {msg.reasoning_details?.length ? (
-            <span className="text-violet-500 shrink-0" title={td('hasReasoningDetails')}>R</span>
+            <Tip label={td('hasReasoningDetails')}>
+              <span className="text-violet-500 shrink-0">R</span>
+            </Tip>
           ) : null}
           <span className="text-muted-foreground truncate">{messagePreview(msg, td)}</span>
         </div>
@@ -102,41 +105,53 @@ export function MessagesTab() {
   return (
     <>
       <div className="p-2 border-b border-border flex items-center gap-3 flex-wrap text-xs">
-        <label className="flex items-center gap-1 cursor-pointer" title={t('captureHint')}>
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => requestSnapshotStore.setEnabled(e.target.checked)}
-            className="rounded"
-          />
-          {t('captureRequests')}
-        </label>
-        <label className="flex items-center gap-1 cursor-pointer" title={t('providerViewHint')}>
-          <input
-            type="checkbox"
-            checked={providerView}
-            onChange={(e) => setProviderView(e.target.checked)}
-            className="rounded"
-            disabled={!snapshot}
-          />
-          {t('providerView')}
-        </label>
+        <Tip label={t('captureHint')}>
+          <label className="flex items-center gap-1 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => requestSnapshotStore.setEnabled(e.target.checked)}
+              className="rounded"
+            />
+            {t('captureRequests')}
+          </label>
+        </Tip>
+        <Tip label={t('providerViewHint')}>
+          <label className="flex items-center gap-1 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={providerView}
+              onChange={(e) => setProviderView(e.target.checked)}
+              className="rounded"
+              disabled={!snapshot}
+            />
+            {t('providerView')}
+          </label>
+        </Tip>
         {messages && (
           <div className="ml-auto flex items-center">
-            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title={t('expandAll')}
-              onClick={() => setForce(v => ({ open: true, v: (v?.v ?? 0) + 1 }))}>
-              <ChevronsUpDown className="h-3 w-3" />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title={t('collapseAll')}
-              onClick={() => setForce(v => ({ open: false, v: (v?.v ?? 0) + 1 }))}>
-              <ChevronsDownUp className="h-3 w-3" />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title={t('copyHistoryJson')} onClick={handleCopy}>
-              <Copy className="h-3 w-3" />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title={t('clearHistory')} onClick={() => requestSnapshotStore.clear()}>
-              <Trash2 className="h-3 w-3" />
-            </Button>
+            <Tip label={t('expandAll')}>
+              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" aria-label={t('expandAll')}
+                onClick={() => setForce(v => ({ open: true, v: (v?.v ?? 0) + 1 }))}>
+                <ChevronsUpDown className="h-3 w-3" />
+              </Button>
+            </Tip>
+            <Tip label={t('collapseAll')}>
+              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" aria-label={t('collapseAll')}
+                onClick={() => setForce(v => ({ open: false, v: (v?.v ?? 0) + 1 }))}>
+                <ChevronsDownUp className="h-3 w-3" />
+              </Button>
+            </Tip>
+            <Tip label={t('copyHistoryJson')}>
+              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" aria-label={t('copyHistoryJson')} onClick={handleCopy}>
+                <Copy className="h-3 w-3" />
+              </Button>
+            </Tip>
+            <Tip label={t('clearHistory')} align="end">
+              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" aria-label={t('clearHistory')} onClick={() => requestSnapshotStore.clear()}>
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </Tip>
           </div>
         )}
       </div>

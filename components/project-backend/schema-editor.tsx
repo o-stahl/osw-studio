@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import { Play, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { SchemaViewer } from '@/components/database-manager/schema-viewer';
@@ -116,17 +117,21 @@ export function SchemaEditor({ projectId, enabled, onSchemaChange, workspaceId }
       {/* Sub-tab buttons */}
       <div className="flex items-center gap-1 mb-3 border-b pb-2">
         {(['tables', 'sql', 'ddl'] as const).map(tab => (
-          <button
+          <Tip
             key={tab}
-            onClick={() => setActiveSubTab(tab)}
-            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-              activeSubTab === tab
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-            }`}
+            label={tab === 'tables' ? t('tips.projectTables') : tab === 'sql' ? t('tips.projectSql') : t('tips.projectDdl')}
           >
-            {tab === 'tables' ? t('tablesTab') : tab === 'sql' ? 'SQL' : 'DDL'}
-          </button>
+            <button
+              onClick={() => setActiveSubTab(tab)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                activeSubTab === tab
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+              }`}
+            >
+              {tab === 'tables' ? t('tablesTab') : tab === 'sql' ? 'SQL' : 'DDL'}
+            </button>
+          </Tip>
         ))}
       </div>
 
@@ -153,19 +158,21 @@ export function SchemaEditor({ projectId, enabled, onSchemaChange, workspaceId }
                   {t('ddlHint')}
                 </p>
               </div>
-              <Button
-                size="sm"
-                className="h-7 px-2 text-xs"
-                onClick={applyDDL}
-                disabled={applying || !ddl.trim()}
-              >
-                {applying ? (
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                ) : (
-                  <Play className="h-3 w-3 mr-1" />
-                )}
-                {t('apply')}
-              </Button>
+              <Tip label={applying ? undefined : !ddl.trim() ? t('tips.writeDdl') : t('tips.applyDdl')} align="end">
+                <Button
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={applyDDL}
+                  disabled={applying || !ddl.trim()}
+                >
+                  {applying ? (
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  ) : (
+                    <Play className="h-3 w-3 mr-1" />
+                  )}
+                  {t('apply')}
+                </Button>
+              </Tip>
             </div>
             <textarea
               data-schema-editor

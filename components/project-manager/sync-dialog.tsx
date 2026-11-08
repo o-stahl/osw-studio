@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import { Cloud, CloudOff, RefreshCw, AlertTriangle, CheckSquare, ArrowUp, ArrowDown } from 'lucide-react';
 import { SyncTabs, BulkActionState } from './sync-tabs';
 import { useSyncStatus } from './hooks/use-sync-status';
@@ -168,53 +169,67 @@ export function SyncDialog({ open, onOpenChange, onSyncComplete }: SyncDialogPro
           {/* Bulk Actions - left side */}
           <div className="flex items-center gap-2 flex-wrap flex-1">
             {bulkState && bulkState.selectableCount > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={bulkState.onSelectAll}
-                disabled={bulkState.isSyncing}
+              <Tip
+                label={
+                  bulkState.isSyncing
+                    ? t('tips.busy')
+                    : bulkState.selectedCount === bulkState.selectableCount ? undefined : t('tips.selectAll')
+                }
               >
-                <CheckSquare className="h-3.5 w-3.5 mr-1.5" />
-                {bulkState.selectedCount === bulkState.selectableCount ? t('deselect') : t('selectAll')}
-              </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={bulkState.onSelectAll}
+                  disabled={bulkState.isSyncing}
+                >
+                  <CheckSquare className="h-3.5 w-3.5 mr-1.5" />
+                  {bulkState.selectedCount === bulkState.selectableCount ? t('deselect') : t('selectAll')}
+                </Button>
+              </Tip>
             )}
 
             {bulkState && bulkState.pushableCount > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={bulkState.onPushSelected}
-                disabled={bulkState.isSyncing}
-              >
-                <ArrowUp className="h-3.5 w-3.5 mr-1.5" />
-                {t('pushCount', { count: bulkState.pushableCount })}
-              </Button>
+              <Tip label={bulkState.isSyncing ? t('tips.busy') : t('tips.pushSelected')}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={bulkState.onPushSelected}
+                  disabled={bulkState.isSyncing}
+                >
+                  <ArrowUp className="h-3.5 w-3.5 mr-1.5" />
+                  {t('pushCount', { count: bulkState.pushableCount })}
+                </Button>
+              </Tip>
             )}
 
             {bulkState && bulkState.pullableCount > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={bulkState.onPullSelected}
-                disabled={bulkState.isSyncing}
-              >
-                <ArrowDown className="h-3.5 w-3.5 mr-1.5" />
-                {t('pullCount', { count: bulkState.pullableCount })}
-              </Button>
+              <Tip label={bulkState.isSyncing ? t('tips.busy') : t('tips.pullSelected')}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={bulkState.onPullSelected}
+                  disabled={bulkState.isSyncing}
+                >
+                  <ArrowDown className="h-3.5 w-3.5 mr-1.5" />
+                  {t('pullCount', { count: bulkState.pullableCount })}
+                </Button>
+              </Tip>
             )}
           </div>
 
           {/* Right side buttons */}
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={refresh}
-              disabled={loading || refreshing}
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${loading || refreshing ? 'animate-spin' : ''}`} />
-              {tc('actions.refresh')}
-            </Button>
+            <Tip label={loading || refreshing ? undefined : t('tips.refresh')}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={refresh}
+                disabled={loading || refreshing}
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${loading || refreshing ? 'animate-spin' : ''}`} />
+                {tc('actions.refresh')}
+              </Button>
+            </Tip>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               {tc('actions.close')}
             </Button>

@@ -11,6 +11,7 @@ import { getMcpActivity, subscribeMcpActivity } from '@/lib/api/mcp-activity';
 import { setLocale } from '@/lib/i18n/actions';
 import { defaultLocale } from '@/lib/i18n/config';
 import { isEmbedded } from '@/lib/web/embedded';
+import { Tip } from '@/components/ui/tooltip';
 import type { OfferLocale } from '@/lib/i18n/config';
 import type { OfferStrings } from '@/lib/i18n/offer';
 
@@ -96,15 +97,17 @@ export function LanguageOffer({
         {declineLabel}
       </button>
       <span className="text-xs text-muted-foreground">{strings.note}</span>
-      <button
-        type="button"
-        onClick={() => answer(defaultLocale)}
-        disabled={pending}
-        className="ml-1 p-0.5 rounded hover:bg-muted transition-colors disabled:opacity-50"
-        aria-label={declineLabel}
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
+      <Tip label={pending ? undefined : declineLabel} side="bottom">
+        <button
+          type="button"
+          onClick={() => answer(defaultLocale)}
+          disabled={pending}
+          className="ml-1 p-0.5 rounded hover:bg-muted transition-colors disabled:opacity-50"
+          aria-label={declineLabel}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </Tip>
     </div>
   );
 }

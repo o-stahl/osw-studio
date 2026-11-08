@@ -9,6 +9,7 @@ import { ChevronDown, ChevronRight, Info, X } from 'lucide-react';
 import { SEMANTIC_BLOCKS, BLOCK_CATEGORIES, getBlockById } from '@/lib/semantic-blocks/registry';
 import { BlockCard } from './block-card';
 import type { SemanticBlock } from '@/lib/semantic-blocks/types';
+import { Tip } from '@/components/ui/tooltip';
 
 interface PalettePanelProps {
   onDragStart: (block: SemanticBlock) => void;
@@ -70,22 +71,27 @@ export function PalettePanel({ onDragStart, onClose, collapsed = false }: Palett
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold">{t('panelTitle')}</h3>
           <span className="text-[11px] text-muted-foreground flex-1 truncate">{t('dragHint')}</span>
-          <button
-            onClick={() => setShowInfo(!showInfo)}
-            className="flex-shrink-0 p-0.5 rounded text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-            title={showInfo ? t('hideInfo') : t('whatAreBlocks')}
-          >
-            <Info className="h-3.5 w-3.5" />
-          </button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-6 w-6 flex-shrink-0"
-            onClick={onClose}
-            title={tt('closePalette')}
-          >
-            <X className="h-3 w-3" />
-          </Button>
+          <Tip label={showInfo ? t('hideInfo') : t('whatAreBlocks')}>
+            <button
+              onClick={() => setShowInfo(!showInfo)}
+              className="flex-shrink-0 p-0.5 rounded text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+              aria-label={showInfo ? t('hideInfo') : t('whatAreBlocks')}
+              aria-expanded={showInfo}
+            >
+              <Info className="h-3.5 w-3.5" />
+            </button>
+          </Tip>
+          <Tip label={tt('closePalette')}>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6 flex-shrink-0"
+              onClick={onClose}
+              aria-label={tt('closePalette')}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </Tip>
         </div>
         {showInfo && (
           <p className="text-[10px] text-muted-foreground mt-1.5 leading-snug">

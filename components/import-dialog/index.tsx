@@ -39,6 +39,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
+import { Tip } from '@/components/ui/tooltip';
 import { logger } from '@/lib/utils';
 import { vfs } from '@/lib/vfs';
 import {
@@ -492,33 +493,39 @@ export function ImportDialog({
           {phase === 'done' && <span className="flex-1" />}
 
           {phase !== 'done' && (
-            <Button
-              variant="outline"
-              onClick={close}
-              disabled={phase === 'applying' || keepingAsFile}
-            >
-              {phase === 'ready' ? tc('actions.cancel') : tc('actions.close')}
-            </Button>
+            <Tip label={phase === 'applying' ? t('tips.waitImport') : undefined} wrapClassName="grid">
+              <Button
+                variant="outline"
+                onClick={close}
+                disabled={phase === 'applying' || keepingAsFile}
+              >
+                {phase === 'ready' ? tc('actions.cancel') : tc('actions.close')}
+              </Button>
+            </Tip>
           )}
 
           {canKeepAsFile && (
-            <Button variant="outline" onClick={handleKeepAsFile} disabled={keepingAsFile}>
-              {keepingAsFile ? t('addingFile') : t('addAsFileInstead')}
-            </Button>
+            <Tip label={keepingAsFile ? undefined : t('tips.keepAsFile')}>
+              <Button variant="outline" onClick={handleKeepAsFile} disabled={keepingAsFile}>
+                {keepingAsFile ? t('addingFile') : t('addAsFileInstead')}
+              </Button>
+            </Tip>
           )}
 
           {phase === 'ready' && plan && (
-            <Button
-              // The accent, not `destructive`. An import is a commitment, not a deletion, and the
-              // label already states the damage ('Import · replace 4 files'); red beside the brand
-              // orange read as a wrong shade rather than as a warning. What is genuinely
-              // unrecoverable is called out in the sections where that choice is made.
-              variant="accent"
-              disabled={!canConfirm(plan, resolutions) || keepingAsFile}
-              onClick={handleConfirm}
-            >
-              {copy.confirm(confirmAction(plan, resolutions, resolvedTarget))}
-            </Button>
+            <Tip label={canConfirm(plan, resolutions) ? undefined : t('tips.skipFirst')} wrapClassName="grid">
+              <Button
+                // The accent, not `destructive`. An import is a commitment, not a deletion, and the
+                // label already states the damage ('Import · replace 4 files'); red beside the brand
+                // orange read as a wrong shade rather than as a warning. What is genuinely
+                // unrecoverable is called out in the sections where that choice is made.
+                variant="accent"
+                disabled={!canConfirm(plan, resolutions) || keepingAsFile}
+                onClick={handleConfirm}
+              >
+                {copy.confirm(confirmAction(plan, resolutions, resolvedTarget))}
+              </Button>
+            </Tip>
           )}
 
           {phase === 'done' && <Button onClick={close}>{tc('actions.done')}</Button>}

@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { History, RotateCcw, ArrowRight, Inbox, Pin, PinOff, Loader2 } from 'lucide-react';
 import { PanelContainer, PanelHeader } from '@/components/ui/panel';
-import { checkpointManager, CheckpointMetadata } from '@/lib/vfs/checkpoint';
+import { checkpointManager, CheckpointMetadata, MAX_UNPINNED_PER_PROJECT } from '@/lib/vfs/checkpoint';
+import { Tip } from '@/components/ui/tooltip';
 import { useWorkspaceStore } from '@/lib/stores/workspace';
 import type { DebugEvent } from '@/lib/stores/types';
 import { toast } from 'sonner';
@@ -122,63 +123,76 @@ export function CheckpointPanel({
                   {/* Top row: badge + timestamp */}
                   <div className="flex items-center gap-1.5 mb-1">
                     {cp.pinned ? (
-                      <Badge className="text-[9px] px-1.5 py-0 h-4 leading-none bg-amber-500/20 text-amber-500 border-amber-500/30 hover:bg-amber-500/30">
-                        <Pin className="h-2.5 w-2.5 mr-0.5" />
-                        {tcp('pinned')}
-                      </Badge>
+                      <Tip label={tcp('tips.pinned')}>
+                        <Badge className="text-[9px] px-1.5 py-0 h-4 leading-none bg-amber-500/20 text-amber-500 border-amber-500/30 hover:bg-amber-500/30">
+                          <Pin className="h-2.5 w-2.5 mr-0.5" />
+                          {tcp('pinned')}
+                        </Badge>
+                      </Tip>
                     ) : (
-                      <Badge
-                        variant={cp.kind === 'manual' ? 'default' : 'secondary'}
-                        className="text-[9px] px-1.5 py-0 h-4 leading-none"
-                      >
-                        {cp.kind === 'manual' ? tcp('kindManual') : tcp('kindAuto')}
-                      </Badge>
+                      <Tip label={cp.kind === 'manual' ? tcp('tips.manual') : tcp('tips.auto')}>
+                        <Badge
+                          variant={cp.kind === 'manual' ? 'default' : 'secondary'}
+                          className="text-[9px] px-1.5 py-0 h-4 leading-none"
+                        >
+                          {cp.kind === 'manual' ? tcp('kindManual') : tcp('kindAuto')}
+                        </Badge>
+                      </Tip>
                     )}
-                    <span className="text-[10px] text-muted-foreground ml-auto whitespace-nowrap">
-                      {when.relativeTime(cp.timestamp)}
-                    </span>
+                    <Tip label={when.dateTime(cp.timestamp, { dateStyle: 'medium', timeStyle: 'short' })} align="end">
+                      <span className="text-[10px] text-muted-foreground ml-auto whitespace-nowrap">
+                        {when.relativeTime(cp.timestamp)}
+                      </span>
+                    </Tip>
                   </div>
 
                   {/* Description */}
-                  <p className="text-[11px] text-foreground/80 truncate leading-snug mb-1.5">
-                    {checkpointLabel(cp)}
-                  </p>
+                  <Tip label={checkpointLabel(cp)} align="start" truncated>
+                    <p className="text-[11px] text-foreground/80 truncate leading-snug mb-1.5">
+                      {checkpointLabel(cp)}
+                    </p>
+                  </Tip>
 
                   {/* Actions */}
                   <div className="flex items-center gap-1">
                     {hasLinkedTurn && (
+                      <Tip label={tcp('tips.jump')}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                          onClick={() => onScrollToTurn(cp.id)}
+                        >
+                          <ArrowRight className="h-3 w-3 mr-0.5" />
+                          {tw('jump')}
+                        </Button>
+                      </Tip>
+                    )}
+                    <Tip label={cp.pinned ? tcp('tips.unpin', { count: MAX_UNPINNED_PER_PROJECT }) : tcp('tips.pin', { count: MAX_UNPINNED_PER_PROJECT })}>
                       <Button
                         variant="ghost"
                         size="sm"
                         className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
-                        onClick={() => onScrollToTurn(cp.id)}
+                        onClick={() => handleTogglePin(cp)}
                       >
-                        <ArrowRight className="h-3 w-3 mr-0.5" />
-                        {tw('jump')}
+                        {cp.pinned ? (
+                          <><PinOff className="h-3 w-3 mr-0.5" />{tw('unpin')}</>
+                        ) : (
+                          <><Pin className="h-3 w-3 mr-0.5" />{tw('pin')}</>
+                        )}
                       </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
-                      onClick={() => handleTogglePin(cp)}
-                      title={cp.pinned ? tw('unpinCheckpoint') : tw('pinCheckpoint')}
-                    >
-                      {cp.pinned ? (
-                        <><PinOff className="h-3 w-3 mr-0.5" />{tw('unpin')}</>
-                      ) : (
-                        <><Pin className="h-3 w-3 mr-0.5" />{tw('pin')}</>
-                      )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground ml-auto"
-                      onClick={() => onRestore(cp.id, checkpointLabel(cp))}
-                    >
-                      <RotateCcw className="h-3 w-3 mr-0.5" />
-                      {tw('restore')}
-                    </Button>
+                    </Tip>
+                    <Tip label={tcp('tips.restore')} align="end">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground ml-auto"
+                        onClick={() => onRestore(cp.id, checkpointLabel(cp))}
+                      >
+                        <RotateCcw className="h-3 w-3 mr-0.5" />
+                        {tw('restore')}
+                      </Button>
+                    </Tip>
                   </div>
                 </div>
               );

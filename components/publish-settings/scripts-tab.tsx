@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Section, SectionHeader, SectionBody } from '@/components/ui/section';
+import { Tip } from '@/components/ui/tooltip';
 import { Plus, Edit, Trash2, Code } from 'lucide-react';
 
 interface ScriptsTabProps {
@@ -162,7 +163,9 @@ export function ScriptsTab({ settings, onChange }: ScriptsTabProps) {
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-2">
-                  <h4 className="font-semibold truncate">{script.name}</h4>
+                  <Tip label={script.name} truncated>
+                    <h4 className="font-semibold truncate">{script.name}</h4>
+                  </Tip>
                   <Badge variant={script.position === 'head' ? 'default' : 'secondary'}>
                     {script.position === 'head' ? '<head>' : t('positionBody')}
                   </Badge>
@@ -172,31 +175,43 @@ export function ScriptsTab({ settings, onChange }: ScriptsTabProps) {
                   {script.async && <Badge variant="outline">async</Badge>}
                   {script.defer && <Badge variant="outline">defer</Badge>}
                 </div>
-                <p className="text-sm text-muted-foreground truncate">
-                  {script.type === 'inline'
-                    ? `${script.content.length} characters`
-                    : script.content}
-                </p>
+                {/* An inline script shows its length, which never needs the tip; a URL often does. */}
+                <Tip label={script.type === 'inline' ? undefined : script.content} align="start" truncated>
+                  <p className="text-sm text-muted-foreground truncate">
+                    {script.type === 'inline'
+                      ? `${script.content.length} characters`
+                      : script.content}
+                  </p>
+                </Tip>
               </div>
               <div className="flex items-center gap-2">
-                <Switch
-                  checked={script.enabled}
-                  onCheckedChange={() => handleToggleScript(script.id, script.position)}
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleEditScript(script, script.position)}
-                >
-                  <Edit className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDeleteScript(script.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <Tip label={script.enabled ? t('tips.leaveOut', { name: script.name }) : t('tips.include', { name: script.name })} wrap>
+                  <Switch
+                    checked={script.enabled}
+                    onCheckedChange={() => handleToggleScript(script.id, script.position)}
+                    aria-label={script.name}
+                  />
+                </Tip>
+                <Tip label={t('tips.edit', { name: script.name })}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleEditScript(script, script.position)}
+                    aria-label={t('tips.edit', { name: script.name })}
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                </Tip>
+                <Tip label={t('tips.remove', { name: script.name })}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDeleteScript(script.id)}
+                    aria-label={t('tips.remove', { name: script.name })}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </Tip>
               </div>
             </div>
           ))}
@@ -298,23 +313,27 @@ export function ScriptsTab({ settings, onChange }: ScriptsTabProps) {
               {editingScript.type === 'external' && (
                 <div className="flex gap-4">
                   <div className="flex items-center space-x-2">
-                    <Switch
-                      id="script-async"
-                      checked={editingScript.async || false}
-                      onCheckedChange={(checked) =>
-                        setEditingScript({ ...editingScript, async: checked })
-                      }
-                    />
+                    <Tip label={editingScript.async ? t('tips.asyncOff') : t('tips.asyncOn')} wrap>
+                      <Switch
+                        id="script-async"
+                        checked={editingScript.async || false}
+                        onCheckedChange={(checked) =>
+                          setEditingScript({ ...editingScript, async: checked })
+                        }
+                      />
+                    </Tip>
                     <Label htmlFor="script-async">Async</Label>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Switch
-                      id="script-defer"
-                      checked={editingScript.defer || false}
-                      onCheckedChange={(checked) =>
-                        setEditingScript({ ...editingScript, defer: checked })
-                      }
-                    />
+                    <Tip label={editingScript.defer ? t('tips.deferOff') : t('tips.deferOn')} wrap>
+                      <Switch
+                        id="script-defer"
+                        checked={editingScript.defer || false}
+                        onCheckedChange={(checked) =>
+                          setEditingScript({ ...editingScript, defer: checked })
+                        }
+                      />
+                    </Tip>
                     <Label htmlFor="script-defer">Defer</Label>
                   </div>
                 </div>

@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Tip } from '@/components/ui/tooltip';
 import { ProjectCard } from './project-card';
 import { ProjectTableRow } from './project-table-row';
 import { MultipagePreview } from '@/components/preview/multipage-preview';
@@ -732,10 +733,12 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
                 <h1 className="text-lg font-semibold shrink-0">{tc('terms.projects')}</h1>
                 {/* New Project */}
                 <div className="flex items-center shrink-0">
-                  <Button onClick={() => setCreateDialogOpen(true)} size="sm" className="gap-2" data-tour-id="new-project-button">
-                    <Plus className="h-4 w-4" />
-                    <span>{tc('actions.new')}</span>
-                  </Button>
+                  <Tip label={t('tips.new')} side="bottom">
+                    <Button onClick={() => setCreateDialogOpen(true)} size="sm" className="gap-2" data-tour-id="new-project-button">
+                      <Plus className="h-4 w-4" />
+                      <span>{tc('actions.new')}</span>
+                    </Button>
+                  </Tip>
                 </div>
 
                 {/* Search */}
@@ -754,10 +757,12 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
                   {/* Sort */}
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className="gap-2">
-                        <ArrowUpDown className="h-4 w-4" />
-                        <span className="hidden sm:inline">{tc('labels.sort')}</span>
-                      </Button>
+                      <Tip label={t('tips.sort')} side="bottom">
+                        <Button variant="outline" size="sm" className="gap-2" aria-label={tc('labels.sort')}>
+                          <ArrowUpDown className="h-4 w-4" />
+                          <span className="hidden sm:inline">{tc('labels.sort')}</span>
+                        </Button>
+                      </Tip>
                     </PopoverTrigger>
                     <PopoverContent className="w-48" align="end">
                       <div className="space-y-2">
@@ -782,10 +787,12 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
                   {/* Import — a file or a folder, since one input cannot offer both */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="gap-2">
-                        <Upload className="h-4 w-4" />
-                        <span>{tc('actions.import')}</span>
-                      </Button>
+                      <Tip label={t('tips.import')} side="bottom" align="end">
+                        <Button variant="outline" size="sm" className="gap-2">
+                          <Upload className="h-4 w-4" />
+                          <span>{tc('actions.import')}</span>
+                        </Button>
+                      </Tip>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={importProjectFromFile}>
@@ -1019,9 +1026,11 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
             /* ── Describe mode header ── */
             <DialogHeader className="px-4 py-3 border-b border-border shrink-0">
               <div className="flex items-center gap-3">
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => confirmDiscard(() => { setCreateMode('quick'); setDescribeDirty(false); })}>
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
+                <Tip label={t('tips.back')} side="bottom">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={tc('actions.back')} onClick={() => confirmDiscard(() => { setCreateMode('quick'); setDescribeDirty(false); })}>
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                </Tip>
                 <DialogTitle className="text-sm">{t('describeProject')}</DialogTitle>
                 <DialogDescription className="sr-only">{t('describeProjectSr')}</DialogDescription>
               </div>
@@ -1030,9 +1039,11 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
             /* ── Template mode header ── */
             <DialogHeader className="px-4 py-3 border-b border-border shrink-0">
               <div className="flex items-center gap-3">
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCreateMode('quick')}>
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
+                <Tip label={t('tips.back')} side="bottom">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={tc('actions.back')} onClick={() => setCreateMode('quick')}>
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                </Tip>
                 <div className="min-w-0 flex items-baseline gap-2">
                   <DialogTitle className="text-sm shrink-0">{t('chooseTemplate')}</DialogTitle>
                   <span className="text-xs text-muted-foreground truncate">
@@ -1091,27 +1102,37 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
                 </div>
                 <div>
                   <Label htmlFor="template">{t('templateLabel')}</Label>
-                  <button
-                    id="template"
-                    type="button"
-                    onClick={() => { setTemplatePending(newProjectTemplate); setCreateMode('template'); }}
-                    className="mt-2 w-full flex items-center gap-3 rounded-md border border-input bg-background px-3 py-2 text-left hover:bg-muted/50 transition-colors"
+                  <Tip
+                    label={
+                      <span className="flex flex-col gap-0.5">
+                        <span className="font-semibold">{getTemplateDisplayName(newProjectTemplate)}</span>
+                        {getTemplateDescription(newProjectTemplate) && <span>{getTemplateDescription(newProjectTemplate)}</span>}
+                      </span>
+                    }
+                    truncated
                   >
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">
-                        {getTemplateDisplayName(newProjectTemplate)}
-                      </span>
-                      <span className="block truncate text-xs text-muted-foreground mt-0.5">
-                        {getTemplateDescription(newProjectTemplate) || t('browseTemplates')}
-                      </span>
-                    </span>
-                    <Badge
-                      className={`text-[10px] px-1.5 py-0 h-auto shrink-0 ${getRuntimeBadge(newProjectRuntime).className}`}
+                    <button
+                      id="template"
+                      type="button"
+                      onClick={() => { setTemplatePending(newProjectTemplate); setCreateMode('template'); }}
+                      className="mt-2 w-full flex items-center gap-3 rounded-md border border-input bg-background px-3 py-2 text-left hover:bg-muted/50 transition-colors"
                     >
-                      {getRuntimeBadge(newProjectRuntime).label}
-                    </Badge>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                  </button>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">
+                          {getTemplateDisplayName(newProjectTemplate)}
+                        </span>
+                        <span className="block truncate text-xs text-muted-foreground mt-0.5">
+                          {getTemplateDescription(newProjectTemplate) || t('browseTemplates')}
+                        </span>
+                      </span>
+                      <Badge
+                        className={`text-[10px] px-1.5 py-0 h-auto shrink-0 ${getRuntimeBadge(newProjectRuntime).className}`}
+                      >
+                        {getRuntimeBadge(newProjectRuntime).label}
+                      </Badge>
+                      <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                    </button>
+                  </Tip>
                   <p className="text-xs text-muted-foreground mt-1.5">
                     {t('templateSetsRuntime')}
                   </p>

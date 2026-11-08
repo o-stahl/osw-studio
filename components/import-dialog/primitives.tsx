@@ -26,12 +26,19 @@ import { useArchiveMessage } from '@/lib/i18n/use-archive-message';
 import { AlertTriangle, ArrowLeftRight, ChevronDown, Info, Plus } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { Tip } from '@/components/ui/tooltip';
 import type { ArchiveIssue, FileResolution, SettingResolution } from '@/lib/vfs/archive';
 import { splitPath } from './logic';
 
 /** The resolution choices' labels, in the interface language. */
 export function useFileOptionLabels(): Record<FileResolution, string> {
   const t = useTranslations('importDialog.fileOptions');
+  return { 'keep-mine': t('keepMine'), replace: t('replace'), 'keep-both': t('keepBoth') };
+}
+
+/** What each resolution choice does, for its tooltip: whose version survives. */
+export function useFileOptionTips(): Record<FileResolution, string> {
+  const t = useTranslations('importDialog.tips');
   return { 'keep-mine': t('keepMine'), replace: t('replace'), 'keep-both': t('keepBoth') };
 }
 
@@ -115,6 +122,7 @@ export function Segmented<T extends string>({
   value,
   options,
   labels,
+  tips,
   onChange,
 }: {
   ariaLabel: string;
@@ -122,6 +130,8 @@ export function Segmented<T extends string>({
   value: T | undefined;
   options: T[];
   labels: Record<T, string>;
+  /** What choosing an option does, where its label alone does not say. */
+  tips?: Partial<Record<T, string>>;
   onChange: (value: T) => void;
 }) {
   return (
@@ -131,21 +141,22 @@ export function Segmented<T extends string>({
       className="inline-flex shrink-0 rounded-md bg-muted p-0.5"
     >
       {options.map((option) => (
-        <button
-          key={option}
-          type="button"
-          aria-pressed={value === option}
-          onClick={() => onChange(option)}
-          className={cn(
-            'cursor-pointer whitespace-nowrap rounded-sm px-2 py-1 text-xs font-medium transition-all',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            value === option
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          {labels[option]}
-        </button>
+        <Tip key={option} label={tips?.[option]}>
+          <button
+            type="button"
+            aria-pressed={value === option}
+            onClick={() => onChange(option)}
+            className={cn(
+              'cursor-pointer whitespace-nowrap rounded-sm px-2 py-1 text-xs font-medium transition-all',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              value === option
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            {labels[option]}
+          </button>
+        </Tip>
       ))}
     </span>
   );
@@ -163,6 +174,7 @@ export function ApplyToAll({
 }) {
   const t = useTranslations('importDialog');
   const fileOptionLabels = useFileOptionLabels();
+  const fileOptionTips = useFileOptionTips();
   return (
     <span className="flex items-center gap-2 text-xs text-muted-foreground">
       {t('allLabel')}
@@ -171,6 +183,7 @@ export function ApplyToAll({
         value={value}
         options={ALL_FILE_OPTIONS}
         labels={fileOptionLabels}
+        tips={fileOptionTips}
         onChange={onChange}
       />
     </span>
@@ -219,17 +232,19 @@ export function ResolutionRow({
         )}
         <span className="order-4 flex-1" />
         {onToggleDetail && (
-          <button
-            type="button"
-            aria-expanded={detailOpen}
-            onClick={onToggleDetail}
-            className="order-5 shrink-0 cursor-pointer rounded-full p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:order-7"
-          >
-            <ChevronDown
-              className={cn('w-3.5 h-3.5 transition-transform', detailOpen && 'rotate-180')}
-            />
-            <span className="sr-only">{t('compareVersions')}</span>
-          </button>
+          <Tip label={detailOpen ? t('tips.hideCompare') : t('tips.compare')}>
+            <button
+              type="button"
+              aria-expanded={detailOpen}
+              onClick={onToggleDetail}
+              className="order-5 shrink-0 cursor-pointer rounded-full p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:order-7"
+            >
+              <ChevronDown
+                className={cn('w-3.5 h-3.5 transition-transform', detailOpen && 'rotate-180')}
+              />
+              <span className="sr-only">{t('compareVersions')}</span>
+            </button>
+          </Tip>
         )}
         <span className="order-6 basis-full sm:hidden" />
         <span className="order-7 ml-[26px] sm:order-6 sm:ml-0">{control}</span>

@@ -6,6 +6,7 @@ import { Plug, Square, X } from 'lucide-react';
 import { getMcpActivity, subscribeMcpActivity, type McpActivity } from '@/lib/api/mcp-activity';
 import { getBackendStatus, subscribeBackendStatus } from '@/lib/api/backend-status';
 import { useWorkspaceStore } from '@/lib/stores/workspace';
+import { Tip } from '@/components/ui/tooltip';
 
 /**
  * Says when a connected agent is working on this instance.
@@ -63,23 +64,27 @@ export function McpActivityBanner() {
       {/* A run spends the person's own provider key, so the notice that it is happening is also
           where it can be stopped. Without this the only way to end it was to close the tab. */}
       {activity.kind === 'run' && (
+        <Tip label={t('tips.stop', { project: values.project })} side="bottom">
+          <button
+            type="button"
+            onClick={() => useWorkspaceStore.getState().stopGeneration(activity.projectId)}
+            className="flex items-center gap-1 rounded border border-primary/40 px-2 py-0.5 text-xs font-medium hover:bg-primary/20 transition-colors"
+          >
+            <Square className="h-3 w-3" />
+            {tc('actions.stop')}
+          </button>
+        </Tip>
+      )}
+      <Tip label={t('tips.dismiss')} side="bottom">
         <button
           type="button"
-          onClick={() => useWorkspaceStore.getState().stopGeneration(activity.projectId)}
-          className="flex items-center gap-1 rounded border border-primary/40 px-2 py-0.5 text-xs font-medium hover:bg-primary/20 transition-colors"
+          onClick={() => setDismissedAt(activity.at)}
+          className="ml-1 p-0.5 rounded hover:bg-primary/20 transition-colors"
+          aria-label={tc('actions.dismiss')}
         >
-          <Square className="h-3 w-3" />
-          {tc('actions.stop')}
+          <X className="h-3.5 w-3.5" />
         </button>
-      )}
-      <button
-        type="button"
-        onClick={() => setDismissedAt(activity.at)}
-        className="ml-1 p-0.5 rounded hover:bg-primary/20 transition-colors"
-        aria-label={tc('actions.dismiss')}
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
+      </Tip>
     </div>
   );
 }

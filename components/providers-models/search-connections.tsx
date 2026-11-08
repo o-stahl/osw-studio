@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Drawer } from './drawer';
+import { Tip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
@@ -94,16 +95,17 @@ function SearchConnectionCard({ id, cred, active, onSetActive, onEdit, onDisconn
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-sm">{meta.name}</div>
         {cred && (
-          <div className="text-xs text-muted-foreground font-mono mt-0.5 truncate">{cred}</div>
+          <Tip label={cred} truncated>
+            <div className="text-xs text-muted-foreground font-mono mt-0.5 truncate">{cred}</div>
+          </Tip>
         )}
         {meta.warn && (
-          <div
-            className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500 mt-0.5"
-            title={tcn(meta.warn)}
-          >
-            <TriangleAlert className="h-3 w-3 flex-shrink-0" />
-            <span>{tcn('searchBestEffort')}</span>
-          </div>
+          <Tip label={tcn(meta.warn)}>
+            <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500 mt-0.5">
+              <TriangleAlert className="h-3 w-3 flex-shrink-0" />
+              <span>{tcn('searchBestEffort')}</span>
+            </div>
+          </Tip>
         )}
       </div>
 
@@ -116,9 +118,11 @@ function SearchConnectionCard({ id, cred, active, onSetActive, onEdit, onDisconn
         )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="icon" variant="ghost" className="size-7" title={tc('labels.connectionOptions')}>
-              <MoreVertical className="h-4 w-4" />
-            </Button>
+            <Tip label={tcn('tips.optionsFor', { name: meta.name })} align="end">
+              <Button size="icon" variant="ghost" className="size-7" aria-label={tcn('tips.optionsFor', { name: meta.name })}>
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </Tip>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {!active && (
@@ -241,14 +245,17 @@ function ConfigureBody({ id, onSaved, onBack }: ConfigureBodyProps) {
                 placeholder={t('apiKeyPlaceholder')}
                 className="pr-10"
               />
-              <Button
-                size="icon"
-                variant="ghost"
-                className="absolute right-1 top-1 h-7 w-7"
-                onClick={() => setShowKey(!showKey)}
-              >
-                {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </Button>
+              <Tip label={showKey ? t('tips.hideKey') : t('tips.showKey')}>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="absolute right-1 top-1 h-7 w-7"
+                  onClick={() => setShowKey(!showKey)}
+                  aria-label={showKey ? t('tips.hideKey') : t('tips.showKey')}
+                >
+                  {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </Tip>
             </div>
           </div>
         </div>
@@ -275,9 +282,11 @@ function ConfigureBody({ id, onSaved, onBack }: ConfigureBodyProps) {
         <Button variant="ghost" size="sm" onClick={onBack}>
           {tc('actions.back')}
         </Button>
-        <Button size="sm" onClick={handleSave} disabled={meta.auth !== 'none' && !value.trim()}>
-          {tc('actions.save')}
-        </Button>
+        <Tip label={meta.auth !== 'none' && !value.trim() ? (meta.auth === 'url' ? t('tips.urlFirst') : t('tips.keyFirst')) : undefined}>
+          <Button size="sm" onClick={handleSave} disabled={meta.auth !== 'none' && !value.trim()}>
+            {tc('actions.save')}
+          </Button>
+        </Tip>
       </div>
     </div>
   );
@@ -367,10 +376,12 @@ export function SearchConnectionsSection() {
             {t('searchProvidersHint')}
           </p>
         </div>
-        <Button variant="default" size="sm" className="gap-1.5 shrink-0" onClick={openChoose}>
-          <Plus className="h-3.5 w-3.5" />
-          {t('addSearchProvider')}
-        </Button>
+        <Tip label={t('tips.addSearchProvider')} align="end">
+          <Button variant="default" size="sm" className="gap-1.5 shrink-0" onClick={openChoose}>
+            <Plus className="h-3.5 w-3.5" />
+            {t('addSearchProvider')}
+          </Button>
+        </Tip>
       </div>
 
       {connected.length === 0 ? (

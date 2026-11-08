@@ -36,6 +36,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Section } from '@/components/ui/section';
 import { InfoTip } from '@/components/ui/info-tip';
+import { Tip } from '@/components/ui/tooltip';
 import {
   Plus,
   Search,
@@ -425,10 +426,12 @@ export function SkillsManager() {
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
               <h1 className="text-lg font-semibold shrink-0">{tc('terms.skills')}</h1>
               <div className="flex items-center shrink-0">
-                <Button onClick={handleCreateNew} size="sm">
-                  <Plus className="w-4 h-4 mr-2" />
-                  {tc('actions.new')}
-                </Button>
+                <Tip label={t('createNew')}>
+                  <Button onClick={handleCreateNew} size="sm">
+                    <Plus className="w-4 h-4 mr-2" />
+                    {tc('actions.new')}
+                  </Button>
+                </Tip>
               </div>
 
               {/* Search */}
@@ -445,15 +448,19 @@ export function SkillsManager() {
               {/* Actions */}
               <div className="flex items-center gap-2">
                 <ViewModeToggle value={viewMode} onChange={setViewMode} />
-                <Button variant="outline" size="sm" onClick={handleOpenCreateGroup}>
-                  <FolderTree className="w-4 h-4 mr-2" />
-                  {t('newGroup')}
-                </Button>
+                <Tip label={t('tips.newGroup')}>
+                  <Button variant="outline" size="sm" onClick={handleOpenCreateGroup}>
+                    <FolderTree className="w-4 h-4 mr-2" />
+                    {t('newGroup')}
+                  </Button>
+                </Tip>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="px-2" title={t('more')}>
-                      <MoreVertical className="w-4 h-4" />
-                    </Button>
+                    <Tip label={t('tips.importExport')} align="end">
+                      <Button variant="outline" size="sm" className="px-2" aria-label={t('more')}>
+                        <MoreVertical className="w-4 h-4" />
+                      </Button>
+                    </Tip>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onClick={handleImport}>
@@ -478,11 +485,13 @@ export function SkillsManager() {
               <InfoTip>
                 {t('systemInfo')}
               </InfoTip>
-              <Switch
-                id="global-toggle"
-                checked={globalEnabled}
-                onCheckedChange={handleGlobalToggle}
-              />
+              <Tip label={globalEnabled ? t('tips.allOff') : t('tips.allOn')} wrap>
+                <Switch
+                  id="global-toggle"
+                  checked={globalEnabled}
+                  onCheckedChange={handleGlobalToggle}
+                />
+              </Tip>
 
               <span className="mx-1 h-5 w-px bg-border hidden sm:block" />
 
@@ -493,12 +502,14 @@ export function SkillsManager() {
               <InfoTip>
                 {t('evalInfo')}
               </InfoTip>
-              <Switch
-                id="eval-toggle"
-                checked={evaluationEnabled}
-                disabled={!globalEnabled}
-                onCheckedChange={handleEvaluationToggle}
-              />
+              <Tip label={!globalEnabled ? t('tips.needsSkills') : evaluationEnabled ? t('tips.evalOff') : t('tips.evalOn')} wrap>
+                <Switch
+                  id="eval-toggle"
+                  checked={evaluationEnabled}
+                  disabled={!globalEnabled}
+                  onCheckedChange={handleEvaluationToggle}
+                />
+              </Tip>
             </div>
 
           </div>
@@ -512,66 +523,74 @@ export function SkillsManager() {
                 {/* Header: Skills/Groups switch + (skills-only) source filter & bulk actions */}
                 <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-muted/40 border-b border-border shrink-0">
                   <TabsList className="h-8 bg-muted/60">
-                    <TabsTrigger value="skills" className="gap-1.5 h-6 data-[state=active]:bg-primary/15 data-[state=active]:text-primary data-[state=active]:shadow-none">
-                      <Sparkles className="w-3.5 h-3.5" />
-                      {tc('terms.skills')}
-                      <Badge variant="outline" className="text-xs ml-1">{filteredSkills.length}</Badge>
-                    </TabsTrigger>
-                    <TabsTrigger value="groups" className="gap-1.5 h-6 data-[state=active]:bg-primary/15 data-[state=active]:text-primary data-[state=active]:shadow-none">
-                      <FolderTree className="w-3.5 h-3.5" />
-                      {t('groups')}
-                      <Badge variant="outline" className="text-xs ml-1">{filteredGroups.length}</Badge>
-                    </TabsTrigger>
+                    <Tip label={t('tips.skillsTab')} wrap>
+                      <TabsTrigger value="skills" className="gap-1.5 h-6 data-[state=active]:bg-primary/15 data-[state=active]:text-primary data-[state=active]:shadow-none">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        {tc('terms.skills')}
+                        <Badge variant="outline" className="text-xs ml-1">{filteredSkills.length}</Badge>
+                      </TabsTrigger>
+                    </Tip>
+                    <Tip label={t('tips.groupsTab')} wrap>
+                      <TabsTrigger value="groups" className="gap-1.5 h-6 data-[state=active]:bg-primary/15 data-[state=active]:text-primary data-[state=active]:shadow-none">
+                        <FolderTree className="w-3.5 h-3.5" />
+                        {t('groups')}
+                        <Badge variant="outline" className="text-xs ml-1">{filteredGroups.length}</Badge>
+                      </TabsTrigger>
+                    </Tip>
                   </TabsList>
 
                   {activeTab === 'skills' && (
                     <div className="ml-auto flex flex-wrap items-center gap-2">
                       <span className="text-xs text-muted-foreground">{tc('labels.show')}</span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2 gap-1.5"
-                        style={showBuiltIn ? { backgroundColor: 'color-mix(in oklab, var(--primary) 5%, transparent)', borderColor: 'color-mix(in oklab, var(--primary) 30%, transparent)' } : undefined}
-                        onClick={() => setShowBuiltIn(v => !v)}
-                        aria-pressed={showBuiltIn}
-                        title={t('showBuiltIn')}
-                      >
-                        <FileText className="w-3 h-3" />
-                        {tc('labels.builtIn')}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2 gap-1.5"
-                        style={showCustom ? { backgroundColor: 'color-mix(in oklab, var(--primary) 5%, transparent)', borderColor: 'color-mix(in oklab, var(--primary) 30%, transparent)' } : undefined}
-                        onClick={() => setShowCustom(v => !v)}
-                        aria-pressed={showCustom}
-                        title={t('showCustom')}
-                      >
-                        <Sparkles className="w-3 h-3" />
-                        {t('custom')}
-                      </Button>
+                      <Tip label={showBuiltIn ? t('tips.hideBuiltIn') : t('tips.showBuiltIn')}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 gap-1.5"
+                          style={showBuiltIn ? { backgroundColor: 'color-mix(in oklab, var(--primary) 5%, transparent)', borderColor: 'color-mix(in oklab, var(--primary) 30%, transparent)' } : undefined}
+                          onClick={() => setShowBuiltIn(v => !v)}
+                          aria-pressed={showBuiltIn}
+                        >
+                          <FileText className="w-3 h-3" />
+                          {tc('labels.builtIn')}
+                        </Button>
+                      </Tip>
+                      <Tip label={showCustom ? t('tips.hideCustom') : t('tips.showCustom')}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 gap-1.5"
+                          style={showCustom ? { backgroundColor: 'color-mix(in oklab, var(--primary) 5%, transparent)', borderColor: 'color-mix(in oklab, var(--primary) 30%, transparent)' } : undefined}
+                          onClick={() => setShowCustom(v => !v)}
+                          aria-pressed={showCustom}
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          {t('custom')}
+                        </Button>
+                      </Tip>
                       <span className="w-px h-5 bg-border mx-0.5" />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2"
-                        onClick={() => handleBulkSkillToggle(filteredSkills.map(s => s.id), true)}
-                        disabled={!globalEnabled || filteredSkills.length === 0}
-                        title={t('enableAllShown')}
-                      >
-                        {t('enableAll')}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2"
-                        onClick={() => handleBulkSkillToggle(filteredSkills.map(s => s.id), false)}
-                        disabled={!globalEnabled || filteredSkills.length === 0}
-                        title={t('disableAllShown')}
-                      >
-                        {t('disableAll')}
-                      </Button>
+                      <Tip label={!globalEnabled ? t('tips.needsSkills') : filteredSkills.length === 0 ? t('tips.noneShown') : t('enableAllShown')}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2"
+                          onClick={() => handleBulkSkillToggle(filteredSkills.map(s => s.id), true)}
+                          disabled={!globalEnabled || filteredSkills.length === 0}
+                        >
+                          {t('enableAll')}
+                        </Button>
+                      </Tip>
+                      <Tip label={!globalEnabled ? t('tips.needsSkills') : filteredSkills.length === 0 ? t('tips.noneShown') : t('disableAllShown')} align="end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2"
+                          onClick={() => handleBulkSkillToggle(filteredSkills.map(s => s.id), false)}
+                          disabled={!globalEnabled || filteredSkills.length === 0}
+                        >
+                          {t('disableAll')}
+                        </Button>
+                      </Tip>
                     </div>
                   )}
                 </div>
@@ -633,8 +652,12 @@ export function SkillsManager() {
                                 <tr key={skill.id} className="border-b border-border/50 hover:bg-muted/50 cursor-pointer h-[44px]" onClick={() => handleEdit(skill)}>
                                   <td className="w-full p-[4px_10px] text-[13px] align-middle overflow-hidden" style={{ maxWidth: 0 }}>
                                     <div className="min-w-0">
-                                      <span className="block font-medium text-foreground text-[13px] truncate">{skill.name}</span>
-                                      <span className="block text-[11px] text-muted-foreground truncate">{skill.description}</span>
+                                      <Tip label={skill.name} truncated>
+                                        <span className="block font-medium text-foreground text-[13px] truncate">{skill.name}</span>
+                                      </Tip>
+                                      <Tip label={skill.description} truncated>
+                                        <span className="block text-[11px] text-muted-foreground truncate">{skill.description}</span>
+                                      </Tip>
                                     </div>
                                   </td>
                                   <td className="p-[4px_10px] align-middle whitespace-nowrap">
@@ -650,29 +673,40 @@ export function SkillsManager() {
                                   </td>
                                   <td className="p-[4px_10px] align-middle whitespace-nowrap text-right" onClick={e => e.stopPropagation()}>
                                     <div className="flex items-center justify-end gap-1">
-                                      <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleEdit(skill)}>
-                                        <Edit className="w-3 h-3" />{tc('actions.edit')}
-                                      </Button>
-                                      <Button
-                                        variant={enabledSkills.has(skill.id) ? 'outline' : 'ghost'}
-                                        size="xs"
-                                        className="@max-3xl:hidden"
-                                        onClick={() => handleSkillToggle(skill.id, !enabledSkills.has(skill.id))}
-                                        disabled={!globalEnabled}
-                                      >
-                                        {enabledSkills.has(skill.id) ? t('on') : t('off')}
-                                      </Button>
-                                      {!skill.isBuiltIn && (
-                                        <Button variant="ghost" size="xs" className="@max-3xl:hidden" onClick={() => handleDelete(skill)}>
-                                          <Trash2 className="w-3 h-3" />
+                                      <Tip label={skill.isBuiltIn ? t('tips.view', { name: skill.name }) : t('tips.edit', { name: skill.name })}>
+                                        <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleEdit(skill)}>
+                                          <Edit className="w-3 h-3" />{tc('actions.edit')}
                                         </Button>
+                                      </Tip>
+                                      <Tip
+                                        label={!globalEnabled ? t('tips.needsSkills') : enabledSkills.has(skill.id) ? t('tips.turnOff', { name: skill.name }) : t('tips.turnOn', { name: skill.name })}
+                                        wrapClassName="inline-flex @max-3xl:hidden"
+                                      >
+                                        <Button
+                                          variant={enabledSkills.has(skill.id) ? 'outline' : 'ghost'}
+                                          size="xs"
+                                          className="@max-3xl:hidden"
+                                          onClick={() => handleSkillToggle(skill.id, !enabledSkills.has(skill.id))}
+                                          disabled={!globalEnabled}
+                                        >
+                                          {enabledSkills.has(skill.id) ? t('on') : t('off')}
+                                        </Button>
+                                      </Tip>
+                                      {!skill.isBuiltIn && (
+                                        <Tip label={t('tips.delete', { name: skill.name })} align="end">
+                                          <Button variant="ghost" size="xs" className="@max-3xl:hidden" onClick={() => handleDelete(skill)} aria-label={t('tips.delete', { name: skill.name })}>
+                                            <Trash2 className="w-3 h-3" />
+                                          </Button>
+                                        </Tip>
                                       )}
                                       {/* This row had no overflow menu, so one appears with the
                                           actions in it once they hide. */}
                                       {compactRows && (
                                         <DropdownMenu>
                                           <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" size="xs" className="px-1"><MoreVertical className="w-3.5 h-3.5" /></Button>
+                                            <Tip label={t('tips.rowMenu', { name: skill.name })} align="end">
+                                              <Button variant="ghost" size="xs" className="px-1" aria-label={t('tips.rowMenu', { name: skill.name })}><MoreVertical className="w-3.5 h-3.5" /></Button>
+                                            </Tip>
                                           </DropdownMenuTrigger>
                                           <DropdownMenuContent align="end">
                                             <DropdownMenuItem onClick={() => handleEdit(skill)}>
@@ -733,10 +767,12 @@ export function SkillsManager() {
                       {searchQuery ? t('tryDifferentSearch') : t('createFirstGroup')}
                     </p>
                     {!searchQuery && (
-                      <Button onClick={handleOpenCreateGroup}>
-                        <FolderTree className="w-4 h-4 mr-2" />
-                        {t('newGroup')}
-                      </Button>
+                      <Tip label={t('tips.newGroup')}>
+                        <Button onClick={handleOpenCreateGroup}>
+                          <FolderTree className="w-4 h-4 mr-2" />
+                          {t('newGroup')}
+                        </Button>
+                      </Tip>
                     )}
                   </div>
                 ) : (
@@ -853,13 +889,15 @@ function SkillCard({ skill, isEnabled, globalEnabled, groups, enabledGroups, onT
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <CollapsibleTrigger className="flex items-center gap-2 hover:text-primary transition-colors">
+                <CollapsibleTrigger className="flex items-center gap-2 min-w-0 hover:text-primary transition-colors">
                   {isOpen ? (
                     <ChevronDown className="w-4 h-4 shrink-0" />
                   ) : (
                     <ChevronRight className="w-4 h-4 shrink-0" />
                   )}
-                  <h3 className="font-semibold truncate">{skill.name}</h3>
+                  <Tip label={skill.name} truncated>
+                    <h3 className="font-semibold truncate">{skill.name}</h3>
+                  </Tip>
                 </CollapsibleTrigger>
                 {skill.isBuiltIn && (
                   <Badge variant="secondary" className="text-xs">
@@ -872,16 +910,14 @@ function SkillCard({ skill, isEnabled, globalEnabled, groups, enabledGroups, onT
                   </Badge>
                 )}
                 {enabledByGroup && (
-                  <Badge
-                    variant="outline"
-                    className="text-xs gap-1"
-                    title={t('activeViaGroups', { count: enabledMemberGroups.length, groups: enabledMemberGroups.map(g => groupCopy(g).name).join(', '), override: individualOverridden ? 'yes' : 'no' })}
-                  >
-                    <FolderTree className="w-3 h-3" />
-                    {enabledMemberGroups.length === 1
-                      ? groupCopy(enabledMemberGroups[0]).name
-                      : t('groupCount', { count: enabledMemberGroups.length })}
-                  </Badge>
+                  <Tip label={t('activeViaGroups', { count: enabledMemberGroups.length, groups: enabledMemberGroups.map(g => groupCopy(g).name).join(', '), override: individualOverridden ? 'yes' : 'no' })}>
+                    <Badge variant="outline" className="text-xs gap-1">
+                      <FolderTree className="w-3 h-3" />
+                      {enabledMemberGroups.length === 1
+                        ? groupCopy(enabledMemberGroups[0]).name
+                        : t('groupCount', { count: enabledMemberGroups.length })}
+                    </Badge>
+                  </Tip>
                 )}
               </div>
               <p className="text-sm text-muted-foreground line-clamp-2">
@@ -889,27 +925,36 @@ function SkillCard({ skill, isEnabled, globalEnabled, groups, enabledGroups, onT
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Switch
-                checked={isEnabled}
-                onCheckedChange={(checked) => onToggle(skill.id, checked)}
-                disabled={!globalEnabled}
-              />
+              <Tip label={!globalEnabled ? t('tips.needsSkills') : isEnabled ? t('tips.turnOff', { name: skill.name }) : t('tips.turnOn', { name: skill.name })} wrap>
+                <Switch
+                  checked={isEnabled}
+                  onCheckedChange={(checked) => onToggle(skill.id, checked)}
+                  disabled={!globalEnabled}
+                  aria-label={skill.name}
+                />
+              </Tip>
               {!skill.isBuiltIn && (
                 <>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onEdit(skill)}
-                  >
-                    <Edit className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onDelete(skill)}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  <Tip label={t('tips.edit', { name: skill.name })}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onEdit(skill)}
+                      aria-label={t('tips.edit', { name: skill.name })}
+                    >
+                      <Edit className="w-4 h-4" />
+                    </Button>
+                  </Tip>
+                  <Tip label={t('tips.delete', { name: skill.name })} align="end">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onDelete(skill)}
+                      aria-label={t('tips.delete', { name: skill.name })}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </Tip>
                 </>
               )}
             </div>
@@ -981,13 +1026,15 @@ function GroupCard({
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <CollapsibleTrigger className="flex items-center gap-2 hover:text-primary transition-colors">
+                <CollapsibleTrigger className="flex items-center gap-2 min-w-0 hover:text-primary transition-colors">
                   {isOpen ? (
                     <ChevronDown className="w-4 h-4 shrink-0" />
                   ) : (
                     <ChevronRight className="w-4 h-4 shrink-0" />
                   )}
-                  <h3 className="font-semibold truncate">{groupCopy(group).name}</h3>
+                  <Tip label={groupCopy(group).name} truncated>
+                    <h3 className="font-semibold truncate">{groupCopy(group).name}</h3>
+                  </Tip>
                 </CollapsibleTrigger>
                 <Badge variant="outline" className="text-xs">
                   {t('memberCount', { count: memberSkills.length })}
@@ -999,9 +1046,11 @@ function GroupCard({
                   <Badge variant="outline" className="text-xs text-muted-foreground">{t('disabled')}</Badge>
                 )}
                 {missingCount > 0 && (
-                  <Badge variant="outline" className="text-xs text-amber-600 border-amber-600/30">
-                    {t('missingCount', { count: missingCount })}
-                  </Badge>
+                  <Tip label={t('tips.missing')}>
+                    <Badge variant="outline" className="text-xs text-amber-600 border-amber-600/30">
+                      {t('missingCount', { count: missingCount })}
+                    </Badge>
+                  </Tip>
                 )}
               </div>
               {groupCopy(group).description && (
@@ -1009,19 +1058,26 @@ function GroupCard({
               )}
             </div>
             <div className="flex items-center gap-2">
-              <Switch
-                checked={isEnabled}
-                onCheckedChange={(checked) => onGroupToggle(group.id, checked)}
-                disabled={!globalEnabled}
-              />
+              <Tip label={!globalEnabled ? t('tips.needsSkills') : isEnabled ? t('tips.turnOff', { name: groupCopy(group).name }) : t('tips.turnOn', { name: groupCopy(group).name })} wrap>
+                <Switch
+                  checked={isEnabled}
+                  onCheckedChange={(checked) => onGroupToggle(group.id, checked)}
+                  disabled={!globalEnabled}
+                  aria-label={groupCopy(group).name}
+                />
+              </Tip>
               {!group.isBuiltIn && (
                 <>
-                  <Button variant="ghost" size="sm" onClick={() => onEditGroup(group)}>
-                    <Edit className="w-4 h-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => onDeleteGroup(group)}>
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  <Tip label={t('tips.edit', { name: groupCopy(group).name })}>
+                    <Button variant="ghost" size="sm" onClick={() => onEditGroup(group)} aria-label={t('tips.edit', { name: groupCopy(group).name })}>
+                      <Edit className="w-4 h-4" />
+                    </Button>
+                  </Tip>
+                  <Tip label={t('tips.delete', { name: groupCopy(group).name })} align="end">
+                    <Button variant="ghost" size="sm" onClick={() => onDeleteGroup(group)} aria-label={t('tips.delete', { name: groupCopy(group).name })}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </Tip>
                 </>
               )}
             </div>
@@ -1040,18 +1096,23 @@ function GroupCard({
                     <div key={skill.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium truncate">{skill.name}</span>
+                          <Tip label={skill.name} truncated>
+                            <span className="text-sm font-medium truncate">{skill.name}</span>
+                          </Tip>
                           {skill.isBuiltIn && (
                             <Badge variant="secondary" className="text-[10px] py-0">{tc('labels.builtIn')}</Badge>
                           )}
                         </div>
                         <p className="text-xs text-muted-foreground line-clamp-1">{skill.description}</p>
                       </div>
-                      <Switch
-                        checked={skillEnabled}
-                        onCheckedChange={(checked) => onSkillToggle(skill.id, checked)}
-                        disabled={!globalEnabled}
-                      />
+                      <Tip label={!globalEnabled ? t('tips.needsSkills') : skillEnabled ? t('tips.turnOff', { name: skill.name }) : t('tips.turnOn', { name: skill.name })} wrap align="end">
+                        <Switch
+                          checked={skillEnabled}
+                          onCheckedChange={(checked) => onSkillToggle(skill.id, checked)}
+                          disabled={!globalEnabled}
+                          aria-label={skill.name}
+                        />
+                      </Tip>
                     </div>
                   );
                 })}
@@ -1213,7 +1274,9 @@ function GroupEditorDialog({ open, mode, group, allSkills, onSave, onCancel }: G
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium truncate">{skill.name}</span>
+                        <Tip label={skill.name} truncated>
+                          <span className="text-sm font-medium truncate">{skill.name}</span>
+                        </Tip>
                         {skill.isBuiltIn && (
                           <Badge variant="secondary" className="text-[10px] py-0">{tc('labels.builtIn')}</Badge>
                         )}
@@ -1229,9 +1292,11 @@ function GroupEditorDialog({ open, mode, group, allSkills, onSave, onCancel }: G
 
         <DialogFooter>
           <Button variant="outline" onClick={onCancel} disabled={saving}>{tc('actions.cancel')}</Button>
-          <Button onClick={handleSave} disabled={saving || !name.trim()}>
-            {saving ? tc('actions.saving') : mode === 'create' ? t('createGroup') : tc('actions.save')}
-          </Button>
+          <Tip label={!saving && !name.trim() ? t('tips.nameFirst') : undefined} wrapClassName="grid">
+            <Button onClick={handleSave} disabled={saving || !name.trim()}>
+              {saving ? tc('actions.saving') : mode === 'create' ? t('createGroup') : tc('actions.save')}
+            </Button>
+          </Tip>
         </DialogFooter>
       </DialogContent>
     </Dialog>

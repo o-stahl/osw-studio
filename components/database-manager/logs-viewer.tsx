@@ -10,6 +10,7 @@ import {
   Clock, ArrowRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api/backend-status';
 
@@ -95,20 +96,24 @@ export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium">{t('executionLogs')}</h3>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={loadLogs}>
-            <RefreshCw className="h-4 w-4 mr-1" />
-            {tc('actions.refresh')}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={clearLogs}
-            disabled={logs.length === 0}
-            className="text-destructive hover:text-destructive"
-          >
-            <Trash2 className="h-4 w-4 mr-1" />
-            {tc('actions.clear')}
-          </Button>
+          <Tip label={t('tips.refreshLogs')}>
+            <Button variant="ghost" size="sm" onClick={loadLogs}>
+              <RefreshCw className="h-4 w-4 mr-1" />
+              {tc('actions.refresh')}
+            </Button>
+          </Tip>
+          <Tip label={logs.length === 0 ? t('tips.noLogs') : t('tips.clearLogs')} align="end">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearLogs}
+              disabled={logs.length === 0}
+              className="text-destructive hover:text-destructive"
+            >
+              <Trash2 className="h-4 w-4 mr-1" />
+              {tc('actions.clear')}
+            </Button>
+          </Tip>
         </div>
       </div>
 

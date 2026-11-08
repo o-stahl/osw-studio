@@ -17,7 +17,12 @@ import { useWorkspaceStore } from '@/lib/stores/workspace';
 import type { InterviewTemplate, InterviewHandoff } from '@/lib/interview/types';
 import { track } from '@/lib/telemetry';
 import { bucketInterviewTemplateId } from '@/lib/telemetry/tool-analytics';
-import { PANEL_MAP, pickEvictionTarget, visiblePanelKeys } from '@/lib/stores/slices/layout';
+import { panelOnScreen, shownLayout } from '@/lib/stores/slices/layout';
+import { isPanelKey, type PanelKey } from '@/lib/workspace-layout';
+import { DockArea } from '@/components/workspace/dock/dock-area';
+import { LayoutMenu } from '@/components/workspace/dock/layout-menu';
+import { useLayoutCommands, WORKSPACE_FOCUS_ATTR } from '@/components/workspace/dock/use-layout-commands';
+import { isMac, modShortcut } from '@/lib/platform';
 import { busyNotice } from '@/lib/stores/slices/orchestrator';
 import { useCostSettings } from '@/lib/hooks/use-cost-settings';
 import { getModelInputModalities } from '@/lib/llm/providers/registry';
@@ -28,17 +33,7 @@ import { createOpenCheckpoint } from './open-checkpoint';
 import { resolveActiveAssignment } from '@/lib/llm/models/template-store';
 import { toast } from 'sonner';
 import { debugEventsState } from '@/lib/llm/debug-events-state';
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from '@/components/ui/resizable';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tip } from '@/components/ui/tooltip';
 import { checkpointManager, isEmptyPreview, type BackendRestorePreview } from '@/lib/vfs/checkpoint';
 import { RestoreSecretsDialog } from '@/components/restore-secrets-dialog';
 import { saveManager } from '@/lib/vfs/save-manager';
@@ -60,7 +55,7 @@ import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { CheckpointPanel } from '@/components/checkpoint-panel';
 import { ProjectSettingsModal } from '@/components/project-backend';
 import { SkillsPanel } from '@/components/workspace/skills-panel';
-import { PanelDragProvider, PanelContainer, PanelHeader } from '@/components/ui/panel';
+import { PanelContainer, PanelHeader } from '@/components/ui/panel';
 import { ElementsPanel, type ElementsPanelHandle, type ElementsTab } from '@/components/elements-panel';
 import { buildApplyStyle, buildRemoveStyle, toPreviewSelection } from '@/components/styles-content/commit';
 import { ImagePicker } from '@/components/image-picker';
@@ -219,7 +214,17 @@ export function focusMessageContext<T extends { domPath: string }>(
   return { promptBlock: formatBlock(focus), generationFocus: focus };
 }
 
-/** The panel set quick edit shows, in order; the store's order is not consulted. */
+/** One of the rail's panel buttons; `token` names its colour, and `fallback` stands in where a theme has none. */
+interface RailButton {
+  key: PanelKey;
+  label: string;
+  Icon: React.ComponentType<{ className?: string }>;
+  on: boolean;
+  token: string | null;
+  fallback?: string;
+  unread?: boolean;
+}
+
 /**
  * A panel button's tooltip in that panel's colour, on the app tooltip's tinted treatment: a 15% tint
  * of the colour on the popover surface, the colour as text, and a 40% border.
@@ -251,8 +256,6 @@ export function mayLeave(state: { generating: boolean; isDirty: boolean }, ask: 
 export function continueHandler(generate: (prompt: string) => unknown): (withModel?: ModelRef) => void {
   return (withModel) => continueAfterStop(withModel, generate);
 }
-
-const QUICK_PANEL_ORDER = ['chat', 'preview', 'elements'];
 
 export function Workspace({ project, onBack, backLabel, workspaceId, initialPreviewPath }: WorkspaceProps) {
   const t = useTranslations('workspace');
@@ -540,190 +543,54 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   // The toolbar's Text dialog, held here for the same reason.
   const [textPopoverOpen, setTextPopoverOpen] = useState(false);
   const fullscreenPreview = useWorkspaceStore(s => s.fullscreenPreview);
-  const panelReplacePreview = useWorkspaceStore(s => s.panelReplacePreview);
-  const panelInsertPreview = useWorkspaceStore(s => s.panelInsertPreview);
   const hasUnreadConsole = useWorkspaceStore(s => s.hasUnreadConsole);
-  // Ref to imperatively reset panel sizes after reorder
-  const panelGroupRef = useRef<import('react-resizable-panels').ImperativePanelGroupHandle | null>(null);
+  // A background tab is open but not on screen, which is what the console's unread dot is about.
+  const consoleOnScreen = useWorkspaceStore(s => panelOnScreen(s, 'console'));
+  // The chat lays itself out for the whole workspace when its cell is the only one on screen.
+  const chatAlone = useWorkspaceStore(s => {
+    const shown = shownLayout(s);
+    return shown.columns.length === 1 && shown.columns[0].cells.length === 1 && shown.columns[0].cells[0].active === 'chat';
+  });
+  const commands = useLayoutCommands();
 
-  const storePanelOrder = useWorkspaceStore(s => s.panelOrder);
-  const panelOrder = quick ? QUICK_PANEL_ORDER : storePanelOrder;
-  const draggingPanel = useWorkspaceStore(s => s.draggingPanel);
-  const dropTarget = useWorkspaceStore(s => s.dropTarget);
-
-  const handlePanelDragStart = useCallback((panelKey: string) => {
-    // Capture the dragged panel's center X for "stay put" distance comparison
-    const container = panelContainerRef.current;
-    if (container) {
-      const panelEl = container.querySelector(`[data-panel-id="${panelKey}"]`);
-      if (panelEl) {
-        const rect = panelEl.getBoundingClientRect();
-        draggedPanelCenter.current = rect.left + rect.width / 2;
-      }
-    }
-    document.body.style.cursor = 'grabbing';
-    useWorkspaceStore.getState().startDrag(panelKey);
-  }, []);
-
-  const handlePanelDragEnd = useCallback(() => {
-    if (draggingPanel && dropTarget !== null) {
-      // Capture current sizes keyed by panel identity before reordering. Derived from PANEL_MAP
-      // rather than a hardcoded key→flag chain: this list indexes the drop zones, so a panel
-      // missing from it silently shifts every drop target to the right of it.
-      const visibleBefore = visiblePanelKeys(useWorkspaceStore.getState(), panelOrder);
-      const currentLayout = panelGroupRef.current?.getLayout() || [];
-      const sizeByKey: Record<string, number> = {};
-      visibleBefore.forEach((key, i) => {
-        if (i < currentLayout.length) sizeByKey[key] = currentLayout[i];
-      });
-
-      {
-        const prevOrder = panelOrder;
-        const newOrder = prevOrder.filter(k => k !== draggingPanel);
-        const targetKey = visibleBefore[dropTarget];
-        if (targetKey) {
-          const insertIdx = newOrder.indexOf(targetKey);
-          newOrder.splice(insertIdx, 0, draggingPanel);
-        } else {
-          newOrder.push(draggingPanel);
-        }
-        useWorkspaceStore.getState().setPanelOrder(newOrder);
-      }
-
-      // Restore sizes in the new order after React re-renders
-      requestAnimationFrame(() => {
-        if (panelGroupRef.current && visibleBefore.length > 0) {
-          // Compute new visible order
-          const newVisible = [...visibleBefore];
-          const dragIdx = newVisible.indexOf(draggingPanel);
-          if (dragIdx >= 0) newVisible.splice(dragIdx, 1);
-          const targetKey = visibleBefore[dropTarget];
-          const insertIdx = targetKey ? newVisible.indexOf(targetKey) : newVisible.length;
-          newVisible.splice(insertIdx >= 0 ? insertIdx : newVisible.length, 0, draggingPanel);
-
-          const sizes = newVisible.map(k => sizeByKey[k] || Math.floor(100 / newVisible.length));
-          // Normalize to exactly 100
-          const total = sizes.reduce((a, b) => a + b, 0);
-          if (total !== 100 && sizes.length > 0) {
-            sizes[sizes.length - 1] += 100 - total;
-          }
-          panelGroupRef.current.setLayout(sizes);
-        }
-      });
-    }
-    useWorkspaceStore.getState().endDrag();
-    draggedPanelCenter.current = null;
-    document.body.style.cursor = '';
-  }, [draggingPanel, dropTarget, panelOrder]);
-
-  // Document-level mouseup listener — ends drag whether inside or outside the container.
-  // If mouseUp is inside the container, the container's own onMouseUp handles it (with drop logic).
-  // If mouseUp is outside, this fires and cancels the drag.
-  useEffect(() => {
-    if (!draggingPanel) return;
-    const handleDocumentMouseUp = () => {
-      // Only cancel if still dragging — the container's onMouseUp may have already handled it
-      if (useWorkspaceStore.getState().draggingPanel) {
-        useWorkspaceStore.getState().endDrag();
-        draggedPanelCenter.current = null;
-        document.body.style.cursor = '';
-      }
-    };
-    document.addEventListener('mouseup', handleDocumentMouseUp);
-    return () => document.removeEventListener('mouseup', handleDocumentMouseUp);
-  }, [draggingPanel]);
-
-  // During drag: track mouse X and find closest drop zone
-  const panelContainerRef = useRef<HTMLDivElement>(null);
-  const dropZonePositions = useRef<Map<number, number>>(new Map()); // position index → X center
-  const draggedPanelCenter = useRef<number | null>(null); // X center of the panel being dragged
-
-  const registerDropZone = useCallback((position: number, el: HTMLDivElement | null) => {
-    if (el) {
-      const rect = el.getBoundingClientRect();
-      dropZonePositions.current.set(position, rect.left + rect.width / 2);
-    } else {
-      dropZonePositions.current.delete(position);
-    }
-  }, []);
-
-  const handleDragMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!draggingPanel) return;
-    const positions = dropZonePositions.current;
-    if (positions.size === 0) return;
-
-    // Check distance to each drop zone
-    let closest: number | null = null;
-    let closestDist = Infinity;
-    for (const [pos, x] of positions) {
-      const dist = Math.abs(e.clientX - x);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closest = pos;
-      }
-    }
-
-    // If the mouse is closer to the dragged panel's own center, stay put (no move)
-    if (draggedPanelCenter.current !== null) {
-      const distToSelf = Math.abs(e.clientX - draggedPanelCenter.current);
-      if (distToSelf <= closestDist) {
-        useWorkspaceStore.getState().setDropTarget(null);
-        return;
-      }
-    }
-
-    useWorkspaceStore.getState().setDropTarget(closest);
-  }, [draggingPanel]);
-
-  const togglePanel = useWorkspaceStore(s => s.togglePanel);
-
-  const handleSidebarHover = useCallback((key: string | null) => {
-    const store = useWorkspaceStore.getState();
-    if (!key) { store.setPanelReplacePreview(null); store.setPanelInsertPreview(null); return; }
-    const panelStateKey = PANEL_MAP[key];
-    if (!panelStateKey || store[panelStateKey]) { store.setPanelReplacePreview(null); store.setPanelInsertPreview(null); return; }
-    const allPanels = store.panelOrder
-      .filter(k => PANEL_MAP[k] !== undefined)
-      .map(k => ({ key: k, open: !!store[PANEL_MAP[k]] }));
-    const visibleCount = allPanels.filter(p => p.open).length;
-    const MAX_VISIBLE_PANELS = 3;
-    if (visibleCount < MAX_VISIBLE_PANELS) {
-      store.setPanelInsertPreview(visibleCount);
-      store.setPanelReplacePreview(null);
-      return;
-    }
-    store.setPanelInsertPreview(null);
-    // Same picker togglePanel uses, so the highlighted panel is the one that will actually close.
-    store.setPanelReplacePreview(pickEvictionTarget(allPanels, key));
+  /**
+   * What a control under the pointer would do to the layout, drawn over the workspace: `rail`, a rail
+   * button's toggle; `reveal`, putting the panel on screen. Null clears it.
+   */
+  const handleSidebarHover = useCallback((key: string | null, kind: 'rail' | 'reveal' = 'rail') => {
+    useWorkspaceStore.getState().setPanelHint(key && isPanelKey(key) ? { kind, panel: key } : null);
   }, []);
 
   const consoleBufferRef = useRef<{ level: string; text: string }[]>([]);
-  const showConsoleRef = useRef(showConsole);
+  // Mounted: open anywhere, a background tab included, which takes the output itself. On screen: in
+  // front, where the person can see it, which is what clears the unread dot.
+  const consoleMountedRef = useRef(showConsole);
+  const consoleSeenRef = useRef(consoleOnScreen);
 
-  // Keep showConsoleRef in sync for buffering logic (tracks both desktop and mobile)
   useEffect(() => {
-    showConsoleRef.current = showConsole || activeMobilePanel === 'console';
-  }, [showConsole, activeMobilePanel]);
+    consoleMountedRef.current = showConsole || activeMobilePanel === 'console';
+    consoleSeenRef.current = (!quick && consoleOnScreen) || activeMobilePanel === 'console';
+  }, [showConsole, consoleOnScreen, activeMobilePanel, quick]);
 
-  // Buffer previewConsole events when console is hidden
+  // Buffer previewConsole events while the console is closed; mark them unread while it is out of sight.
   useEffect(() => {
     const handler = (e: Event) => {
-      if (!showConsoleRef.current) {
+      if (!consoleMountedRef.current) {
         const { level, args } = (e as CustomEvent<{ level: string; args: string[] }>).detail;
         consoleBufferRef.current.push({ level, text: args.join(' ') });
-        useWorkspaceStore.getState().setHasUnreadConsole(true);
       }
+      if (!consoleSeenRef.current) useWorkspaceStore.getState().setHasUnreadConsole(true);
     };
     window.addEventListener('previewConsole', handler);
     return () => window.removeEventListener('previewConsole', handler);
   }, []);
 
-  // Clear unread flag when console opens (desktop or mobile)
+  // Clear the unread flag once the console is on screen (desktop or mobile)
   useEffect(() => {
-    if (showConsole || activeMobilePanel === 'console') {
+    if ((!quick && consoleOnScreen) || activeMobilePanel === 'console') {
       useWorkspaceStore.getState().setHasUnreadConsole(false);
     }
-  }, [showConsole, activeMobilePanel]);
+  }, [consoleOnScreen, activeMobilePanel, quick]);
 
   const clearDebugEvents = useCallback(async () => {
     await useWorkspaceStore.getState().clearChat(project.id);
@@ -739,12 +606,8 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
     useWorkspaceStore.getState().setActiveInterview(null);
   }, [project.id]);
   
-  // Derived from PANEL_MAP for the same reason as visibleBefore above: a panel missing from this
-  // count sizes every rendered panel as if there were one fewer.
-  const storeVisiblePanelCount = useWorkspaceStore(s => visiblePanelKeys(s).length);
   // Quick edit's pair is not in the store, so it is counted from the flags it actually renders.
-  const visiblePanelCount = quick ? Number(showChat) + Number(showPreview) + Number(showElements) : storeVisiblePanelCount;
-  const baseSize = visiblePanelCount > 0 ? Math.floor(100 / visiblePanelCount) : 100;
+  const chatSolo = quick ? Number(showChat) + Number(showPreview) + Number(showElements) === 1 : chatAlone;
 
   const getModelDisplayName = (modelId: string) => {
     if (!modelId) return t('selectModel');
@@ -1007,20 +870,20 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
    * The decision is `applyToolbarAction`, which also performs the panel side effect; this is the
    * dispatch for everything that needs React state or the frame.
    */
-  /** Routes through handleSidebarHover so the dashed outline matches the panel togglePanel would close. */
+  /** Style opens the Inspector, so the hover draws where it would be put on screen. */
   const handleToolbarHover = useCallback((message: Extract<PreviewMessage, { type: 'toolbar-hover' }>) => {
-    handleSidebarHover(message.action === 'style' ? 'elements' : null);
+    handleSidebarHover(message.action === 'style' ? 'elements' : null, 'reveal');
   }, [handleSidebarHover]);
 
   const handleToolbarAction = useCallback((message: Extract<PreviewMessage, { type: 'toolbar-action' }>) => {
-    // Quick edit keeps its panel flags in local state, so the store's showElements/togglePanel
-    // would report and flip the wrong thing. What Style needs is "ensure the inspector is open",
-    // and togglePanel is only called when showElements is false -- so a layout that always reports
-    // closed, paired with a setter that opens rather than toggles, is both correct and immune to
-    // reading a stale flag out of this callback's closure.
+    // What Style needs is "put the Inspector on screen", and togglePanel is only called when
+    // showElements is false -- so a layout that always reports closed, paired with a setter that
+    // opens rather than toggles, is both correct and immune to reading a stale flag out of this
+    // callback's closure. Quick edit's opener is its own flag; the studio's also brings the Inspector
+    // to the front of its tab group.
     const effect = applyToolbarAction(message.action, quick
       ? { showElements: false, togglePanel: () => setQuickPanels((p) => ({ ...p, elements: true })) }
-      : useWorkspaceStore.getState());
+      : { showElements: false, togglePanel: (panel) => { useWorkspaceStore.getState().revealPanel(panel); } });
     // The toolbar is mounted against whichever preview is on screen, so the press is attributed
     // to that surface.
     const { surface } = inspectorTargets();
@@ -1055,9 +918,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       setQuickPanels((p) => ({ ...p, preview: true }));
       return;
     }
-    if (!useWorkspaceStore.getState().showPreview) {
-      useWorkspaceStore.getState().togglePanel('preview');
-    }
+    useWorkspaceStore.getState().revealPanel('preview');
   }, [quick]);
 
   /** Desktop only. Arms the preview's element picker from the Inspector's empty state. */
@@ -1081,13 +942,12 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
     // that panel it is about. One signal drives both, so the crosshair's tint cannot outlive the
     // panel outline — and it is written before the switch, whose every case returns.
     store.setFocusToolHinted(hovering);
-    switch (previewHoverHighlight({ hovering, previewOpen: store.showPreview })) {
+    switch (previewHoverHighlight({ hovering, previewOpen: panelOnScreen(store, 'preview') })) {
       case 'panel':
-        store.setPanelInsertPreview(null);
-        store.setPanelReplacePreview('preview');
+        store.setPanelHint({ kind: 'outline', panel: 'preview' });
         return;
       case 'route':
-        handleSidebarHover('preview');
+        handleSidebarHover('preview', 'reveal');
         return;
       case 'clear':
         handleSidebarHover(null);
@@ -1182,7 +1042,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       setQuickPanels((p) => ({ ...p, chat: true }));
       return;
     }
-    if (!store.showChat) store.togglePanel('chat');
+    store.revealPanel('chat');
   }, [inspectorTargets, quick]);
 
   /**
@@ -1279,8 +1139,8 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   const handleClosePreview = useCallback(() => {
     // Quick edit's panels are the workspace's own flags, not the store's.
     if (quick) setQuickPanels((p) => ({ ...p, preview: false }));
-    else useWorkspaceStore.getState().togglePanel('preview');
-  }, [quick]);
+    else commands.close('preview');
+  }, [quick, commands]);
 
   const handleEnterFullscreen = useCallback(() => {
     useWorkspaceStore.getState().setFullscreenPreview(true);
@@ -1291,16 +1151,12 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   }, []);
 
   // Listen for showPreview event (dispatched by AI preview command).
-  // Only opens the panel — never toggles it closed if already open.
-  const showPreviewRef = useRef(showPreview);
-  showPreviewRef.current = showPreview;
+  // Only puts the panel on screen — never closes it if it is already there.
   useEffect(() => {
-    const handler = () => {
-      if (!showPreviewRef.current) togglePanel('preview');
-    };
+    const handler = () => { useWorkspaceStore.getState().revealPanel('preview'); };
     window.addEventListener('showPreview', handler);
     return () => window.removeEventListener('showPreview', handler);
-  }, [togglePanel]);
+  }, []);
 
   const handleSetEntryPoint = useCallback(async (path: string) => {
     try {
@@ -1720,9 +1576,8 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
         openFileInEditor(file);
       }, 0);
     } else {
-      // Desktop behavior remains the same
-      if (!useWorkspaceStore.getState().showEditor) {
-        useWorkspaceStore.getState().togglePanel('editor');
+      // A newly opened editor mounts on the next render; one already open, if behind, comes to the front.
+      if (useWorkspaceStore.getState().revealPanel('editor') === 'opened') {
         setTimeout(() => {
           openFileInEditor(file);
         }, 0);
@@ -1765,8 +1620,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      const isMac = navigator.platform?.toLowerCase().includes('mac');
-      const modifierPressed = isMac ? event.metaKey : event.ctrlKey;
+      const modifierPressed = isMac() ? event.metaKey : event.ctrlKey;
       if (!modifierPressed) return;
 
       if (event.key.toLowerCase() === 's') {
@@ -1876,7 +1730,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   }, [handleFilesChange, project.id, remountBackendContext, runRestore, refuseWhileGenerating, t]);
 
   const handleScrollToCheckpoint = useCallback((checkpointId: string) => {
-    if (!useWorkspaceStore.getState().showChat) useWorkspaceStore.getState().togglePanel('chat');
+    useWorkspaceStore.getState().revealPanel('chat');
     requestAnimationFrame(() => {
       const el = document.querySelector(`[data-checkpoint-id="${checkpointId}"]`);
       if (el) {
@@ -2146,8 +2000,14 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
 
   if (quick) {
     headerActions.push(
-      { id: 'undo', label: tc('actions.undo'), icon: Undo2, onClick: handleUndo, variant: 'outline', disabled: !undoTargetId || generating },
-      { id: 'redo', label: tc('actions.redo'), icon: Redo2, onClick: handleRedo, variant: 'outline', disabled: !redoTargetId || generating },
+      {
+        id: 'undo', label: tc('actions.undo'), icon: Undo2, onClick: handleUndo, variant: 'outline', disabled: !undoTargetId || generating,
+        tip: generating ? t('tips.afterRun') : undoTargetId ? t('tips.undo') : t('tips.nothingToUndo'),
+      },
+      {
+        id: 'redo', label: tc('actions.redo'), icon: Redo2, onClick: handleRedo, variant: 'outline', disabled: !redoTargetId || generating,
+        tip: generating ? t('tips.afterRun') : redoTargetId ? t('tips.redo') : t('tips.nothingToRedo'),
+      },
     );
   }
 
@@ -2157,7 +2017,8 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
     icon: Save,
     onClick: handleSave,
     variant: isDirty ? 'default' : 'outline',
-    disabled: !isDirty || saveInProgress
+    disabled: !isDirty || saveInProgress,
+    tip: saveInProgress ? undefined : isDirty ? t('tips.save', { shortcut: modShortcut('S') }) : t('tips.saved'),
   });
 
   const discardCheckpointId = saveManager.getSavedCheckpointId(project.id) ?? initialCheckpointId;
@@ -2170,6 +2031,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       onClick: () => handleRestoreCheckpoint(discardCheckpointId, t('lastSavedState'), { isDiscard: true }),
       variant: 'outline',
       disabled: saveInProgress || !isDirty,
+      tip: isDirty ? t('tips.discard') : t('tips.nothingToDiscard'),
     });
   } else if (discardCheckpointId) {
     const discardDisabled = saveInProgress || !isDirty;
@@ -2179,46 +2041,34 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       onClick: () => {},
       content: (
         <div className="flex items-center" data-tour-id="discard-changes-button">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleRestoreCheckpoint(discardCheckpointId, t('lastSavedState'), { isDiscard: true })}
-            disabled={discardDisabled}
-            className="rounded-r-none border-r-0"
-          >
-            <RotateCcw className="h-4 w-4 mr-2" />
-            {t('discardChanges')}
-          </Button>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => togglePanel('checkpoints')}
-                onMouseEnter={() => {
-                  if (showCheckpoints) {
-                    useWorkspaceStore.getState().setPanelReplacePreview('checkpoints');
-                  } else {
-                    handleSidebarHover('checkpoints');
-                  }
-                }}
-                onMouseLeave={() => {
-                  useWorkspaceStore.getState().setPanelReplacePreview(null);
-                  useWorkspaceStore.getState().setPanelInsertPreview(null);
-                }}
-                disabled={saveInProgress}
-                className="rounded-l-none px-2 group/chev"
-                aria-label={showCheckpoints ? t('closeCheckpointsPanel') : t('openCheckpointsPanel')}
-              >
-                {showCheckpoints
-                  ? <ChevronUp className="h-4 w-4 transition-transform group-hover/chev:-translate-y-0.5" />
-                  : <ChevronDown className="h-4 w-4 transition-transform group-hover/chev:translate-y-0.5" />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {showCheckpoints ? t('closeCheckpoints') : t('allCheckpoints')}
-            </TooltipContent>
-          </Tooltip>
+          <Tip label={saveInProgress ? undefined : isDirty ? t('tips.discard') : t('tips.nothingToDiscard')} side="bottom">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleRestoreCheckpoint(discardCheckpointId, t('lastSavedState'), { isDiscard: true })}
+              disabled={discardDisabled}
+              className="rounded-r-none border-r-0"
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              {t('discardChanges')}
+            </Button>
+          </Tip>
+          <Tip label={showCheckpoints ? t('closeCheckpoints') : t('allCheckpoints')} side="bottom">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => commands.toggle('checkpoints')}
+              onMouseEnter={() => handleSidebarHover('checkpoints')}
+              onMouseLeave={() => handleSidebarHover(null)}
+              disabled={saveInProgress}
+              className="rounded-l-none px-2 group/chev"
+              aria-label={showCheckpoints ? t('closeCheckpointsPanel') : t('openCheckpointsPanel')}
+            >
+              {showCheckpoints
+                ? <ChevronUp className="h-4 w-4 transition-transform group-hover/chev:-translate-y-0.5" />
+                : <ChevronDown className="h-4 w-4 transition-transform group-hover/chev:translate-y-0.5" />}
+            </Button>
+          </Tip>
         </div>
       )
     });
@@ -2240,30 +2090,38 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       />
 
       {/* Deploy (HuggingFace Space, OSW Studio instance, or ZIP) */}
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-8 px-3 flex items-center gap-2"
-        onClick={() => setPublishOpen(true)}
-        title={t('deployTooltip')}
-      >
-        <Upload className="h-4 w-4" />
-        <span className="text-sm hidden lg:inline">{t('deploy')}</span>
-      </Button>
+      <Tip label={t('tips.deploy')} side="bottom">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 px-3 flex items-center gap-2"
+          onClick={() => setPublishOpen(true)}
+          aria-label={t('deploy')}
+        >
+          <Upload className="h-4 w-4" />
+          <span className="text-sm hidden lg:inline">{t('deploy')}</span>
+        </Button>
+      </Tip>
 
       {/* Settings — cost + all settings (app + project) in one modal */}
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-8 px-3 flex items-center gap-2"
-        onClick={() => useWorkspaceStore.getState().setShowProjectSettingsModal(true)}
-        title={tc('terms.settings')}
+      <Tip
+        label={shouldShowCosts ? `${t('tips.settings')} · ${t('projectCost', { cost: number(projectCost, { style: 'currency', currency: 'USD', minimumFractionDigits: 3, maximumFractionDigits: 3 }) })}` : t('tips.settings')}
+        side="bottom"
+        align="end"
       >
-        {shouldShowCosts && (
-          <span className="text-sm font-medium">{number(projectCost, { style: 'currency', currency: 'USD', minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
-        )}
-        <Settings className="h-4 w-4" />
-      </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 px-3 flex items-center gap-2"
+          onClick={() => useWorkspaceStore.getState().setShowProjectSettingsModal(true)}
+          aria-label={tc('terms.settings')}
+        >
+          {shouldShowCosts && (
+            <span className="text-sm font-medium">{number(projectCost, { style: 'currency', currency: 'USD', minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
+          )}
+          <Settings className="h-4 w-4" />
+        </Button>
+      </Tip>
     </div>
   );
 
@@ -2329,13 +2187,14 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
     />
   );
   return (
-    <TooltipProvider>
+    <>
       <div className="h-app-dvh flex flex-col">
         {/* Header */}
         <AppHeader
           leftText={project.name}
           leftSubtext={quick ? undefined : { chat: tc('terms.chat'), files: t('tabs.filesShort'), editor: t('tabs.editorShort'), preview: t('tabs.preview'), elements: t('tabs.inspector'), checkpoints: t('tabs.checkpoints'), console: t('tabs.console'), skills: tc('terms.skills'), debug: t('tabs.debugShort') }[activeMobilePanel]}
           onLogoClick={guardedBack}
+          logoTip={backLabel ?? t('backToProjects')}
           actions={headerActions}
           mobileMenuContent={quick ? undefined : mobileMenuContent}
           desktopOnlyContent={quick ? undefined : desktopHeaderContent}
@@ -2380,8 +2239,8 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
           }}
         />
 
-        {/* Desktop Workspace */}
-        <div className="hidden md:flex flex-1 overflow-hidden bg-background">
+        {/* Desktop Workspace. Focusable, so that Ctrl+Z reaches the layout while nothing inside has focus. */}
+        <div className="hidden md:flex flex-1 overflow-hidden bg-background outline-none" tabIndex={-1} {...{ [WORKSPACE_FOCUS_ATTR]: '' }}>
           {/* Left sidebar for panel toggles. Quick edit has the same rail with only its two panels. */}
           {quick && (
             <div className="w-10 bg-muted/70 border-r border-border flex flex-col items-center py-3 gap-1.5">
@@ -2390,578 +2249,255 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                 { key: 'preview', label: tp('livePreview'), Icon: Eye, on: showPreview, token: 'preview' },
                 { key: 'elements', label: t('tabs.inspector'), Icon: ListTree, on: showElements, token: 'elements' },
               ] as const).map(({ key, label, Icon, on, token }) => (
-                <Tooltip key={key}>
-                  <TooltipTrigger asChild>
-                    <button
-                      className={`h-6 w-6 px-1 rounded-sm flex items-center justify-center transition-all ${
-                        on ? 'shadow-sm' : 'bg-transparent text-muted-foreground hover:bg-muted/80 hover:text-foreground'
-                      }`}
-                      style={{
-                        backgroundColor: on ? `var(--button-${token}-active-bg)` : undefined,
-                        color: on ? `var(--button-${token}-active-fg)` : undefined,
-                      }}
-                      onClick={() => setQuickPanels((p) => ({ ...p, [key]: !p[key] }))}
-                      aria-pressed={on}
-                      aria-label={label}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent
-                    side="right"
-                    style={panelTooltipStyle(token)}
-                    arrowStyle={panelTooltipStyle(token)}
+                <Tip key={key} label={label} side="right" tone={panelTooltipStyle(token)}>
+                  <button
+                    className={`h-6 w-6 px-1 rounded-sm flex items-center justify-center transition-all ${
+                      on ? 'shadow-sm' : 'bg-transparent text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+                    }`}
+                    style={{
+                      backgroundColor: on ? `var(--button-${token}-active-bg)` : undefined,
+                      color: on ? `var(--button-${token}-active-fg)` : undefined,
+                    }}
+                    onClick={() => setQuickPanels((p) => ({ ...p, [key]: !p[key] }))}
+                    aria-pressed={on}
+                    aria-label={label}
                   >
-                    <p>{label}</p>
-                  </TooltipContent>
-                </Tooltip>
+                    <Icon className="h-3.5 w-3.5" />
+                  </button>
+                </Tip>
               ))}
             </div>
           )}
           {!quick && <div className="w-10 bg-muted/70 border-r border-border flex flex-col items-center py-3 gap-1.5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className={`h-6 w-6 px-1 rounded-sm flex items-center justify-center transition-all ${
-                    showChat
-                      ? 'shadow-sm'
-                      : 'bg-transparent text-muted-foreground hover:bg-muted/80 hover:text-foreground'
-                  }`}
-                  style={{
-                    backgroundColor: showChat ? 'var(--button-assistant-active-bg)' : undefined,
-                    color: showChat ? 'var(--button-assistant-active-fg)' : undefined
-                  }}
-                  onClick={() => togglePanel('chat')}
-                  onMouseEnter={() => handleSidebarHover('chat')}
-                  onMouseLeave={() => handleSidebarHover(null)}
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent
+            {([
+              { key: 'chat', label: tc('terms.chat'), Icon: MessageSquare, on: showChat, token: 'assistant' },
+              { key: 'files', label: t('tabs.fileExplorer'), Icon: FolderTree, on: showFiles, token: 'files' },
+              { key: 'editor', label: t('tabs.codeEditor'), Icon: Code2, on: showEditor, token: 'editor' },
+              { key: 'preview', label: t('tabs.preview'), Icon: Eye, on: showPreview, token: 'preview' },
+              { key: 'elements', label: t('tabs.inspector'), Icon: ListTree, on: showElements, token: 'elements' },
+              { key: 'skills', label: tc('terms.skills'), Icon: Sparkles, on: showSkillsPanel, token: 'skills', fallback: '#a855f7' },
+              { key: 'console', label: t('tabs.console'), Icon: TerminalIcon, on: showConsole, token: 'terminal', fallback: '#22c55e', unread: hasUnreadConsole && !consoleOnScreen },
+              { key: 'checkpoints', label: t('tabs.checkpoints'), Icon: History, on: showCheckpoints, token: 'checkpoint' },
+              // Debug has no colour of its own: it is drawn in the foreground, and its tooltip is the app's.
+              { key: 'debug', label: t('tabs.debugEvents'), Icon: Bug, on: showDebugPanel, token: null },
+            ] satisfies RailButton[]).map(({ key, label, Icon, on, token, fallback, unread }: RailButton) => (
+              <Tip
+                key={key}
+                label={unread ? `${label} · ${t('layout.unread')}` : label}
                 side="right"
-                style={panelTooltipStyle('assistant')}
-                arrowStyle={panelTooltipStyle('assistant')}
+                tone={token ? panelTooltipStyle(token, fallback) : undefined}
               >
-                <p>{tc('terms.chat')}</p>
-              </TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className={`h-6 w-6 px-1 rounded-sm flex items-center justify-center transition-all ${
-                    showFiles
-                      ? 'shadow-sm'
-                      : 'bg-transparent text-muted-foreground hover:bg-muted/80 hover:text-foreground'
-                  }`}
-                  style={{
-                    backgroundColor: showFiles ? 'var(--button-files-active-bg)' : undefined,
-                    color: showFiles ? 'var(--button-files-active-fg)' : undefined
-                  }}
-                  onClick={() => togglePanel('files')}
-                  onMouseEnter={() => handleSidebarHover('files')}
-                  onMouseLeave={() => handleSidebarHover(null)}
-                >
-                  <FolderTree className="h-3.5 w-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="right"
-                style={panelTooltipStyle('files')}
-                arrowStyle={panelTooltipStyle('files')}
-              >
-                <p>{t('tabs.fileExplorer')}</p>
-              </TooltipContent>
-            </Tooltip>
-            
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className={`h-6 w-6 px-1 rounded-sm flex items-center justify-center transition-all ${
-                    showEditor 
-                      ? 'shadow-sm' 
-                      : 'bg-transparent text-muted-foreground hover:bg-muted/80 hover:text-foreground'
-                  }`}
-                  style={{
-                    backgroundColor: showEditor ? 'var(--button-editor-active-bg)' : undefined,
-                    color: showEditor ? 'var(--button-editor-active-fg)' : undefined
-                  }}
-                  onClick={() => togglePanel('editor')}
-                  onMouseEnter={() => handleSidebarHover('editor')}
-                  onMouseLeave={() => handleSidebarHover(null)}
-                >
-                  <Code2 className="h-3.5 w-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="right"
-                style={panelTooltipStyle('editor')}
-                arrowStyle={panelTooltipStyle('editor')}
-              >
-                <p>{t('tabs.codeEditor')}</p>
-              </TooltipContent>
-            </Tooltip>
-            
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className={`h-6 w-6 mx-1 rounded-sm flex items-center justify-center transition-all ${
-                    showPreview
-                      ? 'shadow-sm'
-                      : 'bg-transparent text-muted-foreground hover:bg-muted/80 hover:text-foreground'
-                  }`}
-                  style={{
-                    backgroundColor: showPreview ? 'var(--button-preview-active-bg)' : undefined,
-                    color: showPreview ? 'var(--button-preview-active-fg)' : undefined
-                  }}
-                  onClick={() => togglePanel('preview')}
-                  onMouseEnter={() => handleSidebarHover('preview')}
-                  onMouseLeave={() => handleSidebarHover(null)}
-                >
-                  <Eye className="h-3.5 w-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="right"
-                style={panelTooltipStyle('preview')}
-                arrowStyle={panelTooltipStyle('preview')}
-              >
-                <p>{t('tabs.preview')}</p>
-              </TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className={`h-6 w-6 px-1 rounded-sm flex items-center justify-center transition-all ${
-                    showElements
-                      ? 'shadow-sm'
-                      : 'bg-transparent text-muted-foreground hover:bg-muted/80 hover:text-foreground'
-                  }`}
-                  style={{
-                    backgroundColor: showElements ? 'var(--button-elements-active-bg)' : undefined,
-                    color: showElements ? 'var(--button-elements-active-fg)' : undefined
-                  }}
-                  onClick={() => togglePanel('elements')}
-                  onMouseEnter={() => handleSidebarHover('elements')}
-                  onMouseLeave={() => handleSidebarHover(null)}
-                  aria-label={showElements ? t('closeInspectorPanel') : t('openInspectorPanel')}
-                >
-                  <ListTree className="h-3.5 w-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="right"
-                style={panelTooltipStyle('elements')}
-                arrowStyle={panelTooltipStyle('elements')}
-              >
-                <p>{t('tabs.inspector')}</p>
-              </TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className={`h-6 w-6 px-1 rounded-sm flex items-center justify-center transition-all ${
-                    showSkillsPanel
-                      ? 'shadow-sm'
-                      : 'bg-transparent text-muted-foreground hover:bg-muted/80 hover:text-foreground'
-                  }`}
-                  style={{
-                    backgroundColor: showSkillsPanel ? 'var(--button-skills-active-bg)' : undefined,
-                    color: showSkillsPanel ? 'var(--button-skills-active-fg)' : undefined
-                  }}
-                  onClick={() => togglePanel('skills')}
-                  onMouseEnter={() => handleSidebarHover('skills')}
-                  onMouseLeave={() => handleSidebarHover(null)}
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="right"
-                style={panelTooltipStyle('skills', '#a855f7')}
-                arrowStyle={panelTooltipStyle('skills', '#a855f7')}
-              >
-                <p>{tc('terms.skills')}</p>
-              </TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
                 <button
                   className={`relative h-6 w-6 px-1 rounded-sm flex items-center justify-center transition-all ${
-                    showConsole
-                      ? 'shadow-sm'
+                    on
+                      ? token ? 'shadow-sm' : 'bg-foreground shadow-sm'
                       : 'bg-transparent text-muted-foreground hover:bg-muted/80 hover:text-foreground'
                   }`}
-                  style={{
-                    backgroundColor: showConsole ? 'var(--button-terminal-active-bg)' : undefined,
-                    color: showConsole ? 'var(--button-terminal-active-fg)' : undefined
-                  }}
-                  onClick={() => togglePanel('console')}
-                  onMouseEnter={() => handleSidebarHover('console')}
+                  style={token
+                    ? { backgroundColor: on ? `var(--button-${token}-active-bg)` : undefined, color: on ? `var(--button-${token}-active-fg)` : undefined }
+                    : { color: on ? 'var(--background)' : undefined }}
+                  onClick={() => commands.toggle(key)}
+                  onMouseEnter={() => handleSidebarHover(key)}
                   onMouseLeave={() => handleSidebarHover(null)}
+                  aria-label={label}
+                  aria-pressed={on}
                 >
-                  <TerminalIcon className="h-3.5 w-3.5" />
-                  {hasUnreadConsole && !showConsole && (
+                  <Icon className="h-3.5 w-3.5" />
+                  {unread && (
                     <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-[var(--button-terminal-active,#22c55e)]" />
                   )}
                 </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="right"
-                style={panelTooltipStyle('terminal', '#22c55e')}
-                arrowStyle={panelTooltipStyle('terminal', '#22c55e')}
-              >
-                <p>{t('tabs.console')}</p>
-              </TooltipContent>
-            </Tooltip>
+              </Tip>
+            ))}
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className={`h-6 w-6 px-1 rounded-sm flex items-center justify-center transition-all ${
-                    showCheckpoints
-                      ? 'shadow-sm'
-                      : 'bg-transparent text-muted-foreground hover:bg-muted/80 hover:text-foreground'
-                  }`}
-                  style={{
-                    backgroundColor: showCheckpoints ? 'var(--button-checkpoint-active-bg)' : undefined,
-                    color: showCheckpoints ? 'var(--button-checkpoint-active-fg)' : undefined
-                  }}
-                  onClick={() => togglePanel('checkpoints')}
-                  onMouseEnter={() => handleSidebarHover('checkpoints')}
-                  onMouseLeave={() => handleSidebarHover(null)}
-                >
-                  <History className="h-3.5 w-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="right"
-                style={panelTooltipStyle('checkpoint')}
-                arrowStyle={panelTooltipStyle('checkpoint')}
-              >
-                <p>{t('tabs.checkpoints')}</p>
-              </TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className={`h-6 w-6 px-1 rounded-sm flex items-center justify-center transition-all ${
-                    showDebugPanel
-                      ? 'bg-foreground shadow-sm'
-                      : 'bg-transparent text-muted-foreground hover:bg-muted/80 hover:text-foreground'
-                  }`}
-                  style={{
-                    color: showDebugPanel ? 'var(--background)' : undefined
-                  }}
-                  onClick={() => togglePanel('debug')}
-                  onMouseEnter={() => handleSidebarHover('debug')}
-                  onMouseLeave={() => handleSidebarHover(null)}
-                >
-                  <Bug className="h-3.5 w-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                <p>{t('tabs.debugEvents')}</p>
-              </TooltipContent>
-            </Tooltip>
-
+            <LayoutMenu />
           </div>}
 
-          {/* Main content area — slot-based layout (max 3 panels) */}
-          <div
-            ref={panelContainerRef}
-            className="flex-1 p-2 overflow-hidden"
-            data-tour-id="workspace-panels"
-            onMouseMove={draggingPanel ? handleDragMouseMove : undefined}
-            onMouseUp={draggingPanel ? handlePanelDragEnd : undefined}
-          >
-          <PanelDragProvider value={{ onDragStart: handlePanelDragStart, draggingPanel }}>
-          <ResizablePanelGroup ref={panelGroupRef} direction="horizontal" autoSaveId={quick ? 'quick-edit-slots' : 'workspace-slots'}>
-            {(() => {
-              // Build ordered list of visible panels using panelOrder
-              const panelMap: Record<string, { minSize: number; content: React.ReactNode }> = {};
+          {/* The panels, in columns of cells of tabs. Quick edit keeps its fixed panels side by side. */}
+          {(() => {
+            const panelMap: Partial<Record<PanelKey, React.ReactNode>> = {};
 
-              if (showChat) panelMap['chat'] = { minSize: 15, content: (
-                <ChatPanel
-                  previewPath={previewPath}
-                  events={debugEvents}
-                  generating={generating}
-                  onGenerate={handleGenerate}
-                  onStop={handleStop}
-                  focusContext={includedFocus}
-                  onClearFocus={handleDesktopClearFocus}
-                  focusPreviewSnippet={focusPreviewSnippet}
-                  mode={mode}
-                  setMode={storeSetMode}
-                  activeInterview={activeInterview}
-                  onStartInterview={handleStartInterview}
-                  currentModel={currentModel}
-                  getModelDisplayName={getModelDisplayName}
-                  isTourLockingInput={isTourLockingInput}
-                  onClearChat={clearDebugEvents}
-                  onClose={quick ? () => setQuickPanels((p) => ({ ...p, chat: false })) : () => useWorkspaceStore.getState().togglePanel('chat')}
-                  thread={threadFor(handleGenerate)}
-                  simple={quick}
-                  solo={visiblePanelCount === 1}
-                  supportsVision={supportsVision}
-                  inputModalities={inputModalities}
-                  providerReady={providerReady}
-                  runtimeErrors={runtimeErrors}
-                  onSendRuntimeErrors={handleSendRuntimeErrors}
-                  onClearRuntimeErrors={handleClearRuntimeErrors}
-                  placedBlocks={placedBlocks}
-                  onRemovePlacedBlock={handleRemovePlacedBlock}
-                  onClearPlacedBlocks={handleClearPlacedBlocks}
-                onCaptureContextScreenshot={handleCaptureContextScreenshot}
-                />
-              )};
+            if (showChat) panelMap.chat = (
+              <ChatPanel
+                previewPath={previewPath}
+                events={debugEvents}
+                generating={generating}
+                onGenerate={handleGenerate}
+                onStop={handleStop}
+                focusContext={includedFocus}
+                onClearFocus={handleDesktopClearFocus}
+                focusPreviewSnippet={focusPreviewSnippet}
+                mode={mode}
+                setMode={storeSetMode}
+                activeInterview={activeInterview}
+                onStartInterview={handleStartInterview}
+                currentModel={currentModel}
+                getModelDisplayName={getModelDisplayName}
+                isTourLockingInput={isTourLockingInput}
+                onClearChat={clearDebugEvents}
+                onClose={quick ? () => setQuickPanels((p) => ({ ...p, chat: false })) : () => commands.close('chat')}
+                thread={threadFor(handleGenerate)}
+                simple={quick}
+                solo={chatSolo}
+                supportsVision={supportsVision}
+                inputModalities={inputModalities}
+                providerReady={providerReady}
+                runtimeErrors={runtimeErrors}
+                onSendRuntimeErrors={handleSendRuntimeErrors}
+                onClearRuntimeErrors={handleClearRuntimeErrors}
+                placedBlocks={placedBlocks}
+                onRemovePlacedBlock={handleRemovePlacedBlock}
+                onClearPlacedBlocks={handleClearPlacedBlocks}
+              onCaptureContextScreenshot={handleCaptureContextScreenshot}
+              />
+            );
 
-              if (showFiles) panelMap['files'] = { minSize: 14, content: (
-                <div className="h-full border border-border rounded-lg shadow-sm overflow-hidden relative" style={{ background: `linear-gradient(0deg, rgba(var(--panel-files-rgb), 0.01), rgba(var(--panel-files-rgb), 0.01)), var(--card)`, minWidth: '240px' }}>
-                  <FileExplorer
-                    projectId={project.id}
-                    onFileSelect={handleFileSelect}
-                    onClose={() => useWorkspaceStore.getState().togglePanel('files')}
-                    entryPoint={entryPoint}
-                    onSetEntryPoint={handleSetEntryPoint}
-                    onAddPromptFile={handleAddPromptFile}
-                    onProjectUpdate={handleProjectSettingsUpdate}
-                  />
-                </div>
-              )};
-
-              if (showEditor) panelMap['editor'] = { minSize: 20, content: (
-                <div className="h-full border border-border rounded-lg shadow-sm overflow-hidden relative" style={{ background: `linear-gradient(0deg, rgba(var(--panel-editor-rgb), 0.01), rgba(var(--panel-editor-rgb), 0.01)), var(--card)`, minWidth: '240px' }}>
-                  <MultiTabEditor
-                    projectId={project.id}
-                    runtime={projectRuntime}
-                    onClose={() => useWorkspaceStore.getState().togglePanel('editor')}
-                  />
-                </div>
-              )};
-
-              if (showConsole) panelMap['console'] = { minSize: 15, content: (
-                <div className="h-full border border-border rounded-lg shadow-sm overflow-hidden relative" style={{ minWidth: '240px' }}>
-                  <ConsolePanel
-                    projectId={project.id}
-                    runtime={projectRuntime || 'handlebars'}
-                    bufferedMessages={consoleBufferRef.current}
-                    onBufferConsumed={() => { consoleBufferRef.current = []; }}
-                    onClose={() => useWorkspaceStore.getState().togglePanel('console')}
-                  />
-                </div>
-              )};
-
-              if (showPreview) panelMap['preview'] = { minSize: 20, content: (
-                <div
-                  className={fullscreenPreview
-                    ? "fixed inset-0 z-50 bg-background flex flex-col"
-                    : "h-full border border-border rounded-lg shadow-sm overflow-hidden relative"}
-                  style={fullscreenPreview ? undefined : { background: `linear-gradient(0deg, rgba(var(--panel-preview-rgb), 0.01), rgba(var(--panel-preview-rgb), 0.01)), var(--card)`, minWidth: '240px' }}
-                >
-                  <MultipagePreview
-                    ref={attachDesktopPreview}
-                    projectId={project.id}
-                    initialPath={initialPreviewPath}
-                    onPathChange={setPreviewPath}
-                    refreshTrigger={refreshTrigger}
-                    onFocusSelection={handleDesktopFocusSelection}
-                    hasFocusTarget={Boolean(focusContext)}
-                    onClose={fullscreenPreview ? handleExitFullscreen : handleClosePreview}
-                    deploymentId={selectedDeploymentId}
-                    simple={quick}
-                    entryPoint={entryPoint}
-                    runtime={projectRuntime}
-                    placementActive={paletteOpen}
-                    onPlacementToggle={handlePlacementToggle}
-                    onPlacementComplete={handlePlacementComplete}
-                    onFullscreen={handleEnterFullscreen}
-                    isFullscreen={fullscreenPreview}
-                    provenance
-                    onTreeLevel={handleTreeLevel}
-                    onTreeLevels={handleTreeLevels}
-                    onTreeStale={handleTreeStale}
-                    onSelectionResolved={handleSelectionResolved}
-                    onToolbarAction={handleToolbarAction}
-                    onToolbarHover={handleToolbarHover}
-                    onFrameReady={handleFrameReady}
-                    onStyleComputed={handleStyleComputed}
-                    onStyleProbeResult={handleStyleProbeResult}
-                  />
-                </div>
-              )};
-
-              // The mobile tree has its own Elements entry, which keeps its preview mounted
-              // alongside so there is a frame to query; see the mobile block. Note that both
-              // blocks pass `ref={previewRef}` — a pre-existing hazard, untouched here: the
-              // Inspector addresses `inspectorPreview()` rather than that ref.
-              if (showElements) panelMap['elements'] = { minSize: 14, content: (
-                <PanelContainer>
-                  <PanelHeader
-                    icon={ListTree}
-                    title={t('tabs.inspector')}
-                    color="var(--button-elements-active)"
-                    panelKey="elements"
-                    onClose={quick
-                      ? () => setQuickPanels((p) => ({ ...p, elements: false }))
-                      : () => useWorkspaceStore.getState().togglePanel('elements')}
-                  />
-                  <ElementsPanel
-                    ref={elementsPanelRef}
-                    projectId={project.id}
-                    runtime={projectRuntime || 'handlebars'}
-                    previewOpen={showPreview}
-                    onOpenPreview={handleOpenPreviewPanel}
-                    sendToFrame={sendToPreviewFrame}
-                    selection={focusContext}
-                    applyStyle={applyStyle}
-                    removeStyle={removeStyle}
-                    onReadOverrides={readOverrides}
-                    colorTokens={colorTokens}
-                    onReadText={handleReadText}
-                    onApplyText={handleApplyText}
-                    onReplaceImage={handleOpenImagePicker}
-                    imageUrl={selectedImageUrl}
-                    onOpenFile={handleOpenStyleFile}
-                    onAskAgent={handleStyleAskAgent}
-                    onRefreshPreview={handleRefreshPreviewForStyles}
-                    onSelectElement={handleArmFocusTool}
-                    onSelectElementHover={handleSelectElementHover}
-                    focusToolArmed={focusToolArmed}
-                    activeTab={elementsTab}
-                    onTabChange={setElementsTab}
-                  />
-                </PanelContainer>
-              )};
-
-              if (showCheckpoints) panelMap['checkpoints'] = { minSize: 12, content: (
-                <CheckpointPanel
+            if (showFiles) panelMap.files = (
+              <div className="h-full border border-border rounded-lg shadow-sm overflow-hidden relative" style={{ background: `linear-gradient(0deg, rgba(var(--panel-files-rgb), 0.01), rgba(var(--panel-files-rgb), 0.01)), var(--card)`, minWidth: '240px' }}>
+                <FileExplorer
                   projectId={project.id}
-                  events={debugEvents}
-                  currentCheckpointId={checkpointManager.getCurrentCheckpoint()?.id}
-                  onRestore={handleRestoreCheckpoint}
-                  onScrollToTurn={handleScrollToCheckpoint}
-                  onClose={() => useWorkspaceStore.getState().togglePanel('checkpoints')}
-                  refreshKey={checkpointRefreshKey}
+                  onFileSelect={handleFileSelect}
+                  onClose={() => commands.close('files')}
+                  entryPoint={entryPoint}
+                  onSetEntryPoint={handleSetEntryPoint}
+                  onAddPromptFile={handleAddPromptFile}
+                  onProjectUpdate={handleProjectSettingsUpdate}
                 />
-              )};
+              </div>
+            );
 
-              if (showDebugPanel) panelMap['debug'] = { minSize: 15, content: (
-                <DebugPanel events={debugEvents} onClear={clearDebugEvents} onClose={() => useWorkspaceStore.getState().togglePanel('debug')} />
-              )};
-
-              if (showSkillsPanel) panelMap['skills'] = { minSize: 10, content: (
-                <SkillsPanel onClose={() => useWorkspaceStore.getState().togglePanel('skills')} />
-              )};
-
-              // Order visible panels by panelOrder
-              const visiblePanels = panelOrder
-                .filter(key => key in panelMap)
-                .map(key => ({ key, ...panelMap[key] }));
-
-              // Render panels with either resize handles (normal) or drop zones (during drag)
-              const elements: React.ReactNode[] = [];
-              const isDragging = !!draggingPanel;
-
-              // Helper: render a drop zone that matches resize handle dimensions (w-2 mx-1)
-              const dropZone = (position: number) => (
-                <div
-                  key={`drop-${position}`}
-                  ref={(el) => registerDropZone(position, el)}
-                  className={`shrink-0 rounded-[3px] border border-dashed animate-expand-indicator ${
-                    dropTarget === position
-                      ? 'bg-primary/40 border-primary/60'
-                      : 'bg-muted/50 border-muted-foreground'
-                  }`}
+            if (showEditor) panelMap.editor = (
+              <div className="h-full border border-border rounded-lg shadow-sm overflow-hidden relative" style={{ background: `linear-gradient(0deg, rgba(var(--panel-editor-rgb), 0.01), rgba(var(--panel-editor-rgb), 0.01)), var(--card)`, minWidth: '240px' }}>
+                <MultiTabEditor
+                  projectId={project.id}
+                  runtime={projectRuntime}
+                  onClose={() => commands.close('editor')}
                 />
-              );
+              </div>
+            );
 
-              const dragIdx = isDragging ? visiblePanels.findIndex(p => p.key === draggingPanel) : -1;
-
-              // Insert-position indicator (shown when hovering sidebar to add a panel when there's room)
-              const insertIndicator = (position: number) => (
-                <div
-                  key={`insert-${position}`}
-                  className="shrink-0 rounded-[3px] bg-primary/40 border border-dashed border-primary/60 animate-expand-indicator"
+            if (showConsole) panelMap.console = (
+              <div className="h-full border border-border rounded-lg shadow-sm overflow-hidden relative" style={{ minWidth: '240px' }}>
+                <ConsolePanel
+                  projectId={project.id}
+                  runtime={projectRuntime || 'handlebars'}
+                  bufferedMessages={consoleBufferRef.current}
+                  onBufferConsumed={() => { consoleBufferRef.current = []; }}
+                  onClose={() => commands.close('console')}
                 />
-              );
+              </div>
+            );
 
-              visiblePanels.forEach((panel, idx) => {
-                // Left edge drop zone (before first panel)
-                if (isDragging && idx === 0 && dragIdx !== 0) {
-                  elements.push(dropZone(0));
-                }
-                if (idx > 0) {
-                  if (isDragging) {
-                    const isDroppable = !(idx === dragIdx || idx === dragIdx + 1);
-                    // Hide resize handle inside a collapsing wrapper (animates out as drop zone animates in)
-                    elements.push(
-                      <div key={`handle-wrap-${idx}`} className="animate-collapse-indicator shrink-0 overflow-hidden">
-                        <ResizableHandle key={`handle-${idx}`} withHandle className="pointer-events-none opacity-0" />
-                      </div>
-                    );
-                    if (isDroppable) {
-                      elements.push(dropZone(idx));
-                    } else {
-                      elements.push(<div key={`spacer-${idx}`} className="w-2 mx-1 shrink-0" />);
-                    }
-                  } else {
-                    elements.push(<ResizableHandle key={`handle-${idx}`} withHandle />);
-                  }
-                }
+            if (showPreview) panelMap.preview = (
+              <div
+                className={fullscreenPreview
+                  ? "fixed inset-0 z-50 bg-background flex flex-col"
+                  : "h-full border border-border rounded-lg shadow-sm overflow-hidden relative"}
+                style={fullscreenPreview ? undefined : { background: `linear-gradient(0deg, rgba(var(--panel-preview-rgb), 0.01), rgba(var(--panel-preview-rgb), 0.01)), var(--card)`, minWidth: '240px' }}
+              >
+                <MultipagePreview
+                  ref={attachDesktopPreview}
+                  projectId={project.id}
+                  initialPath={initialPreviewPath}
+                  onPathChange={setPreviewPath}
+                  refreshTrigger={refreshTrigger}
+                  onFocusSelection={handleDesktopFocusSelection}
+                  hasFocusTarget={Boolean(focusContext)}
+                  onClose={fullscreenPreview ? handleExitFullscreen : handleClosePreview}
+                  deploymentId={selectedDeploymentId}
+                  simple={quick}
+                  entryPoint={entryPoint}
+                  runtime={projectRuntime}
+                  placementActive={paletteOpen}
+                  onPlacementToggle={handlePlacementToggle}
+                  onPlacementComplete={handlePlacementComplete}
+                  onFullscreen={handleEnterFullscreen}
+                  isFullscreen={fullscreenPreview}
+                  provenance
+                  onTreeLevel={handleTreeLevel}
+                  onTreeLevels={handleTreeLevels}
+                  onTreeStale={handleTreeStale}
+                  onSelectionResolved={handleSelectionResolved}
+                  onToolbarAction={handleToolbarAction}
+                  onToolbarHover={handleToolbarHover}
+                  onFrameReady={handleFrameReady}
+                  onStyleComputed={handleStyleComputed}
+                  onStyleProbeResult={handleStyleProbeResult}
+                />
+              </div>
+            );
 
-                elements.push(
-                  <ResizablePanel
-                    key={panel.key}
-                    id={`panel-${panel.key}`}
-                    order={idx + 1}
-                    defaultSize={baseSize}
-                    minSize={panel.minSize}
-                  >
-                    <div
-                      className="h-full rounded-lg relative"
-                      data-panel-id={panel.key}
-                    >
-                      {/* Replace-preview / drag highlight overlay — renders on top of panel border */}
-                      {((isDragging && panel.key === draggingPanel) || panelReplacePreview === panel.key) && (
-                        <div
-                          className="absolute inset-0 rounded-lg pointer-events-none z-50"
-                          style={{
-                            border: `1px dashed ${
-                              (isDragging && panel.key === draggingPanel && dropTarget !== null)
-                                ? 'var(--color-muted-foreground)'
-                                : 'var(--color-primary)'
-                            }`,
-                          }}
-                        />
-                      )}
-                      {panel.content}
-                    </div>
-                  </ResizablePanel>
-                );
+            // The mobile tree has its own Elements entry, which keeps its preview mounted
+            // alongside so there is a frame to query; see the mobile block. Both blocks pass
+            // `ref={previewRef}`, so the Inspector addresses `inspectorPreview()` rather than
+            // that ref.
+            if (showElements) panelMap.elements = (
+              <PanelContainer>
+                <PanelHeader
+                  icon={ListTree}
+                  title={t('tabs.inspector')}
+                  color="var(--button-elements-active)"
+                  panelKey="elements"
+                  onClose={quick
+                    ? () => setQuickPanels((p) => ({ ...p, elements: false }))
+                    : () => commands.close('elements')}
+                />
+                <ElementsPanel
+                  ref={elementsPanelRef}
+                  projectId={project.id}
+                  runtime={projectRuntime || 'handlebars'}
+                  previewOpen={showPreview}
+                  onOpenPreview={handleOpenPreviewPanel}
+                  sendToFrame={sendToPreviewFrame}
+                  selection={focusContext}
+                  applyStyle={applyStyle}
+                  removeStyle={removeStyle}
+                  onReadOverrides={readOverrides}
+                  colorTokens={colorTokens}
+                  onReadText={handleReadText}
+                  onApplyText={handleApplyText}
+                  onReplaceImage={handleOpenImagePicker}
+                  imageUrl={selectedImageUrl}
+                  onOpenFile={handleOpenStyleFile}
+                  onAskAgent={handleStyleAskAgent}
+                  onRefreshPreview={handleRefreshPreviewForStyles}
+                  onSelectElement={handleArmFocusTool}
+                  onSelectElementHover={handleSelectElementHover}
+                  focusToolArmed={focusToolArmed}
+                  activeTab={elementsTab}
+                  onTabChange={setElementsTab}
+                />
+              </PanelContainer>
+            );
 
-                // Insert preview after last panel
-                if (!isDragging && panelInsertPreview === idx + 1 && idx === visiblePanels.length - 1) {
-                  elements.push(insertIndicator(idx + 1));
-                }
-              });
+            if (showCheckpoints) panelMap.checkpoints = (
+              <CheckpointPanel
+                projectId={project.id}
+                events={debugEvents}
+                currentCheckpointId={checkpointManager.getCurrentCheckpoint()?.id}
+                onRestore={handleRestoreCheckpoint}
+                onScrollToTurn={handleScrollToCheckpoint}
+                onClose={() => commands.close('checkpoints')}
+                refreshKey={checkpointRefreshKey}
+              />
+            );
 
-              // Right edge drop zone
-              if (isDragging && dragIdx !== visiblePanels.length - 1) {
-                elements.push(dropZone(visiblePanels.length));
-              }
+            if (showDebugPanel) panelMap.debug = (
+              <DebugPanel events={debugEvents} onClear={clearDebugEvents} onClose={() => commands.close('debug')} />
+            );
 
-              return elements;
-            })()}
+            if (showSkillsPanel) panelMap.skills = (
+              <SkillsPanel onClose={() => commands.close('skills')} />
+            );
 
-          </ResizablePanelGroup>
-          </PanelDragProvider>
-          </div>
+            return (
+              <DockArea
+                panels={panelMap}
+                quick={quick}
+                badges={{ console: hasUnreadConsole ? 'unread' : null, chat: generating ? 'busy' : null }}
+              />
+            );
+          })()}
         </div>
 
         {/* Mobile Workspace */}
@@ -3303,6 +2839,6 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
         workspaceId={workspaceId}
       />
 
-    </TooltipProvider>
+    </>
   );
 }

@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useModelTemplateCopy } from '@/lib/i18n/use-model-template-copy';
 import { AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Tip } from '@/components/ui/tooltip';
 import { configManager } from '@/lib/config/storage';
 import { trackAgentProviderChange } from '@/lib/telemetry/provider-selection';
 import { getProvider } from '@/lib/llm/providers/registry';
@@ -80,6 +81,7 @@ function TemplateCard({
   const t = useTranslations('connections');
   const copy = useModelTemplateCopy();
   const { assignment } = template;
+  const name = copy(template).name;
   const agentConnected = isAgentProviderConnected(template);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
@@ -125,9 +127,11 @@ function TemplateCard({
             )}
           />
         ) : (
-          <span className="flex-1 font-semibold text-[13px] text-foreground truncate">
-            {copy(template).name}
-          </span>
+          <Tip label={name} truncated>
+            <span className="flex-1 font-semibold text-[13px] text-foreground truncate">
+              {name}
+            </span>
+          </Tip>
         )}
         {isActive && (
           <span className="shrink-0 text-[10px] font-semibold text-primary bg-primary/15 border border-primary/40 px-[7px] py-[1px] rounded-sm">
@@ -183,59 +187,67 @@ function TemplateCard({
 
       {/* Action buttons */}
       <div className="flex flex-wrap gap-[6px] mt-[10px] pt-[10px] border-t border-border">
-        <button
-          type="button"
-          disabled={isActive}
-          onClick={onApply}
-          className={cn(
-            'px-[9px] py-[5px] rounded-md text-xs font-medium transition-colors border cursor-pointer',
-            isActive
-              ? 'bg-primary/15 border-primary/40 text-primary opacity-60 cursor-not-allowed'
-              : 'bg-card border-border text-foreground hover:bg-muted hover:border-muted-foreground/30',
-          )}
-        >
-          {isActive ? t('applied') : t('apply')}
-        </button>
-
-        {!template.builtin && (
+        <Tip label={isActive ? t('tips.inUse', { name }) : t('tips.apply', { name })}>
           <button
             type="button"
-            onClick={onRenameStart}
+            disabled={isActive}
+            onClick={onApply}
+            className={cn(
+              'px-[9px] py-[5px] rounded-md text-xs font-medium transition-colors border cursor-pointer',
+              isActive
+                ? 'bg-primary/15 border-primary/40 text-primary opacity-60 cursor-not-allowed'
+                : 'bg-card border-border text-foreground hover:bg-muted hover:border-muted-foreground/30',
+            )}
+          >
+            {isActive ? t('applied') : t('apply')}
+          </button>
+        </Tip>
+
+        {!template.builtin && (
+          <Tip label={t('tips.rename', { name })}>
+            <button
+              type="button"
+              onClick={onRenameStart}
+              className={cn(
+                'px-[9px] py-[5px] rounded-md text-xs font-medium transition-colors border cursor-pointer',
+                'bg-transparent border-transparent text-muted-foreground hover:bg-muted hover:text-foreground',
+              )}
+            >
+              {tc('actions.rename')}
+            </button>
+          </Tip>
+        )}
+
+        <Tip label={t('tips.duplicate', { name })}>
+          <button
+            type="button"
+            onClick={onDuplicate}
             className={cn(
               'px-[9px] py-[5px] rounded-md text-xs font-medium transition-colors border cursor-pointer',
               'bg-transparent border-transparent text-muted-foreground hover:bg-muted hover:text-foreground',
             )}
           >
-            {tc('actions.rename')}
+            {tc('actions.duplicate')}
           </button>
-        )}
-
-        <button
-          type="button"
-          onClick={onDuplicate}
-          className={cn(
-            'px-[9px] py-[5px] rounded-md text-xs font-medium transition-colors border cursor-pointer',
-            'bg-transparent border-transparent text-muted-foreground hover:bg-muted hover:text-foreground',
-          )}
-        >
-          {tc('actions.duplicate')}
-        </button>
+        </Tip>
 
         {/* Delete: hidden for builtin, and disabled when it would leave zero templates or delete the last/active one */}
         {!template.builtin && (
-          <button
-            type="button"
-            disabled={!canDelete}
-            onClick={onDelete}
-            className={cn(
-              'px-[9px] py-[5px] rounded-md text-xs font-medium transition-colors border cursor-pointer',
-              canDelete
-                ? 'bg-transparent border-transparent text-muted-foreground hover:bg-destructive/10 hover:border-destructive/30 hover:text-destructive'
-                : 'bg-transparent border-transparent text-muted-foreground/50 cursor-not-allowed',
-            )}
-          >
-            {tc('actions.delete')}
-          </button>
+          <Tip label={canDelete ? t('tips.deleteTemplate', { name }) : t('tips.onlyTemplate')}>
+            <button
+              type="button"
+              disabled={!canDelete}
+              onClick={onDelete}
+              className={cn(
+                'px-[9px] py-[5px] rounded-md text-xs font-medium transition-colors border cursor-pointer',
+                canDelete
+                  ? 'bg-transparent border-transparent text-muted-foreground hover:bg-destructive/10 hover:border-destructive/30 hover:text-destructive'
+                  : 'bg-transparent border-transparent text-muted-foreground/50 cursor-not-allowed',
+              )}
+            >
+              {tc('actions.delete')}
+            </button>
+          </Tip>
         )}
       </div>
     </div>

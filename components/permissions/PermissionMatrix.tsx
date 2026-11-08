@@ -11,6 +11,7 @@ import {
 } from '@/lib/llm/permissions';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Tip } from '@/components/ui/tooltip';
 
 function effectiveDecision(
   key: string,
@@ -110,12 +111,16 @@ export function PermissionMatrix({ onModeChange }: PermissionMatrixProps) {
             key={cmd.command}
             className="flex items-center justify-between gap-3 py-1.5 border-b border-border/50 last:border-b-0"
           >
-            <span className="font-mono text-xs text-foreground truncate">
-              {commandLabel(cmd)}
-            </span>
+            <Tip label={commandLabel(cmd)} truncated>
+              <span className="font-mono text-xs text-foreground truncate">
+                {commandLabel(cmd)}
+              </span>
+            </Tip>
             <div className="flex items-center gap-3 shrink-0">
               {cmd.keys.map((key) => {
                 const facet = facetLabel(key);
+                // What the choice is about: the command, and for a dual one which side of it.
+                const command = facet ? `${commandLabel(cmd)} (${facet})` : commandLabel(cmd);
                 return (
                   <div key={key} className="flex items-center gap-1.5">
                     {facet && (
@@ -132,12 +137,16 @@ export function PermissionMatrix({ onModeChange }: PermissionMatrixProps) {
                         }
                       }}
                     >
-                      <ToggleGroupItem value="ask" size="sm" className="text-xs px-2">
-                        {t('ask')}
-                      </ToggleGroupItem>
-                      <ToggleGroupItem value="allow" size="sm" className="text-xs px-2">
-                        {tc('actions.allow')}
-                      </ToggleGroupItem>
+                      <Tip label={t('tips.ask', { command })} wrap align="end">
+                        <ToggleGroupItem value="ask" size="sm" className="text-xs px-2">
+                          {t('ask')}
+                        </ToggleGroupItem>
+                      </Tip>
+                      <Tip label={t('tips.allow', { command })} wrap align="end">
+                        <ToggleGroupItem value="allow" size="sm" className="text-xs px-2">
+                          {tc('actions.allow')}
+                        </ToggleGroupItem>
+                      </Tip>
                     </ToggleGroup>
                   </div>
                 );
@@ -159,9 +168,11 @@ export function PermissionMatrix({ onModeChange }: PermissionMatrixProps) {
       </div>
 
       <div className="flex justify-end">
-        <Button variant="outline" size="sm" onClick={resetToAskDefaults}>
-          {t('resetToAsk')}
-        </Button>
+        <Tip label={t('tips.reset')} align="end">
+          <Button variant="outline" size="sm" onClick={resetToAskDefaults}>
+            {t('resetToAsk')}
+          </Button>
+        </Tip>
       </div>
     </div>
   );

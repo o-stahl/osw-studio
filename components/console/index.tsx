@@ -4,7 +4,6 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Terminal as TerminalIcon, Play, Square, Trash2 } from 'lucide-react';
 import { PanelHeader } from '@/components/ui/panel';
-import { Button } from '@/components/ui/button';
 import { scriptRunner } from '@/lib/scripting/script-runner';
 import { vfsShell } from '@/lib/vfs/cli-shell';
 import { vfs } from '@/lib/vfs';
@@ -12,6 +11,7 @@ import type { ScriptRuntime, ScriptWorkerResponse } from '@/lib/scripting/types'
 import type { ProjectRuntime } from '@/lib/vfs/types';
 import { getRuntimeConfig } from '@/lib/runtimes/registry';
 import { logger } from '@/lib/utils';
+import { Tip } from '@/components/ui/tooltip';
 
 interface ConsolePanelProps {
   projectId: string;
@@ -782,49 +782,23 @@ export function ConsolePanel({ projectId, runtime, onClose, bufferedMessages, on
         color="var(--button-terminal-active, #22c55e)"
         onClose={onClose}
         panelKey="console"
-        actions={
-          <>
-            {hasExecutableFiles && (
-              isRunning ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 text-destructive hover:text-destructive md:h-5 md:px-2 md:border-0 md:bg-transparent md:rounded-md"
-                  onClick={stopScript}
-                >
-                  <Square className="h-2.5 w-2.5 md:h-3 md:w-3" />
-                  <span className="text-xs">{tc('actions.stop')}</span>
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 md:h-5 md:px-2 md:border-0 md:bg-transparent md:rounded-md"
-                  onClick={handleRun}
-                  disabled={!selectedEntryPoint && !defaultEntryPoint}
-                >
-                  <Play className="h-2.5 w-2.5 md:h-3 md:w-3" />
-                  <span className="text-xs">{tw('run')}</span>
-                </Button>
-              )
-            )}
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 md:h-5 md:px-2 md:border-0 md:bg-transparent md:rounded-md"
-              onClick={clearConsole}
-            >
-              <Trash2 className="h-2.5 w-2.5 md:h-3 md:w-3" />
-              <span className="text-xs">{tc('actions.clear')}</span>
-            </Button>
-          </>
-        }
+        actions={[
+          ...(!hasExecutableFiles ? [] : isRunning
+            ? [{ id: 'stop', icon: Square, label: tc('actions.stop'), tip: consoleText('tips.stop'), labelled: true, destructive: true, onSelect: stopScript }]
+            : [{
+              id: 'run', icon: Play, label: tw('run'), labelled: true, disabled: !selectedEntryPoint && !defaultEntryPoint, onSelect: handleRun,
+              tip: selectedEntryPoint || defaultEntryPoint ? consoleText('tips.run', { file: selectedEntryPoint || defaultEntryPoint }) : consoleText('tips.chooseFile'),
+            }]),
+          { id: 'clear', icon: Trash2, label: tc('actions.clear'), tip: consoleText('helpClear'), labelled: true, onSelect: clearConsole },
+        ]}
       >
         {/* File dropdown (when executable files exist) */}
         {hasExecutableFiles && (
+          <Tip label={consoleText('tips.file')} side="bottom">
           <select
             value={selectedEntryPoint}
             onChange={(e) => setSelectedEntryPoint(e.target.value)}
+            aria-label={consoleText('tips.file')}
             className="text-xs bg-background border border-border rounded px-1.5 py-0.5 max-w-[140px] ml-1"
           >
             {executableFiles.map(f => (
@@ -834,6 +808,7 @@ export function ConsolePanel({ projectId, runtime, onClose, bufferedMessages, on
               <option value={selectedEntryPoint}>{selectedEntryPoint}</option>
             )}
           </select>
+          </Tip>
         )}
       </PanelHeader>
 

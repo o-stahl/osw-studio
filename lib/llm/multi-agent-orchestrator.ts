@@ -282,6 +282,10 @@ export class MultiAgentOrchestrator {
     this.abortController = new AbortController();
     this.taskCost = 0;
     this.taskTokens = 0;
+    // Per run, like the cost: an instance kept after a failed run would otherwise report its counts again.
+    this.toolCallCount = 0;
+    this.turnCount = 0;
+    this.apiErrorCount = 0;
 
     // Strip trailing nudge messages from previous execution
     const conversation = this.conversations.get(this.currentConversationId)!;
@@ -734,6 +738,7 @@ export class MultiAgentOrchestrator {
             error_type: apiError.errorType,
             error_category: apiError.errorCategory,
             status_code: apiError.status,
+            ...(apiError.streamErrorType ? { stream_error_type: apiError.streamErrorType } : {}),
           });
         } else {
           // Not a provider response (a network failure, say). Report best-effort fields only;

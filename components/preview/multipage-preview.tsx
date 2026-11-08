@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { PanelHeader } from '@/components/ui/panel';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tip } from '@/components/ui/tooltip';
 import { cn, logger } from '@/lib/utils';
 import { captureIframeScreenshot } from '@/lib/utils/screenshot';
 import type { ProjectRuntime } from '@/lib/vfs/types';
@@ -2297,68 +2298,80 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     );
   }
 
-  return (
-    <div ref={attachRoot} className="h-full flex flex-col">
-      <Header />
-      {/* Mobile Layout - Single row with navigation and page selector. Shown in quick edit too,
-          where the preview shares the screen with the Inspector and this is the only way to
-          drive it. */}
-      <div className="border-b p-2 flex items-center gap-2 md:hidden">
-        <div className="flex items-center gap-1">
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5"
-            onClick={handleBack}
-            disabled={historyIndex === 0}
-          >
-            <ChevronLeft className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5"
-            onClick={handleForward}
-            disabled={historyIndex >= navigationHistory.length - 1}
-          >
-            <ChevronRight className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5"
-            onClick={handleHome}
-          >
-            <Home className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5"
-            onClick={handleRefresh}
-          >
-            <RefreshCw className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className={cn('h-5 w-5', crosshairHintClasses)}
-            onClick={() => {
-              const next = !selectorActive;
-              useWorkspaceStore.getState().setFocusToolArmed(next);
-              if (next && localPaletteOpen) {
-                setLocalPaletteOpen(false);
-                setTimeout(() => onPlacementToggle?.(), 0);
-              }
-            }}
-            disabled={!iframeReady}
-            style={crosshairButtonStyle}
-            title={selectorActive ? tsx('cancelSelectionLong') : hasFocusTarget ? t('replaceFocused') : tw('selectElement')}
-            data-tour-id="focus-crosshair-button"
-          >
-            <Crosshair className="h-3 w-3" />
-          </Button>
-          {!simple && (
+  // The navigation and tool buttons, the same in the phone row and the desktop one.
+  const selectTip = selectorActive ? tsx('cancelSelectionLong') : hasFocusTarget ? t('replaceFocused') : tw('selectElement');
+  const navButtons = (
+    <>
+      <Tip label={t('tips.back')} side="bottom">
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-5 w-5"
+          onClick={handleBack}
+          disabled={historyIndex === 0}
+          aria-label={t('tips.back')}
+        >
+          <ChevronLeft className="h-3 w-3" />
+        </Button>
+      </Tip>
+      <Tip label={t('tips.forward')} side="bottom">
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-5 w-5"
+          onClick={handleForward}
+          disabled={historyIndex >= navigationHistory.length - 1}
+          aria-label={t('tips.forward')}
+        >
+          <ChevronRight className="h-3 w-3" />
+        </Button>
+      </Tip>
+      <Tip label={t('tips.home')} side="bottom">
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-5 w-5"
+          onClick={handleHome}
+          aria-label={t('tips.home')}
+        >
+          <Home className="h-3 w-3" />
+        </Button>
+      </Tip>
+      <Tip label={t('reload')} side="bottom">
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-5 w-5"
+          onClick={handleRefresh}
+          aria-label={t('reload')}
+        >
+          <RefreshCw className="h-3 w-3" />
+        </Button>
+      </Tip>
+      <Tip label={selectTip} side="bottom">
+        <Button
+          size="icon"
+          variant="ghost"
+          className={cn('h-5 w-5', crosshairHintClasses)}
+          onClick={() => {
+            const next = !selectorActive;
+            useWorkspaceStore.getState().setFocusToolArmed(next);
+            if (next && localPaletteOpen) {
+              setLocalPaletteOpen(false);
+              setTimeout(() => onPlacementToggle?.(), 0);
+            }
+          }}
+          disabled={!iframeReady}
+          style={crosshairButtonStyle}
+          aria-label={selectTip}
+          aria-pressed={selectorActive}
+          data-tour-id="focus-crosshair-button"
+        >
+          <Crosshair className="h-3 w-3" />
+        </Button>
+      </Tip>
+      {!simple && (
+        <Tip label={t('tips.semanticBlocks')} side="bottom">
           <Button
             size="icon"
             variant="ghost"
@@ -2368,20 +2381,36 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
               setTimeout(() => onPlacementToggle?.(), 0);
             }}
             disabled={!iframeReady}
-            title={t('semanticBlocks')}
+            aria-label={t('semanticBlocks')}
+            aria-pressed={localPaletteOpen}
             style={localPaletteOpen ? { backgroundColor: 'var(--button-preview-active)', color: 'white' } : {}}
           >
             <LayoutGrid className="h-3 w-3" />
           </Button>
-          )}
+        </Tip>
+      )}
+    </>
+  );
+
+  return (
+    <div ref={attachRoot} className="h-full flex flex-col">
+      <Header />
+      {/* Mobile Layout - Single row with navigation and page selector. Shown in quick edit too,
+          where the preview shares the screen with the Inspector and this is the only way to
+          drive it. */}
+      <div className="border-b p-2 flex items-center gap-2 md:hidden">
+        <div className="flex items-center gap-1">
+          {navButtons}
         </div>
 
         {/* Page selector takes remaining space */}
         {compiledProject && compiledProject.routes.length > 1 && (
           <Select value={activePath} onValueChange={handleNavigation}>
-            <SelectTrigger className="flex-1 h-8 min-w-0 max-w-full">
-              <SelectValue className="truncate" />
-            </SelectTrigger>
+            <Tip label={t('tips.page')} side="bottom" wrap wrapClassName="flex flex-1 min-w-0 max-w-full">
+              <SelectTrigger className="flex-1 h-8 min-w-0 max-w-full" aria-label={t('tips.page')}>
+                <SelectValue className="truncate" />
+              </SelectTrigger>
+            </Tip>
             <SelectContent>
               {compiledProject.routes.map(route => (
                 <SelectItem key={route.path} value={route.path}>
@@ -2396,75 +2425,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
       {/* Desktop Layout - Single row */}
       <div className="border-b p-2 hidden md:flex items-center gap-2">
         <div className="flex items-center gap-1">
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5"
-            onClick={handleBack}
-            disabled={historyIndex === 0}
-          >
-            <ChevronLeft className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5"
-            onClick={handleForward}
-            disabled={historyIndex >= navigationHistory.length - 1}
-          >
-            <ChevronRight className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5"
-            onClick={handleHome}
-          >
-            <Home className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5"
-            onClick={handleRefresh}
-          >
-            <RefreshCw className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className={cn('h-5 w-5', crosshairHintClasses)}
-            onClick={() => {
-              const next = !selectorActive;
-              useWorkspaceStore.getState().setFocusToolArmed(next);
-              if (next && localPaletteOpen) {
-                setLocalPaletteOpen(false);
-                setTimeout(() => onPlacementToggle?.(), 0);
-              }
-            }}
-            disabled={!iframeReady}
-            style={crosshairButtonStyle}
-            title={selectorActive ? tsx('cancelSelectionLong') : hasFocusTarget ? t('replaceFocused') : tw('selectElement')}
-            data-tour-id="focus-crosshair-button"
-          >
-            <Crosshair className="h-3 w-3" />
-          </Button>
-          {!simple && (
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5"
-            onClick={() => {
-              setLocalPaletteOpen(prev => !prev);
-              setTimeout(() => onPlacementToggle?.(), 0);
-            }}
-            disabled={!iframeReady}
-            title={t('semanticBlocks')}
-            style={localPaletteOpen ? { backgroundColor: 'var(--button-preview-active)', color: 'white' } : {}}
-          >
-            <LayoutGrid className="h-3 w-3" />
-          </Button>
-          )}
+          {navButtons}
         </div>
 
         <div className="flex-1 px-3 py-1 bg-muted rounded text-sm">
@@ -2473,9 +2434,11 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
 
         {compiledProject && compiledProject.routes.length > 1 && (
           <Select value={activePath} onValueChange={handleNavigation}>
-            <SelectTrigger className="w-[200px] h-8">
-              <SelectValue />
-            </SelectTrigger>
+            <Tip label={t('tips.page')} side="bottom" wrap>
+              <SelectTrigger className="w-[200px] h-8" aria-label={t('tips.page')}>
+                <SelectValue />
+              </SelectTrigger>
+            </Tip>
             <SelectContent>
               {compiledProject.routes.map(route => (
                 <SelectItem key={route.path} value={route.path}>
@@ -2487,62 +2450,78 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
         )}
 
         <div className="flex items-center gap-1 border-l pl-2">
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5 rounded-sm"
-            style={{
-              backgroundColor: deviceSize === 'mobile' ? 'var(--button-preview-active)' : undefined,
-              color: deviceSize === 'mobile' ? 'white' : undefined
-            }}
-            onClick={() => handleSetDeviceSize('mobile')}
-          >
-            <Smartphone className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5 rounded-sm"
-            style={{
-              backgroundColor: deviceSize === 'tablet' ? 'var(--button-preview-active)' : undefined,
-              color: deviceSize === 'tablet' ? 'white' : undefined
-            }}
-            onClick={() => handleSetDeviceSize('tablet')}
-          >
-            <Tablet className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5 rounded-sm"
-            style={{
-              backgroundColor: deviceSize === 'desktop' ? 'var(--button-preview-active)' : undefined,
-              color: deviceSize === 'desktop' ? 'white' : undefined
-            }}
-            onClick={() => handleSetDeviceSize('desktop')}
-          >
-            <Monitor className="h-3 w-3" />
-          </Button>
+          <Tip label={t('tips.phone')} side="bottom">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-5 w-5 rounded-sm"
+              style={{
+                backgroundColor: deviceSize === 'mobile' ? 'var(--button-preview-active)' : undefined,
+                color: deviceSize === 'mobile' ? 'white' : undefined
+              }}
+              onClick={() => handleSetDeviceSize('mobile')}
+              aria-label={t('tips.phone')}
+              aria-pressed={deviceSize === 'mobile'}
+            >
+              <Smartphone className="h-3 w-3" />
+            </Button>
+          </Tip>
+          <Tip label={t('tips.tablet')} side="bottom">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-5 w-5 rounded-sm"
+              style={{
+                backgroundColor: deviceSize === 'tablet' ? 'var(--button-preview-active)' : undefined,
+                color: deviceSize === 'tablet' ? 'white' : undefined
+              }}
+              onClick={() => handleSetDeviceSize('tablet')}
+              aria-label={t('tips.tablet')}
+              aria-pressed={deviceSize === 'tablet'}
+            >
+              <Tablet className="h-3 w-3" />
+            </Button>
+          </Tip>
+          <Tip label={t('tips.desktop')} side="bottom">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-5 w-5 rounded-sm"
+              style={{
+                backgroundColor: deviceSize === 'desktop' ? 'var(--button-preview-active)' : undefined,
+                color: deviceSize === 'desktop' ? 'white' : undefined
+              }}
+              onClick={() => handleSetDeviceSize('desktop')}
+              aria-label={t('tips.desktop')}
+              aria-pressed={deviceSize === 'desktop'}
+            >
+              <Monitor className="h-3 w-3" />
+            </Button>
+          </Tip>
           {isFullscreen ? (
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-5 w-5 rounded-sm"
-              onClick={onClose}
-              title={t('exitFullSize')}
-            >
-              <Minimize className="h-3 w-3" />
-            </Button>
+            <Tip label={t('exitFullSize')} side="bottom" align="end">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-5 w-5 rounded-sm"
+                onClick={onClose}
+                aria-label={t('exitFullSize')}
+              >
+                <Minimize className="h-3 w-3" />
+              </Button>
+            </Tip>
           ) : onFullscreen ? (
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-5 w-5 rounded-sm"
-              onClick={onFullscreen}
-              title={t('fullSize')}
-            >
-              <Maximize className="h-3 w-3" />
-            </Button>
+            <Tip label={t('fullSize')} side="bottom" align="end">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-5 w-5 rounded-sm"
+                onClick={onFullscreen}
+                aria-label={t('fullSize')}
+              >
+                <Maximize className="h-3 w-3" />
+              </Button>
+            </Tip>
           ) : null}
         </div>
       </div>

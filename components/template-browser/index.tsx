@@ -9,6 +9,7 @@ import { ChevronDown, ChevronRight, Eye, Search, Server, TriangleAlert } from 'l
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Tip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { BUILT_IN_TEMPLATES } from '@/lib/vfs/templates/registry';
 import {
@@ -388,38 +389,40 @@ export function TemplateBrowserPanel({
                   id={`template-group-${group.key}`}
                   className="sticky top-0 z-10 bg-muted border-b border-border"
                 >
-                  <button
-                    type="button"
-                    onClick={() => toggleGroup(group.key)}
-                    aria-expanded={!collapsed}
-                    aria-controls={`template-group-list-${group.key}`}
-                    className="flex w-full px-4 py-1.5 hover:bg-muted/80 transition-colors items-baseline justify-between gap-2 text-left cursor-pointer"
-                  >
-                    <span className="flex items-baseline gap-1 shrink-0 text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                      {collapsed ? (
-                        <ChevronRight className="w-3 h-3 shrink-0 self-center" />
-                      ) : (
-                        <ChevronDown className="w-3 h-3 shrink-0 self-center" />
-                      )}
-                      {intentCopy(group.key, group).label}
-                      <span className="tabular-nums font-normal text-muted-foreground/70">
-                        {group.templates.length}
-                      </span>
-                      {/* Says where the current pick is when its row is hidden. Without this, a
-                          closed section is the one place the highlighted row cannot be seen, and
-                          the footer names a template with nothing on screen to match it to. */}
-                      {collapsed && group.templates.some((t) => t.value === pending) && (
-                        <span className="font-normal normal-case tracking-normal text-foreground/80">
-                          {tIntents('oneSelected')}
+                  <Tip label={intentCopy(group.key, group).description} truncated>
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(group.key)}
+                      aria-expanded={!collapsed}
+                      aria-controls={`template-group-list-${group.key}`}
+                      className="flex w-full px-4 py-1.5 hover:bg-muted/80 transition-colors items-baseline justify-between gap-2 text-left cursor-pointer"
+                    >
+                      <span className="flex items-baseline gap-1 shrink-0 text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                        {collapsed ? (
+                          <ChevronRight className="w-3 h-3 shrink-0 self-center" />
+                        ) : (
+                          <ChevronDown className="w-3 h-3 shrink-0 self-center" />
+                        )}
+                        {intentCopy(group.key, group).label}
+                        <span className="tabular-nums font-normal text-muted-foreground/70">
+                          {group.templates.length}
                         </span>
-                      )}
-                    </span>
-                    {/* The description is what the section is for, so it gives way to the count
-                        once the section is closed and the rows can no longer speak for it. */}
-                    <span className="text-[10px] text-muted-foreground/80 truncate hidden sm:block">
-                      {intentCopy(group.key, group).description}
-                    </span>
-                  </button>
+                        {/* Says where the current pick is when its row is hidden. Without this, a
+                            closed section is the one place the highlighted row cannot be seen, and
+                            the footer names a template with nothing on screen to match it to. */}
+                        {collapsed && group.templates.some((t) => t.value === pending) && (
+                          <span className="font-normal normal-case tracking-normal text-foreground/80">
+                            {tIntents('oneSelected')}
+                          </span>
+                        )}
+                      </span>
+                      {/* The description is what the section is for, so it gives way to the count
+                          once the section is closed and the rows can no longer speak for it. */}
+                      <span className="text-[10px] text-muted-foreground/80 truncate hidden sm:block">
+                        {intentCopy(group.key, group).description}
+                      </span>
+                    </button>
+                  </Tip>
                 </h3>
                 <ul
                   id={`template-group-list-${group.key}`}
@@ -459,34 +462,40 @@ export function TemplateBrowserPanel({
               {supportNote.doc && (
                 <>
                   {' '}
-                  <button
-                    type="button"
-                    onClick={() => goToDoc(supportNote.doc!.id)}
-                    className="underline underline-offset-2 hover:text-foreground cursor-pointer"
-                  >
-                    {noteCopy[supportNote.kind].docLabel}
-                  </button>
+                  <Tip label={t('tips.docs')}>
+                    <button
+                      type="button"
+                      onClick={() => goToDoc(supportNote.doc!.id)}
+                      className="underline underline-offset-2 hover:text-foreground cursor-pointer"
+                    >
+                      {noteCopy[supportNote.kind].docLabel}
+                    </button>
+                  </Tip>
                 </>
               )}
             </p>
           </div>
         )}
         <div className="px-4 py-3 flex items-center justify-between gap-2">
-          <Button variant="ghost" size="sm" onClick={goToTemplates}>
-            {t('manageTemplates')}
-          </Button>
+          <Tip label={t('tips.manage')}>
+            <Button variant="ghost" size="sm" onClick={goToTemplates}>
+              {t('manageTemplates')}
+            </Button>
+          </Tip>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={onCancel}>
               {tc('actions.cancel')}
             </Button>
             {/* "Select", not "Use": this only chooses the template. The project is created by the
                 dialog this returns to, and calling both steps "use" made the first look final. */}
-            <Button
-              disabled={!pendingTemplate}
-              onClick={() => pendingTemplate && onConfirm(pendingTemplate.value)}
-            >
-              {pendingTemplate ? t('selectNamed', { name: pendingTemplate.name }) : t('selectNone')}
-            </Button>
+            <Tip label={pendingTemplate ? t('tips.select') : undefined}>
+              <Button
+                disabled={!pendingTemplate}
+                onClick={() => pendingTemplate && onConfirm(pendingTemplate.value)}
+              >
+                {pendingTemplate ? t('selectNamed', { name: pendingTemplate.name }) : t('selectNone')}
+              </Button>
+            </Tip>
           </div>
         </div>
       </div>
@@ -547,10 +556,12 @@ function TemplateRow({
                 </Badge>
               )}
               {template.hasBackendFeatures && (
-                <Server
-                  className="w-3.5 h-3.5 text-muted-foreground shrink-0"
-                  aria-label={t('includesBackend')}
-                />
+                <Tip label={t('includesBackend')}>
+                  <Server
+                    className="w-3.5 h-3.5 text-muted-foreground shrink-0"
+                    aria-label={t('includesBackend')}
+                  />
+                </Tip>
               )}
             </span>
             {/* Expanded rows show the description in full. */}
@@ -572,27 +583,30 @@ function TemplateRow({
             {runtimeBadge.label}
           </Badge>
         </button>
-        <button
-          type="button"
-          onClick={onPreview}
-          disabled={!!noPreview}
-          title={noPreview ?? t('previewNamed', { name: template.name })}
-          aria-label={noPreview ?? t('previewNamed', { name: template.name })}
-          className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground shrink-0 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
-        >
-          <Eye className="w-4 h-4" />
-        </button>
-        <button
-          type="button"
-          onClick={onToggleExpand}
-          aria-expanded={expanded}
-          aria-label={expanded ? t('hideDetailsFor', { name: template.name }) : t('showDetailsFor', { name: template.name })}
-          className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground shrink-0"
-        >
-          {/* Down rather than right: the row itself is the select control, and a chevron pointing
-              at it reads as "go here" rather than as the thing that opens the details below. */}
-          <ChevronDown className={cn('w-4 h-4 transition-transform', expanded && 'rotate-180')} />
-        </button>
+        <Tip label={noPreview ?? t('previewNamed', { name: template.name })} wrapClassName="inline-flex shrink-0">
+          <button
+            type="button"
+            onClick={onPreview}
+            disabled={!!noPreview}
+            aria-label={noPreview ?? t('previewNamed', { name: template.name })}
+            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground shrink-0 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+          >
+            <Eye className="w-4 h-4" />
+          </button>
+        </Tip>
+        <Tip label={expanded ? t('hideDetailsFor', { name: template.name }) : t('showDetailsFor', { name: template.name })} align="end">
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            aria-expanded={expanded}
+            aria-label={expanded ? t('hideDetailsFor', { name: template.name }) : t('showDetailsFor', { name: template.name })}
+            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground shrink-0"
+          >
+            {/* Down rather than right: the row itself is the select control, and a chevron pointing
+                at it reads as "go here" rather than as the thing that opens the details below. */}
+            <ChevronDown className={cn('w-4 h-4 transition-transform', expanded && 'rotate-180')} />
+          </button>
+        </Tip>
       </div>
 
       {expanded && (

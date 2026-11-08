@@ -12,6 +12,7 @@ import { emitViewChanged, writeLocalStudioView } from '@/lib/view-mode-event';
 import { useStudioView } from '@/components/view-mode-provider';
 import { Section, SectionHeader, SectionBody } from '@/components/ui/section';
 import { SettingRow } from '@/components/ui/setting-row';
+import { Tip } from '@/components/ui/tooltip';
 import { useTranslations } from 'next-intl';
 import { useLocaleSwitch } from '@/lib/i18n/use-locale-switch';
 import { locales, localeNames, type Locale } from '@/lib/i18n/config';
@@ -44,6 +45,12 @@ export function AppearancePane() {
   const [telemetryOptIn, setTelemetryOptInState] = useState(() =>
     configManager.getSettings().telemetryOptIn !== false
   );
+  // The tip names each language in the one the interface is in now.
+  const languageTips: Record<Locale, string> = {
+    en: t('tips.languageEn'),
+    ko: t('tips.languageKo'),
+    fi: t('tips.languageFi'),
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -91,8 +98,12 @@ export function AppearancePane() {
             onValueChange={(v) => { if (v && !savingView) changeView(v === 'studio'); }}
             disabled={savingView}
           >
-            <ToggleGroupItem value="studio">{t('studio')}</ToggleGroupItem>
-            <ToggleGroupItem value="simple">{t('simple')}</ToggleGroupItem>
+            <Tip label={t('tips.studio')} wrap>
+              <ToggleGroupItem value="studio">{t('studio')}</ToggleGroupItem>
+            </Tip>
+            <Tip label={t('tips.simple')} wrap>
+              <ToggleGroupItem value="simple">{t('simple')}</ToggleGroupItem>
+            </Tip>
           </ToggleGroup>
         </SettingRow>
 
@@ -107,9 +118,15 @@ export function AppearancePane() {
               }
             }}
           >
-            <ToggleGroupItem value="dark">{t('dark')}</ToggleGroupItem>
-            <ToggleGroupItem value="light">{t('light')}</ToggleGroupItem>
-            <ToggleGroupItem value="system">{t('system')}</ToggleGroupItem>
+            <Tip label={t('tips.dark')} wrap>
+              <ToggleGroupItem value="dark">{t('dark')}</ToggleGroupItem>
+            </Tip>
+            <Tip label={t('tips.light')} wrap>
+              <ToggleGroupItem value="light">{t('light')}</ToggleGroupItem>
+            </Tip>
+            <Tip label={t('tips.system')} wrap>
+              <ToggleGroupItem value="system">{t('system')}</ToggleGroupItem>
+            </Tip>
           </ToggleGroup>
         </SettingRow>
 
@@ -125,9 +142,11 @@ export function AppearancePane() {
             {locales.map((locale) => (
               // Each language is named in itself: its English name is no help to someone looking
               // for it.
-              <ToggleGroupItem key={locale} value={locale}>
-                {localeNames[locale]}
-              </ToggleGroupItem>
+              <Tip key={locale} label={languageTips[locale]} wrap>
+                <ToggleGroupItem value={locale}>
+                  {localeNames[locale]}
+                </ToggleGroupItem>
+              </Tip>
             ))}
           </ToggleGroup>
         </SettingRow>
@@ -136,14 +155,17 @@ export function AppearancePane() {
           title={t('analytics')}
           description={t('analyticsHint')}
         >
-          <Switch
-            id="telemetry"
-            checked={telemetryOptIn}
-            onCheckedChange={(checked) => {
-              setTelemetryOptInState(checked);
-              setTelemetryOptIn(checked);
-            }}
-          />
+          <Tip label={telemetryOptIn ? t('tips.analyticsOff') : t('analyticsHint')} wrap align="end">
+            <Switch
+              id="telemetry"
+              aria-label={t('analytics')}
+              checked={telemetryOptIn}
+              onCheckedChange={(checked) => {
+                setTelemetryOptInState(checked);
+                setTelemetryOptIn(checked);
+              }}
+            />
+          </Tip>
         </SettingRow>
       </SectionBody>
     </Section>

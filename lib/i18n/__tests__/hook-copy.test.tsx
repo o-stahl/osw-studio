@@ -14,6 +14,8 @@ import { useModelTemplateCopy } from '@/lib/i18n/use-model-template-copy';
 import { useProviderDescriptions } from '@/lib/i18n/use-provider-descriptions';
 import { useTemplateIntents } from '@/lib/i18n/use-template-intents';
 import { useViewNames } from '@/lib/i18n/use-view-names';
+import { usePanelTitles } from '@/lib/i18n/use-panel-titles';
+import { PANEL_KEYS } from '@/lib/workspace-layout';
 import { useCheckpointLabel } from '@/lib/i18n/use-checkpoint-label';
 import { useArchiveMessage } from '@/lib/i18n/use-archive-message';
 import { useStylePropLabels } from '@/lib/i18n/use-style-prop-labels';
@@ -106,6 +108,14 @@ describe('catalog hooks give each id its own message', () => {
     expect(names.mail).toBe(fi.nav.settings.mail);
     expect(names.users).toBe(fi.nav.settings.users);
     expect(names.interviews).toBe(fi.nav.items.interviews);
+  });
+
+  it('workspace panels, each by the title its own header shows', () => {
+    const titles = readHook(usePanelTitles);
+    expect(titles.files).toBe(fi.workspace.tabs.fileExplorer);
+    expect(titles.preview).toBe(fi.preview.livePreview);
+    expect(titles.debug).toBe(fi.workspace.tabs.debugEvents);
+    expect(new Set(PANEL_KEYS.map((key) => titles[key])).size).toBe(PANEL_KEYS.length);
   });
 
   it('template intents, falling back for an intent it does not know', () => {

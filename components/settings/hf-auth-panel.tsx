@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tip } from '@/components/ui/tooltip';
 import { ExternalLink, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { ConnectionBadge } from '@/components/settings/connection-badge';
 import { toast } from 'sonner';
@@ -195,13 +196,15 @@ export function HFAuthPanel({ onAuthChange }: HFAuthPanelProps) {
       {/* OAuth button — only on HF Spaces */}
       {oauthAvailable && (
         <>
-          <Button
-            onClick={handleOAuthLogin}
-            className="w-full gap-2"
-            variant="outline"
-          >
-            {tch('signInWithHF')}
-          </Button>
+          <Tip label={t('tips.hfSignIn')}>
+            <Button
+              onClick={handleOAuthLogin}
+              className="w-full gap-2"
+              variant="outline"
+            >
+              {tch('signInWithHF')}
+            </Button>
+          </Tip>
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
@@ -231,29 +234,34 @@ export function HFAuthPanel({ onAuthChange }: HFAuthPanelProps) {
               className="pr-10"
               disabled={isConnecting}
             />
-            <Button
-              size="icon"
-              variant="ghost"
-              className="absolute right-1 top-1 h-7 w-7"
-              onClick={() => setShowToken(!showToken)}
-            >
-              {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </Button>
+            <Tip label={showToken ? tcn('tips.hideToken') : tcn('tips.showToken')}>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="absolute right-1 top-1 h-7 w-7"
+                onClick={() => setShowToken(!showToken)}
+                aria-label={showToken ? tcn('tips.hideToken') : tcn('tips.showToken')}
+              >
+                {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+            </Tip>
           </div>
-          <Button
-            onClick={handleConnect}
-            disabled={isConnecting || !tokenInput.trim()}
-            size="sm"
-          >
-            {isConnecting ? (
-              <>
-                <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                {tcn('connecting')}
-              </>
-            ) : (
-              tcn('connect')
-            )}
-          </Button>
+          <Tip label={isConnecting ? undefined : tokenInput.trim() ? t('tips.checkToken') : t('tips.tokenFirst')}>
+            <Button
+              onClick={handleConnect}
+              disabled={isConnecting || !tokenInput.trim()}
+              size="sm"
+            >
+              {isConnecting ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  {tcn('connecting')}
+                </>
+              ) : (
+                tcn('connect')
+              )}
+            </Button>
+          </Tip>
         </div>
       </div>
 

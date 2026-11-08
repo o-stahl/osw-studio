@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import { Check, Copy, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { configManager } from '@/lib/config/storage';
@@ -60,10 +61,12 @@ export function OllamaPreflight() {
 
   return (
     <div className="mt-2 space-y-2" data-testid="ollama-preflight">
-      <Button size="sm" variant="outline" onClick={run} disabled={running} className="h-7 text-xs">
-        {running ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
-        {t('checkSetup')}
-      </Button>
+      <Tip label={running ? undefined : t('tips.checkSetup')}>
+        <Button size="sm" variant="outline" onClick={run} disabled={running} className="h-7 text-xs">
+          {running ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+          {t('checkSetup')}
+        </Button>
+      </Tip>
       {result && (
         <ul className="space-y-1.5 text-xs">
           {result.checks.map((check) => (
@@ -76,15 +79,17 @@ export function OllamaPreflight() {
                 {check.fix && (
                   <div className="mt-1 flex items-center gap-1">
                     <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">{check.fix}</code>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-5 w-5"
-                      onClick={() => copy(check.fix ?? '')}
-                      aria-label={t('copyValue', { value: check.fix ?? '' })}
-                    >
-                      <Copy className="h-3 w-3" />
-                    </Button>
+                    <Tip label={t('tips.copyCommand')}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5"
+                        onClick={() => copy(check.fix ?? '')}
+                        aria-label={t('copyValue', { value: check.fix ?? '' })}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </Tip>
                   </div>
                 )}
               </div>

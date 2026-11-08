@@ -16,6 +16,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { Tip } from '@/components/ui/tooltip';
 
 interface ToolCallDetail {
   name: string;
@@ -1666,6 +1667,10 @@ export default function TestGenerationPage() {
     }
   ];
 
+  // Tooltip copy. The page is developer tooling and stays English, like the rest of its text.
+  const waitForRun = 'Wait for the current run to finish';
+  const runPlan = `${totalRounds} round${totalRounds > 1 ? 's' : ''}, ${concurrency} at a time`;
+
   return (
     <div className="h-screen flex flex-col">
       <AppHeader
@@ -1727,13 +1732,15 @@ export default function TestGenerationPage() {
               </div>
             </div>
           )}
-          <button
-            onClick={() => setShowBenchmarkInfo(!showBenchmarkInfo)}
-            className="w-full px-4 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors flex items-center justify-center gap-1 border-t"
-          >
-            {showBenchmarkInfo ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            {showBenchmarkInfo ? 'Less' : 'More'}
-          </button>
+          <Tip label={showBenchmarkInfo ? undefined : 'How the benchmark works, what it checks and what it costs'}>
+            <button
+              onClick={() => setShowBenchmarkInfo(!showBenchmarkInfo)}
+              className="w-full px-4 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors flex items-center justify-center gap-1 border-t"
+            >
+              {showBenchmarkInfo ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              {showBenchmarkInfo ? 'Less' : 'More'}
+            </button>
+          </Tip>
         </div>
 
         {/* Round progress indicator */}
@@ -1869,14 +1876,16 @@ export default function TestGenerationPage() {
         <div className="flex flex-wrap gap-3 mb-6">
           <Popover open={showModelSettings} onOpenChange={setShowModelSettings}>
             <PopoverTrigger asChild>
-              <Button variant="outline">
-                <span>{getModelDisplayName(currentModel)}</span>
-                {showModelSettings ? (
-                  <ChevronDown className="h-4 w-4 ml-2" />
-                ) : (
-                  <ChevronUp className="h-4 w-4 ml-2" />
-                )}
-              </Button>
+              <Tip label={showModelSettings ? undefined : 'Choose the model to test, and a judge model'}>
+                <Button variant="outline">
+                  <span>{getModelDisplayName(currentModel)}</span>
+                  {showModelSettings ? (
+                    <ChevronDown className="h-4 w-4 ml-2" />
+                  ) : (
+                    <ChevronUp className="h-4 w-4 ml-2" />
+                  )}
+                </Button>
+              </Tip>
             </PopoverTrigger>
             <PopoverContent className="w-96" align="start" side="bottom" sideOffset={4} avoidCollisions={false}>
               <ModelSettingsPanel
@@ -1889,102 +1898,129 @@ export default function TestGenerationPage() {
           </Popover>
 
           <div className="inline-flex items-center rounded-md border border-input">
-            <button
-              onClick={() => setTotalRounds(r => Math.max(1, r - 1))}
-              disabled={isRunning || totalRounds <= 1}
-              className="h-9 w-8 inline-flex items-center justify-center rounded-l-md hover:bg-accent disabled:opacity-50 disabled:pointer-events-none"
-            >
-              <Minus className="h-3 w-3" />
-            </button>
+            <Tip label={isRunning ? waitForRun : totalRounds <= 1 ? 'One round is the least' : 'Fewer rounds'}>
+              <button
+                onClick={() => setTotalRounds(r => Math.max(1, r - 1))}
+                disabled={isRunning || totalRounds <= 1}
+                aria-label="Fewer rounds"
+                className="h-9 w-8 inline-flex items-center justify-center rounded-l-md hover:bg-accent disabled:opacity-50 disabled:pointer-events-none"
+              >
+                <Minus className="h-3 w-3" />
+              </button>
+            </Tip>
             <span className="h-9 px-2 inline-flex items-center justify-center text-sm font-medium min-w-[5rem] border-x border-input select-none">
               {totalRounds} Round{totalRounds > 1 ? 's' : ''}
             </span>
-            <button
-              onClick={() => setTotalRounds(r => Math.min(10, r + 1))}
-              disabled={isRunning || totalRounds >= 10}
-              className="h-9 w-8 inline-flex items-center justify-center rounded-r-md hover:bg-accent disabled:opacity-50 disabled:pointer-events-none"
-            >
-              <Plus className="h-3 w-3" />
-            </button>
+            <Tip label={isRunning ? waitForRun : totalRounds >= 10 ? 'Ten rounds is the most' : 'More rounds; each one repeats the whole run'}>
+              <button
+                onClick={() => setTotalRounds(r => Math.min(10, r + 1))}
+                disabled={isRunning || totalRounds >= 10}
+                aria-label="More rounds"
+                className="h-9 w-8 inline-flex items-center justify-center rounded-r-md hover:bg-accent disabled:opacity-50 disabled:pointer-events-none"
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            </Tip>
           </div>
 
           <div className="inline-flex items-center rounded-md border border-input">
-            <button
-              onClick={() => setConcurrency(c => Math.max(1, c - 1))}
-              disabled={isRunning || concurrency <= 1}
-              className="h-9 w-8 inline-flex items-center justify-center rounded-l-md hover:bg-accent disabled:opacity-50 disabled:pointer-events-none"
-            >
-              <Minus className="h-3 w-3" />
-            </button>
+            <Tip label={isRunning ? waitForRun : concurrency <= 1 ? 'One test at a time is the least' : 'Run fewer tests at once'}>
+              <button
+                onClick={() => setConcurrency(c => Math.max(1, c - 1))}
+                disabled={isRunning || concurrency <= 1}
+                aria-label="Run fewer tests at once"
+                className="h-9 w-8 inline-flex items-center justify-center rounded-l-md hover:bg-accent disabled:opacity-50 disabled:pointer-events-none"
+              >
+                <Minus className="h-3 w-3" />
+              </button>
+            </Tip>
             <span className="h-9 px-2 inline-flex items-center justify-center text-sm font-medium min-w-[5rem] border-x border-input select-none">
               {concurrency}x Parallel
             </span>
-            <button
-              onClick={() => setConcurrency(c => Math.min(8, c + 1))}
-              disabled={isRunning || concurrency >= 8}
-              className="h-9 w-8 inline-flex items-center justify-center rounded-r-md hover:bg-accent disabled:opacity-50 disabled:pointer-events-none"
-            >
-              <Plus className="h-3 w-3" />
-            </button>
+            <Tip label={isRunning ? waitForRun : concurrency >= 8 ? 'Eight at a time is the most' : 'Run more tests at once'}>
+              <button
+                onClick={() => setConcurrency(c => Math.min(8, c + 1))}
+                disabled={isRunning || concurrency >= 8}
+                aria-label="Run more tests at once"
+                className="h-9 w-8 inline-flex items-center justify-center rounded-r-md hover:bg-accent disabled:opacity-50 disabled:pointer-events-none"
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            </Tip>
           </div>
 
           {testTracks.map(track => (
+            <Tip key={track.id} label={isRunning ? waitForRun : `Run its ${track.scenarioIds.length} tests: ${runPlan}`}>
+              <Button
+                onClick={() => runTrack(track.id)}
+                disabled={isRunning}
+                variant={activeTrack === track.id ? 'default' : 'outline'}
+              >
+                <Play className="h-4 w-4 mr-2" />
+                {track.name} ({track.scenarioIds.length})
+              </Button>
+            </Tip>
+          ))}
+          <Tip label={isRunning ? waitForRun : `Run the ${testSequences.length} sequences: ${runPlan}`}>
             <Button
-              key={track.id}
-              onClick={() => runTrack(track.id)}
+              onClick={() => runTrack('sequences')}
               disabled={isRunning}
-              variant={activeTrack === track.id ? 'default' : 'outline'}
+              variant={activeTrack === 'sequences' ? 'default' : 'outline'}
             >
               <Play className="h-4 w-4 mr-2" />
-              {track.name} ({track.scenarioIds.length})
+              Sequences ({testSequences.length})
             </Button>
-          ))}
-          <Button
-            onClick={() => runTrack('sequences')}
-            disabled={isRunning}
-            variant={activeTrack === 'sequences' ? 'default' : 'outline'}
-          >
-            <Play className="h-4 w-4 mr-2" />
-            Sequences ({testSequences.length})
-          </Button>
-          <Button
-            onClick={() => runTrack('all')}
-            disabled={isRunning}
-            variant={activeTrack === 'all' ? 'default' : 'outline'}
-          >
-            <Play className="h-4 w-4 mr-2" />
-            All ({allScenarioIds.length + testSequences.length})
-          </Button>
+          </Tip>
+          <Tip label={isRunning ? waitForRun : `Run every test and sequence: ${runPlan}`}>
+            <Button
+              onClick={() => runTrack('all')}
+              disabled={isRunning}
+              variant={activeTrack === 'all' ? 'default' : 'outline'}
+            >
+              <Play className="h-4 w-4 mr-2" />
+              All ({allScenarioIds.length + testSequences.length})
+            </Button>
+          </Tip>
           {isRunning ? (
-            <Button variant="destructive" onClick={stopBenchmark}>
-              <Square className="h-4 w-4 mr-2" />
-              Stop
-            </Button>
+            <Tip label="Stop every running test">
+              <Button variant="destructive" onClick={stopBenchmark}>
+                <Square className="h-4 w-4 mr-2" />
+                Stop
+              </Button>
+            </Tip>
           ) : (
-            <Button variant="outline" onClick={resetTests}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Reset
-            </Button>
+            <Tip label="Clear every result and set all tests back to pending">
+              <Button variant="outline" onClick={resetTests}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Reset
+              </Button>
+            </Tip>
           )}
 
           {(overallStats.total > 0 || roundHistory.length > 0) && (
             <>
               <div className="w-px h-6 bg-border self-center" />
-              <Button variant="outline" onClick={exportJSON} disabled={isRunning}>
-                <Download className="h-4 w-4 mr-2" />
-                JSON
-              </Button>
-              <Button variant="outline" onClick={exportMarkdown} disabled={isRunning}>
-                <Download className="h-4 w-4 mr-2" />
-                Markdown
-              </Button>
+              <Tip label={isRunning ? waitForRun : 'Download the results as JSON'}>
+                <Button variant="outline" onClick={exportJSON} disabled={isRunning}>
+                  <Download className="h-4 w-4 mr-2" />
+                  JSON
+                </Button>
+              </Tip>
+              <Tip label={isRunning ? waitForRun : 'Download the results as a Markdown report'}>
+                <Button variant="outline" onClick={exportMarkdown} disabled={isRunning}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Markdown
+                </Button>
+              </Tip>
               {(() => {
                 const ec = getErrorCount();
                 return ec.total > 0 ? (
-                  <Button variant="outline" onClick={exportErrors} disabled={isRunning}>
-                    <Download className="h-4 w-4 mr-2" />
-                    Errors ({ec.total})
-                  </Button>
+                  <Tip label={isRunning ? waitForRun : 'Download the failures as a Markdown report'}>
+                    <Button variant="outline" onClick={exportErrors} disabled={isRunning}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Errors ({ec.total})
+                    </Button>
+                  </Tip>
                 ) : null;
               })()}
             </>
@@ -2032,46 +2068,53 @@ export default function TestGenerationPage() {
                               </span>
                             )}
                             {headerResult.status === 'running' && runningTests.has(seq.id) ? (
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => stopTest(seq.id)}
-                              >
-                                <Square className="h-3 w-3 mr-1" />
-                                Stop
-                              </Button>
+                              <Tip label={`Stop ${seq.name}`}>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => stopTest(seq.id)}
+                                >
+                                  <Square className="h-3 w-3 mr-1" />
+                                  Stop
+                                </Button>
+                              </Tip>
                             ) : (
+                              <Tip label={isRunning ? waitForRun : `Run ${seq.name}: ${seq.steps.length} steps in one session`}>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => runSequence(seq.id)}
+                                  disabled={isRunning}
+                                >
+                                  <Play className="h-3 w-3 mr-1" />
+                                  Run
+                                </Button>
+                              </Tip>
+                            )}
+                            <Tip label={expandedTests.has(seq.id) ? 'Hide the steps' : 'Show the steps'} align="end">
                               <Button
                                 size="sm"
-                                variant="outline"
-                                onClick={() => runSequence(seq.id)}
-                                disabled={isRunning}
+                                variant="ghost"
+                                aria-label={expandedTests.has(seq.id) ? 'Hide the steps' : 'Show the steps'}
+                                onClick={() => {
+                                  setExpandedTests(prev => {
+                                    const newSet = new Set(prev);
+                                    if (newSet.has(seq.id)) {
+                                      newSet.delete(seq.id);
+                                    } else {
+                                      newSet.add(seq.id);
+                                    }
+                                    return newSet;
+                                  });
+                                }}
                               >
-                                <Play className="h-3 w-3 mr-1" />
-                                Run
+                                {expandedTests.has(seq.id) ? (
+                                  <ChevronUp className="h-3 w-3" />
+                                ) : (
+                                  <ChevronDown className="h-3 w-3" />
+                                )}
                               </Button>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                setExpandedTests(prev => {
-                                  const newSet = new Set(prev);
-                                  if (newSet.has(seq.id)) {
-                                    newSet.delete(seq.id);
-                                  } else {
-                                    newSet.add(seq.id);
-                                  }
-                                  return newSet;
-                                });
-                              }}
-                            >
-                              {expandedTests.has(seq.id) ? (
-                                <ChevronUp className="h-3 w-3" />
-                              ) : (
-                                <ChevronDown className="h-3 w-3" />
-                              )}
-                            </Button>
+                            </Tip>
                           </div>
                         </div>
 
@@ -2121,28 +2164,31 @@ export default function TestGenerationPage() {
                                         </span>
                                       )}
                                       {(stepResult.generationOutput || expandedTests.has(stepResult.id)) && (
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          className="h-6 w-6 p-0"
-                                          onClick={() => {
-                                            setExpandedTests(prev => {
-                                              const newSet = new Set(prev);
-                                              if (newSet.has(stepResult.id)) {
-                                                newSet.delete(stepResult.id);
-                                              } else {
-                                                newSet.add(stepResult.id);
-                                              }
-                                              return newSet;
-                                            });
-                                          }}
-                                        >
-                                          {expandedTests.has(stepResult.id) ? (
-                                            <ChevronUp className="h-3 w-3" />
-                                          ) : (
-                                            <ChevronDown className="h-3 w-3" />
-                                          )}
-                                        </Button>
+                                        <Tip label={expandedTests.has(stepResult.id) ? 'Hide the output' : 'Show the output'} align="end">
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-6 w-6 p-0"
+                                            aria-label={expandedTests.has(stepResult.id) ? 'Hide the output' : 'Show the output'}
+                                            onClick={() => {
+                                              setExpandedTests(prev => {
+                                                const newSet = new Set(prev);
+                                                if (newSet.has(stepResult.id)) {
+                                                  newSet.delete(stepResult.id);
+                                                } else {
+                                                  newSet.add(stepResult.id);
+                                                }
+                                                return newSet;
+                                              });
+                                            }}
+                                          >
+                                            {expandedTests.has(stepResult.id) ? (
+                                              <ChevronUp className="h-3 w-3" />
+                                            ) : (
+                                              <ChevronDown className="h-3 w-3" />
+                                            )}
+                                          </Button>
+                                        </Tip>
                                       )}
                                     </div>
                                   </div>
@@ -2243,47 +2289,54 @@ export default function TestGenerationPage() {
                               </span>
                             )}
                             {result.status === 'running' && runningTests.has(result.id) ? (
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => stopTest(result.id)}
-                              >
-                                <Square className="h-3 w-3 mr-1" />
-                                Stop
-                              </Button>
+                              <Tip label={`Stop ${result.name}`}>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => stopTest(result.id)}
+                                >
+                                  <Square className="h-3 w-3 mr-1" />
+                                  Stop
+                                </Button>
+                              </Tip>
                             ) : (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => runSingleTest(result.id)}
-                                disabled={isRunning}
-                              >
-                                <Play className="h-3 w-3 mr-1" />
-                                Test
-                              </Button>
+                              <Tip label={isRunning ? waitForRun : `Run ${result.name} on its own`}>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => runSingleTest(result.id)}
+                                  disabled={isRunning}
+                                >
+                                  <Play className="h-3 w-3 mr-1" />
+                                  Test
+                                </Button>
+                              </Tip>
                             )}
                             {(result.status === 'running' || result.generationOutput || expandedTests.has(result.id)) && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                  setExpandedTests(prev => {
-                                    const newSet = new Set(prev);
-                                    if (newSet.has(result.id)) {
-                                      newSet.delete(result.id);
-                                    } else {
-                                      newSet.add(result.id);
-                                    }
-                                    return newSet;
-                                  });
-                                }}
-                              >
-                                {expandedTests.has(result.id) ? (
-                                  <ChevronUp className="h-3 w-3" />
-                                ) : (
-                                  <ChevronDown className="h-3 w-3" />
-                                )}
-                              </Button>
+                              <Tip label={expandedTests.has(result.id) ? 'Hide the output' : 'Show the output'} align="end">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  aria-label={expandedTests.has(result.id) ? 'Hide the output' : 'Show the output'}
+                                  onClick={() => {
+                                    setExpandedTests(prev => {
+                                      const newSet = new Set(prev);
+                                      if (newSet.has(result.id)) {
+                                        newSet.delete(result.id);
+                                      } else {
+                                        newSet.add(result.id);
+                                      }
+                                      return newSet;
+                                    });
+                                  }}
+                                >
+                                  {expandedTests.has(result.id) ? (
+                                    <ChevronUp className="h-3 w-3" />
+                                  ) : (
+                                    <ChevronDown className="h-3 w-3" />
+                                  )}
+                                </Button>
+                              </Tip>
                             )}
                           </div>
                         </div>

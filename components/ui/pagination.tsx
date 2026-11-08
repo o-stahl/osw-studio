@@ -4,6 +4,7 @@ import React from 'react';
 import { useTranslations } from 'next-intl';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Tip } from '@/components/ui/tooltip';
 
 export interface PaginationProps {
   page: number;
@@ -108,15 +109,17 @@ export function Pagination({
 
   return (
     <div className={cn('flex items-center justify-center gap-0.5 pt-4 pb-1', className)}>
-      <button
-        type="button"
-        className={navBtn}
-        onClick={() => handleChange(page - 1)}
-        disabled={!canPrev}
-        aria-label={t('previous')}
-      >
-        <ChevronLeft className="h-3.5 w-3.5" />
-      </button>
+      <Tip label={t('previous')}>
+        <button
+          type="button"
+          className={navBtn}
+          onClick={() => handleChange(page - 1)}
+          disabled={!canPrev}
+          aria-label={t('previous')}
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </button>
+      </Tip>
 
       {pageList.map((p, i) =>
         p === 'ellipsis' ? (
@@ -135,15 +138,17 @@ export function Pagination({
         )
       )}
 
-      <button
-        type="button"
-        className={navBtn}
-        onClick={() => handleChange(page + 1)}
-        disabled={!canNext}
-        aria-label={t('next')}
-      >
-        <ChevronRight className="h-3.5 w-3.5" />
-      </button>
+      <Tip label={t('next')}>
+        <button
+          type="button"
+          className={navBtn}
+          onClick={() => handleChange(page + 1)}
+          disabled={!canNext}
+          aria-label={t('next')}
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
+      </Tip>
     </div>
   );
 }

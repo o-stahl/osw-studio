@@ -291,6 +291,27 @@
   animation: collapse-indicator 200ms ease-out forwards;
 }
 
+/* Workspace docking: a panel drag's cursor everywhere, the splitters' handles hidden under its bars,
+   and panels that let the pointer through to a divider drag (the preview's frame would take it). */
+html.dock-dragging,
+html.dock-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+[data-dock-area][data-dock-dragging] [data-resize-handle-state] {
+  opacity: 0;
+}
+
+[data-dock-area][data-resizing] [data-panel-id] {
+  pointer-events: none;
+}
+
+@keyframes dock-landed {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
 /* Animated ring effect for guided tour and focus targets */
 @keyframes pulse-opacity {
   0%, 100% {

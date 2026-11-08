@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import { Upload, AlertTriangle, Loader2 } from 'lucide-react';
 import { vfs } from '@/lib/vfs';
 import { getSpecificMimeType } from '@/lib/vfs/types';
@@ -182,9 +183,11 @@ export function ImagePicker({
             </div>
             <p className="mt-1 text-muted-foreground">{imageRefusalMessage(refusal, tip)}</p>
             {onAskAgent && imageRefusalOffersAgent(refusal) && (
-              <Button className="mt-2" size="sm" variant="outline" onClick={askAgent}>
-                {tsx('askAgent')}
-              </Button>
+              <Tip label={tsx('tips.askAgent')} align="start">
+                <Button className="mt-2" size="sm" variant="outline" onClick={askAgent}>
+                  {tsx('askAgent')}
+                </Button>
+              </Tip>
             )}
           </div>
         )}
@@ -223,25 +226,26 @@ export function ImagePicker({
               {entries.map(entry => {
                 const inUse = !!currentSrc && currentSrc.replace(/^\.?\//, '') === entry.path.replace(/^\//, '');
                 return (
-                  <button
-                    key={entry.path}
-                    type="button"
-                    disabled={busy}
-                    data-osw-image-option={entry.path}
-                    onClick={() => void apply(entry.path, false)}
-                    className="group rounded-md border border-border p-1 text-left hover:border-primary disabled:opacity-50"
-                  >
-                    {/* A background rather than an <img>: the same object-fit result without the
-                        next/image lint rule, and a broken file degrades to an empty tile. */}
-                    <div
-                      className="h-24 w-full rounded bg-muted bg-contain bg-center bg-no-repeat"
-                      style={{ backgroundImage: `url("${entry.url}")` }}
-                    />
-                    <div className="mt-1 truncate text-xs" title={entry.path}>
-                      {entry.path}
-                    </div>
-                    {inUse && <div className="text-[10px] text-muted-foreground">in use</div>}
-                  </button>
+                  <Tip key={entry.path} label={busy ? undefined : tip('tips.use', { path: entry.path })}>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      data-osw-image-option={entry.path}
+                      onClick={() => void apply(entry.path, false)}
+                      className="group rounded-md border border-border p-1 text-left hover:border-primary disabled:opacity-50"
+                    >
+                      {/* A background rather than an <img>: the same object-fit result without the
+                          next/image lint rule, and a broken file degrades to an empty tile. */}
+                      <div
+                        className="h-24 w-full rounded bg-muted bg-contain bg-center bg-no-repeat"
+                        style={{ backgroundImage: `url("${entry.url}")` }}
+                      />
+                      <div className="mt-1 truncate text-xs">
+                        {entry.path}
+                      </div>
+                      {inUse && <div className="text-[10px] text-muted-foreground">in use</div>}
+                    </button>
+                  </Tip>
                 );
               })}
             </div>
@@ -261,9 +265,11 @@ export function ImagePicker({
               if (file) void handleUpload(file);
             }}
           />
-          <Button variant="outline" disabled={busy} onClick={() => fileInputRef.current?.click()}>
-            <Upload className="mr-2 h-4 w-4" /> {tip('upload')}
-          </Button>
+          <Tip label={busy ? undefined : tip('tips.upload')}>
+            <Button variant="outline" disabled={busy} onClick={() => fileInputRef.current?.click()}>
+              <Upload className="mr-2 h-4 w-4" /> {tip('upload')}
+            </Button>
+          </Tip>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>{tc('actions.cancel')}</Button>
         </DialogFooter>
       </DialogContent>

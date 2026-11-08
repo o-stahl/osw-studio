@@ -30,6 +30,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Tip } from '@/components/ui/tooltip';
 import { MIN_REVIEW_PASSWORD_LENGTH } from '@/lib/api/deployment-review-merge';
 import { REVIEW_AS_TEAM_HEADER, reviewApiBase } from '@/lib/review/api-base';
 import type { WireComment, WireParticipant } from '@/lib/review/comment-view';
@@ -256,11 +257,14 @@ export function ReviewTab({
             title={t('buildReviewCopy')}
             description={t('reviewModeNote')}
           >
-            <Switch
-              id="review-enabled"
-              checked={review.enabled}
-              onCheckedChange={(checked) => update({ enabled: checked })}
-            />
+            <Tip label={review.enabled ? t('tips.reviewOff') : t('tips.reviewOn')} wrap>
+              <Switch
+                id="review-enabled"
+                checked={review.enabled}
+                onCheckedChange={(checked) => update({ enabled: checked })}
+                aria-label={t('buildReviewCopy')}
+              />
+            </Tip>
           </SettingRow>
 
           {review.enabled && (
@@ -272,29 +276,34 @@ export function ReviewTab({
                   <>
                     {t('reviewLinkHelp')}
                     <span className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-2.5 py-1.5">
-                      <code className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-foreground">
-                        {reviewUrl}
-                      </code>
+                      <Tip label={reviewUrl} align="start" truncated>
+                        <code className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-foreground">
+                          {reviewUrl}
+                        </code>
+                      </Tip>
                     </span>
                   </>
                 }
               >
                 <div className="flex items-center gap-1.5">
-                  <Button variant="outline" size="sm" onClick={copyAddress} className="gap-1.5">
-                    {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                    {copied ? tc('labels.copied') : t('copy')}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => window.open(reviewUrl, '_blank')}
-                    className="gap-1.5"
-                    disabled={notBuilt}
-                    title={notBuilt ? t('publishFirst') : undefined}
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    {t('open')}
-                  </Button>
+                  <Tip label={t('tips.copyAddress')}>
+                    <Button variant="outline" size="sm" onClick={copyAddress} className="gap-1.5">
+                      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                      {copied ? tc('labels.copied') : t('copy')}
+                    </Button>
+                  </Tip>
+                  <Tip label={!notBuilt ? t('tips.openReview') : isDirty ? t('tips.saveThenPublish') : t('tips.publishFirst')}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.open(reviewUrl, '_blank')}
+                      className="gap-1.5"
+                      disabled={notBuilt}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      {t('open')}
+                    </Button>
+                  </Tip>
                 </div>
               </SettingRow>
 
@@ -336,14 +345,22 @@ export function ReviewTab({
                 <div className="flex items-center gap-1.5">
                   {passwordEditing ? (
                     <>
-                      <Button
-                        variant="accent"
-                        size="sm"
-                        disabled={typeof review.password !== 'string'}
-                        onClick={() => setPasswordEditing(false)}
+                      <Tip
+                        label={
+                          typeof review.password === 'string'
+                            ? t('tips.passwordDone')
+                            : t('atLeastChars', { count: MIN_REVIEW_PASSWORD_LENGTH })
+                        }
                       >
-                        {tc('actions.done')}
-                      </Button>
+                        <Button
+                          variant="accent"
+                          size="sm"
+                          disabled={typeof review.password !== 'string'}
+                          onClick={() => setPasswordEditing(false)}
+                        >
+                          {tc('actions.done')}
+                        </Button>
+                      </Tip>
                       <Button variant="ghost" size="sm" onClick={cancelPasswordEdit}>
                         {tc('actions.cancel')}
                       </Button>
@@ -353,29 +370,35 @@ export function ReviewTab({
                       <span className="text-xs text-muted-foreground whitespace-nowrap">
                         {t(passwordStateKey(passwordState))}
                       </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setPasswordInput('');
-                          setPasswordEditing(true);
-                        }}
-                      >
-                        {review.reviewPasswordSet ? tc('actions.change') : t('set')}
-                      </Button>
-                      {passwordState === 'set' && (
-                        <Button variant="ghost" size="sm" onClick={() => update({ password: null })}>
-                          {tc('actions.clear')}
+                      <Tip label={review.reviewPasswordSet ? t('tips.changePassword') : t('tips.setPassword')}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setPasswordInput('');
+                            setPasswordEditing(true);
+                          }}
+                        >
+                          {review.reviewPasswordSet ? tc('actions.change') : t('set')}
                         </Button>
+                      </Tip>
+                      {passwordState === 'set' && (
+                        <Tip label={t('tips.clearPassword')}>
+                          <Button variant="ghost" size="sm" onClick={() => update({ password: null })}>
+                            {tc('actions.clear')}
+                          </Button>
+                        </Tip>
                       )}
                       {(passwordState === 'pending-set' || passwordState === 'pending-clear') && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => update({ password: undefined })}
-                        >
-                          {tc('actions.undo')}
-                        </Button>
+                        <Tip label={t('tips.keepPassword')}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => update({ password: undefined })}
+                          >
+                            {tc('actions.undo')}
+                          </Button>
+                        </Tip>
                       )}
                     </>
                   )}
@@ -393,12 +416,26 @@ export function ReviewTab({
               >
                 <div className="flex items-center gap-2">
                   {!mailSending && <Badge variant="secondary">{tc('labels.notAvailable')}</Badge>}
-                  <Switch
-                    id="review-notify"
-                    checked={review.notifyByEmail === true && mailSending === true}
-                    disabled={!mailSending}
-                    onCheckedChange={(checked) => update({ notifyByEmail: checked })}
-                  />
+                  <Tip
+                    label={
+                      mailSending === null
+                        ? t('tips.checkingMail')
+                        : !mailSending
+                          ? t('tips.noMail')
+                          : review.notifyByEmail === true
+                            ? t('tips.notifyOff')
+                            : t('tips.notifyOn')
+                    }
+                    wrap
+                  >
+                    <Switch
+                      id="review-notify"
+                      checked={review.notifyByEmail === true && mailSending === true}
+                      disabled={!mailSending}
+                      onCheckedChange={(checked) => update({ notifyByEmail: checked })}
+                      aria-label={t('emailNotifications')}
+                    />
+                  </Tip>
                 </div>
               </SettingRow>
 
@@ -437,9 +474,11 @@ export function ReviewTab({
         <div className="flex flex-col items-start gap-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3 sm:flex-row sm:items-center dark:border-yellow-800 dark:bg-yellow-950">
           <p className="min-w-0 flex-1 text-sm text-yellow-800 dark:text-yellow-200">{buildNotice}</p>
           {!isDirty && (
-            <Button variant="outline" size="sm" onClick={onPublish} disabled={isPublishing}>
-              {isPublishing ? t('publishing') : t('publishNow')}
-            </Button>
+            <Tip label={isPublishing ? undefined : t('tips.publishNow')}>
+              <Button variant="outline" size="sm" onClick={onPublish} disabled={isPublishing}>
+                {isPublishing ? t('publishing') : t('publishNow')}
+              </Button>
+            </Tip>
           )}
         </div>
       )}
@@ -589,19 +628,27 @@ function ReviewComments({
               value={filter}
               onValueChange={(value) => value && setFilter(value as ReviewFilter)}
             >
-              <ToggleGroupItem value="open" size="sm" className="text-xs">
-                {t('filterOpen', { count: counts.open })}
-              </ToggleGroupItem>
-              <ToggleGroupItem value="resolved" size="sm" className="text-xs">
-                {t('filterResolved', { count: counts.resolved })}
-              </ToggleGroupItem>
-              <ToggleGroupItem value="all" size="sm" className="text-xs">
-                {t('all')}
-              </ToggleGroupItem>
+              <Tip label={t('tips.showOpen')} wrap>
+                <ToggleGroupItem value="open" size="sm" className="text-xs">
+                  {t('filterOpen', { count: counts.open })}
+                </ToggleGroupItem>
+              </Tip>
+              <Tip label={t('tips.showResolved')} wrap>
+                <ToggleGroupItem value="resolved" size="sm" className="text-xs">
+                  {t('filterResolved', { count: counts.resolved })}
+                </ToggleGroupItem>
+              </Tip>
+              <Tip label={t('tips.showAll')} wrap>
+                <ToggleGroupItem value="all" size="sm" className="text-xs">
+                  {t('all')}
+                </ToggleGroupItem>
+              </Tip>
             </ToggleGroup>
-            <Button variant="ghost" size="sm" onClick={load} title={t('reloadComments')}>
-              <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-            </Button>
+            <Tip label={t('reloadComments')}>
+              <Button variant="ghost" size="sm" onClick={load} aria-label={t('reloadComments')}>
+                <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+              </Button>
+            </Tip>
           </>
         )}
       </SectionHeader>
@@ -679,14 +726,24 @@ function ReviewComments({
                           className="text-[13px]"
                         />
                         <div className="flex items-center gap-1.5">
-                          <Button
-                            variant="accent"
-                            size="sm"
-                            disabled={!replyBody.trim() || busyId === thread.root.id}
-                            onClick={() => postReply(thread.root)}
+                          <Tip
+                            label={
+                              busyId === thread.root.id
+                                ? undefined
+                                : replyBody.trim()
+                                  ? t('tips.postReply')
+                                  : t('tips.writeReply')
+                            }
                           >
-                            {busyId === thread.root.id ? t('posting') : t('postReply')}
-                          </Button>
+                            <Button
+                              variant="accent"
+                              size="sm"
+                              disabled={!replyBody.trim() || busyId === thread.root.id}
+                              onClick={() => postReply(thread.root)}
+                            >
+                              {busyId === thread.root.id ? t('posting') : t('postReply')}
+                            </Button>
+                          </Tip>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -702,36 +759,52 @@ function ReviewComments({
                     )}
                   </div>
 
+                  {/* The number is the badge at the start of the row, which is how the tips say
+                      which comment a button acts on. */}
                   <div className="ml-auto flex shrink-0 flex-wrap items-start justify-end gap-1.5">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setReplyingTo(thread.root.id);
-                        setReplyBody('');
-                      }}
-                    >
-                      {t('reply')}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        openReviewPage(deploymentId, thread.root.page_path, thread.root.id)
+                    <Tip label={t('tips.reply', { n: index + 1 })}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setReplyingTo(thread.root.id);
+                          setReplyBody('');
+                        }}
+                      >
+                        {t('reply')}
+                      </Button>
+                    </Tip>
+                    <Tip label={t('tips.showComment', { n: index + 1 })}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          openReviewPage(deploymentId, thread.root.page_path, thread.root.id)
+                        }
+                      >
+                        {t('show')}
+                      </Button>
+                    </Tip>
+                    <Tip
+                      label={
+                        busyId === thread.root.id
+                          ? undefined
+                          : thread.root.status === 'resolved'
+                            ? t('tips.reopen', { n: index + 1 })
+                            : t('tips.resolve', { n: index + 1 })
                       }
                     >
-                      {t('show')}
-                    </Button>
-                    <Button
-                      variant={thread.root.status === 'resolved' ? 'ghost' : 'accent'}
-                      size="sm"
-                      disabled={busyId === thread.root.id}
-                      onClick={() =>
-                        setStatus(thread.root.id, thread.root.status === 'resolved' ? 'open' : 'resolved')
-                      }
-                    >
-                      {thread.root.status === 'resolved' ? t('reopen') : t('resolve')}
-                    </Button>
+                      <Button
+                        variant={thread.root.status === 'resolved' ? 'ghost' : 'accent'}
+                        size="sm"
+                        disabled={busyId === thread.root.id}
+                        onClick={() =>
+                          setStatus(thread.root.id, thread.root.status === 'resolved' ? 'open' : 'resolved')
+                        }
+                      >
+                        {thread.root.status === 'resolved' ? t('reopen') : t('resolve')}
+                      </Button>
+                    </Tip>
                   </div>
                 </div>
               ))

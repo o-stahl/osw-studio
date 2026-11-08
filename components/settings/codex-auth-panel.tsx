@@ -6,6 +6,7 @@ import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tip } from '@/components/ui/tooltip';
 import { Loader2, LogIn } from 'lucide-react';
 import { ConnectionBadge } from '@/components/settings/connection-badge';
 import { toast } from 'sonner';
@@ -229,23 +230,27 @@ export function CodexAuthPanel({ onAuthChange }: CodexAuthPanelProps) {
             placeholder="http://localhost:1455/auth/callback?code=…"
             disabled={isCompletingRedirect}
           />
-          <Button
-            className="w-full"
-            onClick={handleManualCallback}
-            disabled={isCompletingRedirect || !redirectUrl.trim()}
-          >
-            {isCompletingRedirect && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {t('codexCompleteSignIn')}
-          </Button>
+          <Tip label={!isCompletingRedirect && !redirectUrl.trim() ? t('tips.redirectFirst') : undefined} wrapClassName="grid w-full">
+            <Button
+              className="w-full"
+              onClick={handleManualCallback}
+              disabled={isCompletingRedirect || !redirectUrl.trim()}
+            >
+              {isCompletingRedirect && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {t('codexCompleteSignIn')}
+            </Button>
+          </Tip>
           <div className="text-center">
             <Button size="sm" variant="ghost" onClick={handleCancelLogin}>{tc('actions.cancel')}</Button>
           </div>
         </div>
       ) : (
-        <Button onClick={handleLogin} disabled={isLoading} className="w-full gap-2">
-          {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
-          {t('codexSignIn')}
-        </Button>
+        <Tip label={isLoading ? undefined : t('tips.codexSignIn')}>
+          <Button onClick={handleLogin} disabled={isLoading} className="w-full gap-2">
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
+            {t('codexSignIn')}
+          </Button>
+        </Tip>
       )}
     </div>
   );

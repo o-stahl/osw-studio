@@ -3,6 +3,7 @@
 import React from 'react';
 import { useTranslations } from 'next-intl';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { Tip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { TreeNode } from '@/lib/preview/types';
 
@@ -27,9 +28,12 @@ export function basename(path: string): string {
  * carries what the compiler knew — so it is labelled as an offset rather than shown as `:120`,
  * which reads as a line and is not one.
  */
-export function sourceTitle(node: Pick<TreeNode, 'file' | 'line'>): string | undefined {
+export function sourceTitle(
+  node: Pick<TreeNode, 'file' | 'line'>,
+  t: (key: 'sourceOffset', values: { file: string; offset: number }) => string,
+): string | undefined {
   if (!node.file) return undefined;
-  return node.line === undefined ? node.file : `${node.file} (offset ${node.line})`;
+  return node.line === undefined ? node.file : t('sourceOffset', { file: node.file, offset: node.line });
 }
 
 /**
@@ -84,18 +88,20 @@ export function ElementsTreeRow({
       onClick={() => onSelect(node.id)}
     >
       {node.hasChildren ? (
-        <button
-          type="button"
-          className="h-4 w-4 shrink-0 flex items-center justify-center text-muted-foreground hover:text-foreground"
-          aria-label={expanded ? t('collapse', { tag: node.tag }) : t('expand', { tag: node.tag })}
-          aria-expanded={expanded}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggle(node.id);
-          }}
-        >
-          {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-        </button>
+        <Tip label={expanded ? t('collapse', { tag: node.tag }) : t('expand', { tag: node.tag })} side="left">
+          <button
+            type="button"
+            className="h-4 w-4 shrink-0 flex items-center justify-center text-muted-foreground hover:text-foreground"
+            aria-label={expanded ? t('collapse', { tag: node.tag }) : t('expand', { tag: node.tag })}
+            aria-expanded={expanded}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle(node.id);
+            }}
+          >
+            {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          </button>
+        </Tip>
       ) : (
         <span className="h-4 w-4 shrink-0" />
       )}
@@ -108,21 +114,19 @@ export function ElementsTreeRow({
       <span className="flex-1" />
 
       {node.instances > 1 && (
-        <span
-          className="text-[10px] px-1 rounded shrink-0 bg-amber-500/15 text-amber-600 dark:text-amber-400"
-          title={t('sharedSource', { count: node.instances })}
-        >
-          ×{node.instances}
-        </span>
+        <Tip label={t('sharedSource', { count: node.instances })}>
+          <span className="text-[10px] px-1 rounded shrink-0 bg-amber-500/15 text-amber-600 dark:text-amber-400">
+            ×{node.instances}
+          </span>
+        </Tip>
       )}
 
       {node.file && (
-        <span
-          className="text-[10px] text-muted-foreground shrink-0 max-w-[40%] truncate"
-          title={sourceTitle(node)}
-        >
-          {basename(node.file)}
-        </span>
+        <Tip label={sourceTitle(node, t)} align="end">
+          <span className="text-[10px] text-muted-foreground shrink-0 max-w-[40%] truncate">
+            {basename(node.file)}
+          </span>
+        </Tip>
       )}
     </div>
   );

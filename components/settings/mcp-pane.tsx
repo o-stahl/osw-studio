@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Section, SectionHeader, SectionBody } from '@/components/ui/section';
 import { SettingRow } from '@/components/ui/setting-row';
+import { Tip } from '@/components/ui/tooltip';
 import { logger } from '@/lib/utils';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
 
@@ -159,10 +160,14 @@ export function McpPane({ workspaceId }: { workspaceId?: string }) {
             description={t('mcpEndpointDesc')}
           >
             <span className="flex items-center gap-1 min-w-0">
-              <code className="truncate rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">{endpoint}</code>
-              <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => void copyEndpoint()} aria-label={t('copyEndpointAria')}>
-                <Copy className="h-3.5 w-3.5" />
-              </Button>
+              <Tip label={endpoint} truncated>
+                <code className="truncate rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">{endpoint}</code>
+              </Tip>
+              <Tip label={t('copyEndpointAria')} align="end">
+                <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => void copyEndpoint()} aria-label={t('copyEndpointAria')}>
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+              </Tip>
             </span>
           </SettingRow>
         )}
@@ -244,22 +249,32 @@ export function McpPane({ workspaceId }: { workspaceId?: string }) {
           >
             {confirming === grant.id ? (
               <span className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  disabled={revoking === grant.id}
-                  onClick={() => void revoke(grant)}
-                >
-                  {revoking === grant.id ? t('disconnecting') : t('confirm')}
-                </Button>
+                <Tip label={revoking === grant.id ? undefined : t('tips.mcpRevokeNow', { name: grant.clientName || t('unnamedClient') })}>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={revoking === grant.id}
+                    onClick={() => void revoke(grant)}
+                  >
+                    {revoking === grant.id ? t('disconnecting') : t('confirm')}
+                  </Button>
+                </Tip>
                 <Button size="sm" variant="ghost" onClick={() => setConfirming(null)}>
                   {tc('actions.cancel')}
                 </Button>
               </span>
             ) : (
-              <Button size="sm" variant="outline" onClick={() => setConfirming(grant.id)}>
-                {tc('actions.disconnect')}
-              </Button>
+              <Tip
+                label={t('tips.mcpRevoke', {
+                  name: grant.clientName || t('unnamedClient'),
+                  workspace: names[grant.workspaceId] ?? grant.workspaceId,
+                })}
+                align="end"
+              >
+                <Button size="sm" variant="outline" onClick={() => setConfirming(grant.id)}>
+                  {tc('actions.disconnect')}
+                </Button>
+              </Tip>
             )}
           </SettingRow>
         ))}

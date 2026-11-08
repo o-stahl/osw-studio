@@ -114,7 +114,7 @@ describe('the loss message', () => {
   it('marks the control it concerns without saying anything a second time', () => {
     probed(['padding-block-start'], '/styles.css');
 
-    const marked = container.querySelectorAll('[title*="not in force"]');
+    const marked = container.querySelectorAll('[data-osw-loss]');
     expect(marked).toHaveLength(1);
     expect(marked[0].textContent).toContain('Padding, vertical');
     // The marker is a marker. Two copies of the sentence is the thing being avoided.

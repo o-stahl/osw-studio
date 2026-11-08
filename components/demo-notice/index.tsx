@@ -8,6 +8,7 @@ import { Monitor, X } from 'lucide-react';
 import { getBackendStatus, subscribeBackendStatus } from '@/lib/api/backend-status';
 import { getMcpActivity, subscribeMcpActivity } from '@/lib/api/mcp-activity';
 import { DEMO_NOTICE_COOKIE } from '@/lib/demo';
+import { Tip } from '@/components/ui/tooltip';
 
 /**
  * Tells a visitor to the hosted demo where their projects are kept, and where the hosted service is
@@ -80,30 +81,36 @@ export function DemoNotice({ signInUrl, signUpUrl }: { signInUrl: string; signUp
       </span>
       <span className="flex items-center gap-2">
         {/* A new tab: the demo, and the project open in it, stay where they are. */}
-        <a
-          href={signUpUrl}
-          target="_blank"
-          rel="noopener"
-          className="rounded bg-primary/15 px-2 py-0.5 text-primary hover:bg-primary/25 transition-colors"
-        >
-          {t('signUp')}
-        </a>
-        <a
-          href={signInUrl}
-          target="_blank"
-          rel="noopener"
-          className="rounded border border-border px-2 py-0.5 hover:bg-muted transition-colors"
-        >
-          {t('signIn')}
-        </a>
-        <button
-          type="button"
-          onClick={dismiss}
-          className="ml-1 p-0.5 rounded hover:bg-muted transition-colors"
-          aria-label={tc('actions.dismiss')}
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
+        <Tip label={t('tips.signUp')} side="bottom">
+          <a
+            href={signUpUrl}
+            target="_blank"
+            rel="noopener"
+            className="rounded bg-primary/15 px-2 py-0.5 text-primary hover:bg-primary/25 transition-colors"
+          >
+            {t('signUp')}
+          </a>
+        </Tip>
+        <Tip label={t('tips.signIn')} side="bottom">
+          <a
+            href={signInUrl}
+            target="_blank"
+            rel="noopener"
+            className="rounded border border-border px-2 py-0.5 hover:bg-muted transition-colors"
+          >
+            {t('signIn')}
+          </a>
+        </Tip>
+        <Tip label={t('tips.dismiss')} side="bottom">
+          <button
+            type="button"
+            onClick={dismiss}
+            className="ml-1 p-0.5 rounded hover:bg-muted transition-colors"
+            aria-label={tc('actions.dismiss')}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </Tip>
       </span>
     </div>
   );

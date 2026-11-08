@@ -42,6 +42,7 @@ import {
   MessagesSquare,
 } from 'lucide-react';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger } from '@/components/ui/select';
+import { Tip } from '@/components/ui/tooltip';
 import type { SitesMode } from '@/lib/web/site-origin';
 
 type NavSection = 'deployment' | 'backend';
@@ -137,6 +138,14 @@ export function DeploymentDetail({
     functions: tn('functions'), helpers: tn('helpers'), secrets: tn('secrets'),
     schedules: tn('schedules'), schema: tn('schema'), sql: tn('sql'), logs: tn('logs'),
   }), [tn]);
+  // What each section holds, as its nav item's tooltip.
+  const tnt = useTranslations('deploymentDetail.navTips');
+  const navTips = useMemo<Record<NavId, string>>(() => ({
+    general: tnt('general'), scripts: tnt('scripts'), cdn: tnt('cdn'), seo: tnt('seo'),
+    analytics: tnt('analytics'), compliance: tnt('compliance'), review: tnt('review'),
+    functions: tnt('functions'), helpers: tnt('helpers'), secrets: tnt('secrets'),
+    schedules: tnt('schedules'), schema: tnt('schema'), sql: tnt('sql'), logs: tnt('logs'),
+  }), [tnt]);
   const [activeNav, setActiveNav] = useState(initialSection ?? 'general');
 
   // The same grouping the rail renders, reused by the narrow-screen dropdown so the two cannot
@@ -263,25 +272,43 @@ export function DeploymentDetail({
   const hasBeenPublished = !!deployment.publishedAt;
   const hasPendingChanges = deployment.settingsVersion !== deployment.lastPublishedVersion;
   const publicUrl = deployment.publicUrl || (typeof window !== 'undefined' ? `${window.location.origin}/deployments/${deployment.id}` : '');
+  const name = deployment.name;
+  // Publishing builds from the saved settings, so with edits open it asks for a save first. The
+  // button says "Publishing..." while it is busy, so it needs no tip then.
+  const publishTip = isPublishing
+    ? undefined
+    : isDirty
+      ? t('tips.saveFirst')
+      : deployment.projectMissing
+        ? td('tips.projectMissing')
+        : !hasBeenPublished
+          ? td('tips.publish', { name })
+          : hasPendingChanges
+            ? td('tips.publishChanges', { name })
+            : td('tips.republish', { name });
 
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="shrink-0 border-b bg-background px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleBack}
-            className="gap-1.5 text-muted-foreground hover:text-foreground"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            {tc('terms.deployments')}
-          </Button>
+          <Tip label={t('tips.back')} side="bottom">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleBack}
+              className="gap-1.5 text-muted-foreground hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              {tc('terms.deployments')}
+            </Button>
+          </Tip>
 
           <div className="h-4 w-px bg-border" />
 
-          <h1 className="text-base font-semibold truncate">{deployment.name}</h1>
+          <Tip label={name} side="bottom" truncated>
+            <h1 className="text-base font-semibold truncate">{deployment.name}</h1>
+          </Tip>
 
           {hasBeenPublished && deployment.underConstruction ? (
             <Badge variant="outline" className="border-yellow-600 text-yellow-600">{t('underConstruction')}</Badge>
@@ -298,29 +325,35 @@ export function DeploymentDetail({
               <span className="text-xs text-muted-foreground">{t('unsavedChanges')}</span>
             )}
             {isDirty && (
-              <Button size="sm" onClick={handleSave} disabled={isSaving}>
-                {isSaving ? tc('actions.saving') : t('saveChanges')}
-              </Button>
+              <Tip label={isSaving ? undefined : t('tips.save')} side="bottom">
+                <Button size="sm" onClick={handleSave} disabled={isSaving}>
+                  {isSaving ? tc('actions.saving') : t('saveChanges')}
+                </Button>
+              </Tip>
             )}
             {hasBeenPublished && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.open(publicUrl, '_blank')}
-                className="gap-1.5"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                {td('viewLive')}
-              </Button>
+              <Tip label={td('tips.viewLive', { name })} side="bottom">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(publicUrl, '_blank')}
+                  className="gap-1.5"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  {td('viewLive')}
+                </Button>
+              </Tip>
             )}
-            <Button
-              size="sm"
-              onClick={() => onPublish(deployment.id)}
-              disabled={isPublishing}
-              variant={isDirty ? 'outline' : 'default'}
-            >
-              {isPublishing ? t('publishing') : hasPendingChanges ? t('publishChanges') : hasBeenPublished ? tc('actions.republish') : tc('actions.publish')}
-            </Button>
+            <Tip label={publishTip} side="bottom" align="end">
+              <Button
+                size="sm"
+                onClick={() => onPublish(deployment.id)}
+                disabled={isPublishing}
+                variant={isDirty ? 'outline' : 'default'}
+              >
+                {isPublishing ? t('publishing') : hasPendingChanges ? t('publishChanges') : hasBeenPublished ? tc('actions.republish') : tc('actions.publish')}
+              </Button>
+            </Tip>
           </div>
         </div>
       </div>
@@ -335,19 +368,20 @@ export function DeploymentDetail({
             </span>
           </div>
           {DEPLOYMENT_NAV.map(item => (
-            <button
-              key={item.id}
-              onClick={() => setActiveNav(item.id)}
-              className={cn(
-                'w-full flex items-center gap-2.5 px-3 py-1.5 text-sm transition-colors',
-                activeNav === item.id
-                  ? 'bg-primary/15 text-primary font-medium'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'
-              )}
-            >
-              <item.icon className="h-3.5 w-3.5 shrink-0" />
-              {navLabels[item.id]}
-            </button>
+            <Tip key={item.id} label={navTips[item.id]} side="right">
+              <button
+                onClick={() => setActiveNav(item.id)}
+                className={cn(
+                  'w-full flex items-center gap-2.5 px-3 py-1.5 text-sm transition-colors',
+                  activeNav === item.id
+                    ? 'bg-primary/15 text-primary font-medium'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'
+                )}
+              >
+                <item.icon className="h-3.5 w-3.5 shrink-0" />
+                {navLabels[item.id]}
+              </button>
+            </Tip>
           ))}
 
           {deployment.databaseEnabled && (
@@ -358,19 +392,20 @@ export function DeploymentDetail({
                 </span>
               </div>
               {BACKEND_NAV.map(item => (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveNav(item.id)}
-                  className={cn(
-                    'w-full flex items-center gap-2.5 px-3 py-1.5 text-sm transition-colors',
-                    activeNav === item.id
-                      ? 'text-foreground bg-accent/50 border-r-2 border-primary'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'
-                  )}
-                >
-                  <item.icon className="h-3.5 w-3.5 shrink-0" />
-                  {navLabels[item.id]}
-                </button>
+                <Tip key={item.id} label={navTips[item.id]} side="right">
+                  <button
+                    onClick={() => setActiveNav(item.id)}
+                    className={cn(
+                      'w-full flex items-center gap-2.5 px-3 py-1.5 text-sm transition-colors',
+                      activeNav === item.id
+                        ? 'text-foreground bg-accent/50 border-r-2 border-primary'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'
+                    )}
+                  >
+                    <item.icon className="h-3.5 w-3.5 shrink-0" />
+                    {navLabels[item.id]}
+                  </button>
+                </Tip>
               ))}
             </>
           )}
@@ -380,12 +415,14 @@ export function DeploymentDetail({
             beside the content leaves too little room for a form on a phone. */}
         <div className="md:hidden p-3 border-b border-border/60 shrink-0">
           <Select value={activeNav} onValueChange={setActiveNav}>
-            <SelectTrigger className="w-full">
-              <span className="flex items-center gap-1.5 text-xs">
-                {activeNavItem?.icon && <activeNavItem.icon className="h-3 w-3" />}
-                {activeNavItem ? navLabels[activeNavItem.id] : t('settingsFallback')}
-              </span>
-            </SelectTrigger>
+            <Tip label={activeNavItem ? navTips[activeNavItem.id] : undefined} wrap wrapClassName="flex w-full">
+              <SelectTrigger className="w-full">
+                <span className="flex items-center gap-1.5 text-xs">
+                  {activeNavItem?.icon && <activeNavItem.icon className="h-3 w-3" />}
+                  {activeNavItem ? navLabels[activeNavItem.id] : t('settingsFallback')}
+                </span>
+              </SelectTrigger>
+            </Tip>
             <SelectContent>
               {navSections.map(section => (
                 <SelectGroup key={section.label}>

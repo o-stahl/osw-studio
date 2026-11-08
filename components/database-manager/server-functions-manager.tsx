@@ -15,6 +15,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tip } from '@/components/ui/tooltip';
 import { ServerFunctionEditor } from './server-function-editor';
 import { cn } from '@/lib/utils';
 import type { ServerFunctionsDataProvider } from './data-providers';
@@ -197,26 +198,39 @@ export function ServerFunctionsManager({ deploymentId, dataProvider, workspaceId
                   <div className="flex-1 min-w-0 overflow-hidden">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Wrench className="h-4 w-4 text-orange-500 shrink-0" />
-                      <span className="font-mono font-medium truncate">{fn.name}</span>
+                      <Tip label={fn.name} truncated>
+                        <span className="font-mono font-medium truncate">{fn.name}</span>
+                      </Tip>
                       {!fn.enabled && (
-                        <span className="text-xs bg-muted px-1.5 py-0.5 rounded shrink-0">{t('disabledBadge')}</span>
+                        <Tip label={t('tips.helperDisabled')}>
+                          <span className="text-xs bg-muted px-1.5 py-0.5 rounded shrink-0">{t('disabledBadge')}</span>
+                        </Tip>
                       )}
                     </div>
                     {fn.description && (
-                      <p className="text-sm text-muted-foreground mt-1 truncate">
-                        {fn.description}
-                      </p>
+                      <Tip label={fn.description} truncated>
+                        <p className="text-sm text-muted-foreground mt-1 truncate">
+                          {fn.description}
+                        </p>
+                      </Tip>
                     )}
                     <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                      <span className="font-mono truncate">server.{fn.name}(args)</span>
+                      <Tip
+                        label={`server.${fn.name}(args)`} // i18n-ignore: code, the call an edge function makes
+                        truncated
+                      >
+                        <span className="font-mono truncate">server.{fn.name}(args)</span>
+                      </Tip>
                     </div>
                   </div>
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
+                      <Tip label={t('tips.actionsFor', { name: fn.name })} align="end">
+                        <Button variant="ghost" size="sm" aria-label={t('tips.actionsFor', { name: fn.name })}>
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </Tip>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => setEditingFunction(fn)}>

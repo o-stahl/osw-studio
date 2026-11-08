@@ -9,6 +9,7 @@ import { track } from '@/lib/telemetry';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Tip } from '@/components/ui/tooltip';
 import {
   Dialog,
   DialogContent,
@@ -143,10 +144,12 @@ export function InterviewTemplatesPanel({
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             <h1 className="text-lg font-semibold shrink-0">{tn('items.interviews')}</h1>
             <div className="flex items-center shrink-0">
-              <Button size="sm" onClick={() => setView({ mode: 'create' })}>
-                <Plus className="w-4 h-4 mr-2" />
-                {tc('actions.new')}
-              </Button>
+              <Tip label={ti('createTitle')}>
+                <Button size="sm" onClick={() => setView({ mode: 'create' })}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  {tc('actions.new')}
+                </Button>
+              </Tip>
             </div>
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -161,30 +164,34 @@ export function InterviewTemplatesPanel({
           </div>
           <div className="flex items-center gap-2 text-xs">
             <span className="text-muted-foreground">{tc('labels.show')}</span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 gap-1.5"
-              // Active: mild orange fill + border (matches the enabled-skill card). Inline so it wins
-              // over the outline variant's dark bg/border in both themes.
-              style={showBuiltIn ? { backgroundColor: 'color-mix(in oklab, var(--primary) 5%, transparent)', borderColor: 'color-mix(in oklab, var(--primary) 30%, transparent)' } : undefined}
-              onClick={() => setShowBuiltIn(v => !v)}
-              aria-pressed={showBuiltIn}
-            >
-              <FileText className="w-3 h-3" />
-              {tc('labels.builtIn')}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 gap-1.5"
-              style={showCustom ? { backgroundColor: 'color-mix(in oklab, var(--primary) 5%, transparent)', borderColor: 'color-mix(in oklab, var(--primary) 30%, transparent)' } : undefined}
-              onClick={() => setShowCustom(v => !v)}
-              aria-pressed={showCustom}
-            >
-              <ClipboardList className="w-3 h-3" />
-              {ti('custom')}
-            </Button>
+            <Tip label={showBuiltIn ? ti('tips.hideBuiltIn') : ti('tips.showBuiltIn')}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 gap-1.5"
+                // Active: mild orange fill + border (matches the enabled-skill card). Inline so it wins
+                // over the outline variant's dark bg/border in both themes.
+                style={showBuiltIn ? { backgroundColor: 'color-mix(in oklab, var(--primary) 5%, transparent)', borderColor: 'color-mix(in oklab, var(--primary) 30%, transparent)' } : undefined}
+                onClick={() => setShowBuiltIn(v => !v)}
+                aria-pressed={showBuiltIn}
+              >
+                <FileText className="w-3 h-3" />
+                {tc('labels.builtIn')}
+              </Button>
+            </Tip>
+            <Tip label={showCustom ? ti('tips.hideCustom') : ti('tips.showCustom')}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 gap-1.5"
+                style={showCustom ? { backgroundColor: 'color-mix(in oklab, var(--primary) 5%, transparent)', borderColor: 'color-mix(in oklab, var(--primary) 30%, transparent)' } : undefined}
+                onClick={() => setShowCustom(v => !v)}
+                aria-pressed={showCustom}
+              >
+                <ClipboardList className="w-3 h-3" />
+                {ti('custom')}
+              </Button>
+            </Tip>
           </div>
         </div>
 
@@ -224,8 +231,12 @@ export function InterviewTemplatesPanel({
                     <tr key={t.id} className="border-b border-border/50 hover:bg-muted/50 cursor-pointer h-[44px]" onClick={() => setView(t.isBuiltIn ? { mode: 'view', template: t } : { mode: 'edit', template: t })}>
                       <td className="w-full p-[4px_10px] text-[13px] align-middle overflow-hidden" style={{ maxWidth: 0 }}>
                         <div className="min-w-0">
-                          <span className="block font-medium text-foreground text-[13px] truncate">{t.title}</span>
-                          <span className="block text-[11px] text-muted-foreground truncate">{t.description}</span>
+                          <Tip label={t.title} truncated>
+                            <span className="block font-medium text-foreground text-[13px] truncate">{t.title}</span>
+                          </Tip>
+                          <Tip label={t.description} truncated>
+                            <span className="block text-[11px] text-muted-foreground truncate">{t.description}</span>
+                          </Tip>
                         </div>
                       </td>
                       <td className="p-[4px_10px] align-middle whitespace-nowrap">
@@ -234,22 +245,32 @@ export function InterviewTemplatesPanel({
                         </Badge>
                       </td>
                       <td className="p-[4px_10px] text-[13px] text-muted-foreground align-middle whitespace-nowrap tabular-nums">{t.items.length}</td>
-                      <td className="@max-5xl:hidden p-[4px_10px] text-[11px] text-muted-foreground align-middle whitespace-nowrap font-mono overflow-hidden text-ellipsis" style={{ maxWidth: 260 }}>
-                        {t.artifacts[0]?.path ?? '—'}
-                      </td>
+                      <Tip label={t.artifacts[0]?.path} truncated>
+                        <td className="@max-5xl:hidden p-[4px_10px] text-[11px] text-muted-foreground align-middle whitespace-nowrap font-mono overflow-hidden text-ellipsis" style={{ maxWidth: 260 }}>
+                          {t.artifacts[0]?.path ?? '—'}
+                        </td>
+                      </Tip>
                       <td className="p-[4px_10px] align-middle whitespace-nowrap text-right" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
                           {t.isBuiltIn ? (
                             <>
-                              <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => setView({ mode: 'view', template: t })}>{ti('view')}</Button>
-                              <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleDuplicate(t)}>{ti('duplicate')}</Button>
+                              <Tip label={ti('tips.view', { title: t.title })}>
+                                <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => setView({ mode: 'view', template: t })}>{ti('view')}</Button>
+                              </Tip>
+                              <Tip label={ti('tips.duplicate', { title: t.title })} align="end">
+                                <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleDuplicate(t)}>{ti('duplicate')}</Button>
+                              </Tip>
                             </>
                           ) : (
                             <>
-                              <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => setView({ mode: 'edit', template: t })}>
-                                <Edit className="w-3 h-3" />{tc('actions.edit')}
-                              </Button>
-                              <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleDuplicate(t)}>{ti('duplicate')}</Button>
+                              <Tip label={ti('editTitle', { title: t.title })}>
+                                <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => setView({ mode: 'edit', template: t })}>
+                                  <Edit className="w-3 h-3" />{tc('actions.edit')}
+                                </Button>
+                              </Tip>
+                              <Tip label={ti('tips.duplicate', { title: t.title })}>
+                                <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleDuplicate(t)}>{ti('duplicate')}</Button>
+                              </Tip>
                             </>
                           )}
                           {/* The menu was custom-only, so a built-in row would have been left with
@@ -257,7 +278,9 @@ export function InterviewTemplatesPanel({
                           {(!t.isBuiltIn || compactRows) && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="xs" className="px-1"><MoreVertical className="w-3.5 h-3.5" /></Button>
+                                <Tip label={ti('tips.rowMenu', { title: t.title })} align="end">
+                                  <Button variant="ghost" size="xs" className="px-1" aria-label={ti('tips.rowMenu', { title: t.title })}><MoreVertical className="w-3.5 h-3.5" /></Button>
+                                </Tip>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 {compactRows && (
@@ -299,64 +322,78 @@ export function InterviewTemplatesPanel({
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <h3 className="font-semibold truncate">{t.title}</h3>
+                        <Tip label={t.title} truncated>
+                          <h3 className="font-semibold truncate">{t.title}</h3>
+                        </Tip>
                         <Badge variant={t.isBuiltIn ? 'secondary' : 'outline'} className="text-xs">
                           {t.isBuiltIn ? tc('labels.builtIn') : tc('labels.custom')}
                         </Badge>
                       </div>
                       <p className="text-sm text-muted-foreground line-clamp-2">{t.description}</p>
                       {t.artifacts[0] && (
-                        <p className="text-xs text-muted-foreground/80 mt-1 font-mono truncate">
-                          {t.artifacts[0].path}
-                        </p>
+                        <Tip label={t.artifacts[0].path} truncated>
+                          <p className="text-xs text-muted-foreground/80 mt-1 font-mono truncate">
+                            {t.artifacts[0].path}
+                          </p>
+                        </Tip>
                       )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       {t.isBuiltIn ? (
                         <>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setView({ mode: 'view', template: t })}
-                            title={ti('view')}
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDuplicate(t)}
-                            title={ti('duplicate')}
-                          >
-                            <Copy className="w-4 h-4" />
-                          </Button>
+                          <Tip label={ti('tips.view', { title: t.title })}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setView({ mode: 'view', template: t })}
+                              aria-label={ti('tips.view', { title: t.title })}
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                          </Tip>
+                          <Tip label={ti('tips.duplicate', { title: t.title })} align="end">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDuplicate(t)}
+                              aria-label={ti('tips.duplicate', { title: t.title })}
+                            >
+                              <Copy className="w-4 h-4" />
+                            </Button>
+                          </Tip>
                         </>
                       ) : (
                         <>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setView({ mode: 'edit', template: t })}
-                            title={tc('actions.edit')}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDuplicate(t)}
-                            title={ti('duplicate')}
-                          >
-                            <Copy className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setTemplateToDelete(t)}
-                            title={tc('actions.delete')}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          <Tip label={ti('editTitle', { title: t.title })}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setView({ mode: 'edit', template: t })}
+                              aria-label={ti('editTitle', { title: t.title })}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                          </Tip>
+                          <Tip label={ti('tips.duplicate', { title: t.title })}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDuplicate(t)}
+                              aria-label={ti('tips.duplicate', { title: t.title })}
+                            >
+                              <Copy className="w-4 h-4" />
+                            </Button>
+                          </Tip>
+                          <Tip label={ti('tips.delete', { title: t.title })} align="end">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setTemplateToDelete(t)}
+                              aria-label={ti('tips.delete', { title: t.title })}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </Tip>
                         </>
                       )}
                     </div>

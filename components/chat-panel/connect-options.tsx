@@ -17,6 +17,7 @@ import { checkHFCapabilities, loginHF } from '@/lib/auth/hf-auth';
 import { detectDeploymentType } from '@/lib/telemetry/config';
 import { track } from '@/lib/telemetry';
 import { isEmbedded } from '@/lib/web/embedded';
+import { Tip } from '@/components/ui/tooltip';
 
 /**
  * Ways to connect a model, as the first thing in an empty chat and on a stopped task's card.
@@ -95,26 +96,30 @@ function OptionRow({ badge, name, description, action, primary }: {
   );
 }
 
-function RowButton({ onClick, icon: Icon, children, primary, busy }: {
+function RowButton({ onClick, icon: Icon, children, primary, busy, tip }: {
   onClick: () => void;
   icon: React.ComponentType<{ className?: string }>;
   children: React.ReactNode;
   primary?: boolean;
   busy?: boolean;
+  /** What the press does, as its tooltip. */
+  tip: string;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={busy}
-      className={cn(
-        'flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-semibold transition-colors disabled:opacity-60',
-        primary ? 'bg-primary/15 text-primary hover:bg-primary/20' : 'bg-muted text-foreground hover:bg-accent',
-      )}
-    >
-      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icon className="h-3.5 w-3.5" />}
-      {children}
-    </button>
+    <Tip label={busy ? undefined : tip}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={busy}
+        className={cn(
+          'flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-semibold transition-colors disabled:opacity-60',
+          primary ? 'bg-primary/15 text-primary hover:bg-primary/20' : 'bg-muted text-foreground hover:bg-accent',
+        )}
+      >
+        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icon className="h-3.5 w-3.5" />}
+        {children}
+      </button>
+    </Tip>
   );
 }
 
@@ -246,7 +251,7 @@ export function ConnectOptions({ exclude = [], onMoreOptions, rowsOnly = false, 
       name={t('localTitle')}
       description={local ? t('localFound', { name: getProvider(local.provider).name, count: local.count }) : t('localDesc')}
       primary={!!local}
-      action={<RowButton onClick={connectLocal} icon={Monitor} busy={findingLocal} primary={!!local}>{local ? t('use') : t('find')}</RowButton>}
+      action={<RowButton onClick={connectLocal} icon={Monitor} busy={findingLocal} primary={!!local} tip={local ? t('tips.useLocal', { name: getProvider(local.provider).name }) : t('tips.findLocal')}>{local ? t('use') : t('find')}</RowButton>}
     />
   );
 
@@ -261,7 +266,7 @@ export function ConnectOptions({ exclude = [], onMoreOptions, rowsOnly = false, 
             name={<>OpenRouter{!local && <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">{t('recommended')}</span>}</>}
             description={t('openrouterDesc')}
             primary={!local}
-            action={<RowButton onClick={() => signIn('openrouter')} icon={LogIn} primary={!local} busy={!signInReady}>{t('signIn')}</RowButton>}
+            action={<RowButton onClick={() => signIn('openrouter')} icon={LogIn} primary={!local} busy={!signInReady} tip={t('tips.signIn', { name: 'OpenRouter' })}>{t('signIn')}</RowButton>}
           />
         )}
         {offered('pollinations') && (
@@ -269,7 +274,7 @@ export function ConnectOptions({ exclude = [], onMoreOptions, rowsOnly = false, 
             badge="Po"
             name="Pollinations"
             description={t('pollinationsKeyDesc')}
-            action={<RowButton onClick={() => openKeyPage(POLLINATIONS_KEYS_URL)} icon={ExternalLink}>{t('getKey')}</RowButton>}
+            action={<RowButton onClick={() => openKeyPage(POLLINATIONS_KEYS_URL)} icon={ExternalLink} tip={t('tips.getKey', { name: 'Pollinations' })}>{t('getKey')}</RowButton>}
           />
         )}
         {offered('zhipu') && (
@@ -277,7 +282,7 @@ export function ConnectOptions({ exclude = [], onMoreOptions, rowsOnly = false, 
             badge="Z"
             name="Z.ai"
             description={t('zaiDesc')}
-            action={<RowButton onClick={() => openKeyPage(ZAI_KEYS_URL)} icon={ExternalLink}>{t('getKey')}</RowButton>}
+            action={<RowButton onClick={() => openKeyPage(ZAI_KEYS_URL)} icon={ExternalLink} tip={t('tips.getKey', { name: 'Z.ai' })}>{t('getKey')}</RowButton>}
           />
         )}
         {hf && !keepPage && offered('huggingface') && (
@@ -285,7 +290,7 @@ export function ConnectOptions({ exclude = [], onMoreOptions, rowsOnly = false, 
             badge="HF"
             name="HuggingFace"
             description={t('huggingfaceDesc')}
-            action={<RowButton onClick={() => { loginHF(hf.clientId, hf.scopes).catch(() => toast.error(t('signInFailed'))); }} icon={LogIn}>{t('signIn')}</RowButton>}
+            action={<RowButton onClick={() => { loginHF(hf.clientId, hf.scopes).catch(() => toast.error(t('signInFailed'))); }} icon={LogIn} tip={t('tips.signIn', { name: 'HuggingFace' })}>{t('signIn')}</RowButton>}
           />
         )}
         {!local && localRow}
@@ -311,13 +316,15 @@ export function ConnectOptions({ exclude = [], onMoreOptions, rowsOnly = false, 
               className="min-w-0 flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
             />
           </div>
-          <button
-            type="submit"
-            disabled={!key.trim() || checking}
-            className="h-9 shrink-0 rounded-md border border-border bg-card px-3 text-xs font-semibold text-foreground transition-colors hover:bg-accent disabled:opacity-50"
-          >
-            {checking ? t('checking') : t('connect')}
-          </button>
+          <Tip label={checking ? undefined : key.trim() ? t('tips.connectKey') : t('tips.pasteFirst')}>
+            <button
+              type="submit"
+              disabled={!key.trim() || checking}
+              className="h-9 shrink-0 rounded-md border border-border bg-card px-3 text-xs font-semibold text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+            >
+              {checking ? t('checking') : t('connect')}
+            </button>
+          </Tip>
         </div>
         {detected && !problem && !choices && <p className="text-xs text-muted-foreground">{t('detected', { name: detected })}</p>}
         {problem && <p className="text-xs text-destructive" role="alert">{problem}</p>}
@@ -326,14 +333,15 @@ export function ConnectOptions({ exclude = [], onMoreOptions, rowsOnly = false, 
             <p className="text-xs text-muted-foreground">{t('ambiguous')}</p>
             <div className="flex flex-wrap gap-1.5">
               {choices.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => void submitKey(p)}
-                  className="rounded-full border border-border px-2.5 py-1 text-xs text-foreground hover:bg-primary/15 hover:text-primary"
-                >
-                  {getProvider(p).name}
-                </button>
+                <Tip key={p} label={t('tips.connectAs', { name: getProvider(p).name })}>
+                  <button
+                    type="button"
+                    onClick={() => void submitKey(p)}
+                    className="rounded-full border border-border px-2.5 py-1 text-xs text-foreground hover:bg-primary/15 hover:text-primary"
+                  >
+                    {getProvider(p).name}
+                  </button>
+                </Tip>
               ))}
             </div>
           </div>
@@ -341,14 +349,16 @@ export function ConnectOptions({ exclude = [], onMoreOptions, rowsOnly = false, 
       </form>
 
       {onMoreOptions && (
-        <button
-          type="button"
-          onClick={onMoreOptions}
-          className="flex items-center gap-1 self-start text-xs text-muted-foreground hover:text-foreground"
-        >
-          <ChevronDown className="h-3.5 w-3.5" />
-          {t('moreOptions')}
-        </button>
+        <Tip label={t('tips.moreOptions')}>
+          <button
+            type="button"
+            onClick={onMoreOptions}
+            className="flex items-center gap-1 self-start text-xs text-muted-foreground hover:text-foreground"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+            {t('moreOptions')}
+          </button>
+        </Tip>
       )}
       {!rowsOnly && (
         <p className="flex items-start gap-2 text-[11px] leading-relaxed text-muted-foreground">
@@ -379,7 +389,9 @@ export function ConnectChooser({ onMoreOptions, held, onDiscardHeld }: {
           <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span>{t('held')}</span>
             {onDiscardHeld && (
-              <button type="button" onClick={onDiscardHeld} className="underline hover:text-foreground">{t('discard')}</button>
+              <Tip label={t('tips.discardHeld')}>
+                <button type="button" onClick={onDiscardHeld} className="underline hover:text-foreground">{t('discard')}</button>
+              </Tip>
             )}
           </div>
         </div>

@@ -2,13 +2,14 @@ import { MessageSquare } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { cn } from '@/lib/utils';
+import { Tip } from '@/components/ui/tooltip';
 
 /**
  * Unresolved review threads on a deployment.
  *
  * Icon plus count rather than "3 unresolved": this sits beside a deployment's name in a table row and
  * again on a card thumbnail, and in both the width matters more than the word. The icon carries the
- * meaning and the title carries the sentence.
+ * meaning and the tooltip carries the sentence.
  *
  * Geometry follows the sidebar's own count chip (`h-4 min-w-4 px-1`) rather than the Badge component,
  * whose padding and text size make it the widest thing in the row.
@@ -45,12 +46,21 @@ export function ReviewBadge({
   );
 
   if (!onClick) {
-    return <span className={shape} title={label}>{content}</span>;
+    return (
+      <Tip label={label}>
+        <span className={shape}>
+          <span aria-hidden="true" className="contents">{content}</span>
+          <span className="sr-only">{label}</span>
+        </span>
+      </Tip>
+    );
   }
 
   return (
-    <button type="button" onClick={onClick} title={t('opensTab', { label })} className={shape}>
-      {content}
-    </button>
+    <Tip label={t('opensTab', { label })}>
+      <button type="button" onClick={onClick} aria-label={t('opensTab', { label })} className={shape}>
+        {content}
+      </button>
+    </Tip>
   );
 }

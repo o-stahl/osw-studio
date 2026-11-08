@@ -31,6 +31,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tip } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { logger } from '@/lib/utils';
 import { PageShell, PageHeader, PageBody } from '@/components/ui/page-shell';
@@ -525,11 +526,25 @@ export function UsersView({
                             <td className="w-full p-[4px_10px] text-[13px] align-middle overflow-hidden" style={{ maxWidth: 0 }}>
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2 min-w-0">
-                                  <span className="font-medium text-foreground text-[13px] truncate">{user.email}</span>
-                                  {user.isAdmin && <Badge variant="destructive" className="text-[10px] shrink-0">admin</Badge>}
-                                  {!user.active && <Badge variant="outline" className="text-[10px] shrink-0 text-muted-foreground">inactive</Badge>}
+                                  <Tip label={user.email} truncated>
+                                    <span className="font-medium text-foreground text-[13px] truncate">{user.email}</span>
+                                  </Tip>
+                                  {user.isAdmin && (
+                                    <Tip label={t('adminNote')}>
+                                      <Badge variant="destructive" className="text-[10px] shrink-0">admin</Badge>
+                                    </Tip>
+                                  )}
+                                  {!user.active && (
+                                    <Tip label={t('inactiveNote')}>
+                                      <Badge variant="outline" className="text-[10px] shrink-0 text-muted-foreground">inactive</Badge>
+                                    </Tip>
+                                  )}
                                 </div>
-                                {user.displayName && <span className="block text-[11px] text-muted-foreground truncate">{user.displayName}</span>}
+                                {user.displayName && (
+                                  <Tip label={user.displayName} truncated>
+                                    <span className="block text-[11px] text-muted-foreground truncate">{user.displayName}</span>
+                                  </Tip>
+                                )}
                               </div>
                             </td>
                             <td className="@max-5xl:hidden p-[4px_10px] text-[13px] text-muted-foreground align-middle whitespace-nowrap tabular-nums">{user.projectCount}</td>
@@ -539,9 +554,11 @@ export function UsersView({
                             <td className="p-[4px_10px] align-middle whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="xs" className="px-1">
-                                    <MoreHorizontal className="h-4 w-4" />
-                                  </Button>
+                                  <Tip label={t('tips.actionsFor', { name: user.email })} align="end">
+                                    <Button variant="ghost" size="xs" className="px-1" aria-label={t('tips.actionsFor', { name: user.email })}>
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </Tip>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
                                   <DropdownMenuItem onClick={() => handleOpenEdit(user)}>
@@ -656,19 +673,25 @@ export function UsersView({
                   title={tt('instanceAdmin')}
                   description={t('adminNote')}
                 >
-                  <Switch
-                    id="edit-admin"
-                    checked={editForm.isAdmin}
-                    onCheckedChange={(checked) => setEditForm(f => ({ ...f, isAdmin: checked }))}
-                  />
+                  <Tip label={editForm.isAdmin ? t('tips.adminOff') : t('tips.adminOn')} align="end" wrap>
+                    <Switch
+                      id="edit-admin"
+                      aria-label={tt('instanceAdmin')}
+                      checked={editForm.isAdmin}
+                      onCheckedChange={(checked) => setEditForm(f => ({ ...f, isAdmin: checked }))}
+                    />
+                  </Tip>
                 </SettingRow>
 
                 <SettingRow title={tc('labels.active')} description={t('inactiveNote')}>
-                  <Switch
-                    id="edit-active"
-                    checked={editForm.active}
-                    onCheckedChange={(checked) => setEditForm(f => ({ ...f, active: checked }))}
-                  />
+                  <Tip label={editForm.active ? t('tips.deactivate') : t('tips.reactivate')} align="end" wrap>
+                    <Switch
+                      id="edit-active"
+                      aria-label={tc('labels.active')}
+                      checked={editForm.active}
+                      onCheckedChange={(checked) => setEditForm(f => ({ ...f, active: checked }))}
+                    />
+                  </Tip>
                 </SettingRow>
               </SectionBody>
             </Section>
@@ -676,20 +699,22 @@ export function UsersView({
             {!externalIdentity && (
               <Section>
                 <SectionHeader title={tc('labels.password')}>
-                  <button
-                    type="button"
-                    className="text-xs text-primary hover:text-primary/80 transition-colors"
-                    onClick={() => {
-                      const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*';
-                      let pw = '';
-                      const rng = new Uint32Array(16); crypto.getRandomValues(rng);
-                      for (let i = 0; i < 16; i++) pw += chars[rng[i] % chars.length];
-                      setEditForm(f => ({ ...f, password: pw }));
-                      setShowEditPassword(true);
-                    }}
-                  >
-                    {tc('actions.generate')}
-                  </button>
+                  <Tip label={t('tips.generatePassword')} align="end">
+                    <button
+                      type="button"
+                      className="text-xs text-primary hover:text-primary/80 transition-colors"
+                      onClick={() => {
+                        const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*';
+                        let pw = '';
+                        const rng = new Uint32Array(16); crypto.getRandomValues(rng);
+                        for (let i = 0; i < 16; i++) pw += chars[rng[i] % chars.length];
+                        setEditForm(f => ({ ...f, password: pw }));
+                        setShowEditPassword(true);
+                      }}
+                    >
+                      {tc('actions.generate')}
+                    </button>
+                  </Tip>
                 </SectionHeader>
                 <SectionBody>
                   <div className="relative">
@@ -701,13 +726,16 @@ export function UsersView({
                       placeholder={t('leaveBlankPassword')}
                       className="pr-9"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowEditPassword(!showEditPassword)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      {showEditPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
+                    <Tip label={showEditPassword ? t('tips.hidePassword') : t('tips.showPassword')} align="end">
+                      <button
+                        type="button"
+                        onClick={() => setShowEditPassword(!showEditPassword)}
+                        aria-label={showEditPassword ? t('tips.hidePassword') : t('tips.showPassword')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showEditPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </Tip>
                   </div>
                   {editForm.password && editForm.password.length > 0 && editForm.password.length < 8 && (
                     <p className="text-xs text-destructive mt-1.5">{t('minEightChars')}</p>
@@ -726,7 +754,9 @@ export function UsersView({
                   editUser.workspaces.map((ws) => (
                     <div key={ws.id} className="flex items-center gap-2 text-sm">
                       <div className="flex-1 min-w-0">
-                        <span className="block truncate">{ws.name}</span>
+                        <Tip label={ws.name} truncated>
+                          <span className="block truncate">{ws.name}</span>
+                        </Tip>
                         <span className="block text-[11px] text-muted-foreground truncate">
                           {t('workspaceSummary', { projects: ws.max_projects, deployments: ws.max_deployments, created: formatDate(ws.created_at) })}
                         </span>
@@ -740,13 +770,15 @@ export function UsersView({
                           <SelectItem value="owner">{t('roleOwner')}</SelectItem>
                         </SelectContent>
                       </Select>
-                      <Button
-                        variant="ghost" size="sm" className="px-2 text-muted-foreground hover:text-destructive"
-                        onClick={() => handleRevokeAccess(ws.id)}
-                        aria-label={t('removeFrom', { name: ws.name })}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      <Tip label={t('removeFrom', { name: ws.name })} align="end">
+                        <Button
+                          variant="ghost" size="sm" className="px-2 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleRevokeAccess(ws.id)}
+                          aria-label={t('removeFrom', { name: ws.name })}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </Tip>
                     </div>
                   ))
                 ) : (
@@ -778,13 +810,26 @@ export function UsersView({
                         <SelectItem value="owner">{t('roleOwner')}</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Button
-                      size="sm" variant="outline" className="shrink-0"
-                      disabled={!grantWorkspaceId || grantingAccess}
-                      onClick={handleGrantAccess}
+                    <Tip
+                      label={
+                        grantingAccess ? undefined
+                          : !grantWorkspaceId ? t('tips.chooseWorkspace')
+                          : t('tips.grant', {
+                              name: grantableWorkspaces.find(w => w.id === grantWorkspaceId)?.name ?? '',
+                              role: roleLabel(grantRole),
+                            })
+                      }
+                      align="end"
+                      wrapClassName="inline-flex shrink-0"
                     >
-                      {grantingAccess ? '…' : t('add')}
-                    </Button>
+                      <Button
+                        size="sm" variant="outline" className="shrink-0"
+                        disabled={!grantWorkspaceId || grantingAccess}
+                        onClick={handleGrantAccess}
+                      >
+                        {grantingAccess ? '…' : t('add')}
+                      </Button>
+                    </Tip>
                   </div>
                 )}
               </SectionBody>
@@ -820,20 +865,22 @@ export function UsersView({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="create-password">{tc('labels.password')}</Label>
-                <button
-                  type="button"
-                  className="text-xs text-primary hover:text-primary/80 transition-colors"
-                  onClick={() => {
-                    const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*';
-                    let pw = '';
-                    const rng = new Uint32Array(16); crypto.getRandomValues(rng);
-                    for (let i = 0; i < 16; i++) pw += chars[rng[i] % chars.length];
-                    setCreateForm(f => ({ ...f, password: pw }));
-                    setShowPassword(true);
-                  }}
-                >
-                  {tc('actions.generate')}
-                </button>
+                <Tip label={t('tips.generatePassword')} align="end">
+                  <button
+                    type="button"
+                    className="text-xs text-primary hover:text-primary/80 transition-colors"
+                    onClick={() => {
+                      const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*';
+                      let pw = '';
+                      const rng = new Uint32Array(16); crypto.getRandomValues(rng);
+                      for (let i = 0; i < 16; i++) pw += chars[rng[i] % chars.length];
+                      setCreateForm(f => ({ ...f, password: pw }));
+                      setShowPassword(true);
+                    }}
+                  >
+                    {tc('actions.generate')}
+                  </button>
+                </Tip>
               </div>
               <div className="relative">
                 <Input
@@ -844,13 +891,16 @@ export function UsersView({
                   placeholder={t('minEightChars')}
                   className="pr-9"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+                <Tip label={showPassword ? t('tips.hidePassword') : t('tips.showPassword')} align="end">
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? t('tips.hidePassword') : t('tips.showPassword')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </Tip>
               </div>
             </div>
             <div className="space-y-2">

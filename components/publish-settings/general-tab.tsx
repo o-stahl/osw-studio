@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Section, SectionHeader, SectionBody } from '@/components/ui/section';
 import { SettingRow } from '@/components/ui/setting-row';
 import { Globe, AlertTriangle, FolderOpen, Link2, History } from 'lucide-react';
+import { Tip } from '@/components/ui/tooltip';
 import type { SitesMode } from '@/lib/web/site-origin';
 
 interface GeneralTabProps {
@@ -58,11 +59,14 @@ export function GeneralTab({ settings, onChange, projectId, deploymentId, public
         <SectionHeader icon={Globe} title={t('publishingStatus')} />
         <SectionBody className="px-4 py-1">
           <SettingRow title={t('underConstruction')} description={t('underConstructionDesc')}>
-            <Switch
-              id="under-construction"
-              checked={settings.underConstruction}
-              onCheckedChange={(checked) => handleChange('underConstruction', checked)}
-            />
+            <Tip label={settings.underConstruction ? t('tips.underConstructionOff') : t('tips.underConstructionOn')} wrap>
+              <Switch
+                id="under-construction"
+                checked={settings.underConstruction}
+                onCheckedChange={(checked) => handleChange('underConstruction', checked)}
+                aria-label={t('underConstruction')}
+              />
+            </Tip>
           </SettingRow>
         </SectionBody>
       </Section>

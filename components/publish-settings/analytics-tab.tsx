@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select';
 import { Section, SectionHeader, SectionBody } from '@/components/ui/section';
 import { SettingRow } from '@/components/ui/setting-row';
+import { Tip } from '@/components/ui/tooltip';
 import { BarChart3, Shield, Info } from 'lucide-react';
 
 interface AnalyticsTabProps {
@@ -26,6 +27,9 @@ interface AnalyticsTabProps {
 export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
   const t = useTranslations('publishSettings');
   const ts = useTranslations('settings');
+  /** What flipping a labelled switch does now. */
+  const toggleTip = (on: boolean, name: string) =>
+    on ? t('tips.turnOff', { name }) : t('tips.turnOn', { name });
   const handleAnalyticsChange = (
     field: keyof AnalyticsConfig,
     value: any
@@ -48,13 +52,16 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
             title={t('enableAnalytics')}
             description={t('trackPageViews')}
           >
-            <Switch
-              id="analytics-enabled"
-              checked={settings.analytics.enabled}
-              onCheckedChange={(checked) =>
-                handleAnalyticsChange('enabled', checked)
-              }
-            />
+            <Tip label={settings.analytics.enabled ? t('tips.analyticsOff') : t('tips.analyticsOn')} wrap>
+              <Switch
+                id="analytics-enabled"
+                checked={settings.analytics.enabled}
+                onCheckedChange={(checked) =>
+                  handleAnalyticsChange('enabled', checked)
+                }
+                aria-label={t('enableAnalytics')}
+              />
+            </Tip>
           </SettingRow>
         </SectionBody>
       </Section>
@@ -107,16 +114,18 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
                         <Label htmlFor="feature-basic" className="font-medium">{t('basicTracking')}</Label>
                         <p className="text-xs text-muted-foreground">{t('basicTrackingDesc')}</p>
                       </div>
-                      <Switch
-                        id="feature-basic"
-                        checked={settings.analytics.features?.basicTracking !== false}
-                        onCheckedChange={(checked) =>
-                          handleAnalyticsChange('features', {
-                            ...settings.analytics.features,
-                            basicTracking: checked
-                          })
-                        }
-                      />
+                      <Tip label={toggleTip(settings.analytics.features?.basicTracking !== false, t('basicTracking'))} wrap>
+                        <Switch
+                          id="feature-basic"
+                          checked={settings.analytics.features?.basicTracking !== false}
+                          onCheckedChange={(checked) =>
+                            handleAnalyticsChange('features', {
+                              ...settings.analytics.features,
+                              basicTracking: checked
+                            })
+                          }
+                        />
+                      </Tip>
                     </div>
 
                     <div className="flex items-center justify-between p-3 border rounded-lg">
@@ -124,16 +133,18 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
                         <Label htmlFor="feature-heatmaps" className="font-medium">{t('heatmaps')}</Label>
                         <p className="text-xs text-muted-foreground">{t('heatmapsDesc')}</p>
                       </div>
-                      <Switch
-                        id="feature-heatmaps"
-                        checked={settings.analytics.features?.heatmaps === true}
-                        onCheckedChange={(checked) =>
-                          handleAnalyticsChange('features', {
-                            ...settings.analytics.features,
-                            heatmaps: checked
-                          })
-                        }
-                      />
+                      <Tip label={toggleTip(settings.analytics.features?.heatmaps === true, t('heatmaps'))} wrap>
+                        <Switch
+                          id="feature-heatmaps"
+                          checked={settings.analytics.features?.heatmaps === true}
+                          onCheckedChange={(checked) =>
+                            handleAnalyticsChange('features', {
+                              ...settings.analytics.features,
+                              heatmaps: checked
+                            })
+                          }
+                        />
+                      </Tip>
                     </div>
 
                     <div className="flex items-center justify-between p-3 border rounded-lg">
@@ -141,16 +152,18 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
                         <Label htmlFor="feature-sessions" className="font-medium">{t('sessionRecording')}</Label>
                         <p className="text-xs text-muted-foreground">{t('sessionRecordingDesc')}</p>
                       </div>
-                      <Switch
-                        id="feature-sessions"
-                        checked={settings.analytics.features?.sessionRecording === true}
-                        onCheckedChange={(checked) =>
-                          handleAnalyticsChange('features', {
-                            ...settings.analytics.features,
-                            sessionRecording: checked
-                          })
-                        }
-                      />
+                      <Tip label={toggleTip(settings.analytics.features?.sessionRecording === true, t('sessionRecording'))} wrap>
+                        <Switch
+                          id="feature-sessions"
+                          checked={settings.analytics.features?.sessionRecording === true}
+                          onCheckedChange={(checked) =>
+                            handleAnalyticsChange('features', {
+                              ...settings.analytics.features,
+                              sessionRecording: checked
+                            })
+                          }
+                        />
+                      </Tip>
                     </div>
 
                     <div className="flex items-center justify-between p-3 border rounded-lg">
@@ -158,16 +171,18 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
                         <Label htmlFor="feature-performance" className="font-medium">{t('performanceMetrics')}</Label>
                         <p className="text-xs text-muted-foreground">{t('performanceMetricsDesc')}</p>
                       </div>
-                      <Switch
-                        id="feature-performance"
-                        checked={settings.analytics.features?.performanceMetrics === true}
-                        onCheckedChange={(checked) =>
-                          handleAnalyticsChange('features', {
-                            ...settings.analytics.features,
-                            performanceMetrics: checked
-                          })
-                        }
-                      />
+                      <Tip label={toggleTip(settings.analytics.features?.performanceMetrics === true, t('performanceMetrics'))} wrap>
+                        <Switch
+                          id="feature-performance"
+                          checked={settings.analytics.features?.performanceMetrics === true}
+                          onCheckedChange={(checked) =>
+                            handleAnalyticsChange('features', {
+                              ...settings.analytics.features,
+                              performanceMetrics: checked
+                            })
+                          }
+                        />
+                      </Tip>
                     </div>
 
                     <div className="flex items-center justify-between p-3 border rounded-lg">
@@ -175,16 +190,18 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
                         <Label htmlFor="feature-engagement" className="font-medium">{t('engagementTracking')}</Label>
                         <p className="text-xs text-muted-foreground">{t('engagementTrackingDesc')}</p>
                       </div>
-                      <Switch
-                        id="feature-engagement"
-                        checked={settings.analytics.features?.engagementTracking === true}
-                        onCheckedChange={(checked) =>
-                          handleAnalyticsChange('features', {
-                            ...settings.analytics.features,
-                            engagementTracking: checked
-                          })
-                        }
-                      />
+                      <Tip label={toggleTip(settings.analytics.features?.engagementTracking === true, t('engagementTracking'))} wrap>
+                        <Switch
+                          id="feature-engagement"
+                          checked={settings.analytics.features?.engagementTracking === true}
+                          onCheckedChange={(checked) =>
+                            handleAnalyticsChange('features', {
+                              ...settings.analytics.features,
+                              engagementTracking: checked
+                            })
+                          }
+                        />
+                      </Tip>
                     </div>
 
                     <div className="flex items-center justify-between p-3 border rounded-lg">
@@ -192,16 +209,18 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
                         <Label htmlFor="feature-custom" className="font-medium">{t('customEvents')}</Label>
                         <p className="text-xs text-muted-foreground">{t('customEventsDesc')}</p>
                       </div>
-                      <Switch
-                        id="feature-custom"
-                        checked={settings.analytics.features?.customEvents === true}
-                        onCheckedChange={(checked) =>
-                          handleAnalyticsChange('features', {
-                            ...settings.analytics.features,
-                            customEvents: checked
-                          })
-                        }
-                      />
+                      <Tip label={toggleTip(settings.analytics.features?.customEvents === true, t('customEvents'))} wrap>
+                        <Switch
+                          id="feature-custom"
+                          checked={settings.analytics.features?.customEvents === true}
+                          onCheckedChange={(checked) =>
+                            handleAnalyticsChange('features', {
+                              ...settings.analytics.features,
+                              customEvents: checked
+                            })
+                          }
+                        />
+                      </Tip>
                     </div>
                   </div>
 
@@ -368,13 +387,15 @@ export function AnalyticsTab({ settings, onChange }: AnalyticsTabProps) {
                   {t('anonymizeIps')}
                 </p>
               </div>
-              <Switch
-                id="privacy-mode"
-                checked={settings.analytics.privacyMode}
-                onCheckedChange={(checked) =>
-                  handleAnalyticsChange('privacyMode', checked)
-                }
-              />
+              <Tip label={toggleTip(settings.analytics.privacyMode, t('privacyMode'))} wrap>
+                <Switch
+                  id="privacy-mode"
+                  checked={settings.analytics.privacyMode}
+                  onCheckedChange={(checked) =>
+                    handleAnalyticsChange('privacyMode', checked)
+                  }
+                />
+              </Tip>
             </div>
 
             {settings.analytics.privacyMode && (

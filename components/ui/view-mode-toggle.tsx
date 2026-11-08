@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
 import { LayoutGrid, Table2 } from 'lucide-react';
 import { Button } from './button';
+import { Tip } from './tooltip';
 import { configManager } from '@/lib/config/storage';
 
 export type ViewMode = 'table' | 'grid';
@@ -34,24 +36,33 @@ interface ViewModeToggleProps {
 }
 
 export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
+  const t = useTranslations('common.viewMode');
   return (
     <div className="flex border rounded-full">
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => onChange('table')}
-        className={`rounded-r-none rounded-l-full ${value === 'table' ? 'bg-primary/15 text-primary hover:bg-primary/20 hover:text-primary' : ''}`}
-      >
-        <Table2 className="h-4 w-4" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => onChange('grid')}
-        className={`rounded-l-none rounded-r-full ${value === 'grid' ? 'bg-primary/15 text-primary hover:bg-primary/20 hover:text-primary' : ''}`}
-      >
-        <LayoutGrid className="h-4 w-4" />
-      </Button>
+      <Tip label={t('table')}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onChange('table')}
+          aria-label={t('table')}
+          aria-pressed={value === 'table'}
+          className={`rounded-r-none rounded-l-full ${value === 'table' ? 'bg-primary/15 text-primary hover:bg-primary/20 hover:text-primary' : ''}`}
+        >
+          <Table2 className="h-4 w-4" />
+        </Button>
+      </Tip>
+      <Tip label={t('grid')}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onChange('grid')}
+          aria-label={t('grid')}
+          aria-pressed={value === 'grid'}
+          className={`rounded-l-none rounded-r-full ${value === 'grid' ? 'bg-primary/15 text-primary hover:bg-primary/20 hover:text-primary' : ''}`}
+        >
+          <LayoutGrid className="h-4 w-4" />
+        </Button>
+      </Tip>
     </div>
   );
 }

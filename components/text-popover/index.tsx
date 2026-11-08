@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Tip } from '@/components/ui/tooltip';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import type { ApplyResult } from '@/lib/direct-edit/types';
 import type { TextReadResult } from '@/lib/direct-edit/apply-text';
@@ -55,6 +56,7 @@ export function TextPopover({ open, onOpenChange, onRead, onApply, onAskAgent }:
   const ts = useTranslations('styles');
   const tt = useTranslations('tooltips');
   const ttp = useTranslations('textPopover');
+  const tb = useTranslations('backend');
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   /** The text as it was read. Save is inert until the field differs from it. */
@@ -133,9 +135,11 @@ export function TextPopover({ open, onOpenChange, onRead, onApply, onAskAgent }:
             </div>
             <p className="mt-1 text-muted-foreground">{textRefusalMessage(refusal, ttp)}</p>
             {onAskAgent && textRefusalOffersAgent(refusal) && (
-              <Button className="mt-2" size="sm" variant="outline" onClick={askAgent}>
-                {ts('askAgent')}
-              </Button>
+              <Tip label={ts('tips.askAgent')} align="start">
+                <Button className="mt-2" size="sm" variant="outline" onClick={askAgent}>
+                  {ts('askAgent')}
+                </Button>
+              </Tip>
             )}
           </div>
         )}
@@ -178,9 +182,11 @@ export function TextPopover({ open, onOpenChange, onRead, onApply, onAskAgent }:
         <DialogFooter>
           <Button variant="ghost" disabled={busy} onClick={() => onOpenChange(false)}>{tc('actions.cancel')}</Button>
           {original !== null && (
-            <Button data-osw-text-save disabled={busy || !changed} onClick={() => void apply(false)}>
-              {tc('actions.save')}
-            </Button>
+            <Tip label={busy ? undefined : changed ? ttp('tips.save') : tb('tips.noChanges')} wrapClassName="grid">
+              <Button data-osw-text-save disabled={busy || !changed} onClick={() => void apply(false)}>
+                {tc('actions.save')}
+              </Button>
+            </Tip>
           )}
         </DialogFooter>
       </DialogContent>

@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Tip } from '@/components/ui/tooltip';
 import {
   Select,
   SelectContent,
@@ -131,13 +132,17 @@ export function InterviewTemplateEditor({ template, onSaved, onCancel }: Intervi
       <div className="border-b px-6 py-4 shrink-0">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <Button variant="ghost" size="sm" onClick={onCancel}>
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
+            <Tip label={readOnly ? t('tips.back') : t('tips.backUnsaved')} side="bottom">
+              <Button variant="ghost" size="sm" onClick={onCancel} aria-label={readOnly ? t('tips.back') : t('tips.backUnsaved')}>
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+            </Tip>
             <div className="min-w-0">
-              <h1 className="text-xl font-bold truncate">
-                {readOnly ? te('viewTitle') : isCreate ? te('createTitle') : te('editTitle')}
-              </h1>
+              <Tip label={readOnly ? te('viewTitle') : isCreate ? te('createTitle') : te('editTitle')} side="bottom" align="start" truncated>
+                <h1 className="text-xl font-bold truncate">
+                  {readOnly ? te('viewTitle') : isCreate ? te('createTitle') : te('editTitle')}
+                </h1>
+              </Tip>
               <p className="text-sm text-muted-foreground">
                 {readOnly ? te('readOnlySub') : te('editSub')}
               </p>
@@ -228,10 +233,12 @@ export function InterviewTemplateEditor({ template, onSaved, onCancel }: Intervi
             <div className="flex items-center justify-between mb-2">
               <Label>{te('itemsLabel')}</Label>
               {!readOnly && (
-                <Button variant="outline" size="sm" onClick={addItem}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  {te('addItem')}
-                </Button>
+                <Tip label={t('tips.addItem')} align="end">
+                  <Button variant="outline" size="sm" onClick={addItem}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    {te('addItem')}
+                  </Button>
+                </Tip>
               )}
             </div>
             <p className="text-xs text-muted-foreground mb-3">
@@ -243,14 +250,16 @@ export function InterviewTemplateEditor({ template, onSaved, onCancel }: Intervi
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-muted-foreground">{te('itemN', { n: i + 1 })}</span>
                     {!readOnly && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeItem(i)}
-                        title={t('removeItem')}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      <Tip label={t('tips.removeItem', { n: i + 1 })} align="end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeItem(i)}
+                          aria-label={t('tips.removeItem', { n: i + 1 })}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </Tip>
                     )}
                   </div>
                   <div>
@@ -283,14 +292,16 @@ export function InterviewTemplateEditor({ template, onSaved, onCancel }: Intervi
                       {te('criteriaHelp')}
                     </p>
                   </div>
-                  <label className="flex items-center gap-2 cursor-pointer w-fit">
-                    <Checkbox
-                      checked={item.required}
-                      onCheckedChange={(checked) => updateItem(i, { required: checked === true })}
-                      disabled={readOnly}
-                    />
-                    <span className="text-sm">{t('required')}</span>
-                  </label>
+                  <Tip label={t('tips.required')} align="start">
+                    <label className="flex items-center gap-2 cursor-pointer w-fit">
+                      <Checkbox
+                        checked={item.required}
+                        onCheckedChange={(checked) => updateItem(i, { required: checked === true })}
+                        disabled={readOnly}
+                      />
+                      <span className="text-sm">{t('required')}</span>
+                    </label>
+                  </Tip>
                 </div>
               ))}
               {form.items.length === 0 && (

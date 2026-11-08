@@ -63,6 +63,15 @@ describe('buildTally', () => {
     expect(tally.steps[0]).toMatchObject({ done: true, failed: true });
   });
 
+  it('leaves every line alone for a call that never started, as one a stream error cut off or a refused repeat', () => {
+    const cutOff = { toolCallId: 'c2', toolName: 'bash', status: 'failed', error: 'Error: Not run.' };
+    const repeat = { toolCallId: 'c2', toolIndex: 0, toolName: 'bash', status: 'failed', error: 'Loop detected - duplicate tool call #1' };
+    for (const never of [cutOff, repeat]) {
+      const tally = buildTally([running('cat /a.html', 'c1'), finished('c1'), ev('tool_status', never)]);
+      expect(tally.steps.map((s) => [label(s), s.done, s.failed]), never.error).toEqual([['Read a.html', true, false]]);
+    }
+  });
+
   it('takes a failed attempt off the line it merged into, so the line keeps what worked', () => {
     const tally = buildTally([running('sed -i s/a/b/ /a.html', 'c1'), finished('c1'), running('sed -i s/c/d/ /a.html', 'c2'), finished('c2', 'failed')]);
     expect(tally.steps).toEqual([

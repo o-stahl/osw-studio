@@ -16,6 +16,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Input } from '@/components/ui/input';
+import { Tip } from '@/components/ui/tooltip';
 import { TemplateCard } from './template-card';
 import { TemplatePreviewDialog } from '@/components/template-browser/template-preview-dialog';
 import { templatePreviewUnavailableReason } from '@/lib/vfs/templates/preview-project';
@@ -416,10 +417,12 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
         <div className="flex items-center gap-2">
           {/* Type Filter */}
           <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value as TypeFilter)}>
-            <SelectTrigger className="w-[110px] h-9 text-sm">
-              <Filter className="h-4 w-4 mr-1 shrink-0" />
-              <SelectValue />
-            </SelectTrigger>
+            <Tip label={t('tips.typeFilter')} side="bottom" wrap>
+              <SelectTrigger className="w-[110px] h-9 text-sm">
+                <Filter className="h-4 w-4 mr-1 shrink-0" />
+                <SelectValue />
+              </SelectTrigger>
+            </Tip>
             <SelectContent>
               <SelectItem value="all">{t('allTypes')}</SelectItem>
               <SelectItem value="standard">{t('standard')}</SelectItem>
@@ -430,10 +433,12 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
           {/* Sort */}
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2">
-                <ArrowUpDown className="h-4 w-4" />
-                <span className="hidden sm:inline">{tc('labels.sort')}</span>
-              </Button>
+              <Tip label={t('tips.sort')} side="bottom">
+                <Button variant="outline" size="sm" className="gap-2" aria-label={tc('labels.sort')}>
+                  <ArrowUpDown className="h-4 w-4" />
+                  <span className="hidden sm:inline">{tc('labels.sort')}</span>
+                </Button>
+              </Tip>
             </PopoverTrigger>
             <PopoverContent className="w-48" align="end">
               <div className="space-y-2">
@@ -457,10 +462,12 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
           <ViewModeToggle value={viewMode} onChange={setViewMode} />
 
           {/* Import */}
-          <Button onClick={handleImportTemplate} size="sm" className="gap-2">
-            <Upload className="h-4 w-4" />
-            <span>{tc('actions.import')}</span>
-          </Button>
+          <Tip label={t('tips.import')} side="bottom" align="end">
+            <Button onClick={handleImportTemplate} size="sm" className="gap-2">
+              <Upload className="h-4 w-4" />
+              <span>{tc('actions.import')}</span>
+            </Button>
+          </Tip>
         </div>
         </div>
       </div>
@@ -489,10 +496,12 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
                   <p className="text-sm text-muted-foreground mb-4">
                     {t('noCustomYetHint')}
                   </p>
-                  <Button onClick={handleImportTemplate}>
-                    <Upload className="h-4 w-4 mr-2" />
-                    {t('importTemplate')}
-                  </Button>
+                  <Tip label={t('tips.import')}>
+                    <Button onClick={handleImportTemplate}>
+                      <Upload className="h-4 w-4 mr-2" />
+                      {t('importTemplate')}
+                    </Button>
+                  </Tip>
                 </>
               )}
             </div>
@@ -555,8 +564,12 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
                           </td>
                           <td className="w-full p-[4px_10px] text-[13px] align-middle overflow-hidden" style={{ maxWidth: 0 }}>
                             <div className="min-w-0">
-                              <span className="block font-medium text-foreground text-[13px] truncate">{template.name}</span>
-                              <span className="block text-[11px] text-muted-foreground truncate">{template.description}</span>
+                              <Tip label={template.name} truncated>
+                                <span className="block font-medium text-foreground text-[13px] truncate">{template.name}</span>
+                              </Tip>
+                              <Tip label={template.description} truncated>
+                                <span className="block text-[11px] text-muted-foreground truncate">{template.description}</span>
+                              </Tip>
                             </div>
                           </td>
                           <td className="p-[4px_10px] align-middle whitespace-nowrap">
@@ -578,9 +591,13 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
                           </td>
                           <td className="p-[4px_10px] align-middle whitespace-nowrap text-right" onClick={e => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
-                              <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleCreateProject(template)}>{t('use')}</Button>
+                              <Tip label={t('tips.use', { name: template.name })}>
+                                <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleCreateProject(template)}>{t('use')}</Button>
+                              </Tip>
                               {templatePreviewTarget(template) && (
-                                <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handlePreviewTemplate(template)}>{tc('actions.preview')}</Button>
+                                <Tip label={t('previewNamed', { name: template.name })}>
+                                  <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handlePreviewTemplate(template)}>{tc('actions.preview')}</Button>
+                                </Tip>
                               )}
                               {/* The menu is no longer custom-only. Use and Preview hide at
                                   COMPACT_ROW_WIDTH, and a built-in template had no menu to move them
@@ -588,7 +605,9 @@ export function TemplateManager({ onProjectCreated }: TemplateManagerProps) {
                               {(!isBuiltIn || compactRows) && (
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="xs" className="px-1"><MoreVertical className="w-3.5 h-3.5" /></Button>
+                                    <Tip label={t('tips.more', { name: template.name })} align="end">
+                                      <Button variant="ghost" size="xs" className="px-1" aria-label={t('tips.more', { name: template.name })}><MoreVertical className="w-3.5 h-3.5" /></Button>
+                                    </Tip>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end">
                                     {compactRows && (

@@ -44,6 +44,7 @@ import { useNarrowContainer } from '@/lib/hooks/use-narrow-container';
 import { COMPACT_ROW_WIDTH } from '@/lib/constants/layout';
 import { apiFetch } from '@/lib/api/backend-status';
 import type { SitesMode } from '@/lib/web/site-origin';
+import { Tip } from '@/components/ui/tooltip';
 import { useSwapConfirm } from './use-swap-confirm';
 
 type SortOption = 'updated' | 'created' | 'name' | 'published';
@@ -683,6 +684,12 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
   const listScrollRef = useRef<HTMLDivElement | null>(null);
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
   const [compactRows, measureRowsRef] = useNarrowContainer(COMPACT_ROW_WIDTH);
+  const sortLabels: Record<SortOption, string> = {
+    updated: tSort('lastUpdated'),
+    published: tSort('lastPublished'),
+    created: tSort('dateCreated'),
+    name: tc('labels.name'),
+  };
 
   if (!isServerMode) {
     return (
@@ -753,10 +760,12 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
         <PageHeader title={tc('terms.deployments')}>
           {/* New Deployment */}
           <div className="flex items-center shrink-0">
-            <Button onClick={handleOpenCreate} size="sm" className="gap-2">
-              <Plus className="h-4 w-4" />
-              <span>{tc('actions.new')}</span>
-            </Button>
+            <Tip label={t('tips.new')} side="bottom">
+              <Button onClick={handleOpenCreate} size="sm" className="gap-2">
+                <Plus className="h-4 w-4" />
+                <span>{tc('actions.new')}</span>
+              </Button>
+            </Tip>
           </div>
 
           {/* Search */}
@@ -776,10 +785,12 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
             {/* Sort */}
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2">
-                  <ArrowUpDown className="h-4 w-4" />
-                  <span className="hidden sm:inline">{tc('labels.sort')}</span>
-                </Button>
+                <Tip label={t('tips.sortedBy', { order: sortLabels[sortBy] })} side="bottom" align="end">
+                  <Button variant="outline" size="sm" className="gap-2" aria-label={tc('labels.sort')}>
+                    <ArrowUpDown className="h-4 w-4" />
+                    <span className="hidden sm:inline">{tc('labels.sort')}</span>
+                  </Button>
+                </Tip>
               </PopoverTrigger>
               <PopoverContent className="w-48" align="end">
                 <div className="space-y-2">
@@ -789,10 +800,9 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="updated">{tSort('lastUpdated')}</SelectItem>
-                      <SelectItem value="published">{tSort('lastPublished')}</SelectItem>
-                      <SelectItem value="created">{tSort('dateCreated')}</SelectItem>
-                      <SelectItem value="name">{tc('labels.name')}</SelectItem>
+                      {(Object.keys(sortLabels) as SortOption[]).map((option) => (
+                        <SelectItem key={option} value={option}>{sortLabels[option]}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -874,6 +884,16 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
                           const isPublished = deployment.lastPublishedVersion !== null && deployment.lastPublishedVersion !== undefined;
                           const hasPendingChanges = isPublished && Number(deployment.settingsVersion) > Number(deployment.lastPublishedVersion);
                           const publicUrl = deployment.publicUrl || `${typeof window !== 'undefined' ? window.location.origin : ''}/deployments/${deployment.id}`;
+                          const name = deployment.name;
+                          const publishTip = publishingStates[deployment.id]
+                            ? t('tips.publishing')
+                            : deployment.projectMissing
+                              ? t('tips.projectMissing')
+                              : !isPublished
+                                ? t('tips.publish', { name })
+                                : hasPendingChanges
+                                  ? t('tips.publishChanges', { name })
+                                  : t('tips.republish', { name });
                           return (
                             <tr key={deployment.id} className="border-b border-border/50 hover:bg-muted/50 cursor-pointer h-[44px]" onClick={() => handleOpenDetail(deployment)}>
                               <td className="p-[4px_10px] align-middle">
@@ -891,13 +911,17 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
                                 <div className="flex items-center gap-2 min-w-0">
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 min-w-0">
-                                      <span className="font-medium text-foreground text-[13px] truncate">{deployment.name}</span>
+                                      <Tip label={name} truncated>
+                                        <span className="font-medium text-foreground text-[13px] truncate">{deployment.name}</span>
+                                      </Tip>
                                     </div>
-                                    <span className="block text-[11px] text-muted-foreground truncate">
-                                      {deployment.projectMissing
-                                        ? <span className="text-destructive">{t('projectMissing')}</span>
-                                        : deployment.slug || project?.name || ''}
-                                    </span>
+                                    <Tip label={deployment.projectMissing ? t('projectMissing') : deployment.slug || project?.name || ''} truncated>
+                                      <span className="block text-[11px] text-muted-foreground truncate">
+                                        {deployment.projectMissing
+                                          ? <span className="text-destructive">{t('projectMissing')}</span>
+                                          : deployment.slug || project?.name || ''}
+                                      </span>
+                                    </Tip>
                                   </div>
                                   <ReviewBadge
                                     count={deployment.openReviewThreads ?? 0}
@@ -921,31 +945,36 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
                                         view: the row is one big click target, and the URL is the one
                                         part of it a person points at meaning to take the address. The
                                         copy button beside it stays the keyboard-reachable path. */}
-                                    <span
-                                      onClick={(e) => { e.stopPropagation(); copyDeploymentUrl(publicUrl, t('urlCopied')); }}
-                                      title={tc('actions.copyUrl')}
-                                      className="@max-5xl:hidden flex-1 min-w-0 font-mono truncate cursor-copy hover:text-foreground transition-colors"
-                                    >
-                                      {publicUrl.replace(/^https?:\/\//, '')}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => { e.stopPropagation(); copyDeploymentUrl(publicUrl, t('urlCopied')); }}
-                                      className="shrink-0 h-5 w-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted-foreground/15 transition-colors"
-                                      title={tc('actions.copyUrl')}
-                                    >
-                                      <Copy className="w-3 h-3" />
-                                    </button>
-                                    <a
-                                      href={publicUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="shrink-0 h-5 w-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted-foreground/15 transition-colors"
-                                      title={tc('actions.openLink')}
-                                    >
-                                      <ExternalLink className="w-3 h-3" />
-                                    </a>
+                                    <Tip label={t('tips.copyUrl', { name })}>
+                                      <span
+                                        onClick={(e) => { e.stopPropagation(); copyDeploymentUrl(publicUrl, t('urlCopied')); }}
+                                        className="@max-5xl:hidden flex-1 min-w-0 font-mono truncate cursor-copy hover:text-foreground transition-colors"
+                                      >
+                                        {publicUrl.replace(/^https?:\/\//, '')}
+                                      </span>
+                                    </Tip>
+                                    <Tip label={t('tips.copyUrl', { name })}>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); copyDeploymentUrl(publicUrl, t('urlCopied')); }}
+                                        className="shrink-0 h-5 w-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted-foreground/15 transition-colors"
+                                        aria-label={t('tips.copyUrl', { name })}
+                                      >
+                                        <Copy className="w-3 h-3" />
+                                      </button>
+                                    </Tip>
+                                    <Tip label={t('tips.viewLive', { name })}>
+                                      <a
+                                        href={publicUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="shrink-0 h-5 w-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted-foreground/15 transition-colors"
+                                        aria-label={t('tips.viewLive', { name })}
+                                      >
+                                        <ExternalLink className="w-3 h-3" />
+                                      </a>
+                                    </Tip>
                                   </div>
                                 ) : '—'}
                               </td>
@@ -957,22 +986,30 @@ export function DeploymentsView({ onProjectSelect, workspaceId }: DeploymentsVie
                               </td>
                               <td className="p-[4px_10px] align-middle whitespace-nowrap text-right" onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center justify-end gap-1">
-                                  <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleOpenDetail(deployment)}>
-                                    <Settings className="w-3 h-3" />{tc('actions.edit')}
-                                  </Button>
-                                  <Button
-                                    variant={hasPendingChanges ? 'outline' : 'ghost'}
-                                    size="xs"
-                                    className="@max-3xl:hidden"
-                                    onClick={() => handlePublish(deployment.id)}
-                                    disabled={publishingStates[deployment.id]}
-                                  >
-                                    <RefreshCw className={`w-3 h-3 ${publishingStates[deployment.id] ? 'animate-spin' : ''}`} />
-                                    {isPublished ? tc('actions.republish') : tc('actions.publish')}
-                                  </Button>
+                                  <Tip label={t('tips.edit', { name })}>
+                                    <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleOpenDetail(deployment)}>
+                                      <Settings className="w-3 h-3" />{tc('actions.edit')}
+                                    </Button>
+                                  </Tip>
+                                  {/* While it publishes the button is disabled, so the tip's span stands in for it
+                                      and hides with it in a narrow table. */}
+                                  <Tip label={publishTip} wrapClassName="inline-flex @max-3xl:hidden">
+                                    <Button
+                                      variant={hasPendingChanges ? 'outline' : 'ghost'}
+                                      size="xs"
+                                      className="@max-3xl:hidden"
+                                      onClick={() => handlePublish(deployment.id)}
+                                      disabled={publishingStates[deployment.id]}
+                                    >
+                                      <RefreshCw className={`w-3 h-3 ${publishingStates[deployment.id] ? 'animate-spin' : ''}`} />
+                                      {isPublished ? tc('actions.republish') : tc('actions.publish')}
+                                    </Button>
+                                  </Tip>
                                   <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="xs" className="px-1"><MoreVertical className="w-3.5 h-3.5" /></Button>
+                                      <Tip label={t('tips.more', { name })} align="end">
+                                        <Button variant="ghost" size="xs" className="px-1" aria-label={t('tips.more', { name })}><MoreVertical className="w-3.5 h-3.5" /></Button>
+                                      </Tip>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
                                       {/* What the row hides at COMPACT_ROW_WIDTH reappears here. The

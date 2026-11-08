@@ -102,7 +102,7 @@ interface CreateCheckpointOptions {
   pinned?: boolean;
 }
 
-const MAX_UNPINNED_PER_PROJECT = 5;
+export const MAX_UNPINNED_PER_PROJECT = 5;
 
 let cpCounter = 0;
 

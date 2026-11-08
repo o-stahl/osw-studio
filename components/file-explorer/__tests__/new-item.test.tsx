@@ -61,13 +61,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const button = (title: string) => container.querySelector(`button[title="${title}"]`) as HTMLButtonElement;
+const button = (name: string) => container.querySelector(`button[aria-label="${name}"]`) as HTMLButtonElement;
 /** The open dialog. A closed one can stay in the document for its closing animation. */
 const dialog = () => document.querySelector('[role="dialog"][data-state="open"]') as HTMLElement | null;
 const field = () => dialog()!.querySelector('input') as HTMLInputElement;
 
-async function open(title: string) {
-  await act(async () => { button(title).click(); });
+async function open(name: string) {
+  await act(async () => { button(name).click(); });
 }
 
 async function name(text: string) {

@@ -16,6 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tip } from '@/components/ui/tooltip';
 import { ScheduledFunctionEditor } from './scheduled-function-editor';
 import { cn } from '@/lib/utils';
 import type { ScheduledFunctionsDataProvider } from './data-providers';
@@ -228,18 +229,24 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
                   <div className="flex-1 min-w-0 overflow-hidden">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Clock className="h-4 w-4 text-orange-500 shrink-0" />
-                      <span className="font-mono font-medium truncate">{fn.name}</span>
+                      <Tip label={fn.name} truncated>
+                        <span className="font-mono font-medium truncate">{fn.name}</span>
+                      </Tip>
                       <span className="text-xs px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-600 shrink-0">
                         {fn.cronExpression}
                       </span>
                       {!fn.enabled && (
-                        <span className="text-xs bg-muted px-1.5 py-0.5 rounded shrink-0">{t('disabledBadge')}</span>
+                        <Tip label={t('tips.scheduleDisabled')}>
+                          <span className="text-xs bg-muted px-1.5 py-0.5 rounded shrink-0">{t('disabledBadge')}</span>
+                        </Tip>
                       )}
                     </div>
                     {fn.description && (
-                      <p className="text-sm text-muted-foreground mt-1 truncate">
-                        {fn.description}
-                      </p>
+                      <Tip label={fn.description} truncated>
+                        <p className="text-sm text-muted-foreground mt-1 truncate">
+                          {fn.description}
+                        </p>
+                      </Tip>
                     )}
                     <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
                       <span className="shrink-0">
@@ -260,9 +267,11 @@ export function ScheduledFunctionsManager({ deploymentId, dataProvider, workspac
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
+                      <Tip label={t('tips.actionsFor', { name: fn.name })} align="end">
+                        <Button variant="ghost" size="sm" aria-label={t('tips.actionsFor', { name: fn.name })}>
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </Tip>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => setEditingFunction(fn)}>

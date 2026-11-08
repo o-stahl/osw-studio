@@ -8,6 +8,7 @@ import { logger, cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { Tip } from '@/components/ui/tooltip';
 import {
   Popover,
   PopoverContent,
@@ -47,6 +48,7 @@ interface ModelSelectorProps {
 
 export function ModelSelector({ provider, value: _value, onChange, className, hideModelDetails, mode = 'popover', skipGlobalSync, autoFocus }: ModelSelectorProps) {
   const t = useTranslations('models');
+  const tt = useTranslations('templatesUi');
   const currentProvider = provider || configManager.getSelectedProvider();
   const providerConfig = getProvider(currentProvider);
   const onChangeRef = useRef(onChange);
@@ -371,11 +373,17 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
           </p>
         </div>
       </div>
-      <Switch
-        id="reasoning-toggle"
-        checked={reasoningEnabled}
-        onCheckedChange={handleReasoningToggle}
-      />
+      <Tip
+        label={reasoningEnabled ? t('tips.reasoningOff', { model: getModelName(selectedModelData) }) : t('tips.reasoningOn', { model: getModelName(selectedModelData) })}
+        wrap
+        align="end"
+      >
+        <Switch
+          id="reasoning-toggle"
+          checked={reasoningEnabled}
+          onCheckedChange={handleReasoningToggle}
+        />
+      </Tip>
     </div>
   );
 
@@ -395,14 +403,17 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
               autoFocus={autoFocus}
             />
             {searchQuery && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSearchQuery('')}
-                className="h-5 w-5 p-0"
-              >
-                <X className="h-3 w-3" />
-              </Button>
+              <Tip label={tt('clearSearch')} align="end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSearchQuery('')}
+                  className="h-5 w-5 p-0"
+                  aria-label={tt('clearSearch')}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </Tip>
             )}
           </div>
           {/* Model list */}
@@ -428,22 +439,24 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
       <Label htmlFor="model-select">{t('aiModel')}</Label>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            role="combobox"
-            aria-expanded={open}
-            className="justify-between font-normal min-w-[200px]"
-          >
-            {selectedModelData ? (
-              <div className="flex items-center gap-2 truncate">
-                {getModelIcon(selectedModelData)}
-                <span className="truncate">{getModelName(selectedModelData)}</span>
-              </div>
-            ) : (
-              <span className="text-muted-foreground">{t('selectModel')}</span>
-            )}
-            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-          </Button>
+          <Tip label={selectedModelData ? getModelName(selectedModelData) : undefined} align="start" truncated>
+            <Button
+              variant="outline"
+              role="combobox"
+              aria-expanded={open}
+              className="justify-between font-normal min-w-[200px]"
+            >
+              {selectedModelData ? (
+                <div className="flex items-center gap-2 truncate">
+                  {getModelIcon(selectedModelData)}
+                  <span className="truncate">{getModelName(selectedModelData)}</span>
+                </div>
+              ) : (
+                <span className="text-muted-foreground">{t('selectModel')}</span>
+              )}
+              <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            </Button>
+          </Tip>
         </PopoverTrigger>
         <PopoverContent
           className="w-[32rem] p-0"
@@ -460,14 +473,17 @@ export function ModelSelector({ provider, value: _value, onChange, className, hi
               className="h-10 border-0 focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
             />
             {searchQuery && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSearchQuery('')}
-                className="h-5 w-5 p-0"
-              >
-                <X className="h-3 w-3" />
-              </Button>
+              <Tip label={tt('clearSearch')} align="end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSearchQuery('')}
+                  className="h-5 w-5 p-0"
+                  aria-label={tt('clearSearch')}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </Tip>
             )}
           </div>
           <div className="max-h-[400px] min-h-[300px] overflow-y-auto">

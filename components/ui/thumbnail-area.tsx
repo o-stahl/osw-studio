@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Camera, ImageUp, X, Loader2 } from 'lucide-react';
 import { compressImage } from '@/lib/utils/image-compress';
 import { cn } from '@/lib/utils';
+import { Tip } from '@/components/ui/tooltip';
 
 interface ThumbnailAreaProps {
   image: string | undefined;
@@ -88,18 +89,20 @@ export function ThumbnailArea({
             <img src={image} alt={tc('labels.thumbnail')} className="w-full h-full object-cover" />
           </div>
         )}
-        <button
-          type="button"
-          onClick={handleRemove}
-          className={cn(
-            'absolute flex items-center justify-center bg-background/90 text-foreground opacity-0 group-hover:opacity-100 transition-opacity border border-border shadow-sm',
-            compact ? removeBtn : 'h-7 w-7 rounded-md',
-            compact ? 'top-0 right-0 -translate-y-1/3 translate-x-1/3' : 'top-1.5 right-1.5'
-          )}
-          title={tt('removeThumbnail')}
-        >
-          <X className={compact ? removeIcon : 'h-3.5 w-3.5'} />
-        </button>
+        <Tip label={tt('removeThumbnail')}>
+          <button
+            type="button"
+            onClick={handleRemove}
+            className={cn(
+              'absolute flex items-center justify-center bg-background/90 text-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity border border-border shadow-sm',
+              compact ? removeBtn : 'h-7 w-7 rounded-md',
+              compact ? 'top-0 right-0 -translate-y-1/3 translate-x-1/3' : 'top-1.5 right-1.5'
+            )}
+            aria-label={tt('removeThumbnail')}
+          >
+            <X className={compact ? removeIcon : 'h-3.5 w-3.5'} />
+          </button>
+        </Tip>
       </div>
     );
   }
@@ -110,46 +113,54 @@ export function ThumbnailArea({
       {compact ? (
         <div className={cn(boxCls, 'bg-muted flex items-center justify-center shrink-0', isXs ? 'border border-border gap-0.5' : 'gap-1')}>
           {onCapture && (
+            <Tip label={tt('captureScreenshot')}>
+              <button
+                type="button"
+                onClick={handleCapture}
+                disabled={isCapturing}
+                className={cn('flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted-foreground/15 transition-colors', actionBtn)}
+                aria-label={tt('captureScreenshot')}
+              >
+                {isCapturing ? <Loader2 className={cn(actionIcon, 'animate-spin')} /> : <Camera className={actionIcon} />}
+              </button>
+            </Tip>
+          )}
+          <Tip label={tt('uploadImage')}>
             <button
               type="button"
-              onClick={handleCapture}
-              disabled={isCapturing}
+              onClick={handleUploadClick}
               className={cn('flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted-foreground/15 transition-colors', actionBtn)}
-              title={tt('capture')}
+              aria-label={tt('uploadImage')}
             >
-              {isCapturing ? <Loader2 className={cn(actionIcon, 'animate-spin')} /> : <Camera className={actionIcon} />}
+              <ImageUp className={actionIcon} />
             </button>
-          )}
-          <button
-            type="button"
-            onClick={handleUploadClick}
-            className={cn('flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted-foreground/15 transition-colors', actionBtn)}
-            title={tt('uploadImage')}
-          >
-            <ImageUp className={actionIcon} />
-          </button>
+          </Tip>
         </div>
       ) : (
         <div className="w-full aspect-video bg-muted flex items-center justify-center gap-3">
           {onCapture && (
+            <Tip label={tt('captureScreenshot')}>
+              <button
+                type="button"
+                onClick={handleCapture}
+                disabled={isCapturing}
+                className="h-9 w-9 rounded-lg flex items-center justify-center border border-border/60 bg-background/50 text-muted-foreground hover:text-foreground hover:bg-background/80 transition-colors shadow-sm"
+                aria-label={tt('captureScreenshot')}
+              >
+                {isCapturing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+              </button>
+            </Tip>
+          )}
+          <Tip label={tt('uploadImage')}>
             <button
               type="button"
-              onClick={handleCapture}
-              disabled={isCapturing}
+              onClick={handleUploadClick}
               className="h-9 w-9 rounded-lg flex items-center justify-center border border-border/60 bg-background/50 text-muted-foreground hover:text-foreground hover:bg-background/80 transition-colors shadow-sm"
-              title={tt('captureScreenshot')}
+              aria-label={tt('uploadImage')}
             >
-              {isCapturing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+              <ImageUp className="h-4 w-4" />
             </button>
-          )}
-          <button
-            type="button"
-            onClick={handleUploadClick}
-            className="h-9 w-9 rounded-lg flex items-center justify-center border border-border/60 bg-background/50 text-muted-foreground hover:text-foreground hover:bg-background/80 transition-colors shadow-sm"
-            title={tt('uploadImage')}
-          >
-            <ImageUp className="h-4 w-4" />
-          </button>
+          </Tip>
         </div>
       )}
       <input

@@ -190,6 +190,45 @@ function harnessMessage(text: string): string {
   return `<automated_reminder>\n${text}\n</automated_reminder>`;
 }
 
+/** A tool call's command, on one line and short, for naming it back to the model. */
+function commandLabel(toolCall: ToolCall): string {
+  let command = '';
+  try {
+    const args = JSON.parse(toolCall.function?.arguments || '{}');
+    command = typeof args.command === 'string' ? args.command : typeof args.cmd === 'string' ? args.cmd : '';
+  } catch { /* unfinished: no command to name */ }
+  const line = (command.split('\n')[0] || toolCall.function?.name || 'tool call').trim();
+  return line.length > 80 ? `${line.slice(0, 80)}…` : line;
+}
+
+/**
+ * The result for a tool call a stream error cut off: not run, why, and how each call of the same
+ * response before it went, so the model knows what to send again.
+ */
+function unfinishedToolCallResult(
+  toolCalls: ToolCall[],
+  results: ToolResult[],
+  unfinished: ReadonlySet<string>,
+  streamError: ParsedResponse['streamError'],
+): string {
+  const why = [streamError?.status ? String(streamError.status) : '', streamError?.type ?? ''].filter(Boolean).join(', ');
+  const lines = [
+    `Error: Not run. The response stream broke${why ? ` (${why})` : ''} while this command was still arriving, so it was cut off and nothing of it was executed.`,
+  ];
+  const earlier = toolCalls
+    .map((tc) => ({ tc, result: results.find((r) => r.tool_call_id === tc.id) }))
+    .filter((e): e is { tc: ToolCall; result: ToolResult } => !!e.result);
+  if (earlier.length) {
+    lines.push('Earlier calls in this response:');
+    for (const { tc, result } of earlier) {
+      const outcome = unfinished.has(tc.id) ? 'not run (cut off)' : result.success ? 'succeeded' : 'failed';
+      lines.push(`- \`${commandLabel(tc)}\`: ${outcome}`);
+    }
+  }
+  lines.push('Send this command again in full.');
+  return lines.join('\n');
+}
+
 // --- Status result type ---
 
 interface StatusResult {
@@ -494,7 +533,7 @@ export class AgentLoop {
       }
 
       // --- HAS TOOL CALLS: execute them ---
-      const { results: toolResults, terminated } = await this.executeToolCalls(response.toolCalls);
+      const { results: toolResults, terminated } = await this.executeToolCalls(response.toolCalls, response);
 
       // Add assistant + tool results to context. Executed tools may have had
       // side effects, so they must be committed even when terminating —
@@ -594,16 +633,34 @@ export class AgentLoop {
    * `terminated` is true when execution stopped early due to loop detection;
    * `results` always contains everything that actually executed.
    */
-  private async executeToolCalls(toolCalls: ToolCall[]): Promise<{ results: ToolResult[]; terminated: boolean }> {
+  private async executeToolCalls(
+    toolCalls: ToolCall[],
+    response?: Pick<ParsedResponse, 'streamError' | 'unfinishedToolCallIds'>,
+  ): Promise<{ results: ToolResult[]; terminated: boolean }> {
     const results: ToolResult[] = [];
     const execContext: ToolExecContext = {
       agentType: this.config.agentType,
       isReadOnly: this.config.isReadOnly,
       turnId: this.turnCount,
     };
+    const unfinished = new Set(response?.unfinishedToolCallIds ?? []);
 
     for (const toolCall of toolCalls) {
       if (this.stopped) break;
+
+      // Cut off by a stream error while its arguments were arriving: what is there is part of a
+      // command, so it is not run. The result says so, and which calls of this response did run.
+      if (unfinished.has(toolCall.id)) {
+        const content = unfinishedToolCallResult(toolCalls, results, unfinished, response?.streamError);
+        results.push({ tool_call_id: toolCall.id, content, success: false });
+        this.progress.onEvent('tool_status', {
+          toolCallId: toolCall.id,
+          toolName: toolCall.function?.name,
+          status: 'failed',
+          error: content,
+        });
+        continue;
+      }
 
       // Duplicate detection
       const currentSignature = getToolCallSignature(toolCall);
@@ -619,7 +676,9 @@ export class AgentLoop {
         });
 
         this.progress.onEvent('tool_status', {
+          toolCallId: toolCall.id,
           toolIndex: results.length - 1,
+          toolName: toolCall.function?.name,
           status: 'failed',
           error: `Loop detected - duplicate tool call #${this.duplicateToolCallCount}`,
         });

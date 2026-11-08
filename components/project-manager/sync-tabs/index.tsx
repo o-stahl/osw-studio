@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tip } from '@/components/ui/tooltip';
 import { DetailedSyncStatus, SyncableItem } from '@/lib/vfs/sync-types';
 import { ProjectsTab } from './projects-tab';
 import { SkillsTab } from './skills-tab';
@@ -39,6 +40,7 @@ export function SyncTabs({
 }: SyncTabsProps) {
   const tc = useTranslations('common');
   const tn = useTranslations('nav');
+  const t = useTranslations('sync');
   const [activeTab, setActiveTab] = useState<TabType>('projects');
 
   // Selection state per tab
@@ -176,26 +178,34 @@ export function SyncTabs({
           <span>{tc('terms.projects')}</span>
           <span className="text-xs text-muted-foreground">({projectCount})</span>
         </TabsTrigger>
-        <TabsTrigger value="skills" className="flex items-center gap-1.5">
-          <BookOpen className="h-3.5 w-3.5" />
-          <span>{tc('terms.skills')}</span>
-          <span className="text-xs text-muted-foreground">({skillCount})</span>
-        </TabsTrigger>
-        <TabsTrigger value="templates" className="flex items-center gap-1.5">
-          <Layout className="h-3.5 w-3.5" />
-          <span>{tc('terms.templates')}</span>
-          <span className="text-xs text-muted-foreground">({templateCount})</span>
-        </TabsTrigger>
-        <TabsTrigger value="modelTemplates" className="flex items-center gap-1.5">
-          <Cpu className="h-3.5 w-3.5" />
-          <span>{tc('terms.models')}</span>
-          <span className="text-xs text-muted-foreground">({modelTemplateCount})</span>
-        </TabsTrigger>
-        <TabsTrigger value="interviewTemplates" className="flex items-center gap-1.5">
-          <ClipboardList className="h-3.5 w-3.5" />
-          <span>{tn('items.interviews')}</span>
-          <span className="text-xs text-muted-foreground">({interviewTemplateCount})</span>
-        </TabsTrigger>
+        <Tip label={t('tips.skillsTab')} side="bottom" wrap wrapClassName="grid">
+          <TabsTrigger value="skills" className="flex items-center gap-1.5">
+            <BookOpen className="h-3.5 w-3.5" />
+            <span>{tc('terms.skills')}</span>
+            <span className="text-xs text-muted-foreground">({skillCount})</span>
+          </TabsTrigger>
+        </Tip>
+        <Tip label={t('tips.templatesTab')} side="bottom" wrap wrapClassName="grid">
+          <TabsTrigger value="templates" className="flex items-center gap-1.5">
+            <Layout className="h-3.5 w-3.5" />
+            <span>{tc('terms.templates')}</span>
+            <span className="text-xs text-muted-foreground">({templateCount})</span>
+          </TabsTrigger>
+        </Tip>
+        <Tip label={t('tips.modelsTab')} side="bottom" wrap wrapClassName="grid">
+          <TabsTrigger value="modelTemplates" className="flex items-center gap-1.5">
+            <Cpu className="h-3.5 w-3.5" />
+            <span>{tc('terms.models')}</span>
+            <span className="text-xs text-muted-foreground">({modelTemplateCount})</span>
+          </TabsTrigger>
+        </Tip>
+        <Tip label={t('tips.interviewsTab')} side="bottom" wrap wrapClassName="grid">
+          <TabsTrigger value="interviewTemplates" className="flex items-center gap-1.5">
+            <ClipboardList className="h-3.5 w-3.5" />
+            <span>{tn('items.interviews')}</span>
+            <span className="text-xs text-muted-foreground">({interviewTemplateCount})</span>
+          </TabsTrigger>
+        </Tip>
       </TabsList>
 
       <TabsContent value="projects" className="mt-4">

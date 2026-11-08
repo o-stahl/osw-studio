@@ -18,6 +18,7 @@ import { configManager } from '@/lib/config/storage';
 import { OSWS_PROVIDER } from '@/lib/inference/allowance';
 import { checkAllowance } from '@/lib/inference/allowance-status';
 import { useWorkspaceStore } from '@/lib/stores/workspace';
+import { Tip } from '@/components/ui/tooltip';
 
 /**
  * What the chat shows when a provider limit gets in the way: a short note when the run waited, or
@@ -212,17 +213,20 @@ export function StoppedCard({ data, live, onContinue }: {
         <div className="flex flex-col gap-2">
           {/* A free HuggingFace account has no inference credit, so buying some is the direct fix. */}
           {category === 'credit_exhausted' && provider === 'huggingface' && (
-            <a
-              href={HF_BILLING_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex h-8 w-full items-center justify-center gap-2 rounded-md border border-primary/30 bg-primary/15 text-xs font-semibold text-primary transition-colors hover:bg-primary/20"
-            >
-              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-              {t('hfBuyCredits')}
-            </a>
+            <Tip label={t('tips.billing')}>
+              <a
+                href={HF_BILLING_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex h-8 w-full items-center justify-center gap-2 rounded-md border border-primary/30 bg-primary/15 text-xs font-semibold text-primary transition-colors hover:bg-primary/20"
+              >
+                <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                {t('hfBuyCredits')}
+              </a>
+            </Tip>
           )}
           {offerContinue && (
+            <Tip label={movedOn ? undefined : t('tips.continue')}>
             <button
               type="button"
               onClick={() => onContinue()}
@@ -231,6 +235,7 @@ export function StoppedCard({ data, live, onContinue }: {
               <Play className="h-3.5 w-3.5" aria-hidden="true" />
               {movedOn ? t('continueWithModel', { model: nameOf(working.provider, working.model) }) : t('continue')}
             </button>
+            </Tip>
           )}
           {data.suggestion && !movedOn && (
             <button
@@ -256,20 +261,23 @@ export function StoppedCard({ data, live, onContinue }: {
                 {t('yourModel', { model: nameOf(first.provider, first.model), provider: providerName(first.provider) })}
               </p>
               {others.slice(0, 2).map((alt) => (
-                <button
-                  key={`${alt.provider}:${alt.model}`}
-                  type="button"
-                  onClick={() => onContinue(alt)}
-                  className="h-8 w-full rounded-md border border-border bg-muted text-xs font-semibold text-foreground transition-colors hover:bg-accent"
-                >
-                  {t('continueWith', { provider: providerName(alt.provider) })}
-                </button>
+                <Tip key={`${alt.provider}:${alt.model}`} label={t('tips.continueOn', { model: nameOf(alt.provider, alt.model) })}>
+                  <button
+                    type="button"
+                    onClick={() => onContinue(alt)}
+                    className="h-8 w-full rounded-md border border-border bg-muted text-xs font-semibold text-foreground transition-colors hover:bg-accent"
+                  >
+                    {t('continueWith', { provider: providerName(alt.provider) })}
+                  </button>
+                </Tip>
               ))}
             </>
           )}
-          <button type="button" onClick={openModelPicker} className="self-start text-xs text-primary underline-offset-2 hover:underline">
-            {t('chooseAnother')}
-          </button>
+          <Tip label={t('tips.chooseAnother')}>
+            <button type="button" onClick={openModelPicker} className="self-start text-xs text-primary underline-offset-2 hover:underline">
+              {t('chooseAnother')}
+            </button>
+          </Tip>
           {(spent || allowance) && !first && !data.suggestion && (
             <ContinueOnConnect exclude={provider} onContinue={onContinue} />
           )}

@@ -20,6 +20,7 @@ import { demoAccountUrl } from '@/lib/demo';
 import { checkHFCapabilities, loginHF } from '@/lib/auth/hf-auth';
 import { HFSpaceTarget } from './hf-space-target';
 import { requestDeploymentFor } from '@/lib/deployments/pending-create';
+import { Tip } from '@/components/ui/tooltip';
 
 interface DeployDialogProps {
   open: boolean;
@@ -126,9 +127,11 @@ export function DeployDialog({ open, projectId, onOpenChange }: DeployDialogProp
                 <span className="text-xs text-muted-foreground">
                   {t('connectHfToDeploy')}
                 </span>
-                <Button size="sm" variant="outline" onClick={connectHuggingFace}>
-                  {isHFSpace ? tChat('signInWithHF') : t('connectInSettings')}
-                </Button>
+                <Tip label={isHFSpace ? t('tips.signIn') : t('tips.connect')}>
+                  <Button size="sm" variant="outline" onClick={connectHuggingFace}>
+                    {isHFSpace ? tChat('signInWithHF') : t('connectInSettings')}
+                  </Button>
+                </Tip>
               </div>
             }
           />
@@ -146,9 +149,11 @@ export function DeployDialog({ open, projectId, onOpenChange }: DeployDialogProp
               demoSignInUrl ? (
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs text-muted-foreground">{tDemo('publishHere')}</span>
-                  <Button asChild size="sm" variant="outline">
-                    <a href={demoSignInUrl} target="_blank" rel="noopener">{tDemo('signIn')}</a>
-                  </Button>
+                  <Tip label={t('tips.newTab')}>
+                    <Button asChild size="sm" variant="outline">
+                      <a href={demoSignInUrl} target="_blank" rel="noopener">{tDemo('signIn')}</a>
+                    </Button>
+                  </Tip>
                 </div>
               ) : (
                 <span className="text-xs text-muted-foreground">{t('availableInServerMode')}</span>
@@ -181,7 +186,9 @@ export function DeployDialog({ open, projectId, onOpenChange }: DeployDialogProp
               <Button variant="outline" onClick={close}>
                 {tc('actions.cancel')}
               </Button>
-              <Button onClick={goToDeployments}>{t('createDeployment')}</Button>
+              <Tip label={t('tips.createDeployment')}>
+                <Button onClick={goToDeployments}>{t('createDeployment')}</Button>
+              </Tip>
             </DialogFooter>
           </>
         ) : target === 'zip' ? (
@@ -193,13 +200,15 @@ export function DeployDialog({ open, projectId, onOpenChange }: DeployDialogProp
               <Button variant="outline" onClick={close}>
                 {tc('actions.cancel')}
               </Button>
-              <Button onClick={handleDownloadZip} disabled={zipExporting}>
-                {zipExporting ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('exporting')}</>
-                ) : (
-                  t('downloadZipButton')
-                )}
-              </Button>
+              <Tip label={zipExporting ? undefined : t('tips.zip')}>
+                <Button onClick={handleDownloadZip} disabled={zipExporting}>
+                  {zipExporting ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('exporting')}</>
+                  ) : (
+                    t('downloadZipButton')
+                  )}
+                </Button>
+              </Tip>
             </DialogFooter>
           </>
         ) : (
@@ -251,16 +260,18 @@ function TargetRow({
           {icon}
           {title}
         </div>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onLearnMore();
-          }}
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-        >
-          {t('learnMore')} <ExternalLink className="h-3 w-3" />
-        </button>
+        <Tip label={t('tips.learnMore')}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onLearnMore();
+            }}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            {t('learnMore')} <ExternalLink className="h-3 w-3" />
+          </button>
+        </Tip>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
       {!enabled && <div className="mt-2">{disabledContent}</div>}

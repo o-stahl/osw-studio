@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Tip } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { ArrowLeft, Save, FileText } from 'lucide-react';
 
@@ -111,9 +112,11 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
       <div className="border-b px-6 py-4 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" onClick={onCancel}>
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
+            <Tip label={t('tips.close')} side="bottom">
+              <Button variant="ghost" size="sm" onClick={onCancel} aria-label={t('tips.close')}>
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+            </Tip>
             <div>
               <h1 className="text-2xl font-bold">
                 {mode === 'create' ? te('createTitle') : te('editTitle')}
@@ -139,26 +142,30 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
       <div className="flex-1 flex flex-col overflow-auto">
         <div className="border-b px-6 shrink-0">
           <div className="flex gap-2">
-            <button
-              onClick={() => setActiveTab('form')}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'form'
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {te('formEditor')}
-            </button>
-            <button
-              onClick={() => setActiveTab('raw')}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'raw'
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {te('rawMarkdown')}
-            </button>
+            <Tip label={t('tips.formEditor')}>
+              <button
+                onClick={() => setActiveTab('form')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'form'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {te('formEditor')}
+              </button>
+            </Tip>
+            <Tip label={te('rawHelp')}>
+              <button
+                onClick={() => setActiveTab('raw')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'raw'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {te('rawMarkdown')}
+              </button>
+            </Tip>
           </div>
         </div>
 

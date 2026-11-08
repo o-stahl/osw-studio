@@ -671,6 +671,24 @@ describe('the run result and its checkpoint', () => {
     }));
   });
 
+  it('counts tools, turns and provider errors per run, not across runs of one instance', async () => {
+    const o = new MultiAgentOrchestrator('test-p1', 'orchestrator', () => {}, { assignment: assign('osws/agent', 'osws') });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    h.loopBehavior.run = async (deps: any) => {
+      await deps.config.onProviderError(apiError('midstream_error', { status: 504, provider: 'osws', model: 'osws/agent' }));
+      return { ...failed, toolCount: 5, turnCount: 4 };
+    };
+    expect(await o.execute('build')).toMatchObject({ toolCount: 5, turnCount: 4, apiErrorCount: 1 });
+
+    // The instance kept after the failure runs the next message.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    h.loopBehavior.run = async (deps: any) => {
+      await deps.config.onProviderError(apiError('midstream_error', { status: 504, provider: 'osws', model: 'osws/agent' }));
+      return { ...failed, toolCount: 1, turnCount: 1 };
+    };
+    expect(await o.execute('continue')).toMatchObject({ toolCount: 1, turnCount: 1, apiErrorCount: 1 });
+  });
+
   it('labels the checkpoint after a failed run as a failure', async () => {
     h.loopBehavior.run = async () => { throw new Error('x'); };
     await new MultiAgentOrchestrator('test-p1').execute('build a site');

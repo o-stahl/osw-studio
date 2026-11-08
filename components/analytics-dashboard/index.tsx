@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { HeatmapViewer } from '@/components/heatmap-viewer';
 import { SessionViewer } from '@/components/session-viewer';
 import { EngagementMetrics } from '@/components/engagement-metrics';
+import { Tip } from '@/components/ui/tooltip';
 import { BarChart3, MousePointerClick, Users, Activity, Download, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -215,14 +216,18 @@ export function AnalyticsDashboard({ deployment, isOpen, onClose }: AnalyticsDas
             <DialogDescription>{deployment.name || deployment.id}</DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleExport} disabled={notPublished}>
-              <Download className="h-4 w-4 mr-2" />
-              {tc('actions.export')}
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleClearData} disabled={notPublished}>
-              <Trash2 className="h-4 w-4 mr-2" />
-              {t('clearData')}
-            </Button>
+            <Tip label={notPublished ? t('tips.notPublished') : t('tips.export')} side="bottom">
+              <Button variant="outline" size="sm" onClick={handleExport} disabled={notPublished}>
+                <Download className="h-4 w-4 mr-2" />
+                {tc('actions.export')}
+              </Button>
+            </Tip>
+            <Tip label={notPublished ? t('tips.notPublished') : t('tips.clear')} side="bottom">
+              <Button variant="outline" size="sm" onClick={handleClearData} disabled={notPublished}>
+                <Trash2 className="h-4 w-4 mr-2" />
+                {t('clearData')}
+              </Button>
+            </Tip>
           </div>
         </div>
 
@@ -246,22 +251,30 @@ export function AnalyticsDashboard({ deployment, isOpen, onClose }: AnalyticsDas
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
           <div className="border-b px-6">
             <TabsList>
-              <TabsTrigger value="overview">
-                <BarChart3 className="h-4 w-4 mr-2" />
-                {t('overview')}
-              </TabsTrigger>
-              <TabsTrigger value="heatmaps">
-                <MousePointerClick className="h-4 w-4 mr-2" />
-                {t('heatmaps')}
-              </TabsTrigger>
-              <TabsTrigger value="sessions">
-                <Users className="h-4 w-4 mr-2" />
-                {t('sessions')}
-              </TabsTrigger>
-              <TabsTrigger value="engagement">
-                <Activity className="h-4 w-4 mr-2" />
-                {t('engagement')}
-              </TabsTrigger>
+              <Tip label={t('tips.overview')} side="bottom" wrap>
+                <TabsTrigger value="overview">
+                  <BarChart3 className="h-4 w-4 mr-2" />
+                  {t('overview')}
+                </TabsTrigger>
+              </Tip>
+              <Tip label={t('tips.heatmaps')} side="bottom" wrap>
+                <TabsTrigger value="heatmaps">
+                  <MousePointerClick className="h-4 w-4 mr-2" />
+                  {t('heatmaps')}
+                </TabsTrigger>
+              </Tip>
+              <Tip label={t('tips.sessions')} side="bottom" wrap>
+                <TabsTrigger value="sessions">
+                  <Users className="h-4 w-4 mr-2" />
+                  {t('sessions')}
+                </TabsTrigger>
+              </Tip>
+              <Tip label={t('tips.engagement')} side="bottom" wrap>
+                <TabsTrigger value="engagement">
+                  <Activity className="h-4 w-4 mr-2" />
+                  {t('engagement')}
+                </TabsTrigger>
+              </Tip>
             </TabsList>
           </div>
 
@@ -309,7 +322,9 @@ export function AnalyticsDashboard({ deployment, isOpen, onClose }: AnalyticsDas
                     <div className="space-y-2">
                       {overview.topPages.map((page) => (
                         <div key={page.page} className="flex justify-between items-center">
-                          <span className="text-sm truncate flex-1">{page.page}</span>
+                          <Tip label={page.page} align="start" truncated>
+                            <span className="text-sm truncate flex-1">{page.page}</span>
+                          </Tip>
                           <span className="text-sm font-medium ml-4">{number(page.views)}</span>
                         </div>
                       ))}
@@ -321,9 +336,11 @@ export function AnalyticsDashboard({ deployment, isOpen, onClose }: AnalyticsDas
                     <div className="space-y-2">
                       {overview.topReferrers.map((referrer) => (
                         <div key={referrer.referrer} className="flex justify-between items-center">
-                          <span className="text-sm truncate flex-1">
-                            {referrer.referrer || t('directReferrer')}
-                          </span>
+                          <Tip label={referrer.referrer || t('directReferrer')} align="start" truncated>
+                            <span className="text-sm truncate flex-1">
+                              {referrer.referrer || t('directReferrer')}
+                            </span>
+                          </Tip>
                           <span className="text-sm font-medium ml-4">{number(referrer.count)}</span>
                         </div>
                       ))}

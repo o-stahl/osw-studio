@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Section, SectionHeader, SectionBody } from '@/components/ui/section';
+import { Tip } from '@/components/ui/tooltip';
 import { Plus, Edit, Trash2, Link2 } from 'lucide-react';
 
 interface CdnTabProps {
@@ -146,7 +147,9 @@ export function CdnTab({ settings, onChange }: CdnTabProps) {
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-2">
-                  <h4 className="font-semibold truncate">{cdn.name}</h4>
+                  <Tip label={cdn.name} truncated>
+                    <h4 className="font-semibold truncate">{cdn.name}</h4>
+                  </Tip>
                   <Badge variant={cdn.type === 'css' ? 'default' : 'secondary'}>
                     {cdn.type.toUpperCase()}
                   </Badge>
@@ -155,27 +158,38 @@ export function CdnTab({ settings, onChange }: CdnTabProps) {
                     <Badge variant="outline">{cdn.crossorigin}</Badge>
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground truncate">{cdn.url}</p>
+                <Tip label={cdn.url} align="start" truncated>
+                  <p className="text-sm text-muted-foreground truncate">{cdn.url}</p>
+                </Tip>
               </div>
               <div className="flex items-center gap-2">
-                <Switch
-                  checked={cdn.enabled}
-                  onCheckedChange={() => handleToggleCdn(cdn.id)}
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleEditCdn(cdn)}
-                >
-                  <Edit className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDeleteCdn(cdn.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <Tip label={cdn.enabled ? t('tips.leaveOut', { name: cdn.name }) : t('tips.include', { name: cdn.name })} wrap>
+                  <Switch
+                    checked={cdn.enabled}
+                    onCheckedChange={() => handleToggleCdn(cdn.id)}
+                    aria-label={cdn.name}
+                  />
+                </Tip>
+                <Tip label={t('tips.edit', { name: cdn.name })}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleEditCdn(cdn)}
+                    aria-label={t('tips.edit', { name: cdn.name })}
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                </Tip>
+                <Tip label={t('tips.remove', { name: cdn.name })}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDeleteCdn(cdn.id)}
+                    aria-label={t('tips.remove', { name: cdn.name })}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </Tip>
               </div>
             </div>
           ))}

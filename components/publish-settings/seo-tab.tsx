@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Section, SectionHeader, SectionBody } from '@/components/ui/section';
+import { Tip } from '@/components/ui/tooltip';
 import { ImageIcon, Search, X } from 'lucide-react';
 
 interface SeoTabProps {
@@ -138,12 +139,15 @@ export function SeoTab({ settings, onChange }: SeoTabProps) {
               {settings.seo.keywords.map((keyword) => (
                 <Badge key={keyword} variant="secondary" className="gap-1">
                   {keyword}
-                  <button
-                    onClick={() => handleRemoveKeyword(keyword)}
-                    className="ml-1 hover:text-destructive"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
+                  <Tip label={t('tips.remove', { name: keyword })}>
+                    <button
+                      onClick={() => handleRemoveKeyword(keyword)}
+                      className="ml-1 hover:text-destructive"
+                      aria-label={t('tips.remove', { name: keyword })}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Tip>
                 </Badge>
               ))}
             </div>

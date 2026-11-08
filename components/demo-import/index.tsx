@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
+import { Tip } from '@/components/ui/tooltip';
 import { apiFetch } from '@/lib/api/backend-status';
 import { hostedDemoOrigin } from '@/lib/demo';
 import { openDemoBridge, type DemoBridge, type DemoProjectList } from '@/lib/demo-bridge/client';
@@ -320,7 +321,9 @@ export function DemoImportDialog({
                       aria-label={project.name}
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm">{project.name}</span>
+                      <Tip label={project.name} align="start" truncated>
+                        <span className="block truncate text-sm">{project.name}</span>
+                      </Tip>
                       <span className="block text-xs text-muted-foreground">
                         {t('projectMeta', { files: project.fileCount, when: when.recent(new Date(project.updatedAt)) })}
                       </span>
@@ -348,33 +351,44 @@ export function DemoImportDialog({
         <DialogFooter>
           {stage.name === 'choose' && (
             <>
-              <Button variant="outline" onClick={mode === 'offer' ? decline : () => finish(false)}>
-                {mode === 'offer' ? t('noThanks') : t('cancel')}
-              </Button>
-              <Button variant="accent" onClick={importChosen} disabled={selected.size === 0 || tooMany}>
-                {t('import', { count: selected.size })}
-              </Button>
+              <Tip label={mode === 'offer' ? t('tips.noThanks') : undefined}>
+                <Button variant="outline" onClick={mode === 'offer' ? decline : () => finish(false)}>
+                  {mode === 'offer' ? t('noThanks') : t('cancel')}
+                </Button>
+              </Tip>
+              <Tip
+                label={selected.size === 0 ? t('tips.pickFirst') : tooMany ? (remaining ? t('room', { count: remaining }) : t('noRoom')) : undefined}
+                wrapClassName="grid"
+              >
+                <Button variant="accent" onClick={importChosen} disabled={selected.size === 0 || tooMany}>
+                  {t('import', { count: selected.size })}
+                </Button>
+              </Tip>
             </>
           )}
           {stage.name === 'done' && stage.imported.length > 0 && (
             <>
-              <Button variant="outline" onClick={() => removeFromDemo(stage.imported)}>{t('remove')}</Button>
+              <Tip label={t('tips.remove')}>
+                <Button variant="outline" onClick={() => removeFromDemo(stage.imported)}>{t('remove')}</Button>
+              </Tip>
               <Button variant="accent" onClick={() => finish(true)}>{t('keep')}</Button>
             </>
           )}
           {stage.name === 'unreachable' && (
             <>
               <Button variant="outline" onClick={acknowledge}>{t('close')}</Button>
-              <Button variant="accent" asChild>
-                <a
-                  href={demoOrigin}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => { if (mode === 'offer') void markHandled(workspaceId); }}
-                >
-                  {t('openDemo')}
-                </a>
-              </Button>
+              <Tip label={t('tips.openDemo')}>
+                <Button variant="accent" asChild>
+                  <a
+                    href={demoOrigin}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => { if (mode === 'offer') void markHandled(workspaceId); }}
+                  >
+                    {t('openDemo')}
+                  </a>
+                </Button>
+              </Tip>
             </>
           )}
           {((stage.name === 'done' && stage.imported.length === 0) || ['empty', 'allHere', 'error', 'notAdded', 'notRemoved'].includes(stage.name)) && (

@@ -52,6 +52,7 @@ import {
 } from '@/lib/vfs/suggestion-path-rules';
 import { useWorkspaceStore } from '@/lib/stores/workspace';
 import { REPO_URL } from '@/lib/constants/links';
+import { Tip } from '@/components/ui/tooltip';
 
 interface ProjectSettingsPanelProps {
   project: Project;
@@ -345,11 +346,13 @@ function GeneralTab({ project, onProjectUpdate }: { project: Project; onProjectU
       <div className="space-y-2">
         <Label htmlFor="runtime">{tc('labels.runtime')}</Label>
         <Select value={project.settings?.runtime || 'handlebars'} onValueChange={handleRuntimeChange}>
-          <SelectTrigger id="runtime" className="w-full">
-            <div className="truncate flex-1 text-left">
-              {getProjectRuntimes().find(r => r.value === (project.settings?.runtime || 'handlebars'))?.label}
-            </div>
-          </SelectTrigger>
+          <Tip label={runtimeDescriptions[project.settings?.runtime || 'handlebars']} wrap wrapClassName="flex w-full">
+            <SelectTrigger id="runtime" className="w-full">
+              <div className="truncate flex-1 text-left">
+                {getProjectRuntimes().find(r => r.value === (project.settings?.runtime || 'handlebars'))?.label}
+              </div>
+            </SelectTrigger>
+          </Tip>
           <SelectContent>
             {getProjectRuntimes().map(rt => (
               <SelectItem key={rt.value} value={rt.value}>
@@ -594,26 +597,32 @@ function PromptSuggestionsEditor({
                 aria-label={t('ariaSuggestionText', { n: index + 1 })}
                 className="flex-1"
               />
-              <Button
-                variant="ghost" size="sm" aria-label={t('moveUp')}
-                disabled={index === 0}
-                onClick={() => move(index, -1)}
-              >
-                <ArrowUp className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost" size="sm" aria-label={t('moveDown')}
-                disabled={index === draft.length - 1}
-                onClick={() => move(index, 1)}
-              >
-                <ArrowDown className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost" size="sm" aria-label={t('removeSuggestion')}
-                onClick={() => setDraft(rows => rows.filter(row => row.id !== suggestion.id))}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
+              <Tip label={t('moveUp')}>
+                <Button
+                  variant="ghost" size="sm" aria-label={t('moveUp')}
+                  disabled={index === 0}
+                  onClick={() => move(index, -1)}
+                >
+                  <ArrowUp className="h-3.5 w-3.5" />
+                </Button>
+              </Tip>
+              <Tip label={t('moveDown')}>
+                <Button
+                  variant="ghost" size="sm" aria-label={t('moveDown')}
+                  disabled={index === draft.length - 1}
+                  onClick={() => move(index, 1)}
+                >
+                  <ArrowDown className="h-3.5 w-3.5" />
+                </Button>
+              </Tip>
+              <Tip label={t('removeSuggestion')}>
+                <Button
+                  variant="ghost" size="sm" aria-label={t('removeSuggestion')}
+                  onClick={() => setDraft(rows => rows.filter(row => row.id !== suggestion.id))}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </Tip>
             </div>
             <textarea
               value={suggestion.prompt}
@@ -630,9 +639,9 @@ function PromptSuggestionsEditor({
                   {t('onlyCertainPages')}
                 </Label>
                 <InfoTip>{t('scopeHelp')}</InfoTip>
+                <Tip label={suggestion.paths !== undefined ? t('tips.everyPage') : t('tips.somePages')} wrap wrapClassName="ml-auto inline-flex">
                 <Switch
                   id={`scoped-${suggestion.id}`}
-                  className="ml-auto"
                   checked={suggestion.paths !== undefined}
                   onCheckedChange={(on) => {
                     // Turning it off keeps the rows rather than clearing them, so a mis-click is
@@ -646,6 +655,7 @@ function PromptSuggestionsEditor({
                     setRules(suggestion.id, kept.length > 0 ? kept : [blankRule()]);
                   }}
                 />
+                </Tip>
               </div>
 
               {suggestion.paths !== undefined && (
@@ -663,13 +673,15 @@ function PromptSuggestionsEditor({
                           })
                         }
                       >
-                        <SelectTrigger
-                          size="sm"
-                          className="w-[112px] shrink-0"
-                          aria-label={t('ariaRuleType', { n: index + 1, rule: ruleIndex + 1 })}
-                        >
-                          <span className="text-xs">{ruleKindLabels[row.kind]}</span>
-                        </SelectTrigger>
+                        <Tip label={t('tips.ruleKind')} wrap wrapClassName="inline-flex shrink-0">
+                          <SelectTrigger
+                            size="sm"
+                            className="w-[112px] shrink-0"
+                            aria-label={t('ariaRuleType', { n: index + 1, rule: ruleIndex + 1 })}
+                          >
+                            <span className="text-xs">{ruleKindLabels[row.kind]}</span>
+                          </SelectTrigger>
+                        </Tip>
                         <SelectContent>
                           <SelectItem value="page" disabled={pagePaths.length === 0}>{t('page')}</SelectItem>
                           <SelectItem value="directory" disabled={directories.length === 0}>{t('directory')}</SelectItem>
@@ -690,6 +702,7 @@ function PromptSuggestionsEditor({
                           value={row.value}
                           onValueChange={(value) => editRule(suggestion.id, row.id, { value })}
                         >
+                          <Tip label={row.value || (row.kind === 'page' ? t('choosePage') : t('chooseDirectory'))} wrap wrapClassName="flex flex-1 min-w-0">
                           <SelectTrigger
                             size="sm"
                             className="flex-1 min-w-0"
@@ -703,6 +716,7 @@ function PromptSuggestionsEditor({
                               <span className="text-xs font-mono truncate">{row.value}</span>
                             )}
                           </SelectTrigger>
+                          </Tip>
                           <SelectContent>
                             {withCurrent(row.kind === 'page' ? pagePaths : directories, row.value).map((option) => (
                               <SelectItem key={option} value={option} className="text-xs font-mono">
@@ -713,15 +727,17 @@ function PromptSuggestionsEditor({
                         </Select>
                       )}
 
-                      <Button
-                        variant="ghost" size="sm"
-                        aria-label={t('ariaRemoveRule', { n: index + 1, rule: ruleIndex + 1 })}
-                        onClick={() =>
-                          setRules(suggestion.id, (ruleRows[suggestion.id] ?? []).filter((r) => r.id !== row.id))
-                        }
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      <Tip label={t('tips.removeRule')}>
+                        <Button
+                          variant="ghost" size="sm"
+                          aria-label={t('ariaRemoveRule', { n: index + 1, rule: ruleIndex + 1 })}
+                          onClick={() =>
+                            setRules(suggestion.id, (ruleRows[suggestion.id] ?? []).filter((r) => r.id !== row.id))
+                          }
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </Tip>
                     </div>
                   ))}
 
@@ -764,9 +780,11 @@ function PromptSuggestionsEditor({
           <Plus className="h-3.5 w-3.5 mr-1" />
           {t('addSuggestion')}
         </Button>
-        <Button size="sm" onClick={save} disabled={!dirty || saving}>
-          {saving ? tc('actions.saving') : tc('actions.save')}
-        </Button>
+        <Tip label={saving ? undefined : dirty ? t('tips.saveSuggestions') : t('tips.noChanges')}>
+          <Button size="sm" onClick={save} disabled={!dirty || saving}>
+            {saving ? tc('actions.saving') : tc('actions.save')}
+          </Button>
+        </Tip>
       </div>
     </div>
   );
@@ -776,6 +794,8 @@ interface TabDef {
   value: string;
   icon: React.ReactNode;
   label: string;
+  /** What the tab holds, as its tooltip. */
+  tip: string;
 }
 
 /**
@@ -830,12 +850,14 @@ function ResponsiveTabBar({
 
       {collapsed ? (
         <Select value={activeTab} onValueChange={onChange}>
-          <SelectTrigger className="w-full">
-            <span className="flex items-center gap-1.5 text-xs">
-              {active?.icon}
-              {active?.label}
-            </span>
-          </SelectTrigger>
+          <Tip label={active?.tip} wrap wrapClassName="flex w-full">
+            <SelectTrigger className="w-full">
+              <span className="flex items-center gap-1.5 text-xs">
+                {active?.icon}
+                {active?.label}
+              </span>
+            </SelectTrigger>
+          </Tip>
           <SelectContent>
             {tabs.map((t) => (
               <SelectItem key={t.value} value={t.value}>
@@ -850,10 +872,12 @@ function ResponsiveTabBar({
       ) : (
         <TabsList className="flex w-full">
           {tabs.map((t) => (
-            <TabsTrigger key={t.value} value={t.value} className="flex-1 flex items-center gap-1 text-xs">
-              {t.icon}
-              {t.label}
-            </TabsTrigger>
+            <Tip key={t.value} label={t.tip} side="bottom" wrap wrapClassName="flex flex-1">
+              <TabsTrigger value={t.value} className="flex-1 flex items-center gap-1 text-xs">
+                {t.icon}
+                {t.label}
+              </TabsTrigger>
+            </Tip>
           ))}
         </TabsList>
       )}
@@ -863,6 +887,7 @@ function ResponsiveTabBar({
 
 export function ProjectSettingsPanel({ project, onProjectUpdate, enabled, workspaceId }: ProjectSettingsPanelProps) {
   const tdn = useTranslations('deploymentDetail.nav');
+  const tdt = useTranslations('deploymentDetail.navTips');
   const tc = useTranslations('common');
   const t = useTranslations('backend');
   const [activeTab, setActiveTab] = useState('general');
@@ -883,12 +908,12 @@ export function ProjectSettingsPanel({ project, onProjectUpdate, enabled, worksp
   }, [project.id]);
 
   const tabs: TabDef[] = [
-    { value: 'general', icon: <Settings2 className="h-3 w-3" />, label: tc('labels.project') },
-    { value: 'functions', icon: <Code2 className="h-3 w-3" />, label: tdn('functions') },
-    { value: 'helpers', icon: <Wrench className="h-3 w-3" />, label: tdn('helpers') },
-    { value: 'secrets', icon: <Key className="h-3 w-3" />, label: tdn('secrets') },
-    { value: 'schedules', icon: <Clock className="h-3 w-3" />, label: tdn('schedules') },
-    { value: 'schema', icon: <Database className="h-3 w-3" />, label: tdn('schema') },
+    { value: 'general', icon: <Settings2 className="h-3 w-3" />, label: tc('labels.project'), tip: t('tips.projectTab') },
+    { value: 'functions', icon: <Code2 className="h-3 w-3" />, label: tdn('functions'), tip: tdt('functions') },
+    { value: 'helpers', icon: <Wrench className="h-3 w-3" />, label: tdn('helpers'), tip: tdt('helpers') },
+    { value: 'secrets', icon: <Key className="h-3 w-3" />, label: tdn('secrets'), tip: tdt('secrets') },
+    { value: 'schedules', icon: <Clock className="h-3 w-3" />, label: tdn('schedules'), tip: tdt('schedules') },
+    { value: 'schema', icon: <Database className="h-3 w-3" />, label: tdn('schema'), tip: t('tips.schemaTab') },
   ];
 
   return (
@@ -1034,17 +1059,21 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onProjectUpdate
                 {isServerMode && (
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">{enabled ? t('backendEnabled') : t('backendDisabled')}</span>
-                    <Switch checked={enabled} onCheckedChange={onToggleEnabled} />
+                    <Tip label={enabled ? t('tips.backendOff') : t('tips.backendOn')} wrap>
+                      <Switch checked={enabled} onCheckedChange={onToggleEnabled} aria-label={enabled ? t('backendEnabled') : t('backendDisabled')} />
+                    </Tip>
                   </div>
                 )}
-                <button
-                  type="button"
-                  className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
-                  onClick={() => setShowSettingsModal(true)}
-                >
-                  {t('manageSettings')}
-                  <span>&rsaquo;</span>
-                </button>
+                <Tip label={t('tips.manageSettings')}>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+                    onClick={() => setShowSettingsModal(true)}
+                  >
+                    {t('manageSettings')}
+                    <span>&rsaquo;</span>
+                  </button>
+                </Tip>
               </div>
             </div>
           </DialogHeader>

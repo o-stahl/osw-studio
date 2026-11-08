@@ -432,6 +432,20 @@ describe('AgentLoop', () => {
     expect(result.summary).toContain('loop');
   });
 
+  it('reports a refused repeat\'s failure under the repeat\'s own call id, not the call it repeats', async () => {
+    const call = (id: string): ToolCall => ({ id, type: 'function', function: { name: 'bash', arguments: '{"command":"cat /a.html"}' } });
+    const provider = createMockProvider([
+      { content: '', toolCalls: [call('tc1')] },
+      { content: '', toolCalls: [call('tc2')] },
+    ]);
+    const progress = createMockProgress();
+    const executor = createMockExecutor();
+    await new AgentLoop({ config: defaultConfig({ maxNudges: 0 }), provider, executor, context: createMockContext(), progress, cost: createMockCost() }).run('read it');
+
+    expect(vi.mocked(executor.execute).mock.calls.map(([tc]) => tc.id)).toEqual(['tc1']);
+    expect(progress.onEvent).toHaveBeenCalledWith('tool_status', expect.objectContaining({ toolCallId: 'tc2', toolName: 'bash', status: 'failed' }));
+  });
+
   it('calls completionGate before accepting completion', async () => {
     let gateCallCount = 0;
     const completionGate = vi.fn(async () => {
@@ -1172,5 +1186,44 @@ describe('AgentLoop history integrity and retry safeguards', () => {
     });
     const result = await loop.run('Do something');
     expect(result.exitReason).toBe('nudge_exhaustion');
+  });
+});
+
+describe('AgentLoop tool calls cut off by a stream error', () => {
+  const call = (id: string, args: string): ToolCall => ({ id, type: 'function', function: { name: 'bash', arguments: args } });
+
+  it('runs the finished calls, never the cut-off one, and says how each went', async () => {
+    const provider = createMockProvider([{
+      content: '',
+      toolCalls: [call('t1', JSON.stringify({ command: 'ls /src' })), call('t2', JSON.stringify({ command: 'cat /missing' })), call('t3', '{"command":"rm /src/app.js')],
+      streamError: { status: 504, type: 'upstream_idle' },
+      unfinishedToolCallIds: ['t3'],
+    }]);
+    const executor = createMockExecutor(new Map([['t2', { tool_call_id: 't2', content: 'Error: no such file', success: false }]]));
+    const context = createMockContext();
+    const progress = createMockProgress();
+    await new AgentLoop({ config: defaultConfig({ maxNudges: 0 }), provider, executor, context, progress, cost: createMockCost() }).run('build');
+
+    expect(vi.mocked(executor.execute).mock.calls.map(([tc]) => tc.id)).toEqual(['t1', 't2']);
+    const result = vi.mocked(context.addToolResults).mock.calls[0][0].find((r) => r.tool_call_id === 't3')!;
+    expect(result.success).toBe(false);
+    expect(result.content).toContain('Not run. The response stream broke (504, upstream_idle)');
+    expect(result.content).toContain('- `ls /src`: succeeded');
+    expect(result.content).toContain('- `cat /missing`: failed');
+    expect(progress.onEvent).toHaveBeenCalledWith('tool_status', expect.objectContaining({ toolCallId: 't3', status: 'failed' }));
+  });
+
+  it('names no earlier calls when the cut-off call was the only one', async () => {
+    const provider = createMockProvider([{
+      content: '', toolCalls: [call('t1', '{"command":"rm /src/app.js')], streamError: { status: 0 }, unfinishedToolCallIds: ['t1'],
+    }]);
+    const executor = createMockExecutor();
+    const context = createMockContext();
+    await new AgentLoop({ config: defaultConfig({ maxNudges: 0 }), provider, executor, context, progress: createMockProgress(), cost: createMockCost() }).run('build');
+
+    expect(executor.execute).not.toHaveBeenCalled();
+    const content = vi.mocked(context.addToolResults).mock.calls[0][0][0].content;
+    expect(content).toContain('The response stream broke while this command');
+    expect(content).not.toContain('Earlier calls');
   });
 });

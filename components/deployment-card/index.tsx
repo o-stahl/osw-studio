@@ -33,6 +33,7 @@ import {
 import { ThumbnailArea } from '@/components/ui/thumbnail-area';
 import { captureDeploymentPage } from '@/lib/utils/deployment-thumbnail';
 import { ReviewBadge } from '@/components/ui/review-badge';
+import { Tip } from '@/components/ui/tooltip';
 
 interface DeploymentCardProps {
   deployment: Deployment;
@@ -81,6 +82,18 @@ export function DeploymentCard({
     window.open(publicUrl, '_blank', 'noopener,noreferrer');
   };
 
+  const name = deployment.name;
+  // The button says "Publishing..." while it is busy, so it needs no tip then.
+  const publishTip = isPublishing
+    ? undefined
+    : deployment.projectMissing
+      ? td('tips.projectMissing')
+      : hasPendingChanges
+        ? td('tips.publishChanges', { name })
+        : isPublished
+          ? td('tips.republish', { name })
+          : td('tips.publish', { name });
+
   return (
     <div className="border rounded-lg overflow-hidden hover:shadow-lg transition-shadow bg-card">
       {/* Preview Image */}
@@ -127,7 +140,9 @@ export function DeploymentCard({
       <div className="p-4">
         {/* Title and Description */}
         <div className="mb-3">
-          <h3 className="font-semibold text-lg truncate mb-1">{deployment.name}</h3>
+          <Tip label={name} align="start" truncated>
+            <h3 className="font-semibold text-lg truncate mb-1">{deployment.name}</h3>
+          </Tip>
           {deployment.projectMissing ? (
             <div className="flex items-center gap-1 text-xs text-destructive">
               <Folder className="h-3 w-3" />
@@ -136,7 +151,9 @@ export function DeploymentCard({
           ) : project && (
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <Folder className="h-3 w-3" />
-              <span className="truncate">{project.name}</span>
+              <Tip label={project.name} truncated>
+                <span className="truncate">{project.name}</span>
+              </Tip>
             </div>
           )}
         </div>
@@ -145,25 +162,31 @@ export function DeploymentCard({
         {isPublished && (
           <div className="flex items-center gap-2 mb-3 p-2 bg-muted rounded-md text-xs">
             <Globe className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-            <span className="flex-1 truncate">{publicUrl}</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0"
-              onClick={handleCopyUrl}
-              title={tc('actions.copyUrl')}
-            >
-              <Copy className="h-3 w-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0"
-              onClick={handleViewLive}
-              title={td('viewLive')}
-            >
-              <ExternalLink className="h-3 w-3" />
-            </Button>
+            <Tip label={publicUrl} truncated>
+              <span className="flex-1 truncate">{publicUrl}</span>
+            </Tip>
+            <Tip label={td('tips.copyUrl', { name })}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0"
+                onClick={handleCopyUrl}
+                aria-label={td('tips.copyUrl', { name })}
+              >
+                <Copy className="h-3 w-3" />
+              </Button>
+            </Tip>
+            <Tip label={td('tips.viewLive', { name })}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0"
+                onClick={handleViewLive}
+                aria-label={td('tips.viewLive', { name })}
+              >
+                <ExternalLink className="h-3 w-3" />
+              </Button>
+            </Tip>
           </div>
         )}
 
@@ -221,40 +244,46 @@ export function DeploymentCard({
 
         {/* Actions */}
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1"
-            onClick={() => onClick?.(deployment)}
-          >
-            <Settings className="h-4 w-4 mr-2" />
-            {td('editDeployment')}
-          </Button>
+          <Tip label={td('tips.edit', { name })}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={() => onClick?.(deployment)}
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              {td('editDeployment')}
+            </Button>
+          </Tip>
 
-          <Button
-            variant={hasPendingChanges || !isPublished ? undefined : 'outline'}
-            size="sm"
-            className="min-w-0 flex-1"
-            onClick={() => onPublish(deployment.id)}
-            disabled={isPublishing}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 shrink-0 ${isPublishing ? 'animate-spin' : ''}`} />
-            <span className="truncate">
-              {isPublishing
-                ? tdd('publishing')
-                : hasPendingChanges
-                  ? tdd('publishChanges')
-                  : isPublished
-                    ? tc('actions.republish')
-                    : tc('actions.publish')}
-            </span>
-          </Button>
+          <Tip label={publishTip}>
+            <Button
+              variant={hasPendingChanges || !isPublished ? undefined : 'outline'}
+              size="sm"
+              className="min-w-0 flex-1"
+              onClick={() => onPublish(deployment.id)}
+              disabled={isPublishing}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 shrink-0 ${isPublishing ? 'animate-spin' : ''}`} />
+              <span className="truncate">
+                {isPublishing
+                  ? tdd('publishing')
+                  : hasPendingChanges
+                    ? tdd('publishChanges')
+                    : isPublished
+                      ? tc('actions.republish')
+                      : tc('actions.publish')}
+              </span>
+            </Button>
+          </Tip>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
+              <Tip label={td('tips.more', { name })} align="end">
+                <Button variant="outline" size="sm" aria-label={td('tips.more', { name })}>
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </Tip>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => onEditProject(deployment)}>

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Tip } from '@/components/ui/tooltip';
 import {
   Select,
   SelectContent,
@@ -323,9 +324,11 @@ export function TemplateExportDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={exporting}>
             {tc('actions.cancel')}
           </Button>
-          <Button onClick={handleExport} disabled={exporting}>
-            {exporting ? tc('actions.creating') : t('createTemplateButton')}
-          </Button>
+          <Tip label={exporting ? undefined : t('tips.saveAsTemplate')}>
+            <Button onClick={handleExport} disabled={exporting}>
+              {exporting ? tc('actions.creating') : t('createTemplateButton')}
+            </Button>
+          </Tip>
         </DialogFooter>
       </DialogContent>
     </Dialog>

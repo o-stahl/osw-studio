@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+import { Tip } from '@/components/ui/tooltip';
 import Link from 'next/link';
 import { DISCUSSIONS_URL } from '@/lib/constants/links';
 import { vfs } from '@/lib/vfs';
@@ -232,44 +233,56 @@ function QuickActionsBar({
   return (
     <div className="bg-card rounded-lg border border-border p-4 mb-6">
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" asChild className="gap-1.5">
-          <Link href={projectsHref} onClick={handleNewProjectClick}>
-            <Plus className="w-4 h-4" />
-            {t('dashboard.newProject')}
-          </Link>
-        </Button>
-        <Button variant="outline" size="sm" asChild className="gap-1.5">
-          <Link href={projectsListHref} onClick={handleProjectsClick}>
-            <FolderOpen className="w-4 h-4" />
-            {t('common.terms.projects')}
-          </Link>
-        </Button>
-        {isServerMode && (
+        <Tip label={t('dashboard.tips.newProject')}>
           <Button variant="outline" size="sm" asChild className="gap-1.5">
-            <Link href="/admin/deployments">
-              <Globe className="w-4 h-4" />
-              {t('common.terms.deployments')}
+            <Link href={projectsHref} onClick={handleNewProjectClick}>
+              <Plus className="w-4 h-4" />
+              {t('dashboard.newProject')}
             </Link>
           </Button>
+        </Tip>
+        <Tip label={t('dashboard.tips.projects')}>
+          <Button variant="outline" size="sm" asChild className="gap-1.5">
+            <Link href={projectsListHref} onClick={handleProjectsClick}>
+              <FolderOpen className="w-4 h-4" />
+              {t('common.terms.projects')}
+            </Link>
+          </Button>
+        </Tip>
+        {isServerMode && (
+          <Tip label={t('dashboard.tips.deployments')}>
+            <Button variant="outline" size="sm" asChild className="gap-1.5">
+              <Link href="/admin/deployments">
+                <Globe className="w-4 h-4" />
+                {t('common.terms.deployments')}
+              </Link>
+            </Button>
+          </Tip>
         )}
         {onStartTour && (
-          <Button variant="outline" size="sm" onClick={onStartTour} className="gap-1.5">
-            <Sparkles className="w-4 h-4" />
-            {t('nav.items.tour')}
-          </Button>
+          <Tip label={t('dashboard.tips.tour')}>
+            <Button variant="outline" size="sm" onClick={onStartTour} className="gap-1.5">
+              <Sparkles className="w-4 h-4" />
+              {t('nav.items.tour')}
+            </Button>
+          </Tip>
         )}
-        <Button variant="outline" size="sm" asChild className="gap-1.5">
-          <a href={DISCUSSIONS_URL} target="_blank" rel="noopener noreferrer">
-            <MessagesSquare className="w-4 h-4" />
-            {t('nav.discussions')}
-          </a>
-        </Button>
-        <Button variant="outline" size="sm" asChild className="gap-1.5">
-          <Link href={docsHref} onClick={handleDocsClick}>
-            <BookOpen className="w-4 h-4" />
-            {t('common.terms.docs')}
-          </Link>
-        </Button>
+        <Tip label={t('about.tips.discussions')}>
+          <Button variant="outline" size="sm" asChild className="gap-1.5">
+            <a href={DISCUSSIONS_URL} target="_blank" rel="noopener noreferrer">
+              <MessagesSquare className="w-4 h-4" />
+              {t('nav.discussions')}
+            </a>
+          </Button>
+        </Tip>
+        <Tip label={t('dashboard.tips.docs')}>
+          <Button variant="outline" size="sm" asChild className="gap-1.5">
+            <Link href={docsHref} onClick={handleDocsClick}>
+              <BookOpen className="w-4 h-4" />
+              {t('common.terms.docs')}
+            </Link>
+          </Button>
+        </Tip>
       </div>
     </div>
   );
@@ -311,14 +324,16 @@ function WhatsNewCard({
             {t('dashboard.whatsNewIn', { version: whatsNew.version })}
           </h3>
         </div>
-        <Link
-          href={docsHref}
-          onClick={handleReadAll}
-          className="text-xs text-orange-500 hover:text-orange-400 flex items-center gap-1"
-        >
-          {t('common.actions.readAll')}
-          <ExternalLink className="w-3 h-3" />
-        </Link>
+        <Tip label={t('dashboard.tips.readAll')} align="end">
+          <Link
+            href={docsHref}
+            onClick={handleReadAll}
+            className="text-xs text-orange-500 hover:text-orange-400 flex items-center gap-1"
+          >
+            {t('common.actions.readAll')}
+            <ExternalLink className="w-3 h-3" />
+          </Link>
+        </Tip>
       </div>
       <p className="text-sm font-medium text-foreground mb-2">{whatsNew.title}</p>
       {whatsNew.highlights && whatsNew.highlights.length > 0 && (
@@ -366,15 +381,18 @@ function CompactOverview({
     <div className="bg-card rounded-lg border border-border p-4 flex flex-col">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-medium text-foreground">{t('dashboard.systemOverview')}</h3>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onRefresh}
-          disabled={loading}
-          className="h-7 px-2"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-        </Button>
+        <Tip label={loading ? undefined : t('dashboard.tips.refresh')} align="end">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onRefresh}
+            disabled={loading}
+            className="h-7 px-2"
+            aria-label={t('dashboard.tips.refresh')}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+        </Tip>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 flex-1 content-start">
         <div className="space-y-1.5">
@@ -429,15 +447,18 @@ function BrowserOverview({
     <div className="bg-card rounded-lg border border-border p-4 flex flex-col">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-medium text-foreground">{t('dashboard.contentOverview')}</h3>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onRefresh}
-          disabled={loading}
-          className="h-7 px-2"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-        </Button>
+        <Tip label={loading ? undefined : t('dashboard.tips.refresh')} align="end">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onRefresh}
+            disabled={loading}
+            className="h-7 px-2"
+            aria-label={t('dashboard.tips.refresh')}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+        </Tip>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 flex-1 content-start">
         <div className="space-y-1.5">
@@ -496,14 +517,16 @@ function RecentProjectsCard({
           <FolderOpen className="w-4 h-4 text-orange-500" />
           <h3 className="text-sm font-medium text-foreground">{t('dashboard.recentProjects')}</h3>
         </div>
-        <Link
-          href={viewAllHref}
-          onClick={handleViewAll}
-          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5"
-        >
-          {t('common.actions.viewAll')}
-          <ChevronRight className="w-3 h-3" />
-        </Link>
+        <Tip label={t('dashboard.tips.projects')} align="end">
+          <Link
+            href={viewAllHref}
+            onClick={handleViewAll}
+            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5"
+          >
+            {t('common.actions.viewAll')}
+            <ChevronRight className="w-3 h-3" />
+          </Link>
+        </Tip>
       </div>
       {projects.length === 0 ? (
         <p className="text-xs text-muted-foreground text-center py-2 flex-1 flex items-center justify-center">
@@ -519,7 +542,9 @@ function RecentProjectsCard({
               onClick={(e) => handleProjectClick(e, project.id)}
               className="flex items-center justify-between text-xs py-1.5 px-2 bg-muted/50 rounded hover:bg-muted transition-colors"
             >
-              <span className="text-foreground truncate flex-1 mr-2">{project.name}</span>
+              <Tip label={project.name} truncated>
+                <span className="text-foreground truncate flex-1 mr-2">{project.name}</span>
+              </Tip>
               <span className="text-muted-foreground shrink-0 flex items-center gap-1">
                 <Clock className="w-3 h-3" />
                 {when.recent(project.updatedAt)}
@@ -543,12 +568,16 @@ export function DemoCard({ signInUrl, signUpUrl }: { signInUrl: string; signUpUr
       </div>
       <p className="text-xs text-muted-foreground flex-1">{t('cardBody')}</p>
       <div className="flex flex-wrap gap-2 mt-3">
-        <Button asChild size="sm" variant="accent">
-          <a href={signUpUrl} target="_blank" rel="noopener">{t('signUp')}</a>
-        </Button>
-        <Button asChild size="sm" variant="outline">
-          <a href={signInUrl} target="_blank" rel="noopener">{t('signIn')}</a>
-        </Button>
+        <Tip label={t('tips.signUp')}>
+          <Button asChild size="sm" variant="accent">
+            <a href={signUpUrl} target="_blank" rel="noopener">{t('signUp')}</a>
+          </Button>
+        </Tip>
+        <Tip label={t('tips.signIn')}>
+          <Button asChild size="sm" variant="outline">
+            <a href={signInUrl} target="_blank" rel="noopener">{t('signIn')}</a>
+          </Button>
+        </Tip>
       </div>
     </div>
   );
@@ -565,13 +594,15 @@ function RecentDeploymentsCard({ deployments }: { deployments: DashboardData['re
           <Globe className="w-4 h-4 text-orange-500" />
           <h3 className="text-sm font-medium text-foreground">{t('dashboard.recentDeployments')}</h3>
         </div>
-        <Link
-          href="/admin/deployments"
-          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5"
-        >
-          {t('common.actions.viewAll')}
-          <ChevronRight className="w-3 h-3" />
-        </Link>
+        <Tip label={t('dashboard.tips.deployments')} align="end">
+          <Link
+            href="/admin/deployments"
+            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5"
+          >
+            {t('common.actions.viewAll')}
+            <ChevronRight className="w-3 h-3" />
+          </Link>
+        </Tip>
       </div>
       {deployments.length === 0 ? (
         <p className="text-xs text-muted-foreground text-center py-2 flex-1 flex items-center justify-center">
@@ -586,12 +617,16 @@ function RecentDeploymentsCard({ deployments }: { deployments: DashboardData['re
               className="flex items-center justify-between text-xs py-1.5 px-2 bg-muted/50 rounded hover:bg-muted transition-colors"
             >
               <div className="flex items-center gap-2 min-w-0 flex-1">
-                <span
-                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                    deployment.publishedAt ? 'bg-green-500' : 'bg-muted-foreground'
-                  }`}
-                />
-                <span className="text-foreground truncate">{deployment.name}</span>
+                <Tip label={deployment.publishedAt ? t('deploymentDetail.published') : t('deploymentDetail.draft')}>
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                      deployment.publishedAt ? 'bg-green-500' : 'bg-muted-foreground'
+                    }`}
+                  />
+                </Tip>
+                <Tip label={deployment.name} truncated>
+                  <span className="text-foreground truncate">{deployment.name}</span>
+                </Tip>
               </div>
               <span className="text-muted-foreground shrink-0 flex items-center gap-1">
                 <Clock className="w-3 h-3" />
@@ -630,7 +665,9 @@ function TrafficLists({ data }: { data: DashboardData }) {
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="text-muted-foreground w-4">{i + 1}.</span>
-                  <span className="text-foreground truncate">{deployment.deploymentName}</span>
+                  <Tip label={deployment.deploymentName} truncated>
+                    <span className="text-foreground truncate">{deployment.deploymentName}</span>
+                  </Tip>
                 </div>
                 <span className="text-muted-foreground shrink-0">{formatNumber(deployment.count, number)}</span>
               </div>
@@ -666,7 +703,9 @@ function TrafficLists({ data }: { data: DashboardData }) {
                   >
                     {error.statusCode}
                   </span>
-                  <span className="text-muted-foreground truncate max-w-[140px]">{error.path}</span>
+                  <Tip label={error.path} truncated>
+                    <span className="text-muted-foreground truncate max-w-[140px]">{error.path}</span>
+                  </Tip>
                 </div>
                 <span className="text-muted-foreground shrink-0 text-[10px]">
                   {dateTime(error.timestamp, {

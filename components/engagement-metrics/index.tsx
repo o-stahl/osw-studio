@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 
 interface EngagementMetrics {
@@ -111,7 +112,9 @@ export function EngagementMetrics({ deploymentId }: EngagementMetricsProps) {
             .slice(0, 10)
             .map(([page, time]) => (
               <div key={page} className="flex justify-between items-center">
-                <span className="text-sm truncate flex-1">{page}</span>
+                <Tip label={page} align="start" truncated>
+                  <span className="text-sm truncate flex-1">{page}</span>
+                </Tip>
                 <span className="text-sm font-medium ml-4">{formatDuration(time)}</span>
               </div>
             ))}
@@ -193,7 +196,9 @@ export function EngagementMetrics({ deploymentId }: EngagementMetricsProps) {
         <div className="space-y-2">
           {data.exitPages.slice(0, 10).map((exit) => (
             <div key={exit.page} className="flex justify-between items-center">
-              <span className="text-sm truncate flex-1">{exit.page}</span>
+              <Tip label={exit.page} align="start" truncated>
+                <span className="text-sm truncate flex-1">{exit.page}</span>
+              </Tip>
               <div className="text-right ml-4">
                 <div className="text-sm font-medium">{number(exit.exitCount)}</div>
                 <div className="text-xs text-muted-foreground">

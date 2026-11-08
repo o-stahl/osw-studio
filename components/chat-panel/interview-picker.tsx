@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { filterInterviewTemplates } from '@/lib/interview/templates';
 import type { InterviewTemplate } from '@/lib/interview/types';
+import { Tip } from '@/components/ui/tooltip';
 
 interface InterviewPickerProps {
   templates: InterviewTemplate[];
@@ -41,15 +42,17 @@ export function InterviewPicker({ templates, onStart, disabled, onNew, onManage 
             </Button>
           )}
           {onNew && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-1.5 text-xs text-muted-foreground gap-1"
-              onClick={onNew}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              {tc('actions.new')}
-            </Button>
+            <Tip label={t('tips.newInterview')}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-1.5 text-xs text-muted-foreground gap-1"
+                onClick={onNew}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {tc('actions.new')}
+              </Button>
+            </Tip>
           )}
         </div>
       </div>
@@ -71,8 +74,8 @@ export function InterviewPicker({ templates, onStart, disabled, onNew, onManage 
           filtered.map((tpl) => {
             const isSelected = tpl.id === selectedId;
             return (
+              <Tip key={tpl.id} label={disabled ? undefined : t('tips.doubleClickToStart')} side="left">
               <button
-                key={tpl.id}
                 type="button"
                 onClick={() => setSelectedId(tpl.id)}
                 onDoubleClick={() => !disabled && onStart(tpl)}
@@ -88,20 +91,23 @@ export function InterviewPicker({ templates, onStart, disabled, onNew, onManage 
                   <div className="text-[11px] text-blue-500/80 mt-1 font-mono truncate">→ {tpl.artifacts[0].path}</div>
                 )}
               </button>
+              </Tip>
             );
           })
         )}
       </div>
 
-      <Button
-        size="sm"
-        disabled={!selected || disabled}
-        onClick={() => selected && onStart(selected)}
-        className="bg-blue-500 hover:bg-blue-600 text-white gap-1.5"
-      >
-        <ArrowRight className="h-3.5 w-3.5" />
-        {t('startInterviewButton')}
-      </Button>
+      <Tip label={disabled ? t('tips.connectFirst') : !selected ? t('tips.pickInterview') : undefined} wrapClassName="grid">
+        <Button
+          size="sm"
+          disabled={!selected || disabled}
+          onClick={() => selected && onStart(selected)}
+          className="bg-blue-500 hover:bg-blue-600 text-white gap-1.5"
+        >
+          <ArrowRight className="h-3.5 w-3.5" />
+          {t('startInterviewButton')}
+        </Button>
+      </Tip>
     </div>
   );
 }

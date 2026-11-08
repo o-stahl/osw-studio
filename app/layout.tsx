@@ -5,6 +5,7 @@ import TanstackProvider from "@/components/providers/tanstack-query-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import "@/assets/globals.css";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { McpActivityBanner } from '@/components/mcp-activity-banner';
 import { BackendStatusBanner } from "@/components/backend-status-banner";
 import { LanguageOfferSlot } from "@/components/language-offer/slot";
@@ -102,7 +103,9 @@ export default async function RootLayout({
             <DemoNoticeSlot />
             {demoGateway && <DemoProjectCount />}
             <TanstackProvider>
-              {children}
+              <TooltipProvider>
+                {children}
+              </TooltipProvider>
             </TanstackProvider>
           </ThemeProvider>
         </NextIntlClientProvider>

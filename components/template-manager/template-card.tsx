@@ -16,12 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tip } from '@/components/ui/tooltip';
 
 interface TemplateCardProps {
   template: CustomTemplate | BuiltInTemplateMetadata;
@@ -96,25 +91,22 @@ export function TemplateCard({
               </div>
             )}
             {isBuiltIn && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="absolute top-1 right-1 bg-background/90 rounded-full p-1">
-                      <Link2 className="h-3 w-3 text-muted-foreground" />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>{t('builtIn')}</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <Tip label={t('builtIn')}>
+                <div className="absolute top-1 right-1 bg-background/90 rounded-full p-1">
+                  <Link2 className="h-3 w-3 text-muted-foreground" />
+                </div>
+              </Tip>
             )}
           </div>
 
           {/* Template Info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="font-semibold text-base truncate" title={template.name}>
-                {template.name}
-              </h3>
+              <Tip label={template.name} truncated>
+                <h3 className="font-semibold text-base truncate">
+                  {template.name}
+                </h3>
+              </Tip>
               {customTemplate && (
                 <span className="text-xs text-muted-foreground shrink-0">
                   v{customTemplate.version}
@@ -122,9 +114,11 @@ export function TemplateCard({
               )}
             </div>
 
-            <p className="text-sm text-muted-foreground line-clamp-1 mb-2" title={template.description}>
-              {template.description}
-            </p>
+            <Tip label={template.description} truncated>
+              <p className="text-sm text-muted-foreground truncate mb-2">
+                {template.description}
+              </p>
+            </Tip>
 
             {/* Metadata */}
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
@@ -138,9 +132,11 @@ export function TemplateCard({
                 </Badge>
               )}
               {(customTemplate?.metadata.author || template.metadata?.author) && (
-                <span className="truncate max-w-[150px]" title={customTemplate?.metadata.author || template.metadata?.author}>
-                  by {customTemplate?.metadata.author || template.metadata?.author}
-                </span>
+                <Tip label={customTemplate?.metadata.author || template.metadata?.author} truncated>
+                  <span className="truncate max-w-[150px]">
+                    by {customTemplate?.metadata.author || template.metadata?.author}
+                  </span>
+                </Tip>
               )}
               {customTemplate?.metadata.license && (
                 <>
@@ -182,9 +178,11 @@ export function TemplateCard({
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="icon" variant="ghost" className="h-8 w-8">
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
+                <Tip label={t('tips.more', { name: template.name })} align="end">
+                  <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={t('tips.more', { name: template.name })}>
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </Tip>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => onSelect(template)}>
@@ -209,25 +207,18 @@ export function TemplateCard({
                 {onDelete && (
                   <>
                     <DropdownMenuSeparator />
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div>
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={handleDelete}
-                              disabled={isBuiltIn}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              {tc('actions.delete')}
-                            </DropdownMenuItem>
-                          </div>
-                        </TooltipTrigger>
-                        {isBuiltIn && (
-                          <TooltipContent>{t('cannotDeleteBuiltIn')}</TooltipContent>
-                        )}
-                      </Tooltip>
-                    </TooltipProvider>
+                    <Tip label={isBuiltIn ? t('cannotDeleteBuiltIn') : undefined}>
+                      <div>
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={handleDelete}
+                          disabled={isBuiltIn}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          {tc('actions.delete')}
+                        </DropdownMenuItem>
+                      </div>
+                    </Tip>
                   </>
                 )}
               </DropdownMenuContent>
@@ -238,9 +229,11 @@ export function TemplateCard({
           <div className="md:hidden">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="icon" variant="ghost" className="h-8 w-8">
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
+                <Tip label={t('tips.more', { name: template.name })} align="end">
+                  <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={t('tips.more', { name: template.name })}>
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </Tip>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => onSelect(template)}>
@@ -304,34 +297,25 @@ export function TemplateCard({
           </div>
         )}
         {isBuiltIn && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="absolute top-2 right-2 bg-background/90 rounded-full p-1.5 shadow-sm">
-                  <Link2 className="h-4 w-4 text-muted-foreground" />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>{t('builtIn')}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <Tip label={t('builtIn')}>
+            <div className="absolute top-2 right-2 bg-background/90 rounded-full p-1.5 shadow-sm">
+              <Link2 className="h-4 w-4 text-muted-foreground" />
+            </div>
+          </Tip>
         )}
         {customTemplate?.metadata.downloadUrl && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <a
-                  href={customTemplate.metadata.downloadUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="absolute top-2 left-2 bg-background/90 hover:bg-background rounded-full p-1.5 shadow-sm transition-colors"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                </a>
-              </TooltipTrigger>
-              <TooltipContent>{t('viewOnMarketplace')}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <Tip label={t('viewOnMarketplace')}>
+            <a
+              href={customTemplate.metadata.downloadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={t('viewOnMarketplace')}
+              className="absolute top-2 left-2 bg-background/90 hover:bg-background rounded-full p-1.5 shadow-sm transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ExternalLink className="h-4 w-4 text-muted-foreground" />
+            </a>
+          </Tip>
         )}
       </div>
 
@@ -340,18 +324,22 @@ export function TemplateCard({
         {/* Header */}
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-base line-clamp-1 flex-1" title={template.name}>
-              {template.name}
-            </h3>
+            <Tip label={template.name} truncated>
+              <h3 className="font-semibold text-base truncate flex-1">
+                {template.name}
+              </h3>
+            </Tip>
             {customTemplate && (
               <span className="text-xs text-muted-foreground shrink-0">
                 v{customTemplate.version}
               </span>
             )}
           </div>
-          <p className="text-sm text-muted-foreground line-clamp-2" title={template.description}>
-            {template.description}
-          </p>
+          <Tip label={template.description} truncated>
+            <p className="text-sm text-muted-foreground line-clamp-2">
+              {template.description}
+            </p>
+          </Tip>
         </div>
 
         {/* Metadata */}
@@ -359,16 +347,18 @@ export function TemplateCard({
           {(customTemplate?.metadata.author || template.metadata?.author) && (
             <div className="text-xs text-muted-foreground">
               {customTemplate?.metadata.authorUrl ? (
-                <a
-                  href={customTemplate.metadata.authorUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline inline-flex items-center gap-1"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  by {customTemplate.metadata.author}
-                  <ExternalLink className="h-3 w-3" />
-                </a>
+                <Tip label={t('tips.authorSite')}>
+                  <a
+                    href={customTemplate.metadata.authorUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline inline-flex items-center gap-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    by {customTemplate.metadata.author}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </Tip>
               ) : (
                 <span>by {customTemplate?.metadata.author || template.metadata?.author}</span>
               )}
@@ -424,9 +414,11 @@ export function TemplateCard({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="ghost" className="h-8 w-8">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
+              <Tip label={t('tips.more', { name: template.name })} align="end">
+                <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={t('tips.more', { name: template.name })}>
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </Tip>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => onSelect(template)}>
@@ -451,25 +443,18 @@ export function TemplateCard({
               {onDelete && (
                 <>
                   <DropdownMenuSeparator />
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div>
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={handleDelete}
-                            disabled={isBuiltIn}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            {tc('actions.delete')}
-                          </DropdownMenuItem>
-                        </div>
-                      </TooltipTrigger>
-                      {isBuiltIn && (
-                        <TooltipContent>{t('cannotDeleteBuiltIn')}</TooltipContent>
-                      )}
-                    </Tooltip>
-                  </TooltipProvider>
+                  <Tip label={isBuiltIn ? t('cannotDeleteBuiltIn') : undefined}>
+                    <div>
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onClick={handleDelete}
+                        disabled={isBuiltIn}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        {tc('actions.delete')}
+                      </DropdownMenuItem>
+                    </div>
+                  </Tip>
                 </>
               )}
             </DropdownMenuContent>

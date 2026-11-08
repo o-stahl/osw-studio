@@ -35,6 +35,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tip } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { logger } from '@/lib/utils';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
@@ -437,8 +438,14 @@ export function WorkspacesView() {
                             </td>
                             <td className="w-full p-[4px_10px] text-[13px] align-middle overflow-hidden" style={{ maxWidth: 0 }}>
                               <div className="min-w-0">
-                                <span className="block font-medium text-foreground text-[13px] truncate">{ws.name}</span>
-                                {ws.ownerEmail && <span className="block text-[11px] text-muted-foreground truncate">{t('ownerIs', { email: ws.ownerEmail })}</span>}
+                                <Tip label={ws.name} truncated>
+                                  <span className="block font-medium text-foreground text-[13px] truncate">{ws.name}</span>
+                                </Tip>
+                                {ws.ownerEmail && (
+                                  <Tip label={t('ownerIs', { email: ws.ownerEmail })} truncated>
+                                    <span className="block text-[11px] text-muted-foreground truncate">{t('ownerIs', { email: ws.ownerEmail })}</span>
+                                  </Tip>
+                                )}
                               </div>
                             </td>
                             <td className="@max-5xl:hidden p-[4px_10px] text-[13px] text-muted-foreground align-middle whitespace-nowrap tabular-nums">{ws.memberCount}</td>
@@ -448,9 +455,11 @@ export function WorkspacesView() {
                             <td className="p-[4px_10px] align-middle whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="xs" className="px-1">
-                                    <MoreHorizontal className="h-4 w-4" />
-                                  </Button>
+                                  <Tip label={t('tips.actionsFor', { name: ws.name })} align="end">
+                                    <Button variant="ghost" size="xs" className="px-1" aria-label={t('tips.actionsFor', { name: ws.name })}>
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </Tip>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
                                   <DropdownMenuItem onClick={() => handleOpenEdit(ws)}>
@@ -522,7 +531,9 @@ export function WorkspacesView() {
                                       >
                                         <div className="flex-1 min-w-0">
                                           <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="font-medium truncate">{member.email}</span>
+                                            <Tip label={member.email} truncated>
+                                              <span className="font-medium truncate">{member.email}</span>
+                                            </Tip>
                                             <Badge variant={roleBadgeVariant(member.role)} className="text-xs">
                                               {roleLabel(member.role)}
                                             </Badge>
@@ -535,18 +546,20 @@ export function WorkspacesView() {
                                           {formatDate(member.joinedAt)}
                                         </div>
                                         {member.userId !== workspaceDetail.ownerId && (
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleRemoveMember(ws.id, member.userId, member.email);
-                                            }}
-                                            title={t('removeMember')}
-                                          >
-                                            <UserMinus className="h-3.5 w-3.5" />
-                                          </Button>
+                                          <Tip label={t('tips.removeMember', { email: member.email })} align="end">
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleRemoveMember(ws.id, member.userId, member.email);
+                                              }}
+                                              aria-label={t('removeEmail', { email: member.email })}
+                                            >
+                                              <UserMinus className="h-3.5 w-3.5" />
+                                            </Button>
+                                          </Tip>
                                         )}
                                       </div>
                                     ))}
@@ -569,7 +582,9 @@ export function WorkspacesView() {
                                         className="flex items-center gap-3 text-sm p-2 rounded bg-background/60"
                                       >
                                         <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                        <span className="flex-1 min-w-0 truncate font-medium">{project.name}</span>
+                                        <Tip label={project.name} truncated>
+                                          <span className="flex-1 min-w-0 truncate font-medium">{project.name}</span>
+                                        </Tip>
                                         <span className="text-xs text-muted-foreground shrink-0">
                                           {t('updatedOn', { date: formatDate(project.updatedAt) })}
                                         </span>
@@ -594,9 +609,11 @@ export function WorkspacesView() {
                                         className="flex items-center gap-3 text-sm p-2 rounded bg-background/60"
                                       >
                                         <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                        <span className="flex-1 min-w-0 truncate font-medium">
-                                          {deployment.slug || deployment.id.slice(0, 8)}
-                                        </span>
+                                        <Tip label={deployment.slug || deployment.id.slice(0, 8)} truncated>
+                                          <span className="flex-1 min-w-0 truncate font-medium">
+                                            {deployment.slug || deployment.id.slice(0, 8)}
+                                          </span>
+                                        </Tip>
                                         {deployment.customDomain && (
                                           <Badge variant="outline" className="text-xs shrink-0">
                                             {deployment.customDomain}

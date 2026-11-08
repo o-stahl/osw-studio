@@ -115,6 +115,10 @@
       "previous": "Previous page",
       "next": "Next page",
       "page": "Page {page}"
+    },
+    "viewMode": {
+      "table": "Show as a table",
+      "grid": "Show as cards"
     }
   },
   "nav": {
@@ -133,7 +137,19 @@
       "permissions": "Permissions",
       "data": "Data",
       "mail": "Mail",
-      "users": "Users"
+      "users": "Users",
+      "tips": {
+        "connections": "AI and web search providers, with their keys and sign-ins",
+        "models": "The agent, image and voice models, and conversation compaction",
+        "templates": "Saved model setups you can switch between",
+        "appearance": "Studio or simple view, theme, language and usage analytics",
+        "costs": "Cost display, spending limits and the lifetime total",
+        "permissions": "Which commands the AI asks about before running them",
+        "data": "Back up or restore your projects, or clear the settings",
+        "mcp": "The MCP endpoint and the outside clients you authorised",
+        "mail": "The mail server this workspace sends email through",
+        "users": "Accounts and workspace members, with their roles"
+      }
     },
     "docs": {
       "whats-new": "What's New",
@@ -170,7 +186,9 @@
     "noRecentProjects": "No recent projects",
     "serverBuild": "Server, v{version}",
     "notSyncedTitle": "{label} ({count} not synced)",
-    "notSyncedAria": "{count, plural, one {# project not synced to the server} other {# projects not synced to the server}}"
+    "notSyncedAria": "{count, plural, one {# project not synced to the server} other {# projects not synced to the server}}",
+    "expand": "Expand {label}",
+    "collapse": "Collapse {label}"
   },
   "deployments": {
     "projectMissing": "Project deleted",
@@ -231,7 +249,25 @@
     "confirmDelete": "Delete deployment \"{name}\"? This cannot be undone.",
     "firstDeploymentHint": "Create your first deployment by clicking the \"New\" button above. Deployments let you publish projects and manage their public settings independently.",
     "noFilesToPublish": "This project has no files in the browser to publish. Open it, check the files are there, save, then publish again.",
-    "sameOriginWarning": "Published sites are served from the studio's own address, so a site's scripts can use the studio as whoever opens them, including reading their stored API keys. Set <code>SITES_ORIGIN</code> to serve sites from a separate address. <link>Server Mode docs</link>"
+    "sameOriginWarning": "Published sites are served from the studio's own address, so a site's scripts can use the studio as whoever opens them, including reading their stored API keys. Set <code>SITES_ORIGIN</code> to serve sites from a separate address. <link>Server Mode docs</link>",
+    "contextLabel": "Deployment the AI can see",
+    "contextTip": "Which deployment's database and functions the AI can see while it works",
+    "tips": {
+      "new": "Create a deployment for one of your projects",
+      "sortedBy": "Sorted by {order}",
+      "edit": "Opens the settings of {name}",
+      "publish": "Builds {name} from its project and puts it online",
+      "publishChanges": "Rebuilds {name} with the changes saved since its last publish",
+      "republish": "Rebuilds {name} from the project's current files, replacing the live site",
+      "publishing": "Publishing now",
+      "projectMissing": "Its project was deleted: choose another in the settings, then publish",
+      "copyUrl": "Copy the URL of {name}",
+      "viewLive": "Opens {name} in a new tab",
+      "more": "More actions for {name}",
+      "create": "Creates the deployment; it goes online when you publish it",
+      "chooseProject": "Choose a project first",
+      "nameFirst": "Enter a deployment name first"
+    }
   },
   "workspace": {
     "tabs": {
@@ -247,7 +283,6 @@
       "editorShort": "Editor"
     },
     "deploy": "Deploy",
-    "deployTooltip": "Deploy this project",
     "backToProjects": "Back to projects",
     "backTo": "Back to {view}",
     "saving": "Saving…",
@@ -269,15 +304,11 @@
     "openCheckpointsPanel": "Open checkpoints panel",
     "closeCheckpoints": "Close checkpoints",
     "allCheckpoints": "All checkpoints",
-    "closeInspectorPanel": "Close inspector panel",
-    "openInspectorPanel": "Open inspector panel",
     "checkpointUnpinned": "Checkpoint unpinned",
     "checkpointPinned": "Checkpoint pinned",
     "loadingCheckpoints": "Loading checkpoints…",
     "noCheckpoints": "No checkpoints yet. Checkpoints are created automatically when the AI makes changes.",
     "jump": "Jump",
-    "unpinCheckpoint": "Unpin checkpoint",
-    "pinCheckpoint": "Pin checkpoint",
     "unpin": "Unpin",
     "pin": "Pin",
     "restore": "Restore",
@@ -317,7 +348,104 @@
       "helpHelp": "Show this help",
       "helpVfs": "VFS commands:",
       "helpOperators": "Operators:",
-      "helpOperatorList": "| (pipe), > >> (redirect), && || (chain)"
+      "helpOperatorList": "| (pipe), > >> (redirect), && || (chain)",
+      "tips": {
+        "run": "Run {file}",
+        "chooseFile": "Choose a file to run",
+        "stop": "Stop the script",
+        "file": "File to run"
+      }
+    },
+    "layout": {
+      "tabs": "Panels in this group",
+      "moreActions": "More actions",
+      "restore": "Restore layout",
+      "restoreHint": "Restore (double-click or Esc)",
+      "handleHint": "Drag to move · double-click to maximize · right-click for options",
+      "maximizedHint": "Double-click to restore · right-click for options",
+      "dragToMove": "Drag to move",
+      "dragGroup": "Drag to move the whole group",
+      "unread": "Unread output",
+      "running": "Working",
+      "hint": "Drag to rearrange · right-click for options",
+      "hintDismiss": "Dismiss",
+      "menu": {
+        "splitRight": "Split right",
+        "splitBelow": "Split below",
+        "moveToNewColumn": "Move to new column",
+        "addAsTabTo": "Add as tab to",
+        "maximize": "Maximize",
+        "restore": "Restore",
+        "doubleClick": "Double-click",
+        "ungroupAll": "Ungroup all",
+        "close": "Close",
+        "closeGroup": "Close group",
+        "alreadyOwnColumn": "Already its own column",
+        "alreadyAlone": "Already on its own",
+        "alreadyLastColumn": "Already the last column"
+      },
+      "presets": {
+        "button": "Layout",
+        "columns": "Columns",
+        "stacked": "Stacked",
+        "tabbed": "Tabbed",
+        "reset": "Reset layout",
+        "tip": "Layout: arrange every panel at once"
+      },
+      "refusal": {
+        "width": "Needs {px} px of width",
+        "height": "{panel} needs {px} px of height",
+        "inspectorPreview": "Inspector needs the preview visible"
+      },
+      "target": {
+        "reorder": "Reorder tabs",
+        "tabIn": "Tab in {panel}",
+        "above": "Above {panel}",
+        "below": "Below {panel}",
+        "columnBetween": "New column between {left} and {right}",
+        "columnLeftOf": "New column, left of {panel}",
+        "columnRightOf": "New column, right of {panel}",
+        "column": "New column"
+      },
+      "rail": {
+        "front": "Brings {panel} to the front",
+        "close": "Closes {panel}",
+        "openColumn": "Opens as a new column",
+        "openTab": "Opens as a tab in {panel}",
+        "openAbove": "Opens above {panel}",
+        "openBelow": "Opens below {panel}"
+      },
+      "toast": {
+        "opened": "{panel} opened",
+        "closed": "{panel} closed",
+        "groupClosed": "{panel} and {count} more closed",
+        "moved": "{panel} moved",
+        "groupMoved": "{panel} and {count} more moved",
+        "movedToColumn": "{panel} moved to a new column",
+        "splitBelow": "{panel} split below",
+        "addedTo": "{panel} added to {target}",
+        "preset": "Layout: {name}",
+        "reset": "Layout reset",
+        "ungrouped": "Group split up",
+        "ungroupedPartly": "Group split up; {count, plural, one {# panel stayed} other {# panels stayed}} tabbed, not enough room",
+        "ungroupNoRoom": "Not enough room to split the group up",
+        "nothingToUndo": "Nothing to undo",
+        "alreadyOwnColumn": "{panel} already has its own column",
+        "undo": "Undo"
+      }
+    },
+    "tips": {
+      "save": "Save the project ({shortcut})",
+      "saved": "All changes are saved",
+      "discard": "Go back to the last save",
+      "nothingToDiscard": "No unsaved changes",
+      "undo": "Undo the last change",
+      "redo": "Redo the change you undid",
+      "nothingToUndo": "Nothing to undo",
+      "nothingToRedo": "Nothing to redo",
+      "afterRun": "Available once the AI has finished",
+      "deploy": "Deploy to a host, or export as a ZIP",
+      "settings": "Settings for the app and this project"
     }
   },
   "skills": {
@@ -328,8 +456,6 @@
     "loading": "Loading skills...",
     "searchPlaceholder": "Search skills and groups...",
     "more": "More",
-    "showBuiltIn": "Show or hide the skills that ship with OSW Studio",
-    "showCustom": "Show or hide the skills you created",
     "enableAllShown": "Enable all skills currently shown",
     "disableAllShown": "Disable all skills currently shown",
     "noSkillsFound": "No skills found",
@@ -451,7 +577,33 @@
     "groupCount": "{count, plural, one {# group} other {# groups}}",
     "groupNamePlaceholder": "e.g. Webdev Skills",
     "selectedCount": "({count, plural, one {# selected} other {# selected}})",
-    "custom": "Custom"
+    "custom": "Custom",
+    "tips": {
+      "allOn": "Let the AI use skills",
+      "allOff": "Stop the AI using any skill",
+      "turnOn": "Let the AI use {name}",
+      "turnOff": "Stop the AI using {name}",
+      "newGroup": "Bundle skills to turn on and off together",
+      "importExport": "Import or export skills",
+      "evalOn": "Add only the enabled skills that fit each message",
+      "evalOff": "Add every enabled skill to each message",
+      "needsSkills": "Turn on the skills system first",
+      "skillsTab": "Turn single skills on and off",
+      "groupsTab": "Turn sets of skills on and off together",
+      "showBuiltIn": "Show the skills that ship with OSW Studio",
+      "hideBuiltIn": "Hide the skills that ship with OSW Studio",
+      "showCustom": "Show the skills you made",
+      "hideCustom": "Hide the skills you made",
+      "noneShown": "No skills are shown",
+      "edit": "Edit {name}",
+      "view": "View {name}; built-in skills can't be changed",
+      "delete": "Delete {name}",
+      "rowMenu": "Actions for {name}",
+      "missing": "Skills in this group that no longer exist",
+      "nameFirst": "Name the group first",
+      "close": "Close without saving",
+      "formEditor": "Edit the name, description and content in separate fields"
+    }
   },
   "settings": {
     "language": {
@@ -621,7 +773,39 @@
     "codexLoginFailed": "ChatGPT login failed",
     "compactionLimitPlaceholder": "e.g. 128000",
     "signInWithProvider": "Sign in with {provider}",
-    "orPasteKey": "Or paste an API key"
+    "orPasteKey": "Or paste an API key",
+    "tips": {
+      "studio": "The full editor, with Templates, Skills and Interviews in the menu",
+      "simple": "Projects open in quick edit; the menu drops Templates, Skills and Interviews",
+      "system": "Follow your device's light or dark setting",
+      "languageEn": "Show the interface in English",
+      "languageKo": "Show the interface in Korean",
+      "languageFi": "Show the interface in Finnish",
+      "analyticsOff": "Stop sharing anonymous usage data",
+      "hideCosts": "Stop showing a project's cost while you edit it",
+      "showCosts": "Show a project's cost while you edit it",
+      "resetStats": "Sets the lifetime total back to zero, with no undo",
+      "export": "Downloads an .osws backup; API keys are not included",
+      "import": "Restores an .osws backup, replacing or merging your data",
+      "clearAll": "Deletes saved keys, sign-ins, model templates and preferences; projects stay",
+      "about": "Shows what OSW Studio is, with GitHub and community links",
+      "codexSignIn": "Opens ChatGPT sign-in in a new tab",
+      "redirectFirst": "Paste the redirect address first",
+      "checkToken": "Checks the token with HuggingFace and saves it",
+      "tokenFirst": "Paste a token first",
+      "disconnect": "Removes the connection and its saved key or sign-in",
+      "mcpRevoke": "Revoke {name}'s access to {workspace}",
+      "mcpRevokeNow": "Revoke {name}'s access now",
+      "checkSetup": "Checks the server, the model, tool support and context length",
+      "copyCommand": "Copy the command",
+      "validate": "Checks the key with {provider}",
+      "keyFirst": "Enter a key first",
+      "sameChatModel": "Use the code model for chat too",
+      "separateChatModel": "Pick a separate model for chat and planning",
+      "dark": "Always use the dark theme",
+      "light": "Always use the light theme",
+      "hfSignIn": "Opens Hugging Face sign-in in this tab, then returns you to the Dashboard"
+    }
   },
   "languageOffer": {
     "decline": "Keep English"
@@ -645,7 +829,16 @@
     "noErrors": "No errors recorded",
     "whatsNewIn": "What's New in v{version}",
     "topDeployments": "Top Deployments (24h)",
-    "loadFailed": "Failed to load the dashboard"
+    "loadFailed": "Failed to load the dashboard",
+    "tips": {
+      "newProject": "Start a project from a template, or describe it to the AI",
+      "projects": "Opens all your projects",
+      "deployments": "Opens all your deployments",
+      "tour": "Starts a short tour with a demo project",
+      "docs": "Opens the guides, FAQ and troubleshooting",
+      "readAll": "Opens What's New with every release",
+      "refresh": "Reload the dashboard"
+    }
   },
   "projects": {
     "searchPlaceholder": "Search projects...",
@@ -727,7 +920,19 @@
     "limitReached": "Project limit reached ({max}). Delete a project to create a new one.",
     "confirmDelete": "Are you sure you want to delete “{name}”? This cannot be undone.",
     "discardUnsavedConfirm": "You have unsaved changes. Discard them?",
-    "firstSiteName": "My First Site"
+    "firstSiteName": "My First Site",
+    "tips": {
+      "new": "Create a project from a template, or plan it with the AI",
+      "sort": "Change the order of the projects",
+      "import": "Import a project from a ZIP, a JSON export or a folder",
+      "back": "Back to the project form",
+      "rename": "Edit the name and description of {name}",
+      "saveDetails": "Save the name and description",
+      "cancelEdit": "Stop editing without saving",
+      "more": "More actions for {name}",
+      "open": "Open {name}",
+      "preview": "Preview {name}"
+    }
   },
   "chat": {
     "startInterview": "Start an interview",
@@ -813,7 +1018,25 @@
       "blocked": "Microphone access was blocked",
       "processFailed": "Could not process the recording"
     },
-    "connectBeforeAttachments": "Connect a model to send attachments. They stay in the message box until then."
+    "connectBeforeAttachments": "Connect a model to send attachments. They stay in the message box until then.",
+    "tips": {
+      "interviewBadge": "Interview in progress: {title}",
+      "send": "Send ({shortcut})",
+      "stop": "Stop the run",
+      "connect": "Connect a provider to choose a model",
+      "writeFirst": "Write a message first",
+      "modeCode": "The AI can change the project's files",
+      "modeChat": "The AI reads and answers, without changing files",
+      "modeInterview": "The AI asks questions to work out what to build",
+      "connectFirst": "Connect a provider first",
+      "newInterview": "New interview template",
+      "doubleClickToStart": "Double-click to start",
+      "pickInterview": "Pick an interview first",
+      "showCorrection": "Show what was corrected",
+      "hideCorrection": "Hide the correction",
+      "handoff": "Starts a build from what the interview captured",
+      "answer": "Send this as your answer"
+    }
   },
   "fileExplorer": {
     "preparingDownload": "Preparing download…",
@@ -867,7 +1090,14 @@
     "hiddenSummary": "{parts} hidden",
     "confirmDelete": "Delete {type, select, directory {folder} other {file}} \"{path}\"?",
     "readOnlyKind": "Read-only {kind, select, server {server context} other {skill}}",
-    "generated": "(generated)"
+    "generated": "(generated)",
+    "tips": {
+      "serverContext": "What the AI sees of this project's backend; change it in the project's backend settings",
+      "skills": "A skill the AI can read; change it in the Skills panel",
+      "generated": "Built from the source files when the preview runs; edit the sources instead",
+      "entry": "The page the preview opens first",
+      "aiPrompt": "Instructions the AI follows on every run in this project"
+    }
   },
   "deployDialog": {
     "chooseWhere": "Choose where to deploy this project.",
@@ -908,7 +1138,21 @@
     "terminalRuntimeRefused": "This project type can’t be published as a static Space. Use ZIP export instead.",
     "publishFailed": "Publish failed",
     "builtWithFooter": "“Built with OSW Studio” footer",
-    "zipExportFailed": "Failed to export ZIP"
+    "zipExportFailed": "Failed to export ZIP",
+    "tips": {
+      "learnMore": "Opens the deployment docs in a new tab",
+      "connect": "Opens Settings, where you add a Hugging Face token",
+      "signIn": "Signs you in on Hugging Face, then brings you back here",
+      "newTab": "Opens in a new tab",
+      "createDeployment": "Opens Deployments with a new one started for this project",
+      "zip": "Downloads the compiled site as a ZIP",
+      "updateExisting": "Publish over the Space this project already has",
+      "publishAsNew": "Publish to a new Space and keep the old one",
+      "visibilityKept": "An existing Space keeps its visibility; change it on Hugging Face",
+      "toHuggingFace": "Opens Hugging Face, then returns here to publish",
+      "nameFirst": "Enter a Space name first",
+      "publish": "Builds the site and uploads it to the Space"
+    }
   },
   "importDialog": {
     "compareVersions": "Compare versions",
@@ -1025,12 +1269,20 @@
       "globalStyles": "Global styles",
       "databaseSchema": "Database schema"
     },
-    "entriesCount": "{count, plural, one {# entry} other {# entries}}"
+    "entriesCount": "{count, plural, one {# entry} other {# entries}}",
+    "tips": {
+      "compare": "Show the size and date of both versions",
+      "hideCompare": "Hide the comparison",
+      "keepMine": "Keep yours and skip the archive's",
+      "replace": "Overwrite yours with the archive's version",
+      "keepBoth": "Import the archive's version under a new name",
+      "keepAsFile": "Add the zip to the project as a file, without unpacking it",
+      "skipFirst": "Choose to skip the blocked entries first",
+      "waitImport": "Wait for the import to finish"
+    }
   },
   "sync": {
     "loadingStatus": "Loading sync status...",
-    "pushToServer": "Push to server",
-    "pullFromServer": "Pull from server",
     "pushTemplateFailed": "Failed to push template",
     "pullTemplateFailed": "Failed to pull template",
     "pushSkillFailed": "Failed to push skill",
@@ -1081,6 +1333,24 @@
       "forbidden": "Your role in this workspace cannot delete this, so nothing was deleted.",
       "in_use": "A deployment uses this project, so nothing was deleted. Point the deployment at another project, or delete the deployment, first.",
       "failed": "The server did not confirm the delete, so the copy here was kept. Try again."
+    },
+    "tips": {
+      "pushReplace": "Replace the server's copy of {name} with yours",
+      "pushNew": "Copy {name} to the server",
+      "pullReplace": "Replace your copy of {name} with the server's",
+      "pullNew": "Copy {name} from the server",
+      "keepBoth": "Save your copy as a new project, then pull the server's",
+      "busy": "Wait for the sync in progress to finish",
+      "inSync": "Already in sync",
+      "serverOnly": "Only on the server; pull it with the button on this row",
+      "selectAll": "Select every item that isn't in sync",
+      "pushSelected": "Push the selected items to the server",
+      "pullSelected": "Pull the selected items from the server",
+      "refresh": "Check the sync status again",
+      "skillsTab": "Your own skills; built-in ones are not synced",
+      "templatesTab": "Your own templates; built-in ones are not synced",
+      "modelsTab": "Your own model templates; built-in ones are not synced",
+      "interviewsTab": "Your own interview templates; built-in ones are not synced"
     }
   },
   "models": {
@@ -1163,7 +1433,40 @@
     "perImage": "per image",
     "usesAgentModel": "Uses the agent model",
     "sendsRecordingAsAudio": "Sends the recording to the agent as audio",
-    "browserVoiceMeta": "Free · runs in your browser · no setup"
+    "browserVoiceMeta": "Free · runs in your browser · no setup",
+    "tips": {
+      "reasoningOn": "Turn on reasoning for {model}",
+      "reasoningOff": "Turn off reasoning for {model}",
+      "switchTemplate": "Switch to another template; its models apply to all projects",
+      "switchDiscards": "Switching templates drops your unsaved changes",
+      "saveTo": "Saves the changes; all projects use them right away",
+      "saveAs": "Save these choices as a new template you can edit",
+      "changeAgent": "Choose a different agent model",
+      "changeImage": "Choose a different image model",
+      "changeVoice": "Choose how voice input becomes text",
+      "setImage": "Pick a model so the AI can make images",
+      "setVoice": "Pick the browser or a model for voice input",
+      "compactOff": "Stop summarizing long conversations",
+      "compactOn": "Summarize the conversation as it nears the context limit",
+      "nameFirst": "Name the template first",
+      "saveNew": "Saves a new template and makes it the active one",
+      "agentNoImages": "The agent model can't make images",
+      "agentNoAudio": "The agent model can't take audio",
+      "showAll": "Also list models that don't fit this slot",
+      "showFitting": "List only the models that fit this slot",
+      "reset": "Go back to the models saved in “{name}”",
+      "saveInto": "Save these models into “{name}”",
+      "showGroup": "Show {name}'s models",
+      "hideGroup": "Hide {name}'s models",
+      "inUse": "{model} is in use",
+      "useForAgent": "Use {model} as the agent model",
+      "useForImage": "Use {model} for image generation",
+      "useForVoice": "Use {model} for voice input",
+      "hideModels": "Hide the model list",
+      "chooseAgent": "Choose the model the agent uses",
+      "chooseImage": "Choose a model for image generation",
+      "chooseVoice": "Choose a model for voice input"
+    }
   },
   "preview": {
     "livePreview": "Live Preview",
@@ -1177,7 +1480,17 @@
     "navigatedAwayHint": "A link, form, or script sent the preview to another page.",
     "reload": "Reload preview",
     "compileFailed": "Failed to compile project",
-    "openExternalLink": "Open external link?"
+    "openExternalLink": "Open external link?",
+    "tips": {
+      "back": "Back",
+      "forward": "Forward",
+      "home": "Home page",
+      "semanticBlocks": "Semantic blocks: drag a section into the page for the AI to build",
+      "page": "Go to a page",
+      "phone": "Phone width (375 px)",
+      "tablet": "Tablet width (768 px)",
+      "desktop": "Desktop width (up to 1440 px)"
+    }
   },
   "editor": {
     "noFilesOpen": "No files open",
@@ -1188,7 +1501,12 @@
     "confirmCloseUnsaved": "Close {name} without saving?",
     "imageNotEditable": "Image files cannot be edited in the text editor",
     "videoNotEditable": "Video files cannot be edited in the text editor",
-    "unsupportedTypeHint": "This file type is not supported for editing in the text editor. Binary files and certain document formats cannot be displayed here."
+    "unsupportedTypeHint": "This file type is not supported for editing in the text editor. Binary files and certain document formats cannot be displayed here.",
+    "tips": {
+      "save": "Save the file ({shortcut})",
+      "tabModified": "{path} · unsaved changes",
+      "closeFile": "Close {name}"
+    }
   },
   "quickEdit": {
     "you": "You",
@@ -1342,6 +1660,14 @@
     "status": {
       "task": "Task",
       "remaining": "Remaining"
+    },
+    "tips": {
+      "undoThis": "Undo what this run changed",
+      "redoThis": "Put this run's changes back",
+      "retry": "Undo this run and send its message again",
+      "restore": "Go back to how the project was after this run",
+      "allow": "Allow, and stop asking for this",
+      "dont": "Decline; the AI carries on without it"
     }
   },
   "generationShelf": {
@@ -1443,7 +1769,13 @@
     },
     "actionsCost": "{count, plural, one {# action} other {# actions}} · {cost}",
     "tokens": "{tokens} tokens",
-    "earlierActions": "+ {count, plural, one {# earlier action} other {# earlier actions}}"
+    "earlierActions": "+ {count, plural, one {# earlier action} other {# earlier actions}}",
+    "tips": {
+      "open": "Open {name}",
+      "openPaused": "Open {name} to see what the run needs",
+      "dismiss": "Clear {name}'s run from this list",
+      "stop": "Stop the run in {name}"
+    }
   },
   "elementsPanel": {
     "noElements": "No elements yet",
@@ -1463,7 +1795,8 @@
     "collapse": "Collapse {tag}",
     "expand": "Expand {tag}",
     "sharedSource": "This source is shared by {count} rendered elements — editing it affects all of them.",
-    "moreNotShown": "{count, plural, one {# more element not shown} other {# more elements not shown}}"
+    "moreNotShown": "{count, plural, one {# more element not shown} other {# more elements not shown}}",
+    "sourceOffset": "{file} (offset {offset})"
   },
   "telemetry": {
     "title": "Anonymous Usage Analytics",
@@ -1528,7 +1861,13 @@
     "collected": "What will be collected:",
     "randomId": "A randomly generated ID stored in your browser is used to count unique visitors.",
     "disable": "Disable analytics",
-    "gotIt": "Got it"
+    "gotIt": "Got it",
+    "tips": {
+      "source": "Opens osw-analytics on GitHub in a new tab",
+      "details": "What is collected, and what never is",
+      "disable": "You can turn analytics back on in Settings, under Appearance",
+      "gotIt": "Close this and keep analytics on"
+    }
   },
   "permissions": {
     "mode": "Permission mode",
@@ -1572,6 +1911,12 @@
       "brief": "reaches only the setup agent during project intake, and reports back to the user rather than touching the project.",
       "spec": "reaches only the setup agent during project intake, and records the agreed plan rather than touching the project.",
       "proposeCreate": "reaches only the setup agent, and proposes a project for the user to accept — the creation itself is the user's action."
+    },
+    "tips": {
+      "ask": "Ask before the AI runs {command}",
+      "allow": "Let the AI run {command} without asking",
+      "reset": "Clears your choices and switches to Ask mode",
+      "allowOnce": "Allow this time only, and ask again next time"
     }
   },
   "connections": {
@@ -1672,7 +2017,39 @@
       "brave": "Paid: $5 monthly credit, card required.",
       "searxng": "Point at your own SearXNG instance (JSON API must be enabled)."
     },
-    "searchWarnDuckduckgo": "Best-effort and unofficial: searches may be rate-limited or blocked, especially on shared or hosted instances where every user shares one address. Add a key-based provider for heavier use."
+    "searchWarnDuckduckgo": "Best-effort and unofficial: searches may be rate-limited or blocked, especially on shared or hosted instances where every user shares one address. Add a key-based provider for heavier use.",
+    "tips": {
+      "showKey": "Show the key",
+      "hideKey": "Hide the key",
+      "showToken": "Show the token",
+      "hideToken": "Hide the token",
+      "optionsFor": "Options for {name}",
+      "checking": "Checking the connection",
+      "testLocal": "Checks that {name} answers and lists its models",
+      "testCustom": "Saves the provider, then fetches its model list",
+      "nameEndpointFirst": "Enter a name and an endpoint first",
+      "tokenFirst": "Enter the API token, or turn off Require API token",
+      "tokenOptional": "Make the token optional, for endpoints that need none",
+      "tokenRequired": "Require a token to use this endpoint",
+      "deleteProvider": "Deletes {name} at once, with its token and headers",
+      "saveCustom": "Saves the changes and fetches the model list again",
+      "removeHeader": "Remove the {name} header",
+      "keyFirst": "Enter the API key first",
+      "urlFirst": "Enter the instance URL first",
+      "apply": "Use the models in “{name}” for all projects",
+      "inUse": "“{name}” is already the active template",
+      "rename": "Rename “{name}”",
+      "duplicate": "Make an editable copy of “{name}”",
+      "deleteTemplate": "Deletes “{name}” for good",
+      "onlyTemplate": "The only template can't be deleted",
+      "addProvider": "Choose a cloud, subscription, local or custom provider",
+      "addSearchProvider": "Let the AI search the web through a provider you choose",
+      "backToList": "Back to the list of providers",
+      "chooseKey": "Connect it with an API key",
+      "chooseSubscription": "Connect it by signing in to your subscription",
+      "chooseLocal": "Connect a model server running on your computer",
+      "chooseCustom": "Connect any server with an OpenAI-compatible API, by its address"
+    }
   },
   "templatesUi": {
     "nameLength": "Template name must be between 1 and 50 characters",
@@ -1811,6 +2188,18 @@
       "console": "This template runs in the Console and has no page to preview.",
       "loadFailed": "This template could not be loaded.",
       "renderFailed": "This template could not be rendered."
+    },
+    "tips": {
+      "manage": "Opens the Templates page and closes this dialog",
+      "docs": "Opens the docs and closes this dialog",
+      "select": "Chooses this template; nothing is created yet",
+      "typeFilter": "Show only templates with or without backend features",
+      "sort": "Change the order of the templates",
+      "import": "Import a template from an .oswt file",
+      "use": "Create a project from {name}",
+      "more": "More actions for {name}",
+      "authorSite": "Opens the author's site in a new tab",
+      "saveAsTemplate": "Adds it to the Templates page, ready to start projects from"
     }
   },
   "publishSettings": {
@@ -1930,7 +2319,6 @@
     "live": "Live",
     "reviewModeNote": "Publishing writes a second, private copy carrying the comment widget. The public site is unchanged and never carries it.",
     "copy": "Copy",
-    "publishFirst": "Publish first — the review copy has not been built",
     "open": "Open",
     "setOnSave": "Set on save",
     "clearedOnSave": "Cleared on save",
@@ -2052,7 +2440,53 @@
     "cdnNameUrlRequired": "Please provide both a name and URL for the CDN resource",
     "cdnInvalidUrl": "Please provide a valid URL",
     "confirmDeleteScript": "Are you sure you want to delete this script?",
-    "scriptNameRequired": "Please provide a name for the script"
+    "scriptNameRequired": "Please provide a name for the script",
+    "tips": {
+      "underConstructionOn": "Show visitors a maintenance page from the next publish",
+      "underConstructionOff": "Serve the site again from the next publish",
+      "include": "Add {name} to the published pages",
+      "leaveOut": "Leave {name} out of the published pages",
+      "edit": "Edit {name}",
+      "remove": "Remove {name}",
+      "asyncOn": "Add async: the script runs as soon as it downloads",
+      "asyncOff": "Remove async from the script tag",
+      "deferOn": "Add defer: the script runs once the page is parsed",
+      "deferOff": "Remove defer from the script tag",
+      "analyticsOn": "Start tracking visitors from the next publish",
+      "analyticsOff": "Stop tracking visitors from the next publish",
+      "turnOn": "Turn on {name}",
+      "turnOff": "Turn off {name}",
+      "bannerOn": "Show a cookie consent banner from the next publish",
+      "bannerOff": "Remove the consent banner from the next publish",
+      "blockOnOptIn": "Run the built-in analytics only once the visitor accepts",
+      "blockOnOptOut": "Stop the built-in analytics for visitors who decline",
+      "blockOff": "Run the built-in analytics whatever the visitor answers",
+      "reviewOn": "Build a review copy for comments on the next publish",
+      "reviewOff": "Close the review copy; its comments are kept",
+      "copyAddress": "Copy the address to send to reviewers",
+      "openReview": "Opens the review copy in a new tab",
+      "publishFirst": "Publish first to build the review copy",
+      "saveThenPublish": "Save, then publish, to build the review copy",
+      "passwordDone": "Keep this password; it is set when you save",
+      "setPassword": "Ask reviewers for a password",
+      "changePassword": "Choose a new password for reviewers",
+      "clearPassword": "Remove the password on save, so the address alone opens the copy",
+      "keepPassword": "Keep the password as it is saved now",
+      "notifyOn": "Email new comments to everyone taking part, at most hourly",
+      "notifyOff": "Stop the digest emails; anything queued is dropped",
+      "checkingMail": "Checking whether mail can be sent",
+      "noMail": "No mail server is set up",
+      "publishNow": "Builds the site and its review copy",
+      "showOpen": "Show only the open comments",
+      "showResolved": "Show only the resolved comments",
+      "showAll": "Show every comment",
+      "reply": "Reply to comment {n}",
+      "showComment": "Opens the review copy at comment {n}, in a new tab",
+      "resolve": "Mark comment {n} resolved",
+      "reopen": "Reopen comment {n}",
+      "postReply": "Posts your reply with the team badge",
+      "writeReply": "Write a reply first"
+    }
   },
   "admin": {
     "usersServerOnly": "User management is only available in Server Mode",
@@ -2089,7 +2523,6 @@
     "addMemberTitle": "Add Member",
     "userEmail": "User Email",
     "passwordOnlyNewAccount": "Only needed for a new account",
-    "removeMember": "Remove member",
     "workspacesServerOnly": "Workspace management is only available in Server Mode",
     "loadingWorkspaces": "Loading workspaces...",
     "newWorkspace": "New Workspace",
@@ -2182,7 +2615,23 @@
     "viewHelp": "The studio is the full four-panel editor. The simple view is projects and deployments only, and a project opens straight into quick edit. It changes what is shown, not what the person is allowed to do, and they can switch it themselves.",
     "roleViewer": "Viewer",
     "workspaceSummary": "{projects, plural, one {# project} other {# projects}} · {deployments, plural, one {# deployment} other {# deployments}} · created {created}",
-    "storageUsedMb": "{mb, number} MB"
+    "storageUsedMb": "{mb, number} MB",
+    "tips": {
+      "actionsFor": "Actions for {name}",
+      "adminOn": "Make this account an instance admin",
+      "adminOff": "Take instance admin rights away from this account",
+      "deactivate": "Deactivate the account so it cannot sign in",
+      "reactivate": "Reactivate the account so it can sign in",
+      "generatePassword": "Fill in a random 16-character password and show it",
+      "showPassword": "Show the password",
+      "hidePassword": "Hide the password",
+      "grant": "Add them to {name} as {role}",
+      "chooseWorkspace": "Choose a workspace first",
+      "removeMember": "Remove {email} from this workspace; their account stays",
+      "studioOn": "Start them in the full studio",
+      "studioOff": "Start them in the simple view",
+      "switchWorkspace": "Switch to another workspace"
+    }
   },
   "backend": {
     "edgeFunctions": "Edge Functions",
@@ -2333,7 +2782,15 @@
       "rows": "{count, plural, one {# row} other {# rows}}",
       "rowsAffected": "{count, plural, one {# row affected} other {# rows affected}}",
       "success": "Query executed successfully",
-      "error": "Query Error"
+      "error": "Query Error",
+      "tips": {
+        "writeQuery": "Write a query first",
+        "runOnDeployment": "Run it on the deployment's database; changes apply at once",
+        "runOnProject": "Run it on the project's database",
+        "showHistory": "Show your recent queries, kept in this browser",
+        "hideHistory": "Hide the recent queries",
+        "noHistory": "No queries run yet"
+      }
     },
     "updatedOn": "Updated {date}",
     "loadFunctionsFailed": "Failed to load functions",
@@ -2401,7 +2858,40 @@
     "noDeploymentId": "No deployment is selected",
     "confirmClearLogs": "Clear all function execution logs? This cannot be undone.",
     "ddlHint": "CREATE TABLE, ALTER TABLE, and other DDL statements",
-    "apply": "Apply"
+    "apply": "Apply",
+    "tips": {
+      "everyPage": "Show this suggestion on every page",
+      "somePages": "Show it only on the pages you pick",
+      "ruleKind": "Match one page, a directory, or a pattern",
+      "removeRule": "Remove this rule",
+      "saveSuggestions": "Save the suggestions",
+      "noChanges": "No changes to save",
+      "projectTab": "Runtime, preview entry point and chat suggestions",
+      "backendOff": "Turn off the backend features for this project",
+      "backendOn": "Turn on functions, secrets, schedules and the database",
+      "manageSettings": "Opens the app settings: connections, models, appearance and more",
+      "actionsFor": "Actions for {name}",
+      "copyFunctionUrl": "Copy the URL that calls {name}",
+      "functionDisabled": "Calls to it are refused until you enable it",
+      "helperDisabled": "Edge functions cannot call it until you enable it",
+      "scheduleDisabled": "It does not run until you enable it",
+      "valueNotSet": "Edit it to set a value; functions cannot read it until then",
+      "showValue": "Show the value",
+      "hideValue": "Hide the value",
+      "showSystemTables": "Also list the internal tables: files, functions, secrets and logs",
+      "hideSystemTables": "List only your own tables",
+      "refreshLogs": "Load the newest 200 entries again",
+      "clearLogs": "Delete every log entry for this deployment",
+      "noLogs": "No logs to clear",
+      "projectTables": "The tables and columns of the project's database",
+      "projectSql": "Run SQL queries on the project's database",
+      "projectDdl": "Create or change tables, and add them to the schema the AI reads",
+      "applyDdl": "Run it, and add it to the schema the AI reads",
+      "writeDdl": "Write a statement first",
+      "swapWait": "Wait for the analysis to finish",
+      "swapFailed": "Unavailable because the changes could not be analyzed",
+      "schemaTab": "The project's database: its tables, SQL and DDL"
+    }
   },
   "mail": {
     "serverOnly": "Mail is only available in Server Mode",
@@ -2500,12 +2990,26 @@
     },
     "invalidPort": "Port must be a whole number between 1 and 65535.",
     "instanceServerDesc": "Nothing to set up. You can put your own name on it, but the address stays the instance’s. That is what keeps the mail out of spam folders.",
-    "displayNameHint": "Shown in front of the instance From address. There is no address field here because a custom workspace address through someone else’s relay fails SPF and DKIM and often goes to spam. Use your own server if you need your own From address."
+    "displayNameHint": "Shown in front of the instance From address. There is no address field here because a custom workspace address through someone else’s relay fails SPF and DKIM and often goes to spam. Use your own server if you need your own From address.",
+    "tips": {
+      "adminOnly": "Only instance admins see this section",
+      "offerOff": "Stop offering this server to workspaces",
+      "stopSending": "Stop sending email from this workspace",
+      "noChanges": "No changes to save",
+      "discard": "Go back to the saved settings",
+      "sendTestTo": "Send one test message to {email}",
+      "saveFirst": "Save first: a test uses the saved settings",
+      "sendNow": "Run a delivery pass now instead of waiting for the next one",
+      "changePassword": "Type a new password; saving applies it",
+      "clearPassword": "Remove the stored password when you save",
+      "keepPassword": "Keep the password as it was",
+      "donePassword": "Keep this password; saving applies it",
+      "useAddressName": "Clear the display name so the address's own name shows"
+    }
   },
   "interviews": {
     "deleteFailed": "Failed to delete the interview template",
     "templates": "Interview templates",
-    "removeItem": "Remove item",
     "question": "Question",
     "required": "Required",
     "handoffAction": "Handoff action",
@@ -2570,7 +3074,22 @@
     "saveFailed": "Failed to save interview template",
     "builtInOverwrite": "Cannot overwrite a built-in template.",
     "builtInEdit": "Cannot edit a built-in template.",
-    "builtInDelete": "Cannot delete a built-in template."
+    "builtInDelete": "Cannot delete a built-in template.",
+    "tips": {
+      "showBuiltIn": "Show the templates that ship with OSW Studio",
+      "hideBuiltIn": "Hide the templates that ship with OSW Studio",
+      "showCustom": "Show the templates you made",
+      "hideCustom": "Hide the templates you made",
+      "view": "View {title}",
+      "duplicate": "Make an editable copy of {title}",
+      "delete": "Delete {title}",
+      "rowMenu": "Actions for {title}",
+      "back": "Back to the list",
+      "backUnsaved": "Back to the list without saving",
+      "addItem": "Add another thing for the interview to gather",
+      "removeItem": "Remove item {n}",
+      "required": "The interview can't finish until this is covered"
+    }
   },
   "deploymentDetail": {
     "underConstruction": "Under Construction",
@@ -2602,7 +3121,28 @@
     "settingsFallback": "Settings",
     "updateExisting": "Update existing",
     "saveFailed": "Failed to save settings. Please try again.",
-    "confirmLeaveUnsaved": "You have unsaved changes. Go back anyway?"
+    "confirmLeaveUnsaved": "You have unsaved changes. Go back anyway?",
+    "navTips": {
+      "functions": "Edge functions: REST endpoints your published site calls",
+      "helpers": "Reusable code your edge functions call through server",
+      "secrets": "Encrypted values your functions read, such as API keys",
+      "schedules": "Edge functions that run on a cron schedule",
+      "schema": "The tables of the deployment's database",
+      "general": "Maintenance page, source project, public URL, custom domain and version",
+      "scripts": "Scripts added to every published page, such as tracking code",
+      "cdn": "CSS and JavaScript libraries linked from a CDN on every page",
+      "seo": "Meta tags, Open Graph and Twitter card for search and sharing",
+      "analytics": "Visitor tracking: provider, features, data retention and privacy",
+      "compliance": "A cookie consent banner, and whether analytics waits for consent",
+      "review": "A private copy of the site where reviewers leave comments",
+      "sql": "SQL queries against the deployment's database",
+      "logs": "Recent edge function calls, with status and duration"
+    },
+    "tips": {
+      "back": "Back to all deployments",
+      "save": "Saves the settings; the live site changes when you publish",
+      "saveFirst": "Save first: publishing uses only the saved settings"
+    }
   },
   "analytics": {
     "dashboard": "Analytics Dashboard",
@@ -2658,7 +3198,16 @@
     "loadStorageFailed": "Failed to load storage: {error}",
     "notAvailableHint": "Analytics data will be available after you publish your deployment for the first time. The analytics database is created when the deployment is published.",
     "confirmClear": "Clear all analytics data? This cannot be undone.",
-    "directReferrer": "(Direct)"
+    "directReferrer": "(Direct)",
+    "tips": {
+      "export": "Downloads all the analytics data as a CSV file",
+      "clear": "Deletes all the collected analytics data for good",
+      "notPublished": "Available once the deployment is published",
+      "overview": "Pageviews, visitors, bounce rate, top pages, referrers and devices",
+      "heatmaps": "Where visitors click on each page",
+      "sessions": "How visitors move from page to page",
+      "engagement": "Time on page, scroll depth, and landing and exit pages"
+    }
   },
   "heatmap": {
     "loadFailed": "Failed to load heatmap data",
@@ -2679,7 +3228,10 @@
     "lowActivity": "Low activity",
     "recapture": "Recapture",
     "noData": "No heatmap data available",
-    "sampleSizeCount": "{count, plural, one {Sample size: <b>#</b> interaction} other {Sample size: <b>#</b> interactions}}"
+    "sampleSizeCount": "{count, plural, one {Sample size: <b>#</b> interaction} other {Sample size: <b>#</b> interactions}}",
+    "tips": {
+      "recapture": "Take a new screenshot of the published page"
+    }
   },
   "engagement": {
     "loadFailed": "Failed to load engagement metrics",
@@ -2719,7 +3271,12 @@
     "creatingAccount": "Creating account...",
     "createAccount": "Create account",
     "registrationFailed": "Registration failed",
-    "genericError": "An error occurred. Please try again."
+    "genericError": "An error occurred. Please try again.",
+    "tips": {
+      "generatePassword": "Fill in a random 16-character password and show it",
+      "showPassword": "Show the password",
+      "hidePassword": "Hide the password"
+    }
   },
   "templateCatalog": {
     "blank": {
@@ -2822,11 +3379,9 @@
     }
   },
   "tooltips": {
-    "capture": "Capture",
     "captureScreenshot": "Capture screenshot",
     "uploadImage": "Upload image",
     "removeThumbnail": "Remove thumbnail",
-    "dragToReorder": "Drag to reorder",
     "closePalette": "Close palette",
     "removeBlock": "Remove block",
     "removeFile": "Remove file",
@@ -3036,7 +3591,10 @@
     "templateLabel": "Template",
     "creating": "Creating...",
     "specSections": "Spec ({count, plural, one {# section} other {# sections}})",
-    "createNow": "Create now"
+    "createNow": "Create now",
+    "tips": {
+      "createNow": "Creates the project from the brief so far and opens it"
+    }
   },
   "runtimes": {
     "static": "Pure HTML, CSS, and JavaScript",
@@ -3162,7 +3720,18 @@
     "editTextDesc": "Change what this element says.",
     "tokenSuperseded": "{label}: this element’s colour came from {token}, declared in {file}. Only this element changed — the token, and everything else using it, is as it was.",
     "colourOf": "{label} colour",
-    "sharedInstances": "{count, plural, one {×# shared} other {×# shared}}"
+    "sharedInstances": "{count, plural, one {×# shared} other {×# shared}}",
+    "sidesOf": "{label} sides",
+    "valueOf": "{label} value",
+    "unitOf": "{label} unit",
+    "tips": {
+      "showSides": "Set each side on its own",
+      "hideSides": "Hide the separate sides",
+      "typeValue": "Click to type a value",
+      "pickColour": "Pick any colour",
+      "resetColour": "Remove this element's own colour, so it follows the stylesheet again",
+      "askAgent": "Puts a request in the chat, ready for you to send"
+    }
   },
   "about": {
     "tagline": "Browser-based Website Builder",
@@ -3172,7 +3741,12 @@
     "linksCommunity": "Links & Community",
     "githubRepo": "GitHub repo",
     "liveDemo": "Live Demo",
-    "discussions": "Community discussions"
+    "discussions": "Community discussions",
+    "tips": {
+      "discussions": "Opens GitHub Discussions in a new tab",
+      "repo": "Opens the source code on GitHub in a new tab",
+      "demo": "Opens the online demo in a new tab"
+    }
   },
   "providerCatalog": {
     "descriptions": {
@@ -3228,7 +3802,15 @@
     "contentBlocksPreview": "[{count, plural, one {# content block} other {# content blocks}}]",
     "reasoningOnlyPreview": "[reasoning only]",
     "emptyPreview": "[empty]",
-    "hasReasoningDetails": "Has reasoning_details"
+    "hasReasoningDetails": "Has reasoning_details",
+    "tips": {
+      "events": "What each run reported, as it happened",
+      "messages": "The messages the last request sent to the model",
+      "showOnly": "Show only {event}",
+      "showAll": "Show every event",
+      "autoScroll": "Follow new events as they arrive"
+    },
+    "memoryTip": "JS heap: {used} MB used of {limit} MB ({percent}%)"
   },
   "orchestrator": {
     "noPrompt": "Please enter a prompt",
@@ -3250,7 +3832,11 @@
     "deploy": "<b>{client}</b> {action, select, created {created} published {published} unpublished {unpublished} updated {updated} other {changed}} the deployment {project} through the MCP connector.",
     "edit": "<b>{client}</b> edited files in {project} through the MCP connector.",
     "unknownClient": "An MCP client",
-    "deployUnnamed": "<b>{client}</b> {action, select, created {created} published {published} unpublished {unpublished} updated {updated} other {changed}} a deployment through the MCP connector."
+    "deployUnnamed": "<b>{client}</b> {action, select, created {created} published {published} unpublished {unpublished} updated {updated} other {changed}} a deployment through the MCP connector.",
+    "tips": {
+      "stop": "Stop the agent task in {project}",
+      "dismiss": "Hide this notice; later ones still show"
+    }
   },
   "messageContext": {
     "summaryNote": "note",
@@ -3268,7 +3854,12 @@
     "filesCount": "Files ({count})",
     "voiceCount": "Voice ({count})",
     "voiceNote": "Voice note",
-    "attached": "Attached"
+    "attached": "Attached",
+    "tips": {
+      "show": "Show what goes with the message",
+      "hide": "Hide the details",
+      "clear": "Remove from the message"
+    }
   },
   "mcpConsent": {
     "connectFailed": "Could not complete the connection.",
@@ -3292,6 +3883,11 @@
       "deploy": "Create, publish, disable, and change settings on deployments (analytics, database). Does not delete a deployment.",
       "analytics": "Read overview stats for a deployment that has analytics enabled",
       "workspaceAdmin": "See and change who has access to the workspace"
+    },
+    "tips": {
+      "deny": "Decline: {client} gets no access",
+      "approve": "Give {client} the ticked permissions in {workspace}",
+      "tickOne": "Tick at least one permission first"
     }
   },
   "skillGroups": {
@@ -3367,7 +3963,16 @@
     "afterFailure": "After failure: {prompt}",
     "pinned": "pinned",
     "kindManual": "save",
-    "kindAuto": "auto"
+    "kindAuto": "auto",
+    "tips": {
+      "pinned": "Kept until you unpin it",
+      "manual": "Made by a save or before an import; clearing the chat keeps it",
+      "auto": "Made automatically; clearing the chat removes it",
+      "pin": "Keep this one: only the {count} newest unpinned checkpoints are kept",
+      "unpin": "Unpin: it goes once {count} newer checkpoints exist",
+      "jump": "Show the chat message this came from",
+      "restore": "Restore the project to this checkpoint"
+    }
   },
   "imagePicker": {
     "titleGenerating": "The agent is working",
@@ -3395,7 +4000,11 @@
     "replaceIt": "Replace it",
     "reading": "Reading this project's images…",
     "noImages": "This project has no image files yet. Upload one to use it here.",
-    "upload": "Upload an image"
+    "upload": "Upload an image",
+    "tips": {
+      "use": "Use {path}",
+      "upload": "Add an image from this computer and use it here"
+    }
   },
   "textPopover": {
     "titleGenerating": "The agent is working",
@@ -3420,7 +4029,10 @@
     "confirmMany": "This text is rendered {count} times. Changing it changes all {count}.",
     "confirmManyFrom": "This text from {file} is rendered {count} times. Changing it changes all {count}.",
     "confirmShared": "This text is shared. Changing it changes every place it renders.",
-    "confirmSharedFrom": "This text from {file} is shared. Changing it changes every place it renders."
+    "confirmSharedFrom": "This text from {file} is shared. Changing it changes every place it renders.",
+    "tips": {
+      "save": "Write the new text into the source file"
+    }
   },
   "syncSummary": {
     "synced": "{count} synced",
@@ -3439,7 +4051,10 @@
     "canStillChange": "You can still make changes after declining.",
     "notYet": "Not yet",
     "selectModel": "Select Model",
-    "welcome": "What are you making?\n\nTell me what you have in mind — I'll ask a few things and set up the project for you."
+    "welcome": "What are you making?\n\nTell me what you have in mind — I'll ask a few things and set up the project for you.",
+    "tips": {
+      "create": "Creates the project and opens it"
+    }
   },
   "docsActions": {
     "copyPage": "Copy page",
@@ -3460,7 +4075,11 @@
   "statusBanner": {
     "backendDown": "Backend unreachable. AI generation, project syncing, and publishing are unavailable. Your work is saved locally. When the server is back, refresh the page and re-save your project(s).",
     "sessionExpired": "Your session expired. Auto-sync and server-backed features are paused until you sign in again.",
-    "logIn": "Log in"
+    "logIn": "Log in",
+    "tips": {
+      "refresh": "Check whether the server is back",
+      "dismiss": "Hide this warning for now"
+    }
   },
   "docs": {
     "loadFailed": "Failed to load document: {status}",
@@ -3526,7 +4145,18 @@
     "popupBlocked": "The sign-in window was blocked. Allow pop-ups for this site and try again.",
     "relayWorking": "Finishing sign-in…",
     "relayDone": "You can close this window and go back to OSW Studio.",
-    "relayClose": "You can close this window."
+    "relayClose": "You can close this window.",
+    "tips": {
+      "useLocal": "Connect {name}, running on this computer",
+      "findLocal": "Look for Ollama, LM Studio or llama.cpp on this computer",
+      "signIn": "Sign in on {name} and come back connected",
+      "getKey": "Opens {name}'s key page in a new tab",
+      "connectKey": "Check the key and connect its provider",
+      "pasteFirst": "Paste a key first",
+      "connectAs": "Connect the key as {name}",
+      "moreOptions": "Opens Settings at Connections",
+      "discardHeld": "Don't send the waiting message"
+    }
   },
   "limits": {
     "retrying": "{provider} is limiting requests. Trying again shortly…",
@@ -3574,10 +4204,19 @@
     "titleAllowanceMonth": "OSW Studio's free inference is used up for this month.",
     "allowanceMonthBody": "It renews {when}. Connect your own provider to keep going.",
     "titleAllowanceCheck": "The check before OSW Studio inference did not pass.",
-    "allowanceCheckBody": "Try again in a moment, or connect your own provider."
+    "allowanceCheckBody": "Try again in a moment, or connect your own provider.",
+    "tips": {
+      "billing": "Opens HuggingFace billing in a new tab",
+      "continue": "Pick the run up where it stopped",
+      "continueOn": "Continue on {model}",
+      "chooseAnother": "Opens the model picker"
+    }
   },
   "pageLayout": {
-    "storageWarning": "You have used {percent, number, percent} of your workspace storage ({used, number} MB / {max, number} MB)"
+    "storageWarning": "You have used {percent, number, percent} of your workspace storage ({used, number} MB / {max, number} MB)",
+    "tips": {
+      "dismiss": "Hide this warning for now"
+    }
   },
   "demo": {
     "notice": "This is the OSW Studio demo: your projects are saved in this browser. Sign in to OSW Studio Hosted to keep them on a server.",
@@ -3587,7 +4226,12 @@
     "cardTitle": "OSW Studio demo",
     "cardBody": "Your projects are saved in this browser. Export them to keep a copy, or sign in to OSW Studio Hosted to keep them on a server and publish them.",
     "publishHere": "Publishing here needs an OSW Studio Hosted account.",
-    "publishSubtitle": "Publish on OSW Studio Hosted and manage it in Deployments there."
+    "publishSubtitle": "Publish on OSW Studio Hosted and manage it in Deployments there.",
+    "tips": {
+      "signUp": "Opens OSW Studio Hosted sign-up in a new tab",
+      "signIn": "Opens OSW Studio Hosted sign-in in a new tab",
+      "dismiss": "Don't show this again"
+    }
   },
   "demoImport": {
     "offerTitle": "Welcome to your workspace",
@@ -3618,7 +4262,13 @@
     "noThanks": "No thanks",
     "cancel": "Cancel",
     "close": "Close",
-    "fromDemo": "From the demo"
+    "fromDemo": "From the demo",
+    "tips": {
+      "noThanks": "Don't ask again; the projects stay in the demo",
+      "pickFirst": "Choose a project first",
+      "remove": "Deletes the demo's copies; your workspace keeps its own",
+      "openDemo": "Opens the demo in a new tab"
+    }
   },
   "allowance": {
     "title": "OSW Studio inference",
@@ -3628,5 +4278,11 @@
     "statusChecking": "Checking…",
     "statusUnavailable": "Unavailable",
     "unavailableBody": "It can't be reached right now and is checked again every minute."
+  },
+  "guidedTour": {
+    "tips": {
+      "end": "End the tour",
+      "wait": "Wait for this step to finish"
+    }
   }
 }

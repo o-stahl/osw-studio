@@ -3,6 +3,7 @@
 import React from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import { Loader2, LogOut } from 'lucide-react';
 
 interface ConnectionBadgeProps {
@@ -29,20 +30,22 @@ export function ConnectionBadge({ method, extra, info, onDisconnect, disconnecti
             <span className="text-xs text-muted-foreground">{extra}</span>
           )}
         </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="gap-1 text-muted-foreground hover:text-destructive h-7 px-2 text-xs"
-          onClick={onDisconnect}
-          disabled={disconnecting}
-        >
-          {disconnecting ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <LogOut className="h-3 w-3" />
-          )}
-          {tc('actions.disconnect')}
-        </Button>
+        <Tip label={disconnecting ? undefined : t('tips.disconnect')} align="end">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="gap-1 text-muted-foreground hover:text-destructive h-7 px-2 text-xs"
+            onClick={onDisconnect}
+            disabled={disconnecting}
+          >
+            {disconnecting ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <LogOut className="h-3 w-3" />
+            )}
+            {tc('actions.disconnect')}
+          </Button>
+        </Tip>
       </div>
       {info && (
         <div className="text-xs text-muted-foreground mt-2 pl-0.5">

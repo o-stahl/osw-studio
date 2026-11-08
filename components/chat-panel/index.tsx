@@ -8,7 +8,8 @@ import { InterviewPicker } from './interview-picker';
 import { InterviewTemplatesManager } from '@/components/interview/InterviewTemplatesManager';
 import { interviewTemplatesService } from '@/lib/interview/templates-service';
 import type { InterviewTemplate } from '@/lib/interview/types';
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { Tip } from '@/components/ui/tooltip';
+import { modShortcut } from '@/lib/platform';
 import type { DebugEvent } from '@/lib/stores/types';
 import { EventProcessor, type ToolCall } from './event-processor';
 import { useFollowNewest } from './use-follow-newest';
@@ -255,10 +256,10 @@ export function ChatPanel({
   // to audio or transcribed text only when the message is sent.
   const voiceIsBrowser = voiceInput === 'browser';
 
-  const MODE_CONFIG: Record<WorkspaceMode, { label: string; Icon: typeof Code; iconColor: string }> = {
-    code: { label: tc('labels.code'), Icon: Code, iconColor: 'text-orange-500' },
-    chat: { label: tc('terms.chat'), Icon: MessageSquare, iconColor: 'text-green-500' },
-    interview: { label: t('modeInterview'), Icon: ClipboardList, iconColor: 'text-blue-500' },
+  const MODE_CONFIG: Record<WorkspaceMode, { label: string; tip: string; Icon: typeof Code; iconColor: string }> = {
+    code: { label: tc('labels.code'), tip: t('tips.modeCode'), Icon: Code, iconColor: 'text-orange-500' },
+    chat: { label: tc('terms.chat'), tip: t('tips.modeChat'), Icon: MessageSquare, iconColor: 'text-green-500' },
+    interview: { label: t('modeInterview'), tip: t('tips.modeInterview'), Icon: ClipboardList, iconColor: 'text-blue-500' },
   };
 
   // Prompt state — owned by ChatPanel, never leaves this component until submit
@@ -699,6 +700,14 @@ export function ChatPanel({
   const trimmedSnippet = focusPreviewSnippet?.trim() ?? '';
   const focusContextData = focusContext ? { domPath: focusContext.domPath, snippet: trimmedSnippet } : null;
 
+  const nothingToSend = !prompt.trim() && pendingImages.length === 0 && pendingAudio.length === 0 && pendingFiles.length === 0;
+  // What Send does, or why it is off. The tour holds the composer and says why itself.
+  const sendTip = isTourLockingInput ? undefined
+    : generating ? t('tips.stop')
+    : !providerReady && !needsConnection ? t('tips.connectFirst')
+    : nothingToSend ? t('tips.writeFirst')
+    : t('tips.send', { shortcut: modShortcut('Enter') });
+
   // Runtime error card
   const runtimeErrorHint = !generating && runtimeErrors.length > 0 ? (
     <div
@@ -713,26 +722,28 @@ export function ChatPanel({
         </div>
         <div className="flex items-center gap-1">
           {onClearRuntimeErrors && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 px-2 text-xs"
-              onClick={onClearRuntimeErrors}
-              title={t('dismissRuntimeErrors')}
-            >
-              {tc('actions.clear')}
-            </Button>
+            <Tip label={t('dismissRuntimeErrors')}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 px-2 text-xs"
+                onClick={onClearRuntimeErrors}
+              >
+                {tc('actions.clear')}
+              </Button>
+            </Tip>
           )}
           {onSendRuntimeErrors && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 px-2 text-xs text-destructive"
-              onClick={onSendRuntimeErrors}
-              title={t('sendErrorsToAi')}
-            >
-              {t('send')}
-            </Button>
+            <Tip label={t('sendErrorsToAi')}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 px-2 text-xs text-destructive"
+                onClick={onSendRuntimeErrors}
+              >
+                {t('send')}
+              </Button>
+            </Tip>
           )}
         </div>
       </div>
@@ -751,27 +762,17 @@ export function ChatPanel({
           color="var(--button-assistant-active)"
           onClose={onClose}
           panelKey="chat"
-          actions={onClearChat && (<>
-            {onClearChat && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClearChat}
-              className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 md:h-5 md:w-5 md:px-0 md:border-0 md:bg-transparent md:rounded-md"
-              title={t('clearChat')}
-              data-tour-id="clear-chat-button"
-            >
-              <Trash2 className="h-2.5 w-2.5 md:h-3 md:w-3" />
-              <span className="text-xs md:hidden">{t('clearChat')}</span>
-            </Button>
-            )}
-          </>)}
+          actions={onClearChat ? [
+            { id: 'clear', icon: Trash2, label: t('clearChat'), onSelect: onClearChat, tourId: 'clear-chat-button' },
+          ] : undefined}
         >
           {activeInterview && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 text-blue-500 text-[11px] font-medium px-2 py-0.5">
-              <ClipboardList className="h-3 w-3 shrink-0" />
-              <span className="truncate max-w-[12rem]">{activeInterview.title}</span>
-            </span>
+            <Tip label={t('tips.interviewBadge', { title: activeInterview.title })} side="bottom">
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 text-blue-500 text-[11px] font-medium px-2 py-0.5">
+                <ClipboardList className="h-3 w-3 shrink-0" />
+                <span className="truncate max-w-[12rem]">{activeInterview.title}</span>
+              </span>
+            </Tip>
           )}
         </PanelHeader>
       )}
@@ -802,28 +803,32 @@ export function ChatPanel({
             <span className="flex-1">
               {t('largeWriteNote')}
             </span>
-            <button
-              type="button"
-              onClick={dismissPacingNotice}
-              aria-label={t('dismissNotice')}
-              className="shrink-0 rounded p-0.5 hover:bg-muted-foreground/10"
-            >
-              <X className="h-3 w-3" />
-            </button>
+            <Tip label={t('dismissNotice')}>
+              <button
+                type="button"
+                onClick={dismissPacingNotice}
+                aria-label={t('dismissNotice')}
+                className="shrink-0 rounded p-0.5 hover:bg-muted-foreground/10"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Tip>
           </div>
         )}
         {showStopReason && (
           <div role="group" aria-label={t('whyDidYouStop')} data-testid="stop-reason" className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             <div className="flex items-start gap-2">
               <span className="flex-1">{t('stopReasons.prompt')}</span>
-              <button
-                type="button"
-                onClick={clearUserStop}
-                aria-label={t('dismissQuestion')}
-                className="shrink-0 rounded p-0.5 hover:bg-muted-foreground/10"
-              >
-                <X className="h-3 w-3" />
-              </button>
+              <Tip label={t('dismissQuestion')}>
+                <button
+                  type="button"
+                  onClick={clearUserStop}
+                  aria-label={t('dismissQuestion')}
+                  className="shrink-0 rounded p-0.5 hover:bg-muted-foreground/10"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Tip>
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {STOP_REASONS.map(id => (
@@ -891,14 +896,16 @@ export function ChatPanel({
                 className="absolute bottom-full left-0 z-20 mb-2 flex max-w-[300px] items-start gap-2 rounded-md border border-primary/40 bg-[color-mix(in_oklab,var(--primary)_15%,var(--popover))] px-3 py-1.5 text-xs text-primary shadow-md animate-in fade-in-0"
               >
                 <p className="flex-1 leading-snug text-balance">{t('firstPromptTip')}</p>
-                <button
-                  type="button"
-                  onClick={dismissFirstPromptTip}
-                  aria-label={t('firstPromptTipDismiss')}
-                  className="-mr-1 shrink-0 rounded p-0.5 opacity-80 hover:opacity-100"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
+                <Tip label={t('firstPromptTipDismiss')}>
+                  <button
+                    type="button"
+                    onClick={dismissFirstPromptTip}
+                    aria-label={t('firstPromptTipDismiss')}
+                    className="-mr-1 shrink-0 rounded p-0.5 opacity-80 hover:opacity-100"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </Tip>
                 <span aria-hidden="true" className="absolute top-full left-5 size-2.5 -translate-y-1/2 rotate-45 rounded-[2px] border-r border-b border-primary/40 bg-[color-mix(in_oklab,var(--primary)_15%,var(--popover))]" />
               </div>
             )}
@@ -907,30 +914,33 @@ export function ChatPanel({
             )}
             <div className="flex flex-wrap gap-1.5">
               {inlineSuggestions.map((pill) => (
-                <button
-                  key={pill.id}
-                  type="button"
-                  onClick={() => applyPromptSuggestion(pill.prompt)}
-                  className="text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 cursor-pointer transition-all"
-                >
-                  {pillLabel(pill)}
-                </button>
+                <Tip key={pill.id} label={pill.prompt !== pillLabel(pill) ? pill.prompt : undefined}>
+                  <button
+                    type="button"
+                    onClick={() => applyPromptSuggestion(pill.prompt)}
+                    className="text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 cursor-pointer transition-all"
+                  >
+                    {pillLabel(pill)}
+                  </button>
+                </Tip>
               ))}
               {/* Always rendered, even with nothing overflowing: it is the only route from the
                   composer to where these are edited. */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label={
-                      overflowSuggestions.length > 0
-                        ? t('moreSuggestions', { count: overflowSuggestions.length })
-                        : t('manageSuggestions')
-                    }
-                    className="text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 cursor-pointer transition-all"
-                  >
-                    …
-                  </button>
+                  <Tip label={overflowSuggestions.length > 0 ? t('moreSuggestions', { count: overflowSuggestions.length }) : t('manageSuggestions')}>
+                    <button
+                      type="button"
+                      aria-label={
+                        overflowSuggestions.length > 0
+                          ? t('moreSuggestions', { count: overflowSuggestions.length })
+                          : t('manageSuggestions')
+                      }
+                      className="text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 cursor-pointer transition-all"
+                    >
+                      …
+                    </button>
+                  </Tip>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="max-w-xs">
                   {overflowSuggestions.map((pill) => (
@@ -988,18 +998,15 @@ export function ChatPanel({
             { key: 'image', icon: ImageIcon, label: inputModalities.includes('image') ? t('imageInputOn') : t('imageInputOff'), enabled: inputModalities.includes('image') },
             { key: 'audio', icon: Mic, label: voiceInputEnabled ? t('voiceInputOn') : t('voiceInputOff'), enabled: voiceInputEnabled },
           ].map((mod, i, arr) => (
-            <Tooltip key={mod.key}>
-              <TooltipTrigger asChild>
-                <div
-                  className={`flex items-center gap-1 px-2.5 py-1 border border-b-0 border-border text-xs cursor-default transition-colors ${
-                    mod.enabled ? 'text-foreground bg-card' : 'text-muted-foreground/30'
-                  } ${i === 0 ? 'rounded-tl-lg' : ''} ${i === arr.length - 1 ? 'rounded-tr-lg' : ''}`}
-                >
-                  <mod.icon className="h-3 w-3" />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="top">{mod.label}</TooltipContent>
-            </Tooltip>
+            <Tip key={mod.key} label={mod.label}>
+              <div
+                className={`flex items-center gap-1 px-2.5 py-1 border border-b-0 border-border text-xs cursor-default transition-colors ${
+                  mod.enabled ? 'text-foreground bg-card' : 'text-muted-foreground/30'
+                } ${i === 0 ? 'rounded-tl-lg' : ''} ${i === arr.length - 1 ? 'rounded-tr-lg' : ''}`}
+              >
+                <mod.icon className="h-3 w-3" />
+              </div>
+            </Tip>
           ))}
           {!simple && (
             <div className="ml-auto flex items-center">
@@ -1078,9 +1085,10 @@ export function ChatPanel({
                 disabled={generating || isTourLockingInput || (!providerReady && !needsConnection)}
               />
               <div className="flex flex-col p-2 gap-2">
+                <Tip label={sendTip} wrapClassName="grid">
                 <Button
                   onClick={generating ? onStop : handleSend}
-                  disabled={isTourLockingInput ? !generating : (!generating && (!prompt.trim() && pendingImages.length === 0 && pendingAudio.length === 0 && pendingFiles.length === 0 || (!providerReady && !needsConnection)))}
+                  disabled={isTourLockingInput ? !generating : (!generating && (nothingToSend || (!providerReady && !needsConnection)))}
                   size="sm"
                   className="flex items-center gap-2"
                 >
@@ -1096,19 +1104,22 @@ export function ChatPanel({
                     </>
                   )}
                 </Button>
+                </Tip>
                 {!generating && (
                   <div className="flex items-center gap-1">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={isTourLockingInput || !providerReady}
-                          title={t('addAttachment')}
-                          className="flex-1"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
+                        <Tip label={t('addAttachment')} wrapClassName="flex-1 grid">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={isTourLockingInput || !providerReady}
+                            aria-label={t('addAttachment')}
+                            className="flex-1"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </Tip>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" side="top">
                         <DropdownMenuItem
@@ -1133,16 +1144,18 @@ export function ChatPanel({
                       </DropdownMenuContent>
                     </DropdownMenu>
                     {supportsAudio && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={handleStartRecording}
-                        disabled={isTourLockingInput || !providerReady}
-                        title={t('recordVoice')}
-                        className="flex-1"
-                      >
-                        <Mic className="h-4 w-4" />
-                      </Button>
+                      <Tip label={t('recordVoice')} wrapClassName="flex-1 grid">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={handleStartRecording}
+                          disabled={isTourLockingInput || !providerReady}
+                          aria-label={t('recordVoice')}
+                          className="flex-1"
+                        >
+                          <Mic className="h-4 w-4" />
+                        </Button>
+                      </Tip>
                     )}
                   </div>
                 )}
@@ -1181,14 +1194,16 @@ export function ChatPanel({
                     <LogIn className="h-3.5 w-3.5" />
                     {t('signInWithHF')}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => openProvidersManage('connections')}
-                    aria-label={tc('labels.connectionOptions')}
-                    className="h-full px-1.5 border-l border-border text-foreground transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:bg-input/50 flex items-center group/chev"
-                  >
-                    <ChevronUp className="h-3.5 w-3.5 transition-transform group-hover/chev:-translate-y-0.5" />
-                  </button>
+                  <Tip label={tc('labels.connectionOptions')}>
+                    <button
+                      type="button"
+                      onClick={() => openProvidersManage('connections')}
+                      aria-label={tc('labels.connectionOptions')}
+                      className="h-full px-1.5 border-l border-border text-foreground transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:bg-input/50 flex items-center group/chev"
+                    >
+                      <ChevronUp className="h-3.5 w-3.5 transition-transform group-hover/chev:-translate-y-0.5" />
+                    </button>
+                  </Tip>
                 </div>
               ) : (
               <Popover
@@ -1204,6 +1219,7 @@ export function ChatPanel({
                 }}
               >
                 <PopoverTrigger asChild>
+                  <Tip label={showMobileSettings ? undefined : providerReady ? t('modelsThisProject') : t('tips.connect')}>
                   <Button
                     variant="outline"
                     size="sm"
@@ -1219,6 +1235,7 @@ export function ChatPanel({
                         : <ChevronUp className="h-3 w-3 transition-transform group-hover/chev:-translate-y-0.5" />}
                     </span>
                   </Button>
+                  </Tip>
                 </PopoverTrigger>
                 <PopoverContent
                   side="top"
@@ -1284,31 +1301,34 @@ export function ChatPanel({
                 return (
                   <Popover open={showModeMenu} onOpenChange={setShowModeMenu}>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-7 p-0 gap-0 overflow-hidden text-xs">
-                        <span className="flex items-center gap-2 h-full px-2">
-                          <ActiveIcon className={`h-3 w-3 ${active.iconColor}`} />
-                          {active.label}
-                        </span>
-                        <span className="flex items-center h-full px-1.5 border-l border-border group/chev">
-                          {showModeMenu
-                            ? <ChevronDown className="h-3 w-3 transition-transform group-hover/chev:translate-y-0.5" />
-                            : <ChevronUp className="h-3 w-3 transition-transform group-hover/chev:-translate-y-0.5" />}
-                        </span>
-                      </Button>
+                      <Tip label={showModeMenu ? undefined : active.tip} align="end">
+                        <Button variant="outline" size="sm" className="h-7 p-0 gap-0 overflow-hidden text-xs">
+                          <span className="flex items-center gap-2 h-full px-2">
+                            <ActiveIcon className={`h-3 w-3 ${active.iconColor}`} />
+                            {active.label}
+                          </span>
+                          <span className="flex items-center h-full px-1.5 border-l border-border group/chev">
+                            {showModeMenu
+                              ? <ChevronDown className="h-3 w-3 transition-transform group-hover/chev:translate-y-0.5" />
+                              : <ChevronUp className="h-3 w-3 transition-transform group-hover/chev:-translate-y-0.5" />}
+                          </span>
+                        </Button>
+                      </Tip>
                     </PopoverTrigger>
                     <PopoverContent className="w-40 p-1" align="end" side="top">
                       {(['code', 'chat', 'interview'] as WorkspaceMode[]).map((m) => {
                         const cfg = MODE_CONFIG[m];
                         const Icon = cfg.Icon;
                         return (
-                          <button
-                            key={m}
-                            onClick={() => { setMode(m); setShowModeMenu(false); }}
-                            className={`flex items-center gap-2 w-full text-left text-xs px-2 py-1.5 rounded hover:bg-muted ${m === mode ? 'font-semibold bg-muted/50' : ''}`}
-                          >
-                            <Icon className={`h-3 w-3 ${cfg.iconColor}`} />
-                            {cfg.label}
-                          </button>
+                          <Tip key={m} label={cfg.tip} side="left">
+                            <button
+                              onClick={() => { setMode(m); setShowModeMenu(false); }}
+                              className={`flex items-center gap-2 w-full text-left text-xs px-2 py-1.5 rounded hover:bg-muted ${m === mode ? 'font-semibold bg-muted/50' : ''}`}
+                            >
+                              <Icon className={`h-3 w-3 ${cfg.iconColor}`} />
+                              {cfg.label}
+                            </button>
+                          </Tip>
                         );
                       })}
                     </PopoverContent>

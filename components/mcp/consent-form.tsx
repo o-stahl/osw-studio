@@ -4,6 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/ui/logo';
+import { Tip } from '@/components/ui/tooltip';
 import { ACTIVE_SCOPES, type McpScope } from '@/lib/mcp/scopes';
 
 /**
@@ -42,7 +43,8 @@ export function ConsentForm(props: ConsentFormProps) {
   const [error, setError] = useState('');
 
   const grantable = useMemo(() => new Set(props.grantableByRole[workspaceId] ?? []), [props.grantableByRole, workspaceId]);
-  const role = props.workspaces.find(w => w.id === workspaceId)?.role ?? 'viewer';
+  const workspace = props.workspaces.find(w => w.id === workspaceId);
+  const role = workspace?.role ?? 'viewer';
 
   // Default to what the client asked for, or read-only when it asked for nothing.
   const [chosen, setChosen] = useState<Set<McpScope>>(
@@ -161,12 +163,23 @@ export function ConsentForm(props: ConsentFormProps) {
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         <div className="flex items-center justify-end gap-2 pt-1">
-          <Button variant="ghost" size="sm" onClick={() => submit('deny')} disabled={busy !== null}>
-            {busy === 'deny' ? t('cancelling') : tc('actions.cancel')}
-          </Button>
-          <Button size="sm" onClick={() => submit('approve')} disabled={busy !== null || allowed.length === 0}>
-            {busy === 'approve' ? t('connecting') : t('connect')}
-          </Button>
+          <Tip label={busy === null ? t('tips.deny', { client: props.clientName }) : undefined}>
+            <Button variant="ghost" size="sm" onClick={() => submit('deny')} disabled={busy !== null}>
+              {busy === 'deny' ? t('cancelling') : tc('actions.cancel')}
+            </Button>
+          </Tip>
+          <Tip
+            label={
+              busy !== null ? undefined
+                : allowed.length === 0 ? t('tips.tickOne')
+                : t('tips.approve', { client: props.clientName, workspace: workspace?.name ?? '' })
+            }
+            align="end"
+          >
+            <Button size="sm" onClick={() => submit('approve')} disabled={busy !== null || allowed.length === 0}>
+              {busy === 'approve' ? t('connecting') : t('connect')}
+            </Button>
+          </Tip>
         </div>
         <p className="text-xs text-muted-foreground">
           {t('revokeNote')}

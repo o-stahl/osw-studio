@@ -11,6 +11,7 @@ import { configManager } from '@/lib/config/storage';
 import { AboutModal } from '@/components/about-modal';
 import { Section, SectionHeader, SectionBody } from '@/components/ui/section';
 import { SettingRow } from '@/components/ui/setting-row';
+import { Tip } from '@/components/ui/tooltip';
 
 export function DataPane() {
   const tc = useTranslations('common');
@@ -97,17 +98,21 @@ export function DataPane() {
             title={t('exportAll')}
             description={t('exportDesc')}
           >
-            <Button variant="outline" size="sm" onClick={handleExportData} disabled={isExporting}>
-              <Download className="h-4 w-4" />
-              {isExporting ? t('exporting') : tc('actions.export')}
-            </Button>
+            <Tip label={isExporting ? undefined : t('tips.export')} align="end">
+              <Button variant="outline" size="sm" onClick={handleExportData} disabled={isExporting}>
+                <Download className="h-4 w-4" />
+                {isExporting ? t('exporting') : tc('actions.export')}
+              </Button>
+            </Tip>
           </SettingRow>
 
           <SettingRow title={t('importData')} description={t('importDesc')}>
-            <Button variant="outline" size="sm" onClick={handleImportData} disabled={isImporting}>
-              <Upload className="h-4 w-4" />
-              {isImporting ? t('importing') : tc('actions.import')}
-            </Button>
+            <Tip label={isImporting ? undefined : t('tips.import')} align="end">
+              <Button variant="outline" size="sm" onClick={handleImportData} disabled={isImporting}>
+                <Upload className="h-4 w-4" />
+                {isImporting ? t('importing') : tc('actions.import')}
+              </Button>
+            </Tip>
           </SettingRow>
 
           {isImporting && (
@@ -128,18 +133,22 @@ export function DataPane() {
       </Section>
 
       <div className="flex items-center justify-between">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-destructive hover:text-destructive"
-          onClick={clearSettings}
-        >
-          {t('clearAll')}
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => setAboutModalOpen(true)}>
-          <Info className="mr-1.5 h-3.5 w-3.5" />
-          {tp('about')}
-        </Button>
+        <Tip label={t('tips.clearAll')}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={clearSettings}
+          >
+            {t('clearAll')}
+          </Button>
+        </Tip>
+        <Tip label={t('tips.about')} align="end">
+          <Button variant="ghost" size="sm" onClick={() => setAboutModalOpen(true)}>
+            <Info className="mr-1.5 h-3.5 w-3.5" />
+            {tp('about')}
+          </Button>
+        </Tip>
       </div>
 
       <AboutModal open={aboutModalOpen} onOpenChange={setAboutModalOpen} />

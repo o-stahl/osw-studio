@@ -11,6 +11,7 @@ import { getActiveTemplate, saveAsTemplate } from '@/lib/llm/models/template-sto
 import { loadProviderModels } from '@/lib/llm/models/model-catalog';
 import { Drawer } from './drawer';
 import { ModelPicker } from './model-picker';
+import { Tip } from '@/components/ui/tooltip';
 import { fmtCtx, fmtPrice, fmtRatePerMillion, modelRefLabel } from './format';
 import type { ModelTemplate, ModelRef, ModelAssignment } from '@/lib/llm/models/assignment';
 import {
@@ -70,28 +71,35 @@ interface MiniToggleProps {
   checked: boolean;
   onChange: (val: boolean) => void;
   id?: string;
+  /** The switch's name, as the setting it turns on and off. */
+  label: string;
+  /** What pressing it does now. */
+  tip: string;
 }
 
-function MiniToggle({ checked, onChange, id }: MiniToggleProps) {
+function MiniToggle({ checked, onChange, id, label, tip }: MiniToggleProps) {
   return (
-    <button
-      id={id}
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className={cn(
-        'relative inline-flex items-center flex-shrink-0 w-9 h-[21px] rounded-full border transition-colors duration-150 cursor-pointer',
-        checked ? 'bg-primary border-primary' : 'bg-secondary border-border',
-      )}
-    >
-      <span
+    <Tip label={tip} align="end">
+      <button
+        id={id}
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={() => onChange(!checked)}
         className={cn(
-          'absolute block w-[15px] h-[15px] rounded-full transition-transform duration-150',
-          checked ? 'translate-x-[18px] bg-white' : 'translate-x-[2px] bg-muted-foreground',
+          'relative inline-flex items-center flex-shrink-0 w-9 h-[21px] rounded-full border transition-colors duration-150 cursor-pointer',
+          checked ? 'bg-primary border-primary' : 'bg-secondary border-border',
         )}
-      />
-    </button>
+      >
+        <span
+          className={cn(
+            'absolute block w-[15px] h-[15px] rounded-full transition-transform duration-150',
+            checked ? 'translate-x-[18px] bg-white' : 'translate-x-[2px] bg-muted-foreground',
+          )}
+        />
+      </button>
+    </Tip>
   );
 }
 
@@ -311,18 +319,20 @@ function SaveTemplateBody({ template, onSaved, onCancel }: SaveTemplateBodyProps
         >
           {tc('actions.cancel')}
         </button>
-        <button
-          type="submit"
-          disabled={!name.trim()}
-          className={cn(
-            'px-[13px] py-[6px] rounded-md text-xs font-medium cursor-pointer transition-colors',
-            'bg-primary border border-primary text-white',
-            'hover:bg-primary/90 hover:border-primary',
-            'disabled:opacity-45 disabled:cursor-not-allowed',
-          )}
-        >
-          {t('saveAsTemplate')}
-        </button>
+        <Tip label={name.trim() ? t('tips.saveNew') : t('tips.nameFirst')}>
+          <button
+            type="submit"
+            disabled={!name.trim()}
+            className={cn(
+              'px-[13px] py-[6px] rounded-md text-xs font-medium cursor-pointer transition-colors',
+              'bg-primary border border-primary text-white',
+              'hover:bg-primary/90 hover:border-primary',
+              'disabled:opacity-45 disabled:cursor-not-allowed',
+            )}
+          >
+            {t('saveAsTemplate')}
+          </button>
+        </Tip>
       </div>
     </form>
   );
@@ -397,17 +407,19 @@ function AgentCard({ template, onOpenPicker, onAssignmentChange }: AgentCardProp
             </p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onOpenPicker}
-          className={cn(
-            'flex-shrink-0 px-[13px] py-[6px] rounded-md text-xs font-medium cursor-pointer transition-colors',
-            'bg-card border border-border text-foreground',
-            'hover:bg-muted hover:border-muted-foreground/30',
-          )}
-        >
-          {t('change')}
-        </button>
+        <Tip label={t('tips.changeAgent')} align="end">
+          <button
+            type="button"
+            onClick={onOpenPicker}
+            className={cn(
+              'flex-shrink-0 px-[13px] py-[6px] rounded-md text-xs font-medium cursor-pointer transition-colors',
+              'bg-card border border-border text-foreground',
+              'hover:bg-muted hover:border-muted-foreground/30',
+            )}
+          >
+            {t('change')}
+          </button>
+        </Tip>
       </div>
 
       {/* Capability pills */}
@@ -446,7 +458,14 @@ function AgentCard({ template, onOpenPicker, onAssignmentChange }: AgentCardProp
               {t('extendedThinking')}
             </p>
           </div>
-          <MiniToggle checked={reasoningEnabled} onChange={handleReasoningToggle} />
+          <MiniToggle
+            checked={reasoningEnabled}
+            onChange={handleReasoningToggle}
+            label={t('enableReasoning')}
+            tip={reasoningEnabled
+              ? t('tips.reasoningOff', { model: enriched?.name ?? modelRefLabel(agentRef) })
+              : t('tips.reasoningOn', { model: enriched?.name ?? modelRefLabel(agentRef) })}
+          />
         </div>
       )}
 
@@ -463,6 +482,8 @@ function AgentCard({ template, onOpenPicker, onAssignmentChange }: AgentCardProp
           <MiniToggle
             checked={assignment.autoCompact}
             onChange={handleAutoCompactToggle}
+            label={ts('autoCompact')}
+            tip={assignment.autoCompact ? t('tips.compactOff') : t('tips.compactOn')}
           />
         </div>
 
@@ -522,17 +543,19 @@ function ImageGenCard({ template, onOpenPicker }: ImageGenCardProps) {
         /* Off state */
         <div className="flex items-center justify-between">
           <OffLine label={t('noModelSet')} />
-          <button
-            type="button"
-            onClick={onOpenPicker}
-            className={cn(
-              'flex-shrink-0 px-[13px] py-[6px] rounded-md text-xs font-medium cursor-pointer transition-colors',
-              'bg-card border border-border text-foreground',
-              'hover:bg-muted hover:border-muted-foreground/30',
-            )}
-          >
-            {t('setAModel')}
-          </button>
+          <Tip label={t('tips.setImage')} align="end">
+            <button
+              type="button"
+              onClick={onOpenPicker}
+              className={cn(
+                'flex-shrink-0 px-[13px] py-[6px] rounded-md text-xs font-medium cursor-pointer transition-colors',
+                'bg-card border border-border text-foreground',
+                'hover:bg-muted hover:border-muted-foreground/30',
+              )}
+            >
+              {t('setAModel')}
+            </button>
+          </Tip>
         </div>
       ) : (
         <>
@@ -563,17 +586,19 @@ function ImageGenCard({ template, onOpenPicker }: ImageGenCardProps) {
                 </p>
               )}
             </div>
-            <button
-              type="button"
-              onClick={onOpenPicker}
-              className={cn(
-                'flex-shrink-0 px-[13px] py-[6px] rounded-md text-xs font-medium cursor-pointer transition-colors',
-                'bg-card border border-border text-foreground',
-                'hover:bg-muted hover:border-muted-foreground/30',
-              )}
-            >
-              {t('change')}
-            </button>
+            <Tip label={t('tips.changeImage')} align="end">
+              <button
+                type="button"
+                onClick={onOpenPicker}
+                className={cn(
+                  'flex-shrink-0 px-[13px] py-[6px] rounded-md text-xs font-medium cursor-pointer transition-colors',
+                  'bg-card border border-border text-foreground',
+                  'hover:bg-muted hover:border-muted-foreground/30',
+                )}
+              >
+                {t('change')}
+              </button>
+            </Tip>
           </div>
           <p className="text-xs text-muted-foreground mt-2.5">
             {t('imagesEnabled')}
@@ -609,17 +634,19 @@ function VoiceInputCard({ template, onOpenPicker }: VoiceInputCardProps) {
         /* Off state */
         <div className="flex items-center justify-between">
           <OffLine label={t('offNoMic')} />
-          <button
-            type="button"
-            onClick={onOpenPicker}
-            className={cn(
-              'flex-shrink-0 px-[13px] py-[6px] rounded-md text-xs font-medium cursor-pointer transition-colors',
-              'bg-card border border-border text-foreground',
-              'hover:bg-muted hover:border-muted-foreground/30',
-            )}
-          >
-            {t('setAModel')}
-          </button>
+          <Tip label={t('tips.setVoice')} align="end">
+            <button
+              type="button"
+              onClick={onOpenPicker}
+              className={cn(
+                'flex-shrink-0 px-[13px] py-[6px] rounded-md text-xs font-medium cursor-pointer transition-colors',
+                'bg-card border border-border text-foreground',
+                'hover:bg-muted hover:border-muted-foreground/30',
+              )}
+            >
+              {t('setAModel')}
+            </button>
+          </Tip>
         </div>
       ) : (
         <>
@@ -656,17 +683,19 @@ function VoiceInputCard({ template, onOpenPicker }: VoiceInputCardProps) {
                 </p>
               )}
             </div>
-            <button
-              type="button"
-              onClick={onOpenPicker}
-              className={cn(
-                'flex-shrink-0 px-[13px] py-[6px] rounded-md text-xs font-medium cursor-pointer transition-colors',
-                'bg-card border border-border text-foreground',
-                'hover:bg-muted hover:border-muted-foreground/30',
-              )}
-            >
-              {t('change')}
-            </button>
+            <Tip label={t('tips.changeVoice')} align="end">
+              <button
+                type="button"
+                onClick={onOpenPicker}
+                className={cn(
+                  'flex-shrink-0 px-[13px] py-[6px] rounded-md text-xs font-medium cursor-pointer transition-colors',
+                  'bg-card border border-border text-foreground',
+                  'hover:bg-muted hover:border-muted-foreground/30',
+                )}
+              >
+                {t('change')}
+              </button>
+            </Tip>
           </div>
           <p className="text-xs text-muted-foreground mt-2.5">
             {val === 'browser'
@@ -686,6 +715,7 @@ function VoiceInputCard({ template, onOpenPicker }: VoiceInputCardProps) {
 export function ModelsPane() {
   const tc = useTranslations('common');
   const t = useTranslations('models');
+  const tb = useTranslations('backend');
   const copy = useModelTemplateCopy();
   // `saved` is what's persisted; `template` is the working draft. Slot/compaction
   // edits mutate the draft only — nothing is written until "Save" commits it.
@@ -818,9 +848,11 @@ export function ModelsPane() {
           {t('activeTemplate')}
         </span>
         <Select value={activeId} onValueChange={handleTemplateSelect}>
-          <SelectTrigger size="sm" className="rounded-full gap-1.5 text-[13px] font-medium text-foreground min-w-0 max-w-[220px]">
-            <SelectValue />
-          </SelectTrigger>
+          <Tip label={isDirty ? t('tips.switchDiscards') : t('tips.switchTemplate')} wrap wrapClassName="inline-flex min-w-0">
+            <SelectTrigger size="sm" className="rounded-full gap-1.5 text-[13px] font-medium text-foreground min-w-0 max-w-[220px]">
+              <SelectValue />
+            </SelectTrigger>
+          </Tip>
           <SelectContent>
             {sortedTemplates.map((t) => (
               <SelectItem key={t.id} value={t.id}>
@@ -834,33 +866,37 @@ export function ModelsPane() {
 
         {/* Save edits back to the active template — only for editable templates. */}
         {!isBuiltin && (
-          <button
-            type="button"
-            onClick={handleSaveToTemplate}
-            disabled={!isDirty}
-            className={cn(
-              'flex items-center gap-1.5 px-[13px] py-[6px] rounded-md text-xs font-medium transition-colors',
-              isDirty
-                ? 'bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer'
-                : 'bg-transparent border border-border text-muted-foreground/50 cursor-not-allowed',
-            )}
-          >
-            {t('saveTo', { name: saved.name })}
-          </button>
+          <Tip label={isDirty ? t('tips.saveTo') : tb('tips.noChanges')}>
+            <button
+              type="button"
+              onClick={handleSaveToTemplate}
+              disabled={!isDirty}
+              className={cn(
+                'flex items-center gap-1.5 px-[13px] py-[6px] rounded-md text-xs font-medium transition-colors',
+                isDirty
+                  ? 'bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer'
+                  : 'bg-transparent border border-border text-muted-foreground/50 cursor-not-allowed',
+              )}
+            >
+              {t('saveTo', { name: saved.name })}
+            </button>
+          </Tip>
         )}
 
-        <button
-          type="button"
-          onClick={openSaveTemplate}
-          className={cn(
-            'flex items-center gap-1.5 px-[13px] py-[6px] rounded-md text-xs font-medium cursor-pointer transition-colors',
-            'bg-transparent border border-border text-muted-foreground',
-            'hover:bg-muted hover:text-foreground',
-          )}
-        >
-          <BookmarkPlus size={13} strokeWidth={2} />
-          {t('saveAsTemplate')}
-        </button>
+        <Tip label={t('tips.saveAs')} align="end">
+          <button
+            type="button"
+            onClick={openSaveTemplate}
+            className={cn(
+              'flex items-center gap-1.5 px-[13px] py-[6px] rounded-md text-xs font-medium cursor-pointer transition-colors',
+              'bg-transparent border border-border text-muted-foreground',
+              'hover:bg-muted hover:text-foreground',
+            )}
+          >
+            <BookmarkPlus size={13} strokeWidth={2} />
+            {t('saveAsTemplate')}
+          </button>
+        </Tip>
       </div>
 
       {/* Built-in description / read-only hint */}

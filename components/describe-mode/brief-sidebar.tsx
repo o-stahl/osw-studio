@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { BriefState, ProjectBrief } from '@/lib/describe/types';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import { Loader2, ChevronDown } from 'lucide-react';
 
 interface BriefSidebarProps {
@@ -86,9 +87,11 @@ export function BriefSidebar({ state, ready, creating, onCreateNow }: BriefSideb
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {t('projectBrief')}
         </p>
-        <p className="text-sm font-medium truncate">
-          {brief.name || <span className="italic text-muted-foreground">{t('untitled')}</span>}
-        </p>
+        <Tip label={brief.name || undefined} align="start" truncated>
+          <p className="text-sm font-medium truncate">
+            {brief.name || <span className="italic text-muted-foreground">{t('untitled')}</span>}
+          </p>
+        </Tip>
         <div className="space-y-1">
           <div className="h-1.5 rounded-full bg-muted overflow-hidden">
             <div
@@ -157,18 +160,20 @@ export function BriefSidebar({ state, ready, creating, onCreateNow }: BriefSideb
 
         {onCreateNow && (
           <div className="px-4 pb-4">
-            <Button
-              onClick={onCreateNow}
-              disabled={!ready || creating}
-              className="w-full"
-              size="sm"
-            >
-              {creating ? (
-                <><Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />{t('creating')}</>
-              ) : (
-                t('createNow')
-              )}
-            </Button>
+            <Tip label={creating ? undefined : !ready ? t('needsBasics') : t('tips.createNow')} wrapClassName="grid w-full">
+              <Button
+                onClick={onCreateNow}
+                disabled={!ready || creating}
+                className="w-full"
+                size="sm"
+              >
+                {creating ? (
+                  <><Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />{t('creating')}</>
+                ) : (
+                  t('createNow')
+                )}
+              </Button>
+            </Tip>
             {!ready && (
               <p className="text-[10px] text-muted-foreground text-center mt-1.5">
                 {t('needsBasics')}

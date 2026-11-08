@@ -4,6 +4,7 @@ import React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Languages } from 'lucide-react';
 import { MenuPill } from '@/components/ui/menu-pill';
+import { Tip } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,13 +63,15 @@ export function LanguagePill({ className }: { className?: string }) {
   const activeLocale = useLocale();
   return (
     <LanguageMenu side="bottom" align="end">
-      <MenuPill
-        icon={Languages}
-        label={<span lang={activeLocale}>{localeNames[activeLocale]}</span>}
-        opens="down"
-        className={className}
-        aria-label={t('language.title')}
-      />
+      <Tip label={t('language.title')} side="bottom" align="end">
+        <MenuPill
+          icon={Languages}
+          label={<span lang={activeLocale}>{localeNames[activeLocale]}</span>}
+          opens="down"
+          className={className}
+          aria-label={t('language.title')}
+        />
+      </Tip>
     </LanguageMenu>
   );
 }

@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { Tip } from '@/components/ui/tooltip';
 
 interface ChipsBlockProps {
   options: string[];
@@ -14,6 +16,7 @@ interface ChipsBlockProps {
 }
 
 export function ChipsBlock({ options, onSelect, disabled, picked }: ChipsBlockProps) {
+  const t = useTranslations('chat');
   const [clicked, setClicked] = useState<string | null>(null);
   const selected = picked ?? clicked;
 
@@ -23,8 +26,8 @@ export function ChipsBlock({ options, onSelect, disabled, picked }: ChipsBlockPr
         const isSelected = selected === option;
         const isDimmed = selected !== null && !isSelected;
         return (
+          <Tip key={option} label={selected || disabled ? undefined : t('tips.answer')}>
           <button
-            key={option}
             onClick={() => {
               if (!selected && !disabled) {
                 setClicked(option);
@@ -43,6 +46,7 @@ export function ChipsBlock({ options, onSelect, disabled, picked }: ChipsBlockPr
             {option}
             {isSelected && <span className="ml-1.5 text-[10px] opacity-60">✓</span>}
           </button>
+          </Tip>
         );
       })}
     </div>

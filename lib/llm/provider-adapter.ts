@@ -16,8 +16,27 @@ import { configManager } from '@/lib/config/storage';
 import { classifyProviderError, type ApiErrorBody, type ApiErrorCode } from './provider-errors';
 import { isDemo } from '@/lib/demo';
 import { OSWS_PROVIDER } from '@/lib/inference/allowance';
+import { track } from '@/lib/telemetry';
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+/** Waits `ms`, or ends with the abort, as a fetch would, when `signal` aborts first. */
+function wait(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const aborted = () => reject(signal?.reason ?? new DOMException('Aborted', 'AbortError'));
+    if (signal?.aborted) {
+      aborted();
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      aborted();
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
 
 /** The `code` of an error answer, read without using up the response. */
 async function answerCode(response: Response): Promise<unknown> {
@@ -47,6 +66,28 @@ export class ProviderApiError extends Error {
     super(message);
     this.name = 'ProviderApiError';
   }
+
+  /** For an error sent inside the stream: its own type code (`upstream_idle`, `timeout`…), when it gives one. */
+  streamErrorType?: string;
+}
+
+/**
+ * Stream errors worth asking again for, when nothing usable arrived: the statuses `fetchWithRetry`
+ * retries on the status line, less 429 (classified on its own). 503 is not transient on OpenRouter.
+ */
+const RETRYABLE_STREAM_STATUSES = new Set([502, 504, 529]);
+const STREAM_RETRIES = 2;
+
+/** A stream error's `metadata.error_type`, when it is a type code rather than free text. */
+function streamErrorType(metadata: Record<string, unknown> | undefined): string | undefined {
+  const type = metadata?.error_type;
+  return typeof type === 'string' && /^[a-z][a-z0-9_]{0,39}$/.test(type) ? type : undefined;
+}
+
+/** A streamed tool call whose arguments did not finish arriving: what is there does not parse. */
+function isUnfinished(args: string | undefined): boolean {
+  if (!args) return true;
+  try { JSON.parse(args); return false; } catch { return true; }
 }
 
 /**
@@ -122,6 +163,30 @@ export class OswsProviderAdapter implements ProviderAdapter {
   }
 
   async call(params: ProviderCallParams): Promise<ParsedResponse> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.callOnce(params);
+      } catch (error) {
+        // A transient stream error before anything usable arrived: the request is asked again, as a
+        // 502 or 504 on the status line is. Nothing ran, so nothing repeats.
+        const transient = error instanceof ProviderApiError && error.errorType === 'midstream'
+          && error.errorCategory === 'midstream_error' && RETRYABLE_STREAM_STATUSES.has(error.status);
+        if (!transient || attempt >= STREAM_RETRIES || params.signal?.aborted) throw error;
+        const delay = Math.pow(2, attempt) * 1000;
+        const reason = `Stream error (${(error as ProviderApiError).status})`;
+        const message = `${reason}. Retry attempt ${attempt + 1} in ${delay / 1000}s...`;
+        logger.warn(message);
+        if (params.silent !== true) {
+          this.config.progress.onEvent('retry', {
+            provider: this.getProvider(), attempt: attempt + 1, delay, status: (error as ProviderApiError).status, reason, message,
+          });
+        }
+        await wait(delay, params.signal);
+      }
+    }
+  }
+
+  private async callOnce(params: ProviderCallParams): Promise<ParsedResponse> {
     const providerConfig = this.config.getProviderConfig();
     const { provider, model } = providerConfig;
     let apiKey = providerConfig.apiKey;
@@ -248,7 +313,7 @@ export class OswsProviderAdapter implements ProviderAdapter {
         ? classifyProviderError({ status: midstreamStatus, provider, message: result.midstreamError.message, metadata: result.midstreamError.metadata }).code
         : undefined;
       const midstreamCategory = midstreamCode ? CODE_CATEGORIES[midstreamCode] : 'midstream_error';
-      throw new ProviderApiError(
+      const error = new ProviderApiError(
         result.midstreamError.message,
         midstreamStatus,
         'midstream',
@@ -256,6 +321,27 @@ export class OswsProviderAdapter implements ProviderAdapter {
         provider,
         model,
       );
+      error.streamErrorType = streamErrorType(result.midstreamError.metadata);
+      throw error;
+    }
+
+    // A stream error after part of the answer arrived: the answer is used, but a tool call whose
+    // arguments were still arriving is cut off, and is marked so it is never run.
+    let streamError: ParsedResponse['streamError'];
+    let unfinishedToolCallIds: string[] | undefined;
+    if (result.midstreamError) {
+      const status = typeof result.midstreamError.code === 'number' ? result.midstreamError.code : 0;
+      const type = streamErrorType(result.midstreamError.metadata);
+      streamError = { status, ...(type ? { type } : {}) };
+      const unfinished = (result.toolCalls ?? []).filter((tc) => isUnfinished(tc.function?.arguments)).map((tc) => tc.id);
+      if (unfinished.length) unfinishedToolCallIds = unfinished;
+      if (!silent) {
+        track('api_error', {
+          provider, model, error_type: 'midstream', error_category: 'midstream_error', status_code: status,
+          after_output: true, unfinished_tool_calls: unfinished.length,
+          ...(type ? { stream_error_type: type } : {}),
+        });
+      }
     }
 
     return {
@@ -264,6 +350,8 @@ export class OswsProviderAdapter implements ProviderAdapter {
       usage: result.usage,
       reasoningDetails: result.reasoningDetails,
       invalidToolName: result.invalidToolName,
+      ...(streamError ? { streamError } : {}),
+      ...(unfinishedToolCallIds ? { unfinishedToolCallIds } : {}),
     };
   }
 
@@ -315,7 +403,7 @@ export class OswsProviderAdapter implements ProviderAdapter {
         message,
       });
 
-      await sleep(delay);
+      await wait(delay, signal);
     }
 
     throw new Error('Unexpected end of retry loop');

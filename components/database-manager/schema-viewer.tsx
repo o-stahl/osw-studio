@@ -6,6 +6,7 @@ import { TableInfo } from '@/lib/vfs/types';
 import { ChevronRight, ChevronDown, Table2, KeyRound, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import { apiFetch } from '@/lib/api/backend-status';
 
 interface SchemaViewerProps {
@@ -90,24 +91,26 @@ export function SchemaViewer({ deploymentId, schemaEndpoint, showSystemTablesTog
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium">{t('databaseTables')}</h3>
         {showSystemTablesToggle && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowSystemTables(!showSystemTables)}
-            className="text-xs"
-          >
-            {showSystemTables ? (
-              <>
-                <EyeOff className="h-3.5 w-3.5 mr-1" />
-                {t('hideSystemTables')}
-              </>
-            ) : (
-              <>
-                <Eye className="h-3.5 w-3.5 mr-1" />
-                {t('showSystemTables')}
-              </>
-            )}
-          </Button>
+          <Tip label={showSystemTables ? t('tips.hideSystemTables') : t('tips.showSystemTables')} align="end">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowSystemTables(!showSystemTables)}
+              className="text-xs"
+            >
+              {showSystemTables ? (
+                <>
+                  <EyeOff className="h-3.5 w-3.5 mr-1" />
+                  {t('hideSystemTables')}
+                </>
+              ) : (
+                <>
+                  <Eye className="h-3.5 w-3.5 mr-1" />
+                  {t('showSystemTables')}
+                </>
+              )}
+            </Button>
+          </Tip>
         )}
       </div>
 

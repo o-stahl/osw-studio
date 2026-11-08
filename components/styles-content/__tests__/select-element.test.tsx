@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
+import en from '@/messages/en.json';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { StylesContent, type StylesContentProps } from '..';
@@ -50,6 +51,20 @@ function button(): HTMLButtonElement | null {
   return container.querySelector('[data-osw-select-element]');
 }
 
+/** The button's tooltip, as 0.7 s of hover shows it. */
+function tooltip(): string | null {
+  vi.useFakeTimers();
+  const el = button()!;
+  try {
+    act(() => { el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' })); });
+    act(() => { vi.advanceTimersByTime(800); });
+    return document.querySelector('[data-slot="tooltip-content"]')?.textContent ?? null;
+  } finally {
+    act(() => { el.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, pointerType: 'mouse', relatedTarget: document.body })); });
+    vi.useRealTimers();
+  }
+}
+
 function fire(type: 'click' | 'mouseover' | 'mouseout') {
   const el = button();
   if (!el) throw new Error('no Select element button');
@@ -60,6 +75,8 @@ function fire(type: 'click' | 'mouseover' | 'mouseout') {
 
 beforeEach(() => {
   (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  // The tooltip places itself with a ResizeObserver, which jsdom does not have.
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -68,6 +85,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  vi.unstubAllGlobals();
 });
 
 describe('the Select element button', () => {
@@ -150,12 +168,13 @@ describe('the Select element button', () => {
    * outline would be describing the press it already answered rather than the one available now.
    */
   describe('while the picker is armed', () => {
-    it('says the press is a cancel, in the label and in the title', () => {
+    it('says the press is a cancel, in the label and in the tooltip', () => {
       mount({ onSelectElement: vi.fn(), focusToolArmed: true });
-      expect(button()!.textContent).toContain('Cancel selection');
-      expect(button()!.textContent).not.toContain('Select element');
-      // Word for word the header crosshair's title for the same state — it is the same tool.
-      expect(button()!.getAttribute('title')).toBe('Cancel element selection');
+      expect(button()!.textContent).toContain(en.styles.cancelSelection);
+      expect(button()!.textContent).not.toContain(en.workspace.selectElement);
+      // Word for word the preview crosshair's tooltip for the same state (`styles.cancelSelectionLong`
+      // there too): it is the same tool.
+      expect(tooltip()).toBe(en.styles.cancelSelectionLong);
     });
 
     it('reports the state where the app puts it, so it is not colour alone', () => {
@@ -185,7 +204,7 @@ describe('the Select element button', () => {
       mount({ onSelectElement: vi.fn() });
       expect(button()!.textContent).toContain('Select element');
       expect(button()!.getAttribute('aria-pressed')).toBe('false');
-      expect(button()!.getAttribute('title')).toBe('Select element');
+      expect(tooltip()).toBe('Select element');
     });
   });
 

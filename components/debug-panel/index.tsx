@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo, useSyncExternalStore } from 'reac
 import { useTranslations } from 'next-intl';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronUp, ChevronsUpDown, ChevronsDownUp, Bug, Trash2, Copy, Download } from 'lucide-react';
 import { PanelContainer, PanelHeader } from '@/components/ui/panel';
@@ -26,7 +27,7 @@ export function DebugPanel({ events, onClear, onClose }: DebugPanelProps) {
   const tw = useTranslations('workspace');
   const [activeTab, setActiveTab] = useState<'events' | 'messages'>('events');
   const [filter, setFilter] = useState<string>('');
-  const eventsEndRef = useRef<HTMLDivElement>(null);
+  const eventsListRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const [streamDebug, setStreamDebug] = useState<boolean>(() => configManager.getDebugStreamEnabled());
   const [eventsForce, setEventsForce] = useState<ForceState>(null);
@@ -78,11 +79,11 @@ export function DebugPanel({ events, onClear, onClose }: DebugPanelProps) {
     return result;
   }, [events]);
 
-  // Scroll to bottom when new events arrive
+  // Scroll to bottom when new events arrive. The list scrolls itself: scrollIntoView would also scroll
+  // the panel's own box, which in a short cell takes the header out of view.
   useEffect(() => {
-    if (autoScroll && eventsEndRef.current) {
-      eventsEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    const list = eventsListRef.current;
+    if (autoScroll && list) list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
   }, [compressedEvents, autoScroll]);
 
   // Clear all events
@@ -139,17 +140,18 @@ export function DebugPanel({ events, onClear, onClose }: DebugPanelProps) {
           ['events', t('tabEvents', { shown: filteredEvents.length, total: events.length })],
           ['messages', messageSnapshot ? t('tabMessagesCount', { count: messageSnapshot.messages.length }) : t('tabMessages')],
         ] as const).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`flex-1 px-3 py-1.5 border-b-2 -mb-px whitespace-nowrap ${
-              activeTab === key
-                ? 'border-primary text-foreground font-semibold'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {label}
-          </button>
+          <Tip key={key} label={key === 'events' ? t('tips.events') : t('tips.messages')} side="bottom">
+            <button
+              onClick={() => setActiveTab(key)}
+              className={`flex-1 px-3 py-1.5 border-b-2 -mb-px whitespace-nowrap ${
+                activeTab === key
+                  ? 'border-primary text-foreground font-semibold'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {label}
+            </button>
+          </Tip>
         ))}
       </div>
 
@@ -161,17 +163,19 @@ export function DebugPanel({ events, onClear, onClose }: DebugPanelProps) {
           <div className="p-2 border-b border-border bg-muted/20 text-xs">
             <div className="flex flex-wrap gap-2">
               {Object.entries(eventCounts).map(([event, count]) => (
-                <button
-                  key={event}
-                  onClick={() => setFilter(filter === event ? '' : event)}
-                  className={`px-2 py-1 rounded ${
-                    filter === event
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted hover:bg-muted/80'
-                  }`}
-                >
-                  {event} ({count})
-                </button>
+                <Tip key={event} label={filter === event ? t('tips.showAll') : t('tips.showOnly', { event })}>
+                  <button
+                    onClick={() => setFilter(filter === event ? '' : event)}
+                    aria-pressed={filter === event}
+                    className={`px-2 py-1 rounded ${
+                      filter === event
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted hover:bg-muted/80'
+                    }`}
+                  >
+                    {event} ({count})
+                  </button>
+                </Tip>
               ))}
             </div>
           </div>
@@ -189,6 +193,7 @@ export function DebugPanel({ events, onClear, onClose }: DebugPanelProps) {
 
           {/* Toggles + actions */}
           <div className="p-2 border-b border-border flex items-center gap-3 flex-wrap">
+            <Tip label={t('tips.autoScroll')}>
             <label className="text-xs flex items-center gap-1 cursor-pointer">
               <input
                 type="checkbox"
@@ -198,10 +203,9 @@ export function DebugPanel({ events, onClear, onClose }: DebugPanelProps) {
               />
               {t('autoScroll')}
             </label>
-            <label
-              className="text-xs flex items-center gap-1 cursor-pointer"
-              title={t('streamDebugHint')}
-            >
+            </Tip>
+            <Tip label={t('streamDebugHint')}>
+            <label className="text-xs flex items-center gap-1 cursor-pointer">
               <input
                 type="checkbox"
                 checked={streamDebug}
@@ -213,29 +217,40 @@ export function DebugPanel({ events, onClear, onClose }: DebugPanelProps) {
               />
               {t('streamDebug')}
             </label>
+            </Tip>
             <div className="ml-auto flex items-center">
-              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title={t('expandAll')}
-                onClick={() => setEventsForce(v => ({ open: true, v: (v?.v ?? 0) + 1 }))}>
-                <ChevronsUpDown className="h-3 w-3" />
-              </Button>
-              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title={t('collapseAll')}
-                onClick={() => setEventsForce(v => ({ open: false, v: (v?.v ?? 0) + 1 }))}>
-                <ChevronsDownUp className="h-3 w-3" />
-              </Button>
-              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title={t('copyEventsJson')} onClick={handleCopyEvents}>
-                <Copy className="h-3 w-3" />
-              </Button>
-              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title={t('exportJson')} onClick={handleExport}>
-                <Download className="h-3 w-3" />
-              </Button>
-              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" title={t('clearEventsHint')} onClick={handleClear}>
-                <Trash2 className="h-3 w-3" />
-              </Button>
+              <Tip label={t('expandAll')}>
+                <Button variant="ghost" size="sm" className="h-5 w-5 p-0" aria-label={t('expandAll')}
+                  onClick={() => setEventsForce(v => ({ open: true, v: (v?.v ?? 0) + 1 }))}>
+                  <ChevronsUpDown className="h-3 w-3" />
+                </Button>
+              </Tip>
+              <Tip label={t('collapseAll')}>
+                <Button variant="ghost" size="sm" className="h-5 w-5 p-0" aria-label={t('collapseAll')}
+                  onClick={() => setEventsForce(v => ({ open: false, v: (v?.v ?? 0) + 1 }))}>
+                  <ChevronsDownUp className="h-3 w-3" />
+                </Button>
+              </Tip>
+              <Tip label={t('copyEventsJson')}>
+                <Button variant="ghost" size="sm" className="h-5 w-5 p-0" aria-label={t('copyEventsJson')} onClick={handleCopyEvents}>
+                  <Copy className="h-3 w-3" />
+                </Button>
+              </Tip>
+              <Tip label={t('exportJson')}>
+                <Button variant="ghost" size="sm" className="h-5 w-5 p-0" aria-label={t('exportJson')} onClick={handleExport}>
+                  <Download className="h-3 w-3" />
+                </Button>
+              </Tip>
+              <Tip label={t('clearEventsHint')} align="end">
+                <Button variant="ghost" size="sm" className="h-5 w-5 p-0" aria-label={t('clearEventsHint')} onClick={handleClear}>
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </Tip>
             </div>
           </div>
 
           {/* Events List */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          <div ref={eventsListRef} className="flex-1 overflow-y-auto p-2 space-y-1">
             {filteredEvents.length === 0 ? (
               <div className="text-xs text-muted-foreground text-center p-4">
                 {t('noEvents')}
@@ -245,7 +260,6 @@ export function DebugPanel({ events, onClear, onClose }: DebugPanelProps) {
                 <EventItem key={event.id} event={event} force={eventsForce} />
               ))
             )}
-            <div ref={eventsEndRef} />
           </div>
         </>
       )}

@@ -59,6 +59,8 @@ import { LanguageMenu } from '@/components/language-menu';
 import { MenuPill } from '@/components/ui/menu-pill';
 import { useViewNames } from '@/lib/i18n/use-view-names';
 import { DISCUSSIONS_URL, REPO_URL } from '@/lib/constants/links';
+import { Tip } from '@/components/ui/tooltip';
+import { usePaneDescriptions, type SettingsPane } from '@/components/unified-settings';
 
 // Collapsed sidebar width
 export const COLLAPSED_SIDEBAR_WIDTH = 56; // Width in pixels for icon-only buttons
@@ -241,6 +243,7 @@ function SidebarFlyout({
   onMouseEnter: () => void;
   onMouseLeave: () => void;
 }) {
+  const paneTips = usePaneDescriptions();
   const t = useTranslations();
   const ref = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
@@ -275,15 +278,16 @@ function SidebarFlyout({
           <div className="px-3 py-1.5 text-xs text-muted-foreground">{t('common.loading')}</div>
         ) : recentProjects.length > 0 ? (
           recentProjects.map(project => (
-            <button
-              key={project.id}
-              type="button"
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent rounded-sm transition-colors text-left"
-              onClick={() => onSubItemClick(item, { id: project.id, label: project.name, icon: FolderOpen })}
-            >
-              <FolderOpen className="h-3 w-3 shrink-0" />
-              <span className="truncate">{project.name}</span>
-            </button>
+            <Tip key={project.id} label={project.name} side="right" truncated>
+              <button
+                type="button"
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent rounded-sm transition-colors text-left"
+                onClick={() => onSubItemClick(item, { id: project.id, label: project.name, icon: FolderOpen })}
+              >
+                <FolderOpen className="h-3 w-3 shrink-0" />
+                <span className="truncate">{project.name}</span>
+              </button>
+            </Tip>
           ))
         ) : (
           <div className="px-3 py-1.5 text-xs text-muted-foreground">{t('sidebar.noRecentProjects')}</div>
@@ -296,15 +300,21 @@ function SidebarFlyout({
           .map(subItem => {
           const SubIcon = subItem.icon;
           return (
-            <button
+            <Tip
               key={subItem.id}
-              type="button"
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent rounded-sm transition-colors text-left"
-              onClick={() => onSubItemClick(item, subItem)}
+              label={item.id === 'settings' ? paneTips[subItem.id as SettingsPane] : subItem.label}
+              side="right"
+              truncated={item.id !== 'settings'}
             >
-              <SubIcon className="h-3 w-3 shrink-0" />
-              <span className="truncate">{subItem.label}</span>
-            </button>
+              <button
+                type="button"
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent rounded-sm transition-colors text-left"
+                onClick={() => onSubItemClick(item, subItem)}
+              >
+                <SubIcon className="h-3 w-3 shrink-0" />
+                <span className="truncate">{subItem.label}</span>
+              </button>
+            </Tip>
           );
         })
       ) : null}
@@ -344,6 +354,7 @@ function SidebarContent({
   mobileOpen = false,
   onMobileOpenChange,
 }: SidebarProps) {
+  const paneTips = usePaneDescriptions();
   const t = useTranslations('sidebar');
   const tn = useTranslations('nav');
   const router = useRouter();
@@ -745,6 +756,8 @@ function SidebarContent({
                     if (flyoutItemId === item.id) hideFlyout();
                   }}
                 >
+                  {/* Collapsed, an item is its icon; hovering opens the sidebar, so the tip is for keyboard focus. */}
+                  <Tip label={collapsed ? item.label : undefined} side="right">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -760,30 +773,35 @@ function SidebarContent({
                         handleItemAction(item);
                       }
                     }}
-                    title={collapsed ? item.label : undefined}
+                    aria-label={collapsed ? item.label : undefined}
                   >
                     <Icon className={cn('h-4 w-4', !collapsed && 'mr-2')} />
                     {!collapsed && item.label}
                   </Button>
+                  </Tip>
                   {!collapsed && hasSubItems && (
-                    <button
-                      className={cn(
-                        'absolute right-2 top-1/2 -translate-y-1/2',
-                        'p-1 rounded hover:bg-accent transition-colors'
-                      )}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        toggleExpanded(item.id);
-                      }}
-                    >
-                      <ChevronDown
+                    <Tip label={isExpanded ? t('collapse', { label: item.label }) : t('expand', { label: item.label })} side="right">
+                      <button
                         className={cn(
-                          'h-4 w-4 transition-transform',
-                          isExpanded && 'rotate-180'
+                          'absolute right-2 top-1/2 -translate-y-1/2',
+                          'p-1 rounded hover:bg-accent transition-colors'
                         )}
-                      />
-                    </button>
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          toggleExpanded(item.id);
+                        }}
+                        aria-label={isExpanded ? t('collapse', { label: item.label }) : t('expand', { label: item.label })}
+                        aria-expanded={isExpanded}
+                      >
+                        <ChevronDown
+                          className={cn(
+                            'h-4 w-4 transition-transform',
+                            isExpanded && 'rotate-180'
+                          )}
+                        />
+                      </button>
+                    </Tip>
                   )}
                 </div>
 
@@ -812,22 +830,23 @@ function SidebarContent({
                   ) : recentProjects.length > 0 ? (
                     // Actual projects
                     recentProjects.map((project) => (
-                      <Button
-                        key={project.id}
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          collapsed ? "w-8 h-8 p-0 justify-center" : "w-full justify-start text-xs"
-                        )}
-                        onClick={() => {
-                          onMobileOpenChange?.(false);
-                          onProjectSelect(project);
-                        }}
-                        title={project.name}
-                      >
-                        <FolderOpen className={cn("h-3 w-3 flex-shrink-0", !collapsed && "mr-2")} />
-                        {!collapsed && <span className="truncate">{project.name}</span>}
-                      </Button>
+                      <Tip key={project.id} label={project.name} side="right" truncated={!collapsed}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className={cn(
+                            collapsed ? "w-8 h-8 p-0 justify-center" : "w-full justify-start text-xs"
+                          )}
+                          onClick={() => {
+                            onMobileOpenChange?.(false);
+                            onProjectSelect(project);
+                          }}
+                          aria-label={collapsed ? project.name : undefined}
+                        >
+                          <FolderOpen className={cn("h-3 w-3 flex-shrink-0", !collapsed && "mr-2")} />
+                          {!collapsed && <span className="truncate">{project.name}</span>}
+                        </Button>
+                      </Tip>
                     ))
                   ) : (
                     !collapsed && (
@@ -860,8 +879,8 @@ function SidebarContent({
                         : (isServerMode && (window.location.pathname === `${wsBase}/${item.id}/${subItem.id}` || window.location.pathname === `/admin/${item.id}/${subItem.id}`));
 
                     return (
+                      <Tip key={subItem.id} label={collapsed ? subItem.label : item.id === 'settings' ? paneTips[subItem.id as SettingsPane] : undefined} side="right">
                       <Button
-                        key={subItem.id}
                         variant={isSubItemActive ? 'default' : 'ghost'}
                         size="sm"
                         className={cn(
@@ -896,11 +915,12 @@ function SidebarContent({
                             }
                           }
                         }}
-                        title={collapsed ? subItem.label : undefined}
+                        aria-label={collapsed ? subItem.label : undefined}
                       >
                         <SubIcon className={cn("h-3 w-3", !collapsed && "mr-2")} />
                         {!collapsed && subItem.label}
                       </Button>
+                      </Tip>
                     );
                   })}
                 </div>
@@ -920,22 +940,23 @@ function SidebarContent({
 
             if (item.href) {
               return (
-                <Button
-                  key={item.id}
-                  asChild
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    'w-full',
-                    collapsed ? 'justify-center px-2' : 'justify-start'
-                  )}
-                  title={collapsed ? item.label : undefined}
-                >
-                  <a href={item.href}>
-                    <Icon className={cn('h-4 w-4', !collapsed && 'mr-2')} />
-                    {!collapsed && item.label}
-                  </a>
-                </Button>
+                <Tip key={item.id} label={collapsed ? item.label : undefined} side="right">
+                  <Button
+                    asChild
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      'w-full',
+                      collapsed ? 'justify-center px-2' : 'justify-start'
+                    )}
+                    aria-label={collapsed ? item.label : undefined}
+                  >
+                    <a href={item.href}>
+                      <Icon className={cn('h-4 w-4', !collapsed && 'mr-2')} />
+                      {!collapsed && item.label}
+                    </a>
+                  </Button>
+                </Tip>
               );
             }
 
@@ -944,8 +965,8 @@ function SidebarContent({
             const pendingBadge = item.id === 'sync' && pendingCount > 0;
 
             return (
+              <Tip key={item.id} label={collapsed ? (pendingBadge ? t('notSyncedTitle', { label: item.label, count: pendingCount }) : item.label) : pendingBadge ? t('notSyncedAria', { count: pendingCount }) : undefined} side="right">
               <Button
-                key={item.id}
                 variant="ghost"
                 size="sm"
                 className={cn(
@@ -954,7 +975,7 @@ function SidebarContent({
                   isLogout && 'text-destructive hover:text-destructive hover:bg-destructive/10'
                 )}
                 onClick={() => handleItemAction(item)}
-                title={collapsed ? (pendingBadge ? t('notSyncedTitle', { label: item.label, count: pendingCount }) : item.label) : undefined}
+                aria-label={collapsed ? item.label : undefined}
               >
                 <Icon className={cn('h-4 w-4', !collapsed && 'mr-2')} />
                 {!collapsed && item.label}
@@ -972,6 +993,7 @@ function SidebarContent({
                   </span>
                 )}
               </Button>
+              </Tip>
             );
           })}
         </div>
@@ -979,25 +1001,28 @@ function SidebarContent({
 
       {/* Pin, help and language. Collapsed, only the pin shows: hovering opens the sidebar. */}
       <div className={cn('border-t p-2 flex items-center gap-1', collapsed && 'justify-center')}>
-        <Button
-          variant="outline"
-          size="sm"
-          className={cn(
-            'hidden md:flex h-7 rounded-full gap-1.5 text-xs text-foreground',
-            collapsed ? 'w-7 p-0' : 'px-2.5'
-          )}
-          onClick={togglePinned}
-          aria-label={pinned ? tn('unpinSidebar') : tn('pinSidebar')}
-          title={pinned ? tn('unpinSidebar') : tn('pinSidebar')}
-        >
-          {pinned ? <PanelLeftClose className="h-3.5 w-3.5" /> : <PanelLeftOpen className="h-3.5 w-3.5" />}
-          {!collapsed && (pinned ? tn('unpin') : tn('pin'))}
-        </Button>
+        <Tip label={pinned ? tn('unpinSidebar') : tn('pinSidebar')} side={collapsed ? 'right' : 'top'}>
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn(
+              'hidden md:flex h-7 rounded-full gap-1.5 text-xs text-foreground',
+              collapsed ? 'w-7 p-0' : 'px-2.5'
+            )}
+            onClick={togglePinned}
+            aria-label={pinned ? tn('unpinSidebar') : tn('pinSidebar')}
+          >
+            {pinned ? <PanelLeftClose className="h-3.5 w-3.5" /> : <PanelLeftOpen className="h-3.5 w-3.5" />}
+            {!collapsed && (pinned ? tn('unpin') : tn('pin'))}
+          </Button>
+        </Tip>
         {!collapsed && (
           <div className="ml-auto flex items-center gap-1">
             <DropdownMenu modal={false} onOpenChange={handleFooterMenuOpenChange}>
               <DropdownMenuTrigger asChild>
-                <MenuPill icon={CircleHelp} aria-label={tn('help')} title={tn('help')} />
+                <Tip label={tn('help')}>
+                  <MenuPill icon={CircleHelp} aria-label={tn('help')} />
+                </Tip>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" align="end" collisionPadding={8} className="min-w-48">
                 {studioView && onStartTour && (
@@ -1030,7 +1055,9 @@ function SidebarContent({
               </DropdownMenuContent>
             </DropdownMenu>
             <LanguageMenu modal={false} align="end" onOpenChange={handleFooterMenuOpenChange}>
-              <MenuPill icon={Languages} aria-label={ts('language.title')} title={ts('language.title')} />
+              <Tip label={ts('language.title')}>
+                <MenuPill icon={Languages} aria-label={ts('language.title')} />
+              </Tip>
             </LanguageMenu>
           </div>
         )}

@@ -8,6 +8,8 @@ import { vfs } from '@/lib/vfs';
 import { X, Code2, Save, FileCode, Image as ImageIcon, Film, AlertCircle } from 'lucide-react';
 import { PanelHeader } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
+import { modShortcut } from '@/lib/platform';
 import { cn, logger } from '@/lib/utils';
 import { useTheme } from 'next-themes';
 import { useTypescriptIntelliSense } from '@/lib/hooks/use-typescript-intellisense';
@@ -451,17 +453,9 @@ export function MultiTabEditor({ projectId, runtime, onClose }: MultiTabEditorPr
         color="var(--button-editor-active)"
         onClose={onClose}
         panelKey="editor"
-        actions={activeFile?.modified && getFileType(activeFile.file.path).type === 'text' && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 md:h-5 md:px-2 md:border-0 md:bg-transparent md:rounded-md"
-            onClick={() => saveFile(activeFilePath!)}
-          >
-            <Save className="h-2.5 w-2.5 md:h-3 md:w-3" />
-            <span className="text-xs">{tc('actions.save')}</span>
-          </Button>
-        )}
+        actions={activeFile?.modified && getFileType(activeFile.file.path).type === 'text' ? [
+          { id: 'save', icon: Save, label: tc('actions.save'), tip: t('tips.save', { shortcut: modShortcut('S') }), labelled: true, onSelect: () => saveFile(activeFilePath!) },
+        ] : undefined}
       />
       
       {openFiles.size === 0 ? (
@@ -489,18 +483,23 @@ export function MultiTabEditor({ projectId, runtime, onClose }: MultiTabEditorPr
               )}
               onClick={() => setActiveFilePath(path)}
             >
-              <span className="text-sm">
-                {file.file.name}
-                {file.modified && <span className="text-orange-500 ml-1">●</span>}
-              </span>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-4 w-4 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={(e) => closeFile(path, e)}
-              >
-                <X className="h-3 w-3 hover:text-destructive" />
-              </Button>
+              <Tip label={file.modified ? t('tips.tabModified', { path }) : path} side="bottom" align="start">
+                <span className="text-sm">
+                  {file.file.name}
+                  {file.modified && <span aria-hidden="true" className="text-orange-500 ml-1">●</span>}
+                </span>
+              </Tip>
+              <Tip label={t('tips.closeFile', { name: file.file.name })} side="bottom">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-4 w-4 p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                  onClick={(e) => closeFile(path, e)}
+                  aria-label={t('tips.closeFile', { name: file.file.name })}
+                >
+                  <X className="h-3 w-3 hover:text-destructive" />
+                </Button>
+              </Tip>
             </div>
           ))}
         </div>

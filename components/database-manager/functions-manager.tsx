@@ -15,6 +15,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tip } from '@/components/ui/tooltip';
 import { FunctionEditor } from './function-editor';
 import { cn } from '@/lib/utils';
 import type { FunctionsDataProvider } from './data-providers';
@@ -207,7 +208,9 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
                   <div className="flex-1 min-w-0 overflow-hidden">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Code2 className="h-4 w-4 text-blue-500 shrink-0" />
-                      <span className="font-mono font-medium truncate">{fn.name}</span>
+                      <Tip label={fn.name} truncated>
+                        <span className="font-mono font-medium truncate">{fn.name}</span>
+                      </Tip>
                       <span className={cn(
                         "text-xs px-1.5 py-0.5 rounded shrink-0",
                         fn.method === 'ANY' ? "bg-purple-500/20 text-purple-600" :
@@ -219,42 +222,50 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
                         {fn.method}
                       </span>
                       {!fn.enabled && (
-                        <span className="text-xs bg-muted px-1.5 py-0.5 rounded shrink-0">{t('disabledBadge')}</span>
+                        <Tip label={t('tips.functionDisabled')}>
+                          <span className="text-xs bg-muted px-1.5 py-0.5 rounded shrink-0">{t('disabledBadge')}</span>
+                        </Tip>
                       )}
                     </div>
                     {fn.description && (
-                      <p className="text-sm text-muted-foreground mt-1 truncate">
-                        {fn.description}
-                      </p>
+                      <Tip label={fn.description} truncated>
+                        <p className="text-sm text-muted-foreground mt-1 truncate">
+                          {fn.description}
+                        </p>
+                      </Tip>
                     )}
                     <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                       <span className="shrink-0">{t('timeoutValue', { seconds: fn.timeoutMs / 1000 })}</span>
                       {!hideRuntimeFeatures && deploymentId && (
-                        <button
-                          onClick={() => copyUrl(fn)}
-                          className="flex items-center gap-1 hover:text-foreground transition-colors shrink-0"
-                        >
-                          {copiedUrl === fn.id ? (
-                            <>
-                              <CheckCircle2 className="h-3 w-3 text-green-500" />
-                              {tc('labels.copied')}
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="h-3 w-3" />
-                              {tc('actions.copyUrl')}
-                            </>
-                          )}
-                        </button>
+                        <Tip label={t('tips.copyFunctionUrl', { name: fn.name })}>
+                          <button
+                            onClick={() => copyUrl(fn)}
+                            className="flex items-center gap-1 hover:text-foreground transition-colors shrink-0"
+                          >
+                            {copiedUrl === fn.id ? (
+                              <>
+                                <CheckCircle2 className="h-3 w-3 text-green-500" />
+                                {tc('labels.copied')}
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-3 w-3" />
+                                {tc('actions.copyUrl')}
+                              </>
+                            )}
+                          </button>
+                        </Tip>
                       )}
                     </div>
                   </div>
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
+                      <Tip label={t('tips.actionsFor', { name: fn.name })} align="end">
+                        <Button variant="ghost" size="sm" aria-label={t('tips.actionsFor', { name: fn.name })}>
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </Tip>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => setEditingFunction(fn)}>

@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Tip } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 
 interface HeatmapPoint {
@@ -307,9 +308,11 @@ export function HeatmapViewer({ deploymentId, pages }: HeatmapViewerProps) {
                     </div>
                   </div>
                   <div className="text-right">
-                    <Button variant="outline" size="sm" onClick={captureScreenshot}>
-                      {t('recapture')}
-                    </Button>
+                    <Tip label={t('tips.recapture')}>
+                      <Button variant="outline" size="sm" onClick={captureScreenshot}>
+                        {t('recapture')}
+                      </Button>
+                    </Tip>
                   </div>
                 </div>
               </div>

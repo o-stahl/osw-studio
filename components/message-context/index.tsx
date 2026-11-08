@@ -8,6 +8,7 @@ import type { PlacedBlock } from '@/lib/semantic-blocks/types';
 import { getBlockById } from '@/lib/semantic-blocks/registry';
 import type { PendingImage, PendingFile, PendingAudio } from '@/lib/llm/multi-agent-orchestrator';
 import type { ContentBlock } from '@/lib/llm/types';
+import { Tip } from '@/components/ui/tooltip';
 
 interface FocusContextData {
   domPath: string;
@@ -95,27 +96,36 @@ function Section({
   readOnly?: boolean;
 }) {
   const tc = useTranslations('common');
+  const tm = useTranslations('messageContext');
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="border-t border-primary/10 first:border-t-0">
-      <button
-        type="button"
-        className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-primary/5 transition-colors"
-        onClick={() => setOpen(prev => !prev)}
-      >
-        <ChevronDown className={cn("h-3 w-3 text-primary/50 flex-shrink-0 transition-transform", !open && "-rotate-90")} />
-        <Icon className="h-3 w-3 text-primary/60 flex-shrink-0" />
-        <span className="text-[11px] font-medium text-foreground/90">{label}</span>
-        {summary && <span className="text-[10px] text-muted-foreground/60 truncate">{summary}</span>}
-        {!readOnly && onClear && (
-          <span
-            className="ml-auto text-[10px] text-muted-foreground/50 hover:text-foreground/70 flex-shrink-0"
-            onClick={(e) => { e.stopPropagation(); onClear(); }}
+      <div className="flex items-center hover:bg-primary/5 transition-colors">
+        <Tip label={open ? tm('tips.hide') : tm('tips.show')} side="top" align="start">
+          <button
+            type="button"
+            aria-expanded={open}
+            className="flex flex-1 min-w-0 items-center gap-2 px-3 py-1.5 text-left"
+            onClick={() => setOpen(prev => !prev)}
           >
-            {tc('actions.clear')}
-          </span>
+            <ChevronDown className={cn("h-3 w-3 text-primary/50 flex-shrink-0 transition-transform", !open && "-rotate-90")} />
+            <Icon className="h-3 w-3 text-primary/60 flex-shrink-0" />
+            <span className="text-[11px] font-medium text-foreground/90">{label}</span>
+            {summary && <span className="text-[10px] text-muted-foreground/60 truncate">{summary}</span>}
+          </button>
+        </Tip>
+        {!readOnly && onClear && (
+          <Tip label={tm('tips.clear')}>
+            <button
+              type="button"
+              className="shrink-0 py-1.5 pl-1 pr-3 text-[10px] text-muted-foreground/50 hover:text-foreground/70"
+              onClick={onClear}
+            >
+              {tc('actions.clear')}
+            </button>
+          </Tip>
         )}
-      </button>
+      </div>
       {open && (
         <div className="px-3 pb-2 pt-0.5">
           {children}
@@ -246,13 +256,15 @@ export function MessageContext({
                 <div className="flex items-center gap-1 mb-0.5">
                   <span className="text-[11px] font-medium text-foreground/90">{getBlockName(block)}</span>
                   {!readOnly && onRemoveBlock && isPlacedBlock(block) && (
-                    <button
-                      onClick={() => onRemoveBlock(block.placementId)}
-                      className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 text-muted-foreground/50 hover:text-foreground/70"
-                      title={tt('removeBlock')}
-                    >
-                      <X className="h-2.5 w-2.5" />
-                    </button>
+                    <Tip label={tt('removeBlock')}>
+                      <button
+                        onClick={() => onRemoveBlock(block.placementId)}
+                        className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex-shrink-0 text-muted-foreground/50 hover:text-foreground/70"
+                        aria-label={tt('removeBlock')}
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </Tip>
                   )}
                 </div>
                 <div className="text-[10px] font-mono text-muted-foreground/60 mb-1">
@@ -283,13 +295,15 @@ export function MessageContext({
                   className="h-10 w-10 object-cover rounded border border-border/50"
                 />
                 {!readOnly && onRemoveImage && (
-                  <button
-                    onClick={() => onRemoveImage(img.id)}
-                    className="absolute -top-1 -right-1 h-3.5 w-3.5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    title={tt('removeImage')}
-                  >
-                    <X className="h-2 w-2" />
-                  </button>
+                  <Tip label={tt('removeImage')}>
+                    <button
+                      onClick={() => onRemoveImage(img.id)}
+                      className="absolute -top-1 -right-1 h-3.5 w-3.5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                      aria-label={tt('removeImage')}
+                    >
+                      <X className="h-2 w-2" />
+                    </button>
+                  </Tip>
                 )}
               </div>
             ))}
@@ -308,15 +322,19 @@ export function MessageContext({
             {files!.map((f) => (
               <div key={f.id} className="group flex items-center gap-1.5 px-2 py-1 rounded border border-border/50 bg-muted/40 text-[11px] max-w-full">
                 <FileText className="h-3 w-3 shrink-0 text-muted-foreground" />
-                <span className="truncate text-foreground/90">{f.name}</span>
+                <Tip label={f.name} truncated>
+                  <span className="truncate text-foreground/90">{f.name}</span>
+                </Tip>
                 {!readOnly && onRemoveFile && (
-                  <button
-                    onClick={() => onRemoveFile(f.id)}
-                    className="shrink-0 text-muted-foreground/50 hover:text-foreground/70"
-                    title={tt('removeFile')}
-                  >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
+                  <Tip label={tt('removeFile')}>
+                    <button
+                      onClick={() => onRemoveFile(f.id)}
+                      className="shrink-0 text-muted-foreground/50 hover:text-foreground/70"
+                      aria-label={tt('removeFile')}
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </Tip>
                 )}
               </div>
             ))}
@@ -347,13 +365,15 @@ export function MessageContext({
                   </span>
                 )}
                 {!readOnly && onRemoveAudio && (
-                  <button
-                    onClick={() => onRemoveAudio(clip.id)}
-                    className="shrink-0 text-muted-foreground/50 hover:text-foreground/70"
-                    title={tt('removeRecording')}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
+                  <Tip label={tt('removeRecording')}>
+                    <button
+                      onClick={() => onRemoveAudio(clip.id)}
+                      className="shrink-0 text-muted-foreground/50 hover:text-foreground/70"
+                      aria-label={tt('removeRecording')}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Tip>
                 )}
               </div>
             ))}

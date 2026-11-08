@@ -11,6 +11,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import {
   Loader2, AlertTriangle, Plus, Minus, RefreshCw, Key,
   Code2, Wrench, Clock,
@@ -193,13 +194,15 @@ export function ProjectSwapDialog({
           <Button variant="outline" onClick={onClose}>
             {tc('actions.cancel')}
           </Button>
-          <Button
-            onClick={onConfirm}
-            disabled={loading || !!error}
-            variant={diff?.hasConflicts ? 'destructive' : 'default'}
-          >
-            {tb('swapConfirm')}
-          </Button>
+          <Tip label={loading ? tb('tips.swapWait') : error ? tb('tips.swapFailed') : undefined} wrapClassName="grid">
+            <Button
+              onClick={onConfirm}
+              disabled={loading || !!error}
+              variant={diff?.hasConflicts ? 'destructive' : 'default'}
+            >
+              {tb('swapConfirm')}
+            </Button>
+          </Tip>
         </DialogFooter>
       </DialogContent>
     </Dialog>

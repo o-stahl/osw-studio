@@ -6,6 +6,26 @@ Welcome to OSW Studio! This page highlights the latest features and updates.
 
 ---
 
+## v1.109.0 - Panel Tabs and Stacks (2026-11-08)
+
+In a project's workspace, panels can now share a place as tabs or stack in a column as well as sit side by side, so more of them fit on screen and opening one no longer closes another. Your current panels and widths carry over. Quick edit and the phone layout don't have tabs or stacks.
+
+### Workspace panels
+- **Tabs**: drag a panel by its title onto another panel's title or middle; a tab in the background is marked when the console has new output or the chat is working
+- **Stacks**: drag it near the top or bottom of another panel, then drag the divider between them to set their heights
+- **Opening a panel**: the rail puts it back where it was, otherwise as a tab with related panels or in a new column; with three columns open, it opens as a tab
+- **Panel menu and Layout button**: right-click a title or tab to split, move, maximize or close it; the Layout button at the bottom of the rail has preset layouts and Reset layout
+- **Undo**: from the toast after each layout change, or with Ctrl+Z (⌘Z on a Mac) when the focus isn't in the code editor, the chat or a text field
+- **Narrow windows**: the rightmost columns show as tabs until there's room again, and your saved layout stays as it was
+
+### Tooltips
+- **Tooltips on most controls**: hover a button almost anywhere in the app, settings and dialogs included, to see what it does or why it's off
+
+### Agent runs
+- **Broken model streams**: a temporary stream error before any of the answer arrives is retried, and a command a broken stream cut off is no longer run, which could leave a file half written
+
+---
+
 ## v1.108.0 - A Lighter Studio Chat (2026-11-07)
 
 In the studio, a task's progress is shown with less visual clutter. Instead of rows of shell commands with multiple icons and spinners, each request is shown as a card, with the built-in agent's actions still showing what it did and how the run ended. It's extended from quick edit's chat to cover what more technical users need. With this, the chat panel and its functionality were improved significantly, enabling the kind of turn-by-turn conversation you'd expect from a chat mode and making it much easier to plan work.

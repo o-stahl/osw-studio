@@ -115,6 +115,10 @@
       "previous": "Edellinen sivu",
       "next": "Seuraava sivu",
       "page": "Sivu {page}"
+    },
+    "viewMode": {
+      "table": "Näytä taulukkona",
+      "grid": "Näytä kortteina"
     }
   },
   "nav": {
@@ -133,7 +137,19 @@
       "permissions": "Oikeudet",
       "data": "Data",
       "mail": "Sähköposti",
-      "users": "Käyttäjät"
+      "users": "Käyttäjät",
+      "tips": {
+        "connections": "Tekoäly- ja verkkohakupalvelut sekä niiden avaimet ja kirjautumiset",
+        "models": "Agentin, kuvien ja äänen mallit sekä keskustelun tiivistys",
+        "templates": "Tallennetut mallikokoonpanot, joiden välillä voit vaihtaa",
+        "appearance": "Studio- tai yksinkertainen näkymä, teema, kieli ja käyttötilasto",
+        "costs": "Kulujen näyttö, kulurajat ja kokonaissumma",
+        "permissions": "Mistä komennoista tekoäly kysyy ennen niiden ajamista",
+        "data": "Varmuuskopioi tai palauta projektisi, tai tyhjennä asetukset",
+        "mcp": "MCP-endpoint ja valtuuttamasi ulkoiset asiakkaat",
+        "mail": "Palvelin, jonka kautta tämä workspace lähettää sähköpostia",
+        "users": "Tilit ja workspacen jäsenet rooleineen"
+      }
     },
     "docs": {
       "whats-new": "Uutta",
@@ -170,7 +186,9 @@
     "noRecentProjects": "Ei viimeaikaisia projekteja",
     "serverBuild": "Palvelin, v{version}",
     "notSyncedTitle": "{label} ({count} synkronoimatta)",
-    "notSyncedAria": "{count, plural, one {# projekti synkronoimatta palvelimelle} other {# projektia synkronoimatta palvelimelle}}"
+    "notSyncedAria": "{count, plural, one {# projekti synkronoimatta palvelimelle} other {# projektia synkronoimatta palvelimelle}}",
+    "expand": "Laajenna: {label}",
+    "collapse": "Supista: {label}"
   },
   "deployments": {
     "projectMissing": "Projekti poistettu",
@@ -231,7 +249,25 @@
     "confirmDelete": "Poistetaanko julkaisu \"{name}\"? Tätä ei voi perua.",
     "firstDeploymentHint": "Luo ensimmäinen julkaisusi painamalla yllä olevaa \"Uusi\"-painiketta. Julkaisujen avulla voit julkaista projekteja ja hallita niiden julkisia asetuksia erikseen.",
     "noFilesToPublish": "Tällä projektilla ei ole selaimessa tiedostoja julkaistavaksi. Avaa projekti, tarkista että tiedostot ovat siellä, tallenna ja julkaise sitten uudelleen.",
-    "sameOriginWarning": "Julkaistut sivustot tarjoillaan studion omasta osoitteesta, joten sivuston skriptit voivat käyttää studiota avaajansa nimissä ja lukea myös tämän tallentamat API-avaimet. Aseta <code>SITES_ORIGIN</code>, niin sivustot tarjoillaan erillisestä osoitteesta. <link>Server Mode -ohjeet</link>"
+    "sameOriginWarning": "Julkaistut sivustot tarjoillaan studion omasta osoitteesta, joten sivuston skriptit voivat käyttää studiota avaajansa nimissä ja lukea myös tämän tallentamat API-avaimet. Aseta <code>SITES_ORIGIN</code>, niin sivustot tarjoillaan erillisestä osoitteesta. <link>Server Mode -ohjeet</link>",
+    "contextLabel": "Julkaisu, jonka tekoäly näkee",
+    "contextTip": "Minkä julkaisun tietokannan ja funktiot tekoäly näkee työskennellessään",
+    "tips": {
+      "new": "Luo julkaisu jollekin projekteistasi",
+      "sortedBy": "Järjestys: {order}",
+      "edit": "Avaa julkaisun {name} asetukset",
+      "publish": "Rakentaa julkaisun {name} projektin tiedostoista ja tuo sen verkkoon",
+      "publishChanges": "Rakentaa julkaisun {name} uudelleen tallennetuilla muutoksilla",
+      "republish": "Rakentaa julkaisun {name} uudelleen projektin nykyisistä tiedostoista ja korvaa julkaistun sivuston",
+      "publishing": "Julkaistaan parhaillaan",
+      "projectMissing": "Sen projekti on poistettu: valitse asetuksista toinen ja julkaise sitten",
+      "copyUrl": "Kopioi julkaisun {name} URL",
+      "viewLive": "Avaa julkaisun {name} uudessa välilehdessä",
+      "more": "Lisää toimintoja: {name}",
+      "create": "Luo julkaisun; se tulee verkkoon, kun julkaiset sen",
+      "chooseProject": "Valitse ensin projekti",
+      "nameFirst": "Anna ensin julkaisun nimi"
+    }
   },
   "workspace": {
     "tabs": {
@@ -247,7 +283,6 @@
       "editorShort": "Editori"
     },
     "deploy": "Julkaise",
-    "deployTooltip": "Julkaise tämä projekti",
     "backToProjects": "Takaisin projekteihin",
     "backTo": "Takaisin: {view}",
     "saving": "Tallennetaan…",
@@ -269,15 +304,11 @@
     "openCheckpointsPanel": "Avaa checkpoint-paneeli",
     "closeCheckpoints": "Sulje checkpointit",
     "allCheckpoints": "Kaikki checkpointit",
-    "closeInspectorPanel": "Sulje inspector-paneeli",
-    "openInspectorPanel": "Avaa inspector-paneeli",
     "checkpointUnpinned": "Checkpointin kiinnitys poistettu",
     "checkpointPinned": "Checkpoint kiinnitetty",
     "loadingCheckpoints": "Ladataan checkpointeja…",
     "noCheckpoints": "Ei vielä checkpointeja. Checkpointit luodaan automaattisesti, kun tekoäly tekee muutoksia.",
     "jump": "Hyppää",
-    "unpinCheckpoint": "Poista checkpointin kiinnitys",
-    "pinCheckpoint": "Kiinnitä checkpoint",
     "unpin": "Poista kiinnitys",
     "pin": "Kiinnitä",
     "restore": "Palauta",
@@ -317,7 +348,104 @@
       "helpHelp": "Näytä tämä ohje",
       "helpVfs": "VFS-komennot:",
       "helpOperators": "Operaattorit:",
-      "helpOperatorList": "| (putki), > >> (uudelleenohjaus), && || (ketjutus)"
+      "helpOperatorList": "| (putki), > >> (uudelleenohjaus), && || (ketjutus)",
+      "tips": {
+        "run": "Suorita {file}",
+        "chooseFile": "Valitse suoritettava tiedosto",
+        "stop": "Pysäytä skripti",
+        "file": "Suoritettava tiedosto"
+      }
+    },
+    "layout": {
+      "tabs": "Tämän ryhmän paneelit",
+      "moreActions": "Lisää toimintoja",
+      "restore": "Palauta asettelu",
+      "restoreHint": "Palauta (kaksoisnapsautus tai Esc)",
+      "handleHint": "Vedä siirtääksesi · kaksoisnapsautus suurentaa · oikea napsautus avaa vaihtoehdot",
+      "maximizedHint": "Kaksoisnapsautus palauttaa · oikea napsautus avaa vaihtoehdot",
+      "dragToMove": "Vedä siirtääksesi",
+      "dragGroup": "Vedä siirtääksesi koko ryhmän",
+      "unread": "Lukematonta tulostetta",
+      "running": "Käynnissä",
+      "hint": "Vedä järjestääksesi · oikea napsautus avaa vaihtoehdot",
+      "hintDismiss": "Sulje",
+      "menu": {
+        "splitRight": "Jaa oikealle",
+        "splitBelow": "Jaa alas",
+        "moveToNewColumn": "Siirrä uuteen sarakkeeseen",
+        "addAsTabTo": "Lisää välilehdeksi",
+        "maximize": "Suurenna",
+        "restore": "Palauta",
+        "doubleClick": "Kaksoisnapsautus",
+        "ungroupAll": "Pura ryhmä",
+        "close": "Sulje",
+        "closeGroup": "Sulje ryhmä",
+        "alreadyOwnColumn": "On jo omassa sarakkeessaan",
+        "alreadyAlone": "On jo yksin",
+        "alreadyLastColumn": "On jo viimeinen sarake"
+      },
+      "presets": {
+        "button": "Asettelu",
+        "columns": "Sarakkeet",
+        "stacked": "Pinottu",
+        "tabbed": "Välilehdet",
+        "reset": "Palauta oletusasettelu",
+        "tip": "Asettelu: järjestä kaikki paneelit kerralla"
+      },
+      "refusal": {
+        "width": "Tarvitsee {px} px leveyttä",
+        "height": "{panel} tarvitsee {px} px korkeutta",
+        "inspectorPreview": "Inspector tarvitsee näkyvän esikatselun"
+      },
+      "target": {
+        "reorder": "Järjestä välilehdet",
+        "tabIn": "Välilehdeksi: {panel}",
+        "above": "Yläpuolelle: {panel}",
+        "below": "Alapuolelle: {panel}",
+        "columnBetween": "Uusi sarake väliin: {left} ja {right}",
+        "columnLeftOf": "Uusi sarake ennen: {panel}",
+        "columnRightOf": "Uusi sarake jälkeen: {panel}",
+        "column": "Uusi sarake"
+      },
+      "rail": {
+        "front": "Tuo eteen: {panel}",
+        "close": "Sulkee: {panel}",
+        "openColumn": "Avautuu uuteen sarakkeeseen",
+        "openTab": "Avautuu välilehdeksi: {panel}",
+        "openAbove": "Avautuu yläpuolelle: {panel}",
+        "openBelow": "Avautuu alapuolelle: {panel}"
+      },
+      "toast": {
+        "opened": "{panel} avattu",
+        "closed": "{panel} suljettu",
+        "groupClosed": "{panel} ja {count} muuta suljettu",
+        "moved": "{panel} siirretty",
+        "groupMoved": "{panel} ja {count} muuta siirretty",
+        "movedToColumn": "{panel} siirretty uuteen sarakkeeseen",
+        "splitBelow": "{panel} jaettu alas",
+        "addedTo": "{panel} lisätty välilehdeksi: {target}",
+        "preset": "Asettelu: {name}",
+        "reset": "Asettelu palautettu",
+        "ungrouped": "Ryhmä purettu",
+        "ungroupedPartly": "Ryhmä purettu; {count, plural, one {# paneeli jäi} other {# paneelia jäi}} välilehdeksi, tila ei riittänyt",
+        "ungroupNoRoom": "Tila ei riitä ryhmän purkamiseen",
+        "nothingToUndo": "Ei kumottavaa",
+        "alreadyOwnColumn": "{panel} on jo omassa sarakkeessaan",
+        "undo": "Kumoa"
+      }
+    },
+    "tips": {
+      "save": "Tallenna projekti ({shortcut})",
+      "saved": "Kaikki muutokset on tallennettu",
+      "discard": "Palaa viimeisimpään tallennukseen",
+      "nothingToDiscard": "Ei tallentamattomia muutoksia",
+      "undo": "Kumoa viimeisin muutos",
+      "redo": "Tee kumottu muutos uudelleen",
+      "nothingToUndo": "Ei kumottavaa",
+      "nothingToRedo": "Ei uudelleen tehtävää",
+      "afterRun": "Käytettävissä, kun tekoäly on valmis",
+      "deploy": "Julkaise palveluun tai vie ZIP-tiedostona",
+      "settings": "Sovelluksen ja tämän projektin asetukset"
     }
   },
   "skills": {
@@ -328,8 +456,6 @@
     "loading": "Ladataan skillejä…",
     "searchPlaceholder": "Hae skillejä ja ryhmiä…",
     "more": "Lisää",
-    "showBuiltIn": "Näytä tai piilota OSW Studion mukana tulevat skillit",
-    "showCustom": "Näytä tai piilota itse luomasi skillit",
     "enableAllShown": "Ota käyttöön kaikki näkyvät skillit",
     "disableAllShown": "Poista käytöstä kaikki näkyvät skillit",
     "noSkillsFound": "Skillejä ei löytynyt",
@@ -451,7 +577,33 @@
     "groupCount": "{count, plural, one {# ryhmä} other {# ryhmää}}",
     "groupNamePlaceholder": "esim. Verkkokehityksen skillit",
     "selectedCount": "({count, plural, one {# valittu} other {# valittu}})",
-    "custom": "Omat"
+    "custom": "Omat",
+    "tips": {
+      "allOn": "Anna tekoälyn käyttää skillejä",
+      "allOff": "Estä tekoälyä käyttämästä skillejä",
+      "turnOn": "Anna tekoälyn käyttää: {name}",
+      "turnOff": "Estä tekoälyä käyttämästä: {name}",
+      "newGroup": "Niputa skillit, jotka kytketään päälle ja pois yhdessä",
+      "importExport": "Tuo tai vie skillejä",
+      "evalOn": "Lisää jokaiseen viestiin vain siihen sopivat käytössä olevat skillit",
+      "evalOff": "Lisää jokaiseen viestiin kaikki käytössä olevat skillit",
+      "needsSkills": "Ota ensin skillijärjestelmä käyttöön",
+      "skillsTab": "Kytke yksittäisiä skillejä päälle ja pois",
+      "groupsTab": "Kytke skillijoukkoja päälle ja pois yhdessä",
+      "showBuiltIn": "Näytä OSW Studion mukana tulevat skillit",
+      "hideBuiltIn": "Piilota OSW Studion mukana tulevat skillit",
+      "showCustom": "Näytä itse luomasi skillit",
+      "hideCustom": "Piilota itse luomasi skillit",
+      "noneShown": "Yhtään skilliä ei näytetä",
+      "edit": "Muokkaa: {name}",
+      "view": "Katso: {name}; sisäänrakennettuja skillejä ei voi muuttaa",
+      "delete": "Poista: {name}",
+      "rowMenu": "Toiminnot: {name}",
+      "missing": "Ryhmän skillit, joita ei enää ole",
+      "nameFirst": "Anna ryhmälle ensin nimi",
+      "close": "Sulje tallentamatta",
+      "formEditor": "Muokkaa nimeä, kuvausta ja sisältöä omissa kentissään"
+    }
   },
   "settings": {
     "language": {
@@ -621,7 +773,39 @@
     "codexLoginFailed": "ChatGPT-kirjautuminen epäonnistui",
     "compactionLimitPlaceholder": "esim. 128000",
     "signInWithProvider": "Kirjaudu palveluun {provider}",
-    "orPasteKey": "Tai liitä API-avain"
+    "orPasteKey": "Tai liitä API-avain",
+    "tips": {
+      "studio": "Täysi editori, ja valikossa myös Pohjat, Skillit ja Haastattelut",
+      "simple": "Projektit avautuvat pikamuokkaukseen; valikosta poistuvat Pohjat, Skillit ja Haastattelut",
+      "system": "Seuraa laitteesi vaaleaa tai tummaa asetusta",
+      "languageEn": "Näytä käyttöliittymä englanniksi",
+      "languageKo": "Näytä käyttöliittymä koreaksi",
+      "languageFi": "Näytä käyttöliittymä suomeksi",
+      "analyticsOff": "Lopeta nimettömän käyttödatan jakaminen",
+      "hideCosts": "Lopeta projektin kulujen näyttäminen muokkauksen aikana",
+      "showCosts": "Näytä projektin kulut muokkauksen aikana",
+      "resetStats": "Nollaa kokonaissumman, eikä sitä voi perua",
+      "export": "Lataa .osws-varmuuskopion; API-avaimet eivät ole mukana",
+      "import": "Palauttaa .osws-varmuuskopion korvaten nykyiset tiedot tai yhdistäen niihin",
+      "clearAll": "Poistaa tallennetut avaimet, kirjautumiset, mallipohjat ja asetukset; projektit säilyvät",
+      "about": "Kertoo, mikä OSW Studio on, ja antaa GitHub- ja yhteisölinkit",
+      "codexSignIn": "Avaa ChatGPT-kirjautumisen uudessa välilehdessä",
+      "redirectFirst": "Liitä ensin uudelleenohjausosoite",
+      "checkToken": "Tarkistaa tokenin HuggingFacelta ja tallentaa sen",
+      "tokenFirst": "Liitä ensin token",
+      "disconnect": "Poistaa yhteyden ja sen tallennetun avaimen tai kirjautumisen",
+      "mcpRevoke": "Peru asiakkaan {name} pääsy workspaceen {workspace}",
+      "mcpRevokeNow": "Peru asiakkaan {name} pääsy nyt",
+      "checkSetup": "Tarkistaa palvelimen, mallin, työkalutuen ja kontekstin pituuden",
+      "copyCommand": "Kopioi komento",
+      "validate": "Tarkistaa avaimen palvelusta {provider}",
+      "keyFirst": "Anna ensin avain",
+      "sameChatModel": "Käytä koodimallia myös chatissa",
+      "separateChatModel": "Valitse erillinen malli chattiin ja suunnitteluun",
+      "dark": "Käytä aina tummaa teemaa",
+      "light": "Käytä aina vaaleaa teemaa",
+      "hfSignIn": "Avaa Hugging Face -kirjautumisen tässä välilehdessä ja palauttaa sinut sitten Dashboardiin"
+    }
   },
   "dashboard": {
     "loading": "Ladataan dashboardia…",
@@ -642,7 +826,16 @@
     "noErrors": "Ei kirjattuja virheitä",
     "whatsNewIn": "Uutta versiossa {version}",
     "topDeployments": "Suosituimmat julkaisut (24 h)",
-    "loadFailed": "Dashboardin lataus epäonnistui"
+    "loadFailed": "Dashboardin lataus epäonnistui",
+    "tips": {
+      "newProject": "Aloita projekti pohjasta tai kuvaile se tekoälylle",
+      "projects": "Avaa kaikki projektisi",
+      "deployments": "Avaa kaikki julkaisusi",
+      "tour": "Aloittaa lyhyen opastetun kierroksen demoprojektilla",
+      "docs": "Avaa oppaat, usein kysytyt kysymykset ja vianetsinnän",
+      "readAll": "Avaa Uutta-sivun kaikkine versioineen",
+      "refresh": "Lataa dashboard uudelleen"
+    }
   },
   "projects": {
     "searchPlaceholder": "Hae projekteja…",
@@ -724,7 +917,19 @@
     "limitReached": "Projektiraja saavutettu ({max}). Poista projekti luodaksesi uuden.",
     "confirmDelete": "Haluatko varmasti poistaa projektin ”{name}”? Tätä ei voi perua.",
     "discardUnsavedConfirm": "Sinulla on tallentamattomia muutoksia. Hylätäänkö ne?",
-    "firstSiteName": "Ensimmäinen sivustoni"
+    "firstSiteName": "Ensimmäinen sivustoni",
+    "tips": {
+      "new": "Luo projekti pohjasta tai suunnittele se tekoälyn kanssa",
+      "sort": "Vaihda projektien järjestystä",
+      "import": "Tuo projekti ZIP-tiedostosta, JSON-viennistä tai kansiosta",
+      "back": "Takaisin projektilomakkeeseen",
+      "rename": "Muokkaa nimeä ja kuvausta: {name}",
+      "saveDetails": "Tallenna nimi ja kuvaus",
+      "cancelEdit": "Lopeta muokkaus tallentamatta",
+      "more": "Lisää toimintoja: {name}",
+      "open": "Avaa {name}",
+      "preview": "Esikatsele: {name}"
+    }
   },
   "chat": {
     "startInterview": "Aloita haastattelu",
@@ -810,7 +1015,25 @@
       "blocked": "Mikrofonin käyttö estettiin",
       "processFailed": "Tallennetta ei voitu käsitellä"
     },
-    "connectBeforeAttachments": "Yhdistä malli lähettääksesi liitteitä. Ne pysyvät viestikentässä siihen asti."
+    "connectBeforeAttachments": "Yhdistä malli lähettääksesi liitteitä. Ne pysyvät viestikentässä siihen asti.",
+    "tips": {
+      "interviewBadge": "Haastattelu käynnissä: {title}",
+      "send": "Lähetä ({shortcut})",
+      "stop": "Pysäytä ajo",
+      "connect": "Yhdistä palveluntarjoaja valitaksesi mallin",
+      "writeFirst": "Kirjoita ensin viesti",
+      "modeCode": "Tekoäly voi muuttaa projektin tiedostoja",
+      "modeChat": "Tekoäly lukee ja vastaa muuttamatta tiedostoja",
+      "modeInterview": "Tekoäly kysyy kysymyksiä selvittääkseen, mitä rakennetaan",
+      "connectFirst": "Yhdistä ensin palveluntarjoaja",
+      "newInterview": "Uusi haastattelupohja",
+      "doubleClickToStart": "Aloita kaksoisnapsautuksella",
+      "pickInterview": "Valitse ensin haastattelu",
+      "showCorrection": "Näytä, mitä korjattiin",
+      "hideCorrection": "Piilota korjaus",
+      "handoff": "Aloittaa rakentamisen haastattelun tuloksesta",
+      "answer": "Lähetä tämä vastauksenasi"
+    }
   },
   "fileExplorer": {
     "preparingDownload": "Valmistellaan latausta…",
@@ -864,7 +1087,14 @@
     "hiddenSummary": "{parts} piilotettu",
     "confirmDelete": "Poistetaanko {type, select, directory {kansio} other {tiedosto}} \"{path}\"?",
     "readOnlyKind": "Vain luku: {kind, select, server {palvelinkonteksti} other {skilli}}",
-    "generated": "(generoitu)"
+    "generated": "(generoitu)",
+    "tips": {
+      "serverContext": "Mitä tekoäly näkee projektin backendistä; muuta sitä projektin backend-asetuksista",
+      "skills": "Skilli, jonka tekoäly voi lukea; muuta sitä Skillit-paneelissa",
+      "generated": "Rakennetaan lähdetiedostoista esikatselun aikana; muokkaa lähdetiedostoja",
+      "entry": "Sivu, jonka esikatselu avaa ensin",
+      "aiPrompt": "Ohjeet, joita tekoäly noudattaa jokaisessa tämän projektin ajossa"
+    }
   },
   "deployDialog": {
     "chooseWhere": "Valitse minne tämä projekti julkaistaan.",
@@ -905,7 +1135,21 @@
     "terminalRuntimeRefused": "Tämän tyyppistä projektia ei voi julkaista staattisena Spacena. Käytä ZIP-vientiä.",
     "publishFailed": "Julkaisu epäonnistui",
     "builtWithFooter": "”Built with OSW Studio” -alatunniste",
-    "zipExportFailed": "ZIP-vienti epäonnistui"
+    "zipExportFailed": "ZIP-vienti epäonnistui",
+    "tips": {
+      "learnMore": "Avaa julkaisuohjeet uudessa välilehdessä",
+      "connect": "Avaa asetukset, joissa lisäät Hugging Face -tunnisteen",
+      "signIn": "Kirjautuu Hugging Faceen ja palauttaa sinut tänne",
+      "newTab": "Avautuu uudessa välilehdessä",
+      "createDeployment": "Avaa julkaisut, joihin on aloitettu uusi tälle projektille",
+      "zip": "Lataa käännetyn sivuston ZIP-tiedostona",
+      "updateExisting": "Julkaise projektin nykyisen Spacen päälle",
+      "publishAsNew": "Julkaise uuteen Spaceen ja säilytä vanha",
+      "visibilityKept": "Olemassa oleva Space säilyttää näkyvyytensä; muuta sitä Hugging Facessa",
+      "toHuggingFace": "Avaa Hugging Facen ja palaa sitten tänne julkaisemaan",
+      "nameFirst": "Anna ensin Spacen nimi",
+      "publish": "Rakentaa sivuston ja lataa sen Spaceen"
+    }
   },
   "importDialog": {
     "compareVersions": "Vertaa versioita",
@@ -1022,12 +1266,20 @@
       "globalStyles": "Yleiset tyylit",
       "databaseSchema": "Tietokantaskeema"
     },
-    "entriesCount": "{count, plural, one {# kohde} other {# kohdetta}}"
+    "entriesCount": "{count, plural, one {# kohde} other {# kohdetta}}",
+    "tips": {
+      "compare": "Näytä molempien versioiden koko ja päivämäärä",
+      "hideCompare": "Piilota vertailu",
+      "keepMine": "Pidä omasi ja ohita arkiston versio",
+      "replace": "Korvaa omasi arkiston versiolla",
+      "keepBoth": "Tuo arkiston versio uudella nimellä",
+      "keepAsFile": "Lisää zip projektiin tiedostona purkamatta sitä",
+      "skipFirst": "Valitse ensin estettyjen kohtien ohitus",
+      "waitImport": "Odota, että tuonti valmistuu"
+    }
   },
   "sync": {
     "loadingStatus": "Ladataan synkronoinnin tilaa…",
-    "pushToServer": "Lähetä palvelimelle",
-    "pullFromServer": "Hae palvelimelta",
     "pushTemplateFailed": "Pohjan lähetys ei onnistunut",
     "pullTemplateFailed": "Pohjan haku ei onnistunut",
     "pushSkillFailed": "Skillin lähetys ei onnistunut",
@@ -1078,6 +1330,24 @@
       "forbidden": "Roolisi tässä workspacessa ei salli tämän poistamista, joten mitään ei poistettu.",
       "in_use": "Julkaisu käyttää tätä projektia, joten mitään ei poistettu. Vaihda ensin julkaisun projekti tai poista julkaisu.",
       "failed": "Palvelin ei vahvistanut poistoa, joten tämä kopio säilytettiin. Yritä uudelleen."
+    },
+    "tips": {
+      "pushReplace": "Korvaa palvelimen {name} paikallisella versiolla",
+      "pushNew": "Kopioi {name} palvelimelle",
+      "pullReplace": "Korvaa paikallinen {name} palvelimen versiolla",
+      "pullNew": "Kopioi {name} palvelimelta",
+      "keepBoth": "Tallenna oma versiosi uudeksi projektiksi ja hae sitten palvelimen versio",
+      "busy": "Odota, että käynnissä oleva synkronointi valmistuu",
+      "inSync": "Jo synkronoitu",
+      "serverOnly": "Vain palvelimella; hae se tämän rivin painikkeella",
+      "selectAll": "Valitse kaikki kohteet, joita ei ole synkronoitu",
+      "pushSelected": "Lähetä valitut kohteet palvelimelle",
+      "pullSelected": "Hae valitut kohteet palvelimelta",
+      "refresh": "Tarkista synkronoinnin tila uudelleen",
+      "skillsTab": "Omat skillisi; sisäänrakennettuja ei synkronoida",
+      "templatesTab": "Omat pohjasi; sisäänrakennettuja ei synkronoida",
+      "modelsTab": "Omat mallipohjasi; sisäänrakennettuja ei synkronoida",
+      "interviewsTab": "Omat haastattelupohjasi; sisäänrakennettuja ei synkronoida"
     }
   },
   "models": {
@@ -1160,7 +1430,40 @@
     "perImage": "kuvakohtainen",
     "usesAgentModel": "Käyttää agentin mallia",
     "sendsRecordingAsAudio": "Lähettää tallenteen agentille äänenä",
-    "browserVoiceMeta": "Ilmainen · toimii selaimessa · ei asetuksia"
+    "browserVoiceMeta": "Ilmainen · toimii selaimessa · ei asetuksia",
+    "tips": {
+      "reasoningOn": "Ota päättely käyttöön mallille {model}",
+      "reasoningOff": "Poista päättely käytöstä mallilta {model}",
+      "switchTemplate": "Vaihda toiseen pohjaan; sen mallit koskevat kaikkia projekteja",
+      "switchDiscards": "Pohjan vaihto hylkää tallentamattomat muutoksesi",
+      "saveTo": "Tallentaa muutokset; kaikki projektit käyttävät niitä heti",
+      "saveAs": "Tallenna valinnat uudeksi, muokattavaksi pohjaksi",
+      "changeAgent": "Valitse toinen agentin malli",
+      "changeImage": "Valitse toinen kuvamalli",
+      "changeVoice": "Valitse, miten äänisyöte muutetaan tekstiksi",
+      "setImage": "Valitse malli, jotta tekoäly voi luoda kuvia",
+      "setVoice": "Valitse äänisyötteelle selain tai malli",
+      "compactOff": "Lopeta pitkien keskustelujen tiivistäminen",
+      "compactOn": "Tiivistä keskustelu, kun se lähestyy kontekstirajaa",
+      "nameFirst": "Anna pohjalle ensin nimi",
+      "saveNew": "Tallentaa uuden pohjan ja tekee siitä aktiivisen",
+      "agentNoImages": "Agentin malli ei osaa luoda kuvia",
+      "agentNoAudio": "Agentin malli ei ota vastaan ääntä",
+      "showAll": "Listaa myös mallit, jotka eivät sovi tähän paikkaan",
+      "showFitting": "Listaa vain tähän paikkaan sopivat mallit",
+      "reset": "Palaa pohjaan ”{name}” tallennettuihin malleihin",
+      "saveInto": "Tallenna nämä mallit pohjaan ”{name}”",
+      "showGroup": "Näytä palvelun {name} mallit",
+      "hideGroup": "Piilota palvelun {name} mallit",
+      "inUse": "{model} on käytössä",
+      "useForAgent": "Käytä mallia {model} agentin mallina",
+      "useForImage": "Käytä mallia {model} kuvien luontiin",
+      "useForVoice": "Käytä mallia {model} äänisyötteeseen",
+      "hideModels": "Piilota malliluettelo",
+      "chooseAgent": "Valitse agentin käyttämä malli",
+      "chooseImage": "Valitse malli kuvien luontiin",
+      "chooseVoice": "Valitse malli äänisyötteeseen"
+    }
   },
   "preview": {
     "livePreview": "Live-esikatselu",
@@ -1174,7 +1477,17 @@
     "navigatedAwayHint": "Linkki, lomake tai skripti vei esikatselun toiselle sivulle.",
     "reload": "Lataa esikatselu uudelleen",
     "compileFailed": "Projektin kääntäminen ei onnistunut",
-    "openExternalLink": "Avataanko ulkoinen linkki?"
+    "openExternalLink": "Avataanko ulkoinen linkki?",
+    "tips": {
+      "back": "Takaisin",
+      "forward": "Eteenpäin",
+      "home": "Etusivu",
+      "semanticBlocks": "Semanttiset lohkot: vedä osio sivulle, niin tekoäly rakentaa sen",
+      "page": "Siirry sivulle",
+      "phone": "Puhelimen leveys (375 px)",
+      "tablet": "Tabletin leveys (768 px)",
+      "desktop": "Työpöydän leveys (enintään 1440 px)"
+    }
   },
   "editor": {
     "noFilesOpen": "Ei avoimia tiedostoja",
@@ -1185,7 +1498,12 @@
     "confirmCloseUnsaved": "Suljetaanko {name} tallentamatta?",
     "imageNotEditable": "Kuvatiedostoja ei voi muokata tekstieditorissa",
     "videoNotEditable": "Videotiedostoja ei voi muokata tekstieditorissa",
-    "unsupportedTypeHint": "Tätä tiedostotyyppiä ei voi muokata tekstieditorissa. Binääritiedostoja ja tiettyjä asiakirjamuotoja ei voi näyttää tässä."
+    "unsupportedTypeHint": "Tätä tiedostotyyppiä ei voi muokata tekstieditorissa. Binääritiedostoja ja tiettyjä asiakirjamuotoja ei voi näyttää tässä.",
+    "tips": {
+      "save": "Tallenna tiedosto ({shortcut})",
+      "tabModified": "{path} · tallentamattomia muutoksia",
+      "closeFile": "Sulje {name}"
+    }
   },
   "quickEdit": {
     "you": "Sinä",
@@ -1339,6 +1657,14 @@
     "status": {
       "task": "Tehtävä",
       "remaining": "Jäljellä"
+    },
+    "tips": {
+      "undoThis": "Kumoa tämän ajon muutokset",
+      "redoThis": "Palauta tämän ajon muutokset",
+      "retry": "Kumoa tämä ajo ja lähetä sen viesti uudelleen",
+      "restore": "Palaa projektin tilaan tämän ajon jälkeen",
+      "allow": "Salli, äläkä kysy tästä enää",
+      "dont": "Kieltäydy; tekoäly jatkaa ilman sitä"
     }
   },
   "generationShelf": {
@@ -1440,7 +1766,13 @@
     },
     "actionsCost": "{count, plural, one {# toiminto} other {# toimintoa}} · {cost}",
     "tokens": "{tokens} tokenia",
-    "earlierActions": "+ {count, plural, one {# aiempi toiminto} other {# aiempaa toimintoa}}"
+    "earlierActions": "+ {count, plural, one {# aiempi toiminto} other {# aiempaa toimintoa}}",
+    "tips": {
+      "open": "Avaa projekti {name}",
+      "openPaused": "Avaa projekti {name} nähdäksesi, mitä ajo tarvitsee",
+      "dismiss": "Poista projektin {name} ajo tästä listasta",
+      "stop": "Pysäytä ajo projektissa {name}"
+    }
   },
   "elementsPanel": {
     "noElements": "Ei vielä elementtejä",
@@ -1460,7 +1792,8 @@
     "collapse": "Supista {tag}",
     "expand": "Laajenna {tag}",
     "sharedSource": "Tätä lähdettä käyttää {count} piirrettyä elementtiä — muokkaus vaikuttaa niihin kaikkiin.",
-    "moreNotShown": "{count, plural, one {# elementti lisää ei näytetä} other {# elementtiä lisää ei näytetä}}"
+    "moreNotShown": "{count, plural, one {# elementti lisää ei näytetä} other {# elementtiä lisää ei näytetä}}",
+    "sourceOffset": "{file} (siirtymä {offset})"
   },
   "telemetry": {
     "title": "Anonyymi käyttötilasto",
@@ -1525,7 +1858,13 @@
     "collected": "Mitä kerätään:",
     "randomId": "Selaimeesi tallennettua satunnaista tunnistetta käytetään yksittäisten kävijöiden laskemiseen.",
     "disable": "Poista analytiikka käytöstä",
-    "gotIt": "Selvä"
+    "gotIt": "Selvä",
+    "tips": {
+      "source": "Avaa osw-analyticsin GitHubissa uudessa välilehdessä",
+      "details": "Mitä kerätään ja mitä ei koskaan",
+      "disable": "Voit ottaa analytiikan uudelleen käyttöön asetuksissa, kohdassa Ulkoasu",
+      "gotIt": "Sulje tämä ja pidä analytiikka käytössä"
+    }
   },
   "permissions": {
     "mode": "Lupatila",
@@ -1569,6 +1908,12 @@
       "brief": "tavoittaa vain projektin aloitusvaiheen agentin ja raportoi käyttäjälle koskematta projektiin.",
       "spec": "tavoittaa vain projektin aloitusvaiheen agentin ja tallentaa sovitun suunnitelman koskematta projektiin.",
       "proposeCreate": "tavoittaa vain aloitusvaiheen agentin ja ehdottaa projektia käyttäjän hyväksyttäväksi — itse luominen on käyttäjän toimi."
+    },
+    "tips": {
+      "ask": "Kysy ennen kuin tekoäly ajaa komennon {command}",
+      "allow": "Anna tekoälyn ajaa {command} kysymättä",
+      "reset": "Tyhjentää valintasi ja vaihtaa Kysy-tilaan",
+      "allowOnce": "Salli vain tällä kertaa ja kysy taas ensi kerralla"
     }
   },
   "connections": {
@@ -1669,7 +2014,39 @@
       "brave": "Maksullinen: 5 $ kuukausikrediitti, kortti vaaditaan.",
       "searxng": "Osoita omaan SearXNG-instanssiisi (JSON API:n on oltava käytössä)."
     },
-    "searchWarnDuckduckgo": "Epävirallinen ja parhaansa mukaan toimiva: hakuja voidaan rajoittaa tai estää, etenkin jaetuilla tai palveluna ajetuilla instansseilla, joissa kaikki käyttäjät jakavat yhden osoitteen. Lisää avaimella toimiva palveluntarjoaja runsaampaan käyttöön."
+    "searchWarnDuckduckgo": "Epävirallinen ja parhaansa mukaan toimiva: hakuja voidaan rajoittaa tai estää, etenkin jaetuilla tai palveluna ajetuilla instansseilla, joissa kaikki käyttäjät jakavat yhden osoitteen. Lisää avaimella toimiva palveluntarjoaja runsaampaan käyttöön.",
+    "tips": {
+      "showKey": "Näytä avain",
+      "hideKey": "Piilota avain",
+      "showToken": "Näytä token",
+      "hideToken": "Piilota token",
+      "optionsFor": "Palvelun {name} toiminnot",
+      "checking": "Yhteyttä tarkistetaan",
+      "testLocal": "Tarkistaa, että {name} vastaa, ja hakee sen mallit",
+      "testCustom": "Tallentaa palveluntarjoajan ja hakee sitten sen mallilistan",
+      "nameEndpointFirst": "Anna ensin nimi ja endpoint",
+      "tokenFirst": "Anna API-token tai poista Vaadi API-token käytöstä",
+      "tokenOptional": "Tee tokenista valinnainen endpointeille, jotka eivät sitä tarvitse",
+      "tokenRequired": "Vaadi token tämän endpointin käyttöön",
+      "deleteProvider": "Poistaa palveluntarjoajan {name} heti tokeneineen ja otsakkeineen",
+      "saveCustom": "Tallentaa muutokset ja hakee mallilistan uudelleen",
+      "removeHeader": "Poista otsake {name}",
+      "keyFirst": "Anna ensin API-avain",
+      "urlFirst": "Anna ensin instanssin URL",
+      "apply": "Käytä pohjan ”{name}” malleja kaikissa projekteissa",
+      "inUse": "”{name}” on jo aktiivinen pohja",
+      "rename": "Nimeä ”{name}” uudelleen",
+      "duplicate": "Tee pohjasta ”{name}” muokattava kopio",
+      "deleteTemplate": "Poistaa pohjan ”{name}” pysyvästi",
+      "onlyTemplate": "Ainoaa pohjaa ei voi poistaa",
+      "addProvider": "Valitse pilvi-, tilaus-, paikallinen tai oma palveluntarjoaja",
+      "addSearchProvider": "Anna tekoälyn hakea verkosta valitsemasi palvelun kautta",
+      "backToList": "Takaisin palveluntarjoajien luetteloon",
+      "chooseKey": "Yhdistä se API-avaimella",
+      "chooseSubscription": "Yhdistä se kirjautumalla tilaukseesi",
+      "chooseLocal": "Yhdistä tietokoneellasi käynnissä oleva mallipalvelin",
+      "chooseCustom": "Yhdistä mikä tahansa OpenAI-yhteensopiva palvelin sen osoitteella"
+    }
   },
   "templatesUi": {
     "nameLength": "Pohjan nimen pituus on 1-50 merkkiä",
@@ -1808,6 +2185,18 @@
       "console": "Tämä pohja toimii konsolissa, eikä sillä ole esikatseltavaa sivua.",
       "loadFailed": "Pohjaa ei voitu ladata.",
       "renderFailed": "Pohjaa ei voitu näyttää."
+    },
+    "tips": {
+      "manage": "Avaa Pohjat-sivun ja sulkee tämän ikkunan",
+      "docs": "Avaa ohjeet ja sulkee tämän ikkunan",
+      "select": "Valitsee tämän pohjan; mitään ei vielä luoda",
+      "typeFilter": "Näytä vain pohjat, joissa on tai ei ole backend-ominaisuuksia",
+      "sort": "Vaihda pohjien järjestystä",
+      "import": "Tuo pohja .oswt-tiedostosta",
+      "use": "Luo projekti pohjasta {name}",
+      "more": "Lisää toimintoja: {name}",
+      "authorSite": "Avaa tekijän sivuston uudessa välilehdessä",
+      "saveAsTemplate": "Lisää sen Pohjat-sivulle, josta voit aloittaa uusia projekteja"
     }
   },
   "publishSettings": {
@@ -1927,7 +2316,6 @@
     "live": "Julkaistu",
     "reviewModeNote": "Julkaisu kirjoittaa toisen, yksityisen kopion jossa on kommenttivimpain. Julkinen sivusto pysyy ennallaan eikä saa sitä koskaan.",
     "copy": "Kopioi",
-    "publishFirst": "Julkaise ensin — arviointikopiota ei ole vielä rakennettu",
     "open": "Avaa",
     "setOnSave": "Asetetaan tallennettaessa",
     "clearedOnSave": "Tyhjennetään tallennettaessa",
@@ -2049,7 +2437,53 @@
     "cdnNameUrlRequired": "Anna CDN-resurssille sekä nimi että URL-osoite",
     "cdnInvalidUrl": "Anna kelvollinen URL-osoite",
     "confirmDeleteScript": "Haluatko varmasti poistaa tämän skriptin?",
-    "scriptNameRequired": "Anna skriptille nimi"
+    "scriptNameRequired": "Anna skriptille nimi",
+    "tips": {
+      "underConstructionOn": "Näytä kävijöille huoltosivu seuraavasta julkaisusta alkaen",
+      "underConstructionOff": "Tarjoile sivusto taas seuraavasta julkaisusta alkaen",
+      "include": "Lisää {name} julkaistuille sivuille",
+      "leaveOut": "Jätä {name} pois julkaistuilta sivuilta",
+      "edit": "Muokkaa: {name}",
+      "remove": "Poista {name}",
+      "asyncOn": "Lisää async: skripti ajetaan heti, kun se on ladattu",
+      "asyncOff": "Poista async skriptitagista",
+      "deferOn": "Lisää defer: skripti ajetaan, kun sivu on jäsennetty",
+      "deferOff": "Poista defer skriptitagista",
+      "analyticsOn": "Aloita kävijöiden seuranta seuraavasta julkaisusta alkaen",
+      "analyticsOff": "Lopeta kävijöiden seuranta seuraavasta julkaisusta alkaen",
+      "turnOn": "Ota käyttöön: {name}",
+      "turnOff": "Poista käytöstä: {name}",
+      "bannerOn": "Näytä evästeiden suostumusbanneri seuraavasta julkaisusta alkaen",
+      "bannerOff": "Poista suostumusbanneri seuraavasta julkaisusta alkaen",
+      "blockOnOptIn": "Aja sisäänrakennettu analytiikka vasta, kun kävijä hyväksyy",
+      "blockOnOptOut": "Pysäytä sisäänrakennettu analytiikka kävijöiltä, jotka kieltäytyvät",
+      "blockOff": "Aja sisäänrakennettu analytiikka kävijän vastauksesta riippumatta",
+      "reviewOn": "Rakenna kommentoitava arviointikopio seuraavassa julkaisussa",
+      "reviewOff": "Sulje arviointikopio; sen kommentit säilyvät",
+      "copyAddress": "Kopioi osoite arvioijille lähetettäväksi",
+      "openReview": "Avaa arviointikopion uudessa välilehdessä",
+      "publishFirst": "Julkaise ensin, niin arviointikopio rakennetaan",
+      "saveThenPublish": "Tallenna ja julkaise, niin arviointikopio rakennetaan",
+      "passwordDone": "Pidä tämä salasana; se asetetaan, kun tallennat",
+      "setPassword": "Kysy arvioijilta salasanaa",
+      "changePassword": "Valitse arvioijille uusi salasana",
+      "clearPassword": "Poista salasana tallennettaessa, jolloin pelkkä osoite avaa kopion",
+      "keepPassword": "Pidä salasana sellaisena kuin se on nyt tallennettu",
+      "notifyOn": "Lähetä uudet kommentit sähköpostilla osallistujille enintään kerran tunnissa",
+      "notifyOff": "Lopeta koosteviestit; jonossa olevat jäävät lähettämättä",
+      "checkingMail": "Tarkistetaan, voiko sähköpostia lähettää",
+      "noMail": "Sähköpostipalvelinta ei ole määritetty",
+      "publishNow": "Rakentaa sivuston ja sen arviointikopion",
+      "showOpen": "Näytä vain avoimet kommentit",
+      "showResolved": "Näytä vain ratkaistut kommentit",
+      "showAll": "Näytä kaikki kommentit",
+      "reply": "Vastaa kommenttiin {n}",
+      "showComment": "Avaa arviointikopion kommentin {n} kohdalta uudessa välilehdessä",
+      "resolve": "Merkitse kommentti {n} ratkaistuksi",
+      "reopen": "Avaa kommentti {n} uudelleen",
+      "postReply": "Lähettää vastauksesi tiimin merkillä",
+      "writeReply": "Kirjoita ensin vastaus"
+    }
   },
   "admin": {
     "usersServerOnly": "Käyttäjienhallinta toimii vain palvelintilassa",
@@ -2086,7 +2520,6 @@
     "addMemberTitle": "Lisää jäsen",
     "userEmail": "Käyttäjän sähköposti",
     "passwordOnlyNewAccount": "Tarvitaan vain uudelle tilille",
-    "removeMember": "Poista jäsen",
     "workspacesServerOnly": "Workspacejen hallinta toimii vain palvelintilassa",
     "loadingWorkspaces": "Ladataan workspaceja…",
     "newWorkspace": "Uusi workspace",
@@ -2179,7 +2612,23 @@
     "viewHelp": "Studio on täysi neljän paneelin editori. Yksinkertainen näkymä sisältää vain projektit ja julkaisut, ja projekti avautuu suoraan pikamuokkaukseen. Se muuttaa sitä, mitä näytetään, ei sitä, mitä henkilö saa tehdä, ja hän voi vaihtaa sen itse.",
     "roleViewer": "Katselija",
     "workspaceSummary": "{projects, plural, one {# projekti} other {# projektia}} · {deployments, plural, one {# julkaisu} other {# julkaisua}} · luotu {created}",
-    "storageUsedMb": "{mb, number} Mt"
+    "storageUsedMb": "{mb, number} Mt",
+    "tips": {
+      "actionsFor": "Toiminnot: {name}",
+      "adminOn": "Tee tästä tilistä instanssin ylläpitäjä",
+      "adminOff": "Poista tältä tililtä instanssin ylläpito-oikeudet",
+      "deactivate": "Poista tili käytöstä, jolloin sillä ei voi kirjautua",
+      "reactivate": "Ota tili uudelleen käyttöön, jolloin sillä voi kirjautua",
+      "generatePassword": "Täytä satunnainen 16-merkkinen salasana ja näytä se",
+      "showPassword": "Näytä salasana",
+      "hidePassword": "Piilota salasana",
+      "grant": "Lisää workspaceen {name}, rooli: {role}",
+      "chooseWorkspace": "Valitse ensin workspace",
+      "removeMember": "Poista {email} tästä workspacesta; tili säilyy",
+      "studioOn": "Avaa heille koko studio",
+      "studioOff": "Avaa heille yksinkertainen näkymä",
+      "switchWorkspace": "Vaihda toiseen workspaceen"
+    }
   },
   "backend": {
     "edgeFunctions": "Edge-funktiot",
@@ -2330,7 +2779,15 @@
       "rows": "{count, plural, one {# rivi} other {# riviä}}",
       "rowsAffected": "{count, plural, one {# rivi muuttui} other {# riviä muuttui}}",
       "success": "Kysely suoritettiin",
-      "error": "Kyselyvirhe"
+      "error": "Kyselyvirhe",
+      "tips": {
+        "writeQuery": "Kirjoita ensin kysely",
+        "runOnDeployment": "Suorita se julkaisun tietokannassa; muutokset tulevat voimaan heti",
+        "runOnProject": "Suorita se projektin tietokannassa",
+        "showHistory": "Näytä viimeisimmät kyselysi, jotka on tallennettu tähän selaimeen",
+        "hideHistory": "Piilota viimeisimmät kyselyt",
+        "noHistory": "Kyselyitä ei ole vielä suoritettu"
+      }
     },
     "updatedOn": "Päivitetty {date}",
     "loadFunctionsFailed": "Funktioiden lataus epäonnistui",
@@ -2398,7 +2855,40 @@
     "noDeploymentId": "Julkaisua ei ole valittu",
     "confirmClearLogs": "Tyhjennetäänkö kaikki funktioiden suorituslokit? Tätä ei voi perua.",
     "ddlHint": "CREATE TABLE-, ALTER TABLE- ja muut DDL-lauseet",
-    "apply": "Käytä"
+    "apply": "Käytä",
+    "tips": {
+      "everyPage": "Näytä tämä ehdotus jokaisella sivulla",
+      "somePages": "Näytä se vain valitsemillasi sivuilla",
+      "ruleKind": "Vastaa yhtä sivua, hakemistoa tai kuviota",
+      "removeRule": "Poista tämä sääntö",
+      "saveSuggestions": "Tallenna ehdotukset",
+      "noChanges": "Ei tallennettavia muutoksia",
+      "projectTab": "Ajoympäristö, esikatselun aloituspiste ja chat-ehdotukset",
+      "backendOff": "Poista backend-ominaisuudet käytöstä tästä projektista",
+      "backendOn": "Ota käyttöön funktiot, salaisuudet, ajastukset ja tietokanta",
+      "manageSettings": "Avaa sovelluksen asetukset: yhteydet, mallit, ulkoasu ja muut",
+      "actionsFor": "Toiminnot: {name}",
+      "copyFunctionUrl": "Kopioi URL, joka kutsuu funktiota {name}",
+      "functionDisabled": "Sen kutsut hylätään, kunnes otat sen käyttöön",
+      "helperDisabled": "Edge-funktiot eivät voi kutsua sitä, ennen kuin otat sen käyttöön",
+      "scheduleDisabled": "Sitä ei ajeta, ennen kuin otat sen käyttöön",
+      "valueNotSet": "Aseta arvo muokkaamalla; siihen asti funktiot eivät saa sitä luettua",
+      "showValue": "Näytä arvo",
+      "hideValue": "Piilota arvo",
+      "showSystemTables": "Näytä myös sisäiset taulut: tiedostot, funktiot, salaisuudet ja lokit",
+      "hideSystemTables": "Näytä vain omat taulusi",
+      "refreshLogs": "Lataa uusimmat 200 merkintää uudelleen",
+      "clearLogs": "Poista kaikki tämän julkaisun lokimerkinnät",
+      "noLogs": "Ei tyhjennettäviä lokeja",
+      "projectTables": "Projektin tietokannan taulut ja sarakkeet",
+      "projectSql": "Suorita SQL-kyselyitä projektin tietokannassa",
+      "projectDdl": "Luo tai muuta tauluja ja lisää ne skeemaan, jonka tekoäly lukee",
+      "applyDdl": "Suorita se ja lisää se skeemaan, jonka tekoäly lukee",
+      "writeDdl": "Kirjoita ensin lause",
+      "swapWait": "Odota, että analyysi valmistuu",
+      "swapFailed": "Ei käytettävissä, koska muutoksia ei voitu analysoida",
+      "schemaTab": "Projektin tietokanta: sen taulut, SQL ja DDL"
+    }
   },
   "mail": {
     "serverOnly": "Sähköposti toimii vain palvelintilassa",
@@ -2497,12 +2987,26 @@
     },
     "invalidPort": "Portin on oltava kokonaisluku väliltä 1–65535.",
     "instanceServerDesc": "Ei mitään määritettävää. Voit lisätä oman nimesi, mutta osoite on instanssin. Se pitää viestit poissa roskapostikansioista.",
-    "displayNameHint": "Näytetään instanssin lähettäjäosoitteen edessä. Osoitekenttää ei ole, koska oma workspace-osoite toisen välityspalvelimen kautta ei läpäise SPF- ja DKIM-tarkistuksia ja päätyy usein roskapostiin. Käytä omaa palvelinta, jos tarvitset oman lähettäjäosoitteen."
+    "displayNameHint": "Näytetään instanssin lähettäjäosoitteen edessä. Osoitekenttää ei ole, koska oma workspace-osoite toisen välityspalvelimen kautta ei läpäise SPF- ja DKIM-tarkistuksia ja päätyy usein roskapostiin. Käytä omaa palvelinta, jos tarvitset oman lähettäjäosoitteen.",
+    "tips": {
+      "adminOnly": "Vain instanssin ylläpitäjät näkevät tämän osion",
+      "offerOff": "Lopeta tämän palvelimen tarjoaminen workspaceille",
+      "stopSending": "Lopeta sähköpostin lähetys tästä workspacesta",
+      "noChanges": "Ei tallennettavia muutoksia",
+      "discard": "Palaa tallennettuihin asetuksiin",
+      "sendTestTo": "Lähetä yksi testiviesti osoitteeseen {email}",
+      "saveFirst": "Tallenna ensin: testi käyttää tallennettuja asetuksia",
+      "sendNow": "Aja lähetyskierros nyt odottamatta seuraavaa",
+      "changePassword": "Kirjoita uusi salasana; se otetaan käyttöön tallennettaessa",
+      "clearPassword": "Poista tallennettu salasana tallennettaessa",
+      "keepPassword": "Pidä salasana ennallaan",
+      "donePassword": "Pidä tämä salasana; se otetaan käyttöön tallennettaessa",
+      "useAddressName": "Tyhjennä näyttönimi, jotta osoitteen oma nimi näkyy"
+    }
   },
   "interviews": {
     "deleteFailed": "Haastattelupohjan poisto ei onnistunut",
     "templates": "Haastattelupohjat",
-    "removeItem": "Poista kohta",
     "question": "Kysymys",
     "required": "Pakollinen",
     "handoffAction": "Luovutustoiminto",
@@ -2567,7 +3071,22 @@
     "saveFailed": "Haastattelupohjan tallennus ei onnistunut",
     "builtInOverwrite": "Sisäänrakennettua pohjaa ei voi korvata.",
     "builtInEdit": "Sisäänrakennettua pohjaa ei voi muokata.",
-    "builtInDelete": "Sisäänrakennettua pohjaa ei voi poistaa."
+    "builtInDelete": "Sisäänrakennettua pohjaa ei voi poistaa.",
+    "tips": {
+      "showBuiltIn": "Näytä OSW Studion mukana tulevat pohjat",
+      "hideBuiltIn": "Piilota OSW Studion mukana tulevat pohjat",
+      "showCustom": "Näytä itse luomasi pohjat",
+      "hideCustom": "Piilota itse luomasi pohjat",
+      "view": "Katso: {title}",
+      "duplicate": "Tee muokattava kopio: {title}",
+      "delete": "Poista: {title}",
+      "rowMenu": "Toiminnot: {title}",
+      "back": "Takaisin listaan",
+      "backUnsaved": "Takaisin listaan tallentamatta",
+      "addItem": "Lisää haastatteluun yksi selvitettävä asia",
+      "removeItem": "Poista kohta {n}",
+      "required": "Haastattelu ei voi päättyä ennen kuin tämä on selvitetty"
+    }
   },
   "deploymentDetail": {
     "underConstruction": "Työn alla",
@@ -2599,7 +3118,28 @@
     "settingsFallback": "Asetukset",
     "updateExisting": "Päivitä olemassa oleva",
     "saveFailed": "Asetusten tallennus epäonnistui. Yritä uudelleen.",
-    "confirmLeaveUnsaved": "Sinulla on tallentamattomia muutoksia. Palataanko silti?"
+    "confirmLeaveUnsaved": "Sinulla on tallentamattomia muutoksia. Palataanko silti?",
+    "navTips": {
+      "functions": "Edge-funktiot: REST-rajapinnat, joita julkaistu sivusto kutsuu",
+      "helpers": "Uudelleenkäytettävää koodia, jota edge-funktiot kutsuvat server-olion kautta",
+      "secrets": "Salattuja arvoja, kuten API-avaimia, joita funktiot lukevat",
+      "schedules": "Edge-funktiot, jotka ajetaan cron-aikataulun mukaan",
+      "schema": "Julkaisun tietokannan taulut",
+      "general": "Huoltosivu, lähdeprojekti, julkinen URL, oma verkkotunnus ja versio",
+      "scripts": "Jokaiselle julkaistulle sivulle lisättävät skriptit, kuten seurantakoodi",
+      "cdn": "CDN:stä jokaiselle sivulle linkitettävät CSS- ja JavaScript-kirjastot",
+      "seo": "Metatagit, Open Graph ja Twitter-kortti hakuja ja jakamista varten",
+      "analytics": "Kävijäseuranta: palveluntarjoaja, ominaisuudet, säilytysaika ja yksityisyys",
+      "compliance": "Evästeiden suostumusbanneri ja se, odottaako analytiikka suostumusta",
+      "review": "Sivuston yksityinen kopio, johon arvioijat jättävät kommentteja",
+      "sql": "SQL-kyselyt julkaisun tietokantaan",
+      "logs": "Edge-funktioiden viimeisimmät kutsut tiloineen ja kestoineen"
+    },
+    "tips": {
+      "back": "Takaisin kaikkiin julkaisuihin",
+      "save": "Tallentaa asetukset; julkaistu sivusto muuttuu, kun julkaiset",
+      "saveFirst": "Tallenna ensin: julkaisu käyttää vain tallennettuja asetuksia"
+    }
   },
   "analytics": {
     "dashboard": "Analytiikan koontinäyttö",
@@ -2655,7 +3195,16 @@
     "loadStorageFailed": "Tallennustiedon lataus epäonnistui: {error}",
     "notAvailableHint": "Analytiikkadata on saatavilla, kun olet julkaissut julkaisun ensimmäisen kerran. Analytiikkatietokanta luodaan julkaisun yhteydessä.",
     "confirmClear": "Tyhjennetäänkö kaikki analytiikkadata? Tätä ei voi perua.",
-    "directReferrer": "(Suora)"
+    "directReferrer": "(Suora)",
+    "tips": {
+      "export": "Lataa kaiken analytiikkadatan CSV-tiedostona",
+      "clear": "Poistaa kaiken kerätyn analytiikkadatan pysyvästi",
+      "notPublished": "Käytettävissä, kun julkaisu on julkaistu",
+      "overview": "Sivunäytöt, kävijät, poistumisprosentti, suosituimmat sivut, viittaajat ja laitteet",
+      "heatmaps": "Mihin kävijät klikkaavat kullakin sivulla",
+      "sessions": "Miten kävijät siirtyvät sivulta toiselle",
+      "engagement": "Aika sivulla, vierityssyvyys sekä saapumis- ja poistumissivut"
+    }
   },
   "heatmap": {
     "loadFailed": "Lämpökarttadatan lataus ei onnistunut",
@@ -2676,7 +3225,10 @@
     "lowActivity": "Vähäinen aktiivisuus",
     "recapture": "Kaappaa uudelleen",
     "noData": "Lämpökarttadataa ei ole",
-    "sampleSizeCount": "{count, plural, one {Otoskoko: <b>#</b> vuorovaikutus} other {Otoskoko: <b>#</b> vuorovaikutusta}}"
+    "sampleSizeCount": "{count, plural, one {Otoskoko: <b>#</b> vuorovaikutus} other {Otoskoko: <b>#</b> vuorovaikutusta}}",
+    "tips": {
+      "recapture": "Ota julkaistusta sivusta uusi kuvakaappaus"
+    }
   },
   "engagement": {
     "loadFailed": "Sitoutumismittarien lataus ei onnistunut",
@@ -2716,7 +3268,12 @@
     "creatingAccount": "Luodaan tiliä…",
     "createAccount": "Luo tili",
     "registrationFailed": "Rekisteröinti epäonnistui",
-    "genericError": "Tapahtui virhe. Yritä uudelleen."
+    "genericError": "Tapahtui virhe. Yritä uudelleen.",
+    "tips": {
+      "generatePassword": "Täytä satunnainen 16-merkkinen salasana ja näytä se",
+      "showPassword": "Näytä salasana",
+      "hidePassword": "Piilota salasana"
+    }
   },
   "templateCatalog": {
     "blank": {
@@ -2819,11 +3376,9 @@
     }
   },
   "tooltips": {
-    "capture": "Ota kuva",
     "captureScreenshot": "Ota kuvakaappaus",
     "uploadImage": "Lähetä kuva",
     "removeThumbnail": "Poista pikkukuva",
-    "dragToReorder": "Vedä järjestääksesi",
     "closePalette": "Sulje paletti",
     "removeBlock": "Poista lohko",
     "removeFile": "Poista tiedosto",
@@ -3033,7 +3588,10 @@
     "templateLabel": "Pohja",
     "creating": "Luodaan…",
     "specSections": "Määrittely ({count, plural, one {# osio} other {# osiota}})",
-    "createNow": "Luo nyt"
+    "createNow": "Luo nyt",
+    "tips": {
+      "createNow": "Luo projektin tähänastisesta briefistä ja avaa sen"
+    }
   },
   "runtimes": {
     "static": "Pelkkää HTML:ää, CSS:ää ja JavaScriptiä",
@@ -3159,7 +3717,18 @@
     "editTextDesc": "Muuta, mitä tämä elementti sanoo.",
     "tokenSuperseded": "{label}: tämän elementin väri tuli tokenista {token}, joka on määritetty tiedostossa {file}. Vain tämä elementti muuttui — token ja kaikki muu sitä käyttävä pysyi ennallaan.",
     "colourOf": "{label}: väri",
-    "sharedInstances": "{count, plural, one {×# jaettu} other {×# jaettu}}"
+    "sharedInstances": "{count, plural, one {×# jaettu} other {×# jaettu}}",
+    "sidesOf": "{label}: sivut",
+    "valueOf": "{label}: arvo",
+    "unitOf": "{label}: yksikkö",
+    "tips": {
+      "showSides": "Aseta jokainen sivu erikseen",
+      "hideSides": "Piilota erilliset sivut",
+      "typeValue": "Kirjoita arvo napsauttamalla",
+      "pickColour": "Valitse mikä tahansa väri",
+      "resetColour": "Poista elementin oma väri, jolloin se noudattaa taas tyylitiedostoa",
+      "askAgent": "Kirjoittaa pyynnön chattiin valmiiksi lähetettäväksi"
+    }
   },
   "about": {
     "tagline": "Selainpohjainen verkkosivustojen rakentaja",
@@ -3169,7 +3738,12 @@
     "linksCommunity": "Linkit ja yhteisö",
     "githubRepo": "GitHub-repo",
     "liveDemo": "Live-demo",
-    "discussions": "Yhteisön keskustelut"
+    "discussions": "Yhteisön keskustelut",
+    "tips": {
+      "discussions": "Avaa GitHub Discussionsin uudessa välilehdessä",
+      "repo": "Avaa lähdekoodin GitHubissa uudessa välilehdessä",
+      "demo": "Avaa verkossa toimivan demon uudessa välilehdessä"
+    }
   },
   "providerCatalog": {
     "descriptions": {
@@ -3225,7 +3799,15 @@
     "contentBlocksPreview": "[{count, plural, one {# sisältölohko} other {# sisältölohkoa}}]",
     "reasoningOnlyPreview": "[vain päättelyä]",
     "emptyPreview": "[tyhjä]",
-    "hasReasoningDetails": "Sisältää reasoning_details-kentän"
+    "hasReasoningDetails": "Sisältää reasoning_details-kentän",
+    "tips": {
+      "events": "Mitä kukin ajo raportoi, tapahtumajärjestyksessä",
+      "messages": "Viestit, jotka viimeisin pyyntö lähetti mallille",
+      "showOnly": "Näytä vain {event}",
+      "showAll": "Näytä kaikki tapahtumat",
+      "autoScroll": "Seuraa uusia tapahtumia niiden saapuessa"
+    },
+    "memoryTip": "JS-keko: {used} Mt käytössä, raja {limit} Mt ({percent} %)"
   },
   "orchestrator": {
     "noPrompt": "Kirjoita kehote",
@@ -3247,7 +3829,11 @@
     "deploy": "<b>{client}</b> {action, select, created {loi julkaisun {project}} published {julkaisi kohteen {project}} unpublished {poisti julkaisun {project}} updated {päivitti julkaisun {project}} other {muutti julkaisua {project}}} MCP-liittimen kautta.",
     "edit": "<b>{client}</b> muokkasi tiedostoja projektissa {project} MCP-liittimen kautta.",
     "unknownClient": "MCP-asiakas",
-    "deployUnnamed": "<b>{client}</b> {action, select, created {loi julkaisun} published {julkaisi julkaisun} unpublished {poisti julkaisun} updated {päivitti julkaisun} other {muutti julkaisua}} MCP-liittimen kautta."
+    "deployUnnamed": "<b>{client}</b> {action, select, created {loi julkaisun} published {julkaisi julkaisun} unpublished {poisti julkaisun} updated {päivitti julkaisun} other {muutti julkaisua}} MCP-liittimen kautta.",
+    "tips": {
+      "stop": "Pysäytä agenttitehtävä projektissa {project}",
+      "dismiss": "Piilota tämä ilmoitus; myöhemmät näkyvät silti"
+    }
   },
   "messageContext": {
     "summaryNote": "huomio",
@@ -3265,7 +3851,12 @@
     "filesCount": "Tiedostot ({count})",
     "voiceCount": "Ääni ({count})",
     "voiceNote": "Äänimuistio",
-    "attached": "Liite"
+    "attached": "Liite",
+    "tips": {
+      "show": "Näytä, mitä viestin mukana lähtee",
+      "hide": "Piilota tiedot",
+      "clear": "Poista viestistä"
+    }
   },
   "mcpConsent": {
     "connectFailed": "Yhteyttä ei saatu muodostettua.",
@@ -3289,6 +3880,11 @@
       "deploy": "Luoda, julkaista ja poistaa käytöstä julkaisuja sekä muuttaa niiden asetuksia (analytiikka, tietokanta). Ei poista julkaisua.",
       "analytics": "Lukea yleiskatsauksen tilastot julkaisusta, jossa analytiikka on käytössä",
       "workspaceAdmin": "Nähdä ja muuttaa, kenellä on pääsy workspaceen"
+    },
+    "tips": {
+      "deny": "Kieltäydy: {client} ei saa käyttöoikeutta",
+      "approve": "Anna ohjelmalle {client} valitut oikeudet workspacessa {workspace}",
+      "tickOne": "Valitse ensin vähintään yksi oikeus"
     }
   },
   "skillGroups": {
@@ -3364,7 +3960,16 @@
     "afterFailure": "Epäonnistumisen jälkeen: {prompt}",
     "pinned": "kiinnitetty",
     "kindManual": "tallennus",
-    "kindAuto": "auto"
+    "kindAuto": "auto",
+    "tips": {
+      "pinned": "Säilyy, kunnes poistat kiinnityksen",
+      "manual": "Syntyi tallennuksesta tai ennen tuontia; chatin tyhjennys säilyttää sen",
+      "auto": "Syntyi automaattisesti; chatin tyhjennys poistaa sen",
+      "pin": "Säilytä tämä: vain {count} uusinta kiinnittämätöntä checkpointia säilytetään",
+      "unpin": "Poista kiinnitys: se poistuu, kun {count} uudempaa checkpointia on olemassa",
+      "jump": "Näytä chat-viesti, josta tämä syntyi",
+      "restore": "Palauta projekti tähän checkpointiin"
+    }
   },
   "imagePicker": {
     "titleGenerating": "Agentti työskentelee",
@@ -3392,7 +3997,11 @@
     "replaceIt": "Korvaa",
     "reading": "Luetaan projektin kuvia…",
     "noImages": "Tässä projektissa ei ole vielä kuvatiedostoja. Lataa kuva käyttääksesi sitä tässä.",
-    "upload": "Lataa kuva"
+    "upload": "Lataa kuva",
+    "tips": {
+      "use": "Käytä kuvaa {path}",
+      "upload": "Lisää kuva tältä tietokoneelta ja käytä sitä tässä"
+    }
   },
   "textPopover": {
     "titleGenerating": "Agentti työskentelee",
@@ -3417,7 +4026,10 @@
     "confirmMany": "Tämä teksti näkyy {count} kertaa. Muutos koskee kaikkia {count}.",
     "confirmManyFrom": "Tämä teksti tiedostosta {file} näkyy {count} kertaa. Muutos koskee kaikkia {count}.",
     "confirmShared": "Tämä teksti on jaettu. Muutos koskee jokaista kohtaa, jossa se näkyy.",
-    "confirmSharedFrom": "Tämä teksti tiedostosta {file} on jaettu. Muutos koskee jokaista kohtaa, jossa se näkyy."
+    "confirmSharedFrom": "Tämä teksti tiedostosta {file} on jaettu. Muutos koskee jokaista kohtaa, jossa se näkyy.",
+    "tips": {
+      "save": "Kirjoita uusi teksti lähdetiedostoon"
+    }
   },
   "syncSummary": {
     "synced": "{count} synkronoitu",
@@ -3436,7 +4048,10 @@
     "canStillChange": "Voit vielä tehdä muutoksia, jos kieltäydyt.",
     "notYet": "Ei vielä",
     "selectModel": "Valitse malli",
-    "welcome": "Mitä olet tekemässä?\n\nKerro, mitä sinulla on mielessä — kysyn muutaman asian ja luon projektin puolestasi."
+    "welcome": "Mitä olet tekemässä?\n\nKerro, mitä sinulla on mielessä — kysyn muutaman asian ja luon projektin puolestasi.",
+    "tips": {
+      "create": "Luo projektin ja avaa sen"
+    }
   },
   "docsActions": {
     "copyPage": "Kopioi sivu",
@@ -3457,7 +4072,11 @@
   "statusBanner": {
     "backendDown": "Taustapalvelu ei vastaa. AI-generointi, projektien synkronointi ja julkaisu eivät ole käytettävissä. Työsi on tallennettu paikallisesti. Kun palvelin palaa, päivitä sivu ja tallenna projektisi uudelleen.",
     "sessionExpired": "Istuntosi vanheni. Automaattinen synkronointi ja palvelinta vaativat ominaisuudet ovat tauolla, kunnes kirjaudut uudelleen.",
-    "logIn": "Kirjaudu"
+    "logIn": "Kirjaudu",
+    "tips": {
+      "refresh": "Tarkista, onko palvelin taas tavoitettavissa",
+      "dismiss": "Piilota tämä varoitus toistaiseksi"
+    }
   },
   "docs": {
     "loadFailed": "Dokumentin lataus epäonnistui: {status}",
@@ -3523,7 +4142,18 @@
     "popupBlocked": "Kirjautumisikkuna estettiin. Salli ponnahdusikkunat tälle sivustolle ja yritä uudelleen.",
     "relayWorking": "Viimeistellään kirjautumista…",
     "relayDone": "Voit sulkea tämän ikkunan ja palata OSW Studioon.",
-    "relayClose": "Voit sulkea tämän ikkunan."
+    "relayClose": "Voit sulkea tämän ikkunan.",
+    "tips": {
+      "useLocal": "Yhdistä tällä tietokoneella käynnissä oleva {name}",
+      "findLocal": "Etsi tältä tietokoneelta Ollamaa, LM Studiota tai llama.cpp:tä",
+      "signIn": "Kirjaudu palveluun {name} ja palaa yhdistettynä",
+      "getKey": "Avaa palvelun {name} avainsivun uudessa välilehdessä",
+      "connectKey": "Tarkista avain ja yhdistä sen palveluntarjoaja",
+      "pasteFirst": "Liitä ensin avain",
+      "connectAs": "Yhdistä avain palveluun {name}",
+      "moreOptions": "Avaa asetusten Yhteydet-osion",
+      "discardHeld": "Älä lähetä odottavaa viestiä"
+    }
   },
   "limits": {
     "retrying": "{provider} rajoittaa pyyntöjä. Yritetään pian uudelleen…",
@@ -3571,10 +4201,19 @@
     "titleAllowanceMonth": "OSW Studion ilmainen inferenssi on käytetty tältä kuukaudelta.",
     "allowanceMonthBody": "Se uusiutuu {when}. Yhdistä oma palveluntarjoajasi jatkaaksesi.",
     "titleAllowanceCheck": "Tarkistus ennen OSW Studio -inferenssiä ei mennyt läpi.",
-    "allowanceCheckBody": "Yritä hetken päästä uudelleen tai yhdistä oma palveluntarjoajasi."
+    "allowanceCheckBody": "Yritä hetken päästä uudelleen tai yhdistä oma palveluntarjoajasi.",
+    "tips": {
+      "billing": "Avaa HuggingFacen laskutuksen uudessa välilehdessä",
+      "continue": "Jatka ajoa siitä, mihin se jäi",
+      "continueOn": "Jatka mallilla {model}",
+      "chooseAnother": "Avaa mallin valinnan"
+    }
   },
   "pageLayout": {
-    "storageWarning": "Olet käyttänyt {percent, number, percent} workspacen tallennustilasta ({used, number} Mt / {max, number} Mt)"
+    "storageWarning": "Olet käyttänyt {percent, number, percent} workspacen tallennustilasta ({used, number} Mt / {max, number} Mt)",
+    "tips": {
+      "dismiss": "Piilota tämä varoitus toistaiseksi"
+    }
   },
   "demo": {
     "notice": "Tämä on OSW Studion demo: projektisi tallentuvat tähän selaimeen. Kirjaudu OSW Studio Hosted -palveluun, niin ne säilyvät palvelimella.",
@@ -3584,7 +4223,12 @@
     "cardTitle": "OSW Studion demo",
     "cardBody": "Projektisi tallentuvat tähän selaimeen. Vie ne talteen kopioksi, tai kirjaudu OSW Studio Hosted -palveluun, niin ne säilyvät palvelimella ja voit julkaista ne.",
     "publishHere": "Täällä julkaiseminen vaatii OSW Studio Hosted -tilin.",
-    "publishSubtitle": "Julkaise OSW Studio Hosted -palvelussa ja hallitse sitä siellä Julkaisut-näkymässä."
+    "publishSubtitle": "Julkaise OSW Studio Hosted -palvelussa ja hallitse sitä siellä Julkaisut-näkymässä.",
+    "tips": {
+      "signUp": "Avaa OSW Studio Hosted -tilin luonnin uudessa välilehdessä",
+      "signIn": "Avaa OSW Studio Hosted -kirjautumisen uudessa välilehdessä",
+      "dismiss": "Älä näytä tätä uudelleen"
+    }
   },
   "demoImport": {
     "offerTitle": "Tervetuloa workspaceen",
@@ -3615,7 +4259,13 @@
     "noThanks": "Ei kiitos",
     "cancel": "Peruuta",
     "close": "Sulje",
-    "fromDemo": "Demosta"
+    "fromDemo": "Demosta",
+    "tips": {
+      "noThanks": "Älä kysy uudelleen; projektit jäävät demoon",
+      "pickFirst": "Valitse ensin projekti",
+      "remove": "Poistaa demon kopiot; workspace säilyttää omansa",
+      "openDemo": "Avaa demon uudessa välilehdessä"
+    }
   },
   "allowance": {
     "title": "OSW Studio -inferenssi",
@@ -3625,5 +4275,11 @@
     "statusChecking": "Tarkistetaan…",
     "statusUnavailable": "Ei käytettävissä",
     "unavailableBody": "Siihen ei juuri nyt saada yhteyttä. Yhteys tarkistetaan uudelleen minuutin välein."
+  },
+  "guidedTour": {
+    "tips": {
+      "end": "Lopeta kierros",
+      "wait": "Odota, että tämä vaihe valmistuu"
+    }
   }
 }

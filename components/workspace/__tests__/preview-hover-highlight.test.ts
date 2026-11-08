@@ -8,26 +8,25 @@ import { previewHoverHighlight } from '../index';
  * `applyToolbarAction` are: nothing in the repo renders `Workspace`, so a rule left inline in the
  * component is a rule nothing can check.
  *
- * The rule that matters is that "highlight the preview panel" is **two different calls**. The nav
- * buttons all route through `handleSidebarHover`, and that function returns early and *clears* both
- * previews when the panel it is asked about is already open — correctly, because for a nav button an
- * open panel means the press closes it and there is nothing to preview. This button does not close
- * the preview; it arms a tool inside it. So the already-open case has to point `panelReplacePreview`
- * straight at the preview instead, and only the closed case may be routed.
+ * The rule that matters is that "highlight the preview panel" is **two different hints**. With the
+ * preview in front, the press arms a tool inside it and moves nothing, so the button outlines the
+ * preview itself (an `outline` hint). Otherwise the press puts the preview on screen, and where it
+ * would open, or which tab comes forward, is the `reveal` hint `handleSidebarHover` draws. The rail's
+ * own hint would not do here: for a panel in front, it shows the press closing it.
  *
- * Getting that backwards is silent: hovering draws nothing at all, which looks exactly like a hover
- * handler that was never wired.
+ * Getting that backwards is silent: hovering draws the wrong thing or nothing, which looks exactly
+ * like a hover handler that was never wired.
  */
 
 describe('previewHoverHighlight', () => {
-  it('asks for the panel itself when the preview is already open', () => {
-    // The case the user is actually in: the Styles empty state only renders with the preview open.
+  it('asks for the panel itself when the preview is already in front', () => {
+    // The case the user is usually in: the Styles empty state shows with the preview open.
     expect(previewHoverHighlight({ hovering: true, previewOpen: true })).toBe('panel');
   });
 
-  it('routes through the sidebar decision when the preview is closed', () => {
-    // Closed means the press will *open* it, and what to outline then — an insert position, or the
-    // panel that gets evicted — is a decision `handleSidebarHover` already owns.
+  it('routes through the sidebar hint when the preview is not in front', () => {
+    // Then the press opens it or brings its tab forward, and drawing where it lands is what the
+    // `reveal` hint from `handleSidebarHover` does.
     expect(previewHoverHighlight({ hovering: true, previewOpen: false })).toBe('route');
   });
 

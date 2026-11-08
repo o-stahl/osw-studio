@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api/backend-status';
 
@@ -105,9 +106,11 @@ export function DeploymentSelector({
           }
         }}
       >
-        <SelectTrigger size="sm" className="w-[180px] h-8">
-          <SelectValue placeholder={t('none')} />
-        </SelectTrigger>
+        <Tip label={t('contextTip')} side="bottom" wrap>
+          <SelectTrigger size="sm" className="w-[180px] h-8" aria-label={t('contextLabel')}>
+            <SelectValue placeholder={t('none')} />
+          </SelectTrigger>
+        </Tip>
         <SelectContent>
           <SelectItem value="none">
             <span className="text-muted-foreground">{t('none')}</span>

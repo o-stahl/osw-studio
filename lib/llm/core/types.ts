@@ -32,6 +32,16 @@ export interface ParsedResponse {
   reasoningDetails?: ReasoningDetail[];
   /** Set when the stream was aborted early on an unexpected tool name. */
   invalidToolName?: string;
+  /** The stream ended in a provider error after some of the answer had arrived. */
+  streamError?: StreamErrorInfo;
+  /** Tool calls the stream error cut off while their arguments were still arriving: never run. */
+  unfinishedToolCallIds?: string[];
+}
+
+export interface StreamErrorInfo {
+  status: number;
+  /** The error's own type code (`metadata.error_type`, e.g. `upstream_idle`), when it gives one. */
+  type?: string;
 }
 
 export interface ProviderCallParams {

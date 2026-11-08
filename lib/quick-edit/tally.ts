@@ -162,9 +162,10 @@ export function buildTally(events: DebugEvent[]): Tally {
         }
 
         if (data.status === 'completed' || data.status === 'failed') {
-          const index = callId ? stepByCallId.get(callId) : undefined;
-          const at = index === undefined ? steps.length - 1 : index;
-          const step = steps[at];
+          // A call that never started (one a stream error cut off) has no line to mark; only an
+          // event without an id is the last line's.
+          const at = callId ? stepByCallId.get(callId) : steps.length - 1;
+          const step = at === undefined ? undefined : steps[at];
           if (step && data.status === 'failed' && step.steps > 1 && at === steps.length - 1 && callId && step.callIds[step.callIds.length - 1] === callId) {
             // The attempt that failed comes off the line it was merged into, which keeps the
             // attempts before it that worked.

@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Tip } from '@/components/ui/tooltip';
 
 export type DrawerMode = 'pick' | 'connect-choose' | 'connect-config' | 'connect-custom' | 'save-template' | null;
 
@@ -110,13 +111,15 @@ export function Drawer({ open, label, onLabelClick, title, scope, onClose, child
             <div>
               {label && (
                 onLabelClick ? (
-                  <button
-                    type="button"
-                    onClick={onLabelClick}
-                    className="text-xs font-semibold tracking-[0.08em] uppercase text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                  >
-                    {label}
-                  </button>
+                  <Tip label={t('tips.backToList')} side="bottom" align="start">
+                    <button
+                      type="button"
+                      onClick={onLabelClick}
+                      className="text-xs font-semibold tracking-[0.08em] uppercase text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                    >
+                      {label}
+                    </button>
+                  </Tip>
                 ) : (
                   <p className="text-xs font-semibold tracking-[0.08em] uppercase text-muted-foreground">
                     {label}
@@ -133,19 +136,21 @@ export function Drawer({ open, label, onLabelClick, title, scope, onClose, child
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label={t('close')}
-              className={cn(
-                'flex-shrink-0 w-[30px] h-[30px] rounded-lg grid place-items-center',
-                'bg-transparent border-none text-muted-foreground',
-                'hover:bg-muted hover:text-foreground',
-                'transition-colors cursor-pointer',
-              )}
-            >
-              <X size={18} strokeWidth={2} />
-            </button>
+            <Tip label={t('close')} side="bottom" align="end">
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label={t('close')}
+                className={cn(
+                  'flex-shrink-0 w-[30px] h-[30px] rounded-lg grid place-items-center',
+                  'bg-transparent border-none text-muted-foreground',
+                  'hover:bg-muted hover:text-foreground',
+                  'transition-colors cursor-pointer',
+                )}
+              >
+                <X size={18} strokeWidth={2} />
+              </button>
+            </Tip>
           </div>
         </div>
 

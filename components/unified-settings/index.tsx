@@ -20,6 +20,7 @@ import { DataPane } from '@/components/settings/data-pane';
 import { McpPane } from '@/components/settings/mcp-pane';
 import { PageShell, PageHeader, PageBody } from '@/components/ui/page-shell';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Tip } from '@/components/ui/tooltip';
 import {
   Select,
   SelectContent,
@@ -152,6 +153,24 @@ function usePaneLabels(): Record<string, string> {
   }), [t, tc]);
 }
 
+/** What each pane holds, for its button's tooltip. Every pane has one, MCP included. */
+export function usePaneDescriptions(): Record<SettingsPane, string> {
+  const t = useTranslations('nav.settings.tips');
+
+  return useMemo(() => ({
+    connections: t('connections'),
+    models: t('models'),
+    templates: t('templates'),
+    appearance: t('appearance'),
+    costs: t('costs'),
+    permissions: t('permissions'),
+    data: t('data'),
+    mcp: t('mcp'),
+    mail: t('mail'),
+    users: t('users'),
+  }), [t]);
+}
+
 function SettingsNav({
   activePane,
   onChange,
@@ -164,6 +183,7 @@ function SettingsNav({
   isOwner?: boolean | null;
 }) {
   const paneLabels = usePaneLabels();
+  const paneDescriptions = usePaneDescriptions();
   const studioView = useStudioView();
   const panes = visiblePanes(workspaceId, isOwner ?? null, studioView);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -205,12 +225,14 @@ function SettingsNav({
       <div className="md:hidden p-3 border-b border-border/60">
         {collapsed ? (
           <Select value={activePane} onValueChange={(v) => onChange(v as SettingsPane)}>
-            <SelectTrigger className="w-full">
-              <span className="flex items-center gap-2 text-sm">
-                {active.icon}
-                {paneLabels[active.id] ?? active.label}
-              </span>
-            </SelectTrigger>
+            <Tip label={paneDescriptions[active.id]} side="bottom" wrap wrapClassName="flex w-full">
+              <SelectTrigger className="w-full">
+                <span className="flex items-center gap-2 text-sm">
+                  {active.icon}
+                  {paneLabels[active.id] ?? active.label}
+                </span>
+              </SelectTrigger>
+            </Tip>
             <SelectContent>
               {panes.map((item) => (
                 <SelectItem key={item.id} value={item.id}>
@@ -225,21 +247,22 @@ function SettingsNav({
         ) : (
           <div className="flex gap-1.5 overflow-x-auto">
             {panes.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => onChange(item.id)}
-                style={activePane === item.id ? { backgroundColor: 'var(--sidebar-active-surface)' } : undefined}
-                className={cn(
-                  'flex items-center gap-2.5 px-3 py-2 rounded-full text-[13px] font-medium transition-colors select-none whitespace-nowrap shrink-0',
-                  activePane === item.id
-                    ? 'text-foreground font-semibold'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                )}
-              >
-                {item.icon}
-                <span>{paneLabels[item.id] ?? item.label}</span>
-              </button>
+              <Tip key={item.id} label={paneDescriptions[item.id]} side="bottom">
+                <button
+                  type="button"
+                  onClick={() => onChange(item.id)}
+                  style={activePane === item.id ? { backgroundColor: 'var(--sidebar-active-surface)' } : undefined}
+                  className={cn(
+                    'flex items-center gap-2.5 px-3 py-2 rounded-full text-[13px] font-medium transition-colors select-none whitespace-nowrap shrink-0',
+                    activePane === item.id
+                      ? 'text-foreground font-semibold'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  )}
+                >
+                  {item.icon}
+                  <span>{paneLabels[item.id] ?? item.label}</span>
+                </button>
+              </Tip>
             ))}
           </div>
         )}
@@ -248,21 +271,22 @@ function SettingsNav({
       {/* Desktop: sidebar buttons */}
       <div className="hidden md:flex md:flex-col md:gap-0.5">
         {panes.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => onChange(item.id)}
-            style={activePane === item.id ? { backgroundColor: 'var(--sidebar-active-surface)' } : undefined}
-            className={cn(
-              'flex items-center gap-2.5 px-3 py-2 rounded-full text-[13px] font-medium transition-colors select-none whitespace-nowrap w-full text-left',
-              activePane === item.id
-                ? 'text-foreground font-semibold'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-            )}
-          >
-            {item.icon}
-            <span>{paneLabels[item.id] ?? item.label}</span>
-          </button>
+          <Tip key={item.id} label={paneDescriptions[item.id]} side="right">
+            <button
+              type="button"
+              onClick={() => onChange(item.id)}
+              style={activePane === item.id ? { backgroundColor: 'var(--sidebar-active-surface)' } : undefined}
+              className={cn(
+                'flex items-center gap-2.5 px-3 py-2 rounded-full text-[13px] font-medium transition-colors select-none whitespace-nowrap w-full text-left',
+                activePane === item.id
+                  ? 'text-foreground font-semibold'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              )}
+            >
+              {item.icon}
+              <span>{paneLabels[item.id] ?? item.label}</span>
+            </button>
+          </Tip>
         ))}
       </div>
     </nav>

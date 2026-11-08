@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { isFreeModels } from '@/lib/llm/suggestions/free-models';
 import { Search, Loader2, Link, MonitorSpeaker, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Tip } from '@/components/ui/tooltip';
 import { configManager } from '@/lib/config/storage';
 import { getProvider, getProviderArchetype } from '@/lib/llm/providers/registry';
 import { getConnectedProviders } from '@/lib/llm/providers/connection-status';
@@ -143,9 +144,11 @@ function ListGroup({
   return (
     <div>
       {collapsible ? (
-        <button type="button" onClick={onToggle} className={cn(headerClass, 'cursor-pointer hover:bg-muted/80 transition-colors')}>
-          {headerInner}
-        </button>
+        <Tip label={collapsed ? t('tips.showGroup', { name: label }) : t('tips.hideGroup', { name: label })} side="left">
+          <button type="button" onClick={onToggle} aria-expanded={!collapsed} className={cn(headerClass, 'cursor-pointer hover:bg-muted/80 transition-colors')}>
+            {headerInner}
+          </button>
+        </Tip>
       ) : (
         <div className={headerClass}>{headerInner}</div>
       )}
@@ -161,40 +164,47 @@ interface QuickRowProps {
   meta: string;
   onClick: () => void;
   disabled?: boolean;
+  /** Why the row is off, shown while it is disabled. */
+  disabledTip?: string;
 }
-function QuickRow({ selected, icon, label, meta, onClick, disabled }: QuickRowProps) {
+function QuickRow({ selected, icon, label, meta, onClick, disabled, disabledTip }: QuickRowProps) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        'w-full flex items-center gap-2.5 px-2 py-1 text-left border',
-        'transition-colors duration-100',
-        disabled
-          ? 'opacity-40 cursor-not-allowed bg-popover border-transparent'
-          : selected
-          ? 'bg-primary/15 border-primary/40 cursor-pointer'
-          : 'bg-popover border-transparent hover:bg-accent cursor-pointer',
-      )}
-    >
-      <span className="shrink-0 flex items-center text-muted-foreground">{icon}</span>
-      <span className="flex-1 min-w-0 truncate text-[13px] font-medium text-foreground">{label}</span>
-      {meta && (
-        <span className="shrink-0 max-w-[180px] truncate text-xs text-muted-foreground">{meta}</span>
-      )}
-    </button>
+    // The note is cut short in a narrow list, so while the row works it shows in full on hover.
+    <Tip label={disabled ? disabledTip : meta} truncated={!disabled} wrapClassName="grid w-full">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className={cn(
+          'w-full flex items-center gap-2.5 px-2 py-1 text-left border',
+          'transition-colors duration-100',
+          disabled
+            ? 'opacity-40 cursor-not-allowed bg-popover border-transparent'
+            : selected
+            ? 'bg-primary/15 border-primary/40 cursor-pointer'
+            : 'bg-popover border-transparent hover:bg-accent cursor-pointer',
+        )}
+      >
+        <span className="shrink-0 flex items-center text-muted-foreground">{icon}</span>
+        <span className="flex-1 min-w-0 truncate text-[13px] font-medium text-foreground">{label}</span>
+        {meta && (
+          <span className="shrink-0 max-w-[180px] truncate text-xs text-muted-foreground">{meta}</span>
+        )}
+      </button>
+    </Tip>
   );
 }
 
 interface ModelRowProps {
   entry: SlotModelEntry;
+  /** The slot a press assigns the model to, which the tooltip names. */
+  slot: SlotKind;
   selected: boolean;
   /** The group reserves a developer column (so it stays aligned and doesn't jump). */
   showDeveloper: boolean;
   onClick: () => void;
 }
-function ModelRow({ entry: { provider, model }, selected, showDeveloper, onClick }: ModelRowProps) {
+function ModelRow({ entry: { provider, model }, slot, selected, showDeveloper, onClick }: ModelRowProps) {
   const tm = useTranslations('models');
   // "Free models" is a selection, not a model: no size or price of its own, and its developer is
   // whichever free model it lands on, so the column says it varies rather than staying blank.
@@ -210,47 +220,60 @@ function ModelRow({ entry: { provider, model }, selected, showDeveloper, onClick
     ? vendorTextColor(provider, model.id)
     : 'text-muted-foreground/50';
 
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'w-full text-left cursor-pointer border px-2 py-1.5 md:py-1',
-        'transition-colors duration-100',
-        selected
-          ? 'bg-primary/15 border-primary/40'
-          : 'bg-popover border-transparent hover:bg-accent',
-      )}
-    >
-      {/* Mobile: stacked — model name on its own line, metadata below it */}
-      <div className="flex flex-col gap-0.5 min-w-0 md:hidden">
-        <span className="truncate text-[13px] font-medium text-foreground">{name}</span>
-        <span className="flex items-center gap-2 min-w-0 text-xs text-muted-foreground">
-          {showDeveloper && (distinct || rotating) && (
-            <span className={cn('min-w-0 truncate', developerColor)}>{rotating ? tm('freeModelsDeveloper') : vendor}</span>
-          )}
-          {meta && <span className="shrink-0 tabular-nums whitespace-nowrap">{meta}</span>}
-        </span>
-      </div>
+  // What a press does, with the model's full name, which the row may cut short (an OpenRouter name
+  // carries its developer too). "Free models" says what it is instead of figures.
+  const fullName = rotating ? tm('freeModels') : model.name;
+  const tip = selected
+    ? tm('tips.inUse', { model: fullName })
+    : slot === 'agent'
+      ? tm('tips.useForAgent', { model: fullName })
+      : slot === 'imageGen'
+        ? tm('tips.useForImage', { model: fullName })
+        : tm('tips.useForVoice', { model: fullName });
 
-      {/* Desktop: single-row table — developer | name | modality | ctx·price */}
-      <div className="hidden md:flex md:items-center md:gap-2.5">
-        {showDeveloper && (
-          <span className={cn('w-[64px] shrink-0 truncate text-xs', developerColor)}>
-            {rotating ? tm('freeModelsDeveloper') : distinct ? vendor : ''}
-          </span>
+  return (
+    <Tip label={rotating ? `${tip}. ${meta}` : tip} side="left">
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          'w-full text-left cursor-pointer border px-2 py-1.5 md:py-1',
+          'transition-colors duration-100',
+          selected
+            ? 'bg-primary/15 border-primary/40'
+            : 'bg-popover border-transparent hover:bg-accent',
         )}
-        <span className={cn('min-w-0 truncate text-[13px] font-medium text-foreground', rotating ? 'shrink-0' : 'flex-1')}>
-          {name}
-        </span>
-        {/* "Free models" carries a sentence, not figures: it gives way to the name. */}
-        {meta && (
-          <span className={cn('text-xs text-muted-foreground whitespace-nowrap', rotating ? 'flex-1 min-w-0 truncate text-right' : 'shrink-0 tabular-nums')}>
-            {meta}
+      >
+        {/* Mobile: stacked — model name on its own line, metadata below it */}
+        <div className="flex flex-col gap-0.5 min-w-0 md:hidden">
+          <span className="truncate text-[13px] font-medium text-foreground">{name}</span>
+          <span className="flex items-center gap-2 min-w-0 text-xs text-muted-foreground">
+            {showDeveloper && (distinct || rotating) && (
+              <span className={cn('min-w-0 truncate', developerColor)}>{rotating ? tm('freeModelsDeveloper') : vendor}</span>
+            )}
+            {meta && <span className="shrink-0 tabular-nums whitespace-nowrap">{meta}</span>}
           </span>
-        )}
-      </div>
-    </button>
+        </div>
+
+        {/* Desktop: single-row table — developer | name | modality | ctx·price */}
+        <div className="hidden md:flex md:items-center md:gap-2.5">
+          {showDeveloper && (
+            <span className={cn('w-[64px] shrink-0 truncate text-xs', developerColor)}>
+              {rotating ? tm('freeModelsDeveloper') : distinct ? vendor : ''}
+            </span>
+          )}
+          <span className={cn('min-w-0 truncate text-[13px] font-medium text-foreground', rotating ? 'shrink-0' : 'flex-1')}>
+            {name}
+          </span>
+          {/* "Free models" carries a sentence, not figures: it gives way to the name. */}
+          {meta && (
+            <span className={cn('text-xs text-muted-foreground whitespace-nowrap', rotating ? 'flex-1 min-w-0 truncate text-right' : 'shrink-0 tabular-nums')}>
+              {meta}
+            </span>
+          )}
+        </div>
+      </button>
+    </Tip>
   );
 }
 
@@ -393,6 +416,7 @@ export function ModelPicker({ slot, currentValue, onPick, inline = false, agentR
                     meta={t('usesAgentModel')}
                     onClick={() => onPick('agent')}
                     disabled={!agentCanReuse}
+                    disabledTip={t('tips.agentNoImages')}
                   />
                 )}
                 {slot === 'voiceInput' && (
@@ -404,6 +428,7 @@ export function ModelPicker({ slot, currentValue, onPick, inline = false, agentR
                       meta={t('sendsRecordingAsAudio')}
                       onClick={() => onPick('agent')}
                       disabled={!agentCanReuse}
+                      disabledTip={t('tips.agentNoAudio')}
                     />
                     <QuickRow
                       selected={currentValue === 'browser'}
@@ -446,6 +471,7 @@ export function ModelPicker({ slot, currentValue, onPick, inline = false, agentR
                     <ModelRow
                       key={`${entry.provider}::${entry.model.id}`}
                       entry={entry}
+                      slot={slot}
                       selected={entrySelected(entry, currentValue)}
                       showDeveloper={showDeveloper}
                       onClick={() => onPick({ provider: entry.provider, model: entry.model.id })}
@@ -485,31 +511,33 @@ export function ModelPicker({ slot, currentValue, onPick, inline = false, agentR
           </span>
         )}
 
-        <button
-          type="button"
-          onClick={handleToggleShowAll}
-          className="flex items-center gap-2 cursor-pointer select-none"
-        >
-          {/* Mini toggle pill */}
-          <span
-            className={cn(
-              'relative inline-flex items-center w-8 h-[19px] rounded-full border flex-shrink-0 transition-colors duration-150',
-              showAll
-                ? 'bg-primary border-primary'
-                : 'bg-muted-foreground/30 border-border',
-            )}
+        <Tip label={showAll ? t('tips.showFitting') : t('tips.showAll')} align="end">
+          <button
+            type="button"
+            onClick={handleToggleShowAll}
+            className="flex items-center gap-2 cursor-pointer select-none"
           >
+            {/* Mini toggle pill */}
             <span
               className={cn(
-                'absolute block w-[13px] h-[13px] rounded-full transition-transform duration-150',
+                'relative inline-flex items-center w-8 h-[19px] rounded-full border flex-shrink-0 transition-colors duration-150',
                 showAll
-                  ? 'translate-x-[17px] bg-white'
-                  : 'translate-x-[2px] bg-muted-foreground',
+                  ? 'bg-primary border-primary'
+                  : 'bg-muted-foreground/30 border-border',
               )}
-            />
-          </span>
-          {t('showAllModels')}
-        </button>
+            >
+              <span
+                className={cn(
+                  'absolute block w-[13px] h-[13px] rounded-full transition-transform duration-150',
+                  showAll
+                    ? 'translate-x-[17px] bg-white'
+                    : 'translate-x-[2px] bg-muted-foreground',
+                )}
+              />
+            </span>
+            {t('showAllModels')}
+          </button>
+        </Tip>
       </div>
     </div>
   );

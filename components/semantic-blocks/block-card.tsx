@@ -3,6 +3,7 @@
 import React, { useCallback, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ChevronDown, GripVertical } from 'lucide-react';
+import { Tip } from '@/components/ui/tooltip';
 import type { SemanticBlock } from '@/lib/semantic-blocks/types';
 
 // Wireframe SVG thumbnails — simple shapes that convey block structure at a glance.
@@ -449,16 +450,20 @@ export function BlockCard({ block, onDragStart }: BlockCardProps) {
               </svg>
             )}
           </div>
-          <span className="text-foreground/90 truncate flex-1">{block.name}</span>
+          <Tip label={block.name} truncated>
+            <span className="text-foreground/90 truncate flex-1">{block.name}</span>
+          </Tip>
           <GripVertical className="h-3 w-3 flex-shrink-0 text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-colors" />
-          <button
-            onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
-            onMouseDown={(e) => e.stopPropagation()}
-            className="flex-shrink-0 p-0.5 rounded text-muted-foreground/60 hover:text-muted-foreground transition-all"
-            title={expanded ? t('hideDescription') : t('showDescription')}
-          >
-            <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-          </button>
+          <Tip label={expanded ? t('hideDescription') : t('showDescription')} align="end">
+            <button
+              onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="flex-shrink-0 p-0.5 rounded text-muted-foreground/60 hover:text-muted-foreground transition-all"
+              aria-label={expanded ? t('hideDescription') : t('showDescription')}
+            >
+              <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+            </button>
+          </Tip>
         </div>
       </div>
       {expanded && (

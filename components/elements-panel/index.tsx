@@ -389,7 +389,7 @@ export interface ElementsPanelProps {
   /**
    * Which tab is showing. Controlled, and owned by the workspace — the preview toolbar's `Style`
    * action has to open this panel *on the Styles tab*, and it cannot do that through the handle:
-   * `if (showElements) panelMap['elements']` means opening the panel is what mounts it, so the ref
+   * `if (showElements) panelMap.elements` means opening the panel is what mounts it, so the ref
    * is still null at the moment the toggle runs and an imperative call is a silent no-op.
    */
   activeTab: ElementsTab;

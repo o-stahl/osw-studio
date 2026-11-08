@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Tip } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { AlertTriangle } from 'lucide-react';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
@@ -41,15 +42,17 @@ export function CostTrackingPane() {
             {t('showCostsHint')}
           </p>
         </div>
-        <Switch
-          id="show-costs"
-          checked={costSettings.showCosts !== false}
-          onCheckedChange={(checked) => {
-            const newCostSettings = { ...costSettings, showCosts: checked };
-            configManager.setCostSettings(newCostSettings);
-            setCostSettings(newCostSettings);
-          }}
-        />
+        <Tip label={costSettings.showCosts !== false ? t('tips.hideCosts') : t('tips.showCosts')} wrap align="end">
+          <Switch
+            id="show-costs"
+            checked={costSettings.showCosts !== false}
+            onCheckedChange={(checked) => {
+              const newCostSettings = { ...costSettings, showCosts: checked };
+              configManager.setCostSettings(newCostSettings);
+              setCostSettings(newCostSettings);
+            }}
+          />
+        </Tip>
       </div>
 
       {/* Daily + Project Limits */}
@@ -127,18 +130,20 @@ export function CostTrackingPane() {
             {formatTotal(configManager.getLifetimeCosts().total)}
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            if (confirm(t('resetCostsConfirm'))) {
-              configManager.resetLifetimeCosts();
-              toast.success(t('costsReset'));
-            }
-          }}
-        >
-          {t('resetStats')}
-        </Button>
+        <Tip label={t('tips.resetStats')} align="end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (confirm(t('resetCostsConfirm'))) {
+                configManager.resetLifetimeCosts();
+                toast.success(t('costsReset'));
+              }
+            }}
+          >
+            {t('resetStats')}
+          </Button>
+        </Tip>
       </div>
     </div>
   );

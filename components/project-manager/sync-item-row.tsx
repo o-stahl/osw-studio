@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { SyncStatusBadge } from './sync-status-badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Tip } from '@/components/ui/tooltip';
 import { ArrowUp, ArrowDown, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -33,6 +34,20 @@ export function SyncItemRow({
   const canPush = ['local-newer', 'local-only', 'conflict'].includes(item.status);
   const canPull = ['server-newer', 'server-only', 'conflict'].includes(item.status);
   const isConflict = item.status === 'conflict';
+  const busy = disabled || syncing;
+  const pushTip = item.status === 'local-only'
+    ? t('tips.pushNew', { name: item.name })
+    : t('tips.pushReplace', { name: item.name });
+  const pullTip = item.status === 'server-only'
+    ? t('tips.pullNew', { name: item.name })
+    : t('tips.pullReplace', { name: item.name });
+  const selectOff = item.status === 'synced'
+    ? t('tips.inSync')
+    : item.status === 'server-only'
+      ? t('tips.serverOnly')
+      : busy
+        ? t('tips.busy')
+        : undefined;
 
   return (
     <div
@@ -42,12 +57,14 @@ export function SyncItemRow({
       )}
     >
       {/* Checkbox */}
-      <Checkbox
-        checked={selected}
-        onCheckedChange={(checked) => onSelectChange(checked === true)}
-        disabled={disabled || syncing || item.status === 'synced' || item.status === 'server-only'}
-        aria-label={t('selectItem', { name: item.name })}
-      />
+      <Tip label={selectOff} wrap wrapClassName="inline-flex shrink-0">
+        <Checkbox
+          checked={selected}
+          onCheckedChange={(checked) => onSelectChange(checked === true)}
+          disabled={disabled || syncing || item.status === 'synced' || item.status === 'server-only'}
+          aria-label={t('selectItem', { name: item.name })}
+        />
+      </Tip>
 
       {/* Name */}
       <div className="flex-1 min-w-0">
@@ -64,48 +81,54 @@ export function SyncItemRow({
       {/* Actions */}
       <div className="flex items-center gap-1">
         {isConflict && onResolve ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onResolve}
-            disabled={disabled || syncing}
-            className="h-7 text-xs"
-          >
-            {t('keepBoth')}
-          </Button>
+          <Tip label={busy ? t('tips.busy') : t('tips.keepBoth')}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onResolve}
+              disabled={disabled || syncing}
+              className="h-7 text-xs"
+            >
+              {t('keepBoth')}
+            </Button>
+          </Tip>
         ) : (
           <>
             {canPush && onPush && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onPush}
-                disabled={disabled || syncing}
-                className="h-7 w-7"
-                title={t('pushToServer')}
-              >
-                {syncing ? (
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <ArrowUp className="h-3.5 w-3.5" />
-                )}
-              </Button>
+              <Tip label={busy ? t('tips.busy') : pushTip}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onPush}
+                  disabled={disabled || syncing}
+                  className="h-7 w-7"
+                  aria-label={pushTip}
+                >
+                  {syncing ? (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <ArrowUp className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </Tip>
             )}
             {canPull && onPull && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onPull}
-                disabled={disabled || syncing}
-                className="h-7 w-7"
-                title={t('pullFromServer')}
-              >
-                {syncing ? (
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <ArrowDown className="h-3.5 w-3.5" />
-                )}
-              </Button>
+              <Tip label={busy ? t('tips.busy') : pullTip}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onPull}
+                  disabled={disabled || syncing}
+                  className="h-7 w-7"
+                  aria-label={pullTip}
+                >
+                  {syncing ? (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <ArrowDown className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </Tip>
             )}
           </>
         )}

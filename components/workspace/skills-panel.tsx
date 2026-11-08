@@ -8,9 +8,9 @@ import { logger } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
 import { useTranslations } from 'next-intl';
 import { useSkillGroupCopy } from '@/lib/i18n/use-skill-group-catalog';
-import { Button } from '@/components/ui/button';
 import { Sparkles, Plus, FolderTree } from 'lucide-react';
 import { PanelContainer, PanelHeader } from '@/components/ui/panel';
+import { Tip } from '@/components/ui/tooltip';
 import {
   Dialog,
   DialogContent,
@@ -113,18 +113,9 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
         color="var(--button-skills-active, #a855f7)"
         onClose={onClose}
         panelKey="skills"
-        actions={
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 rounded-full border border-border/60 bg-muted/50 px-2.5 gap-1.5 md:h-5 md:w-5 md:px-0 md:border-0 md:bg-transparent md:rounded-md"
-            onClick={() => setCreateDialogOpen(true)}
-            title={t('createNew')}
-          >
-            <Plus className="h-2.5 w-2.5 md:h-3 md:w-3" />
-            <span className="text-xs md:hidden">{t('addSkill')}</span>
-          </Button>
-        }
+        actions={[
+          { id: 'create', icon: Plus, label: t('createNew'), text: t('addSkill'), onSelect: () => setCreateDialogOpen(true) },
+        ]}
       />
 
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
@@ -136,11 +127,14 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
               {t('domainSpecificInstructions')}
             </p>
           </div>
-          <Switch
-            checked={globalEnabled}
-            onCheckedChange={handleGlobalToggle}
-            disabled={loading}
-          />
+          <Tip label={loading ? undefined : globalEnabled ? t('tips.allOff') : t('tips.allOn')} wrap align="end">
+            <Switch
+              checked={globalEnabled}
+              onCheckedChange={handleGlobalToggle}
+              disabled={loading}
+              aria-label={t('enableSkills')}
+            />
+          </Tip>
         </div>
 
         {globalEnabled && !loading && (
@@ -156,16 +150,21 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
                 <div className="space-y-0.5">
                   {groups.map(group => (
                     <div key={group.id} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/50">
-                      <div className="flex-1 min-w-0 mr-3">
-                        <div className="text-sm truncate">{groupCopy(group).name}</div>
-                        <div className="text-[10px] text-muted-foreground">
-                          {t('memberCount', { count: group.memberIds.length })}
+                      <Tip label={groupCopy(group).description || undefined} side="left">
+                        <div className="flex-1 min-w-0 mr-3">
+                          <div className="text-sm truncate">{groupCopy(group).name}</div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {t('memberCount', { count: group.memberIds.length })}
+                          </div>
                         </div>
-                      </div>
-                      <Switch
-                        checked={enabledGroups.has(group.id)}
-                        onCheckedChange={(checked) => handleGroupToggle(group.id, checked)}
-                      />
+                      </Tip>
+                      <Tip label={enabledGroups.has(group.id) ? t('tips.turnOff', { name: groupCopy(group).name }) : t('tips.turnOn', { name: groupCopy(group).name })} wrap align="end">
+                        <Switch
+                          checked={enabledGroups.has(group.id)}
+                          onCheckedChange={(checked) => handleGroupToggle(group.id, checked)}
+                          aria-label={groupCopy(group).name}
+                        />
+                      </Tip>
                     </div>
                   ))}
                 </div>
@@ -179,15 +178,7 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
                 </div>
                 <div className="space-y-0.5">
                   {builtInSkills.map(skill => (
-                    <div key={skill.id} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/50">
-                      <div className="flex-1 min-w-0 mr-3">
-                        <div className="text-sm truncate">{skill.name}</div>
-                      </div>
-                      <Switch
-                        checked={enabledSkills.has(skill.id)}
-                        onCheckedChange={(checked) => handleSkillToggle(skill.id, checked)}
-                      />
-                    </div>
+                    <SkillRow key={skill.id} skill={skill} on={enabledSkills.has(skill.id)} onToggle={(checked) => handleSkillToggle(skill.id, checked)} />
                   ))}
                 </div>
               </div>
@@ -200,15 +191,7 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
                 </div>
                 <div className="space-y-0.5">
                   {customSkills.map(skill => (
-                    <div key={skill.id} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/50">
-                      <div className="flex-1 min-w-0 mr-3">
-                        <div className="text-sm truncate">{skill.name}</div>
-                      </div>
-                      <Switch
-                        checked={enabledSkills.has(skill.id)}
-                        onCheckedChange={(checked) => handleSkillToggle(skill.id, checked)}
-                      />
-                    </div>
+                    <SkillRow key={skill.id} skill={skill} on={enabledSkills.has(skill.id)} onToggle={(checked) => handleSkillToggle(skill.id, checked)} />
                   ))}
                 </div>
               </div>
@@ -238,5 +221,22 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
         </DialogContent>
       </Dialog>
     </PanelContainer>
+  );
+}
+
+/** A skill and its switch; the name's tooltip is the skill's description, which the row has no room for. */
+function SkillRow({ skill, on, onToggle }: { skill: Skill; on: boolean; onToggle: (checked: boolean) => void }) {
+  const t = useTranslations('skills');
+  return (
+    <div className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/50">
+      <Tip label={skill.description || undefined} side="left">
+        <div className="flex-1 min-w-0 mr-3">
+          <div className="text-sm truncate">{skill.name}</div>
+        </div>
+      </Tip>
+      <Tip label={on ? t('tips.turnOff', { name: skill.name }) : t('tips.turnOn', { name: skill.name })} wrap align="end">
+        <Switch checked={on} onCheckedChange={onToggle} aria-label={skill.name} />
+      </Tip>
+    </div>
   );
 }

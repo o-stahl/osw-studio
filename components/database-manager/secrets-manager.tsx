@@ -16,6 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tip } from '@/components/ui/tooltip';
 import { SecretEditor } from './secret-editor';
 import type { SecretsDataProvider } from './data-providers';
 import { apiFetch } from '@/lib/api/backend-status';
@@ -156,14 +157,16 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium">{t('secretsTitle')}</h3>
-        <Button
-          size="sm"
-          onClick={() => setIsCreating(true)}
-          disabled={!encryptionConfigured}
-        >
-          <Plus className="h-4 w-4 mr-1" />
-          {t('newSecret')}
-        </Button>
+        <Tip label={encryptionConfigured ? undefined : t('encryptionHint')}>
+          <Button
+            size="sm"
+            onClick={() => setIsCreating(true)}
+            disabled={!encryptionConfigured}
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            {t('newSecret')}
+          </Button>
+        </Tip>
       </div>
 
       {/* Warning if encryption not configured */}
@@ -187,14 +190,16 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
             <p className="text-xs text-muted-foreground mt-1 mb-4">
               {t('noSecretsHint')}
             </p>
-            <Button
-              size="sm"
-              onClick={() => setIsCreating(true)}
-              disabled={!encryptionConfigured}
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              {t('createSecret')}
-            </Button>
+            <Tip label={encryptionConfigured ? undefined : t('encryptionHint')}>
+              <Button
+                size="sm"
+                onClick={() => setIsCreating(true)}
+                disabled={!encryptionConfigured}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                {t('createSecret')}
+              </Button>
+            </Tip>
           </div>
         ) : (
           <div className="grid gap-3">
@@ -207,29 +212,39 @@ export function SecretsManager({ deploymentId, dataProvider, workspaceId }: Secr
                   <div className="flex-1 min-w-0 overflow-hidden">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Key className="h-4 w-4 text-yellow-500 shrink-0" />
-                      <span className="font-mono font-medium truncate">{secret.name}</span>
+                      <Tip label={secret.name} truncated>
+                        <span className="font-mono font-medium truncate">{secret.name}</span>
+                      </Tip>
                       {!secret.hasValue && (
-                        <Badge variant="outline" className="text-amber-600 border-amber-500/50 bg-amber-500/10 text-xs shrink-0">
-                          {t('valueNotSet')}
-                        </Badge>
+                        <Tip label={t('tips.valueNotSet')}>
+                          <Badge variant="outline" className="text-amber-600 border-amber-500/50 bg-amber-500/10 text-xs shrink-0">
+                            {t('valueNotSet')}
+                          </Badge>
+                        </Tip>
                       )}
                     </div>
                     {secret.description && (
-                      <p className="text-sm text-muted-foreground mt-1 truncate">
-                        {secret.description}
-                      </p>
+                      <Tip label={secret.description} truncated>
+                        <p className="text-sm text-muted-foreground mt-1 truncate">
+                          {secret.description}
+                        </p>
+                      </Tip>
                     )}
                     <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                       <span className="shrink-0">{t('updatedOn', { date: formatDate(secret.updatedAt) })}</span>
-                      <span className="font-mono truncate">secrets.get('{secret.name}')</span>
+                      <Tip label={`secrets.get('${secret.name}')`} truncated>
+                        <span className="font-mono truncate">secrets.get('{secret.name}')</span>
+                      </Tip>
                     </div>
                   </div>
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
+                      <Tip label={t('tips.actionsFor', { name: secret.name })} align="end">
+                        <Button variant="ghost" size="sm" aria-label={t('tips.actionsFor', { name: secret.name })}>
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </Tip>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => setEditingSecret(secret)}>

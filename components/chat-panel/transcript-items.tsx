@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import type { InterviewGate } from '@/lib/interview/completion';
 import type { InterviewHandoff } from '@/lib/interview/types';
 import type { ToolCall } from './event-processor';
+import { Tip } from '@/components/ui/tooltip';
 
 /**
  * Items the chat thread draws: a tool call in an opened group, a correction, a compaction, an
@@ -118,8 +119,10 @@ export function SyntheticErrorDisplay({ content, isExpanded, onToggle }: Synthet
   const t = useTranslations('chat');
   return (
     <div className={`bg-amber-500/10 rounded-md transition-all ${isExpanded ? 'p-2' : 'p-1.5'}`}>
+      <Tip label={isExpanded ? t('tips.hideCorrection') : t('tips.showCorrection')}>
       <button
         onClick={onToggle}
+        aria-expanded={isExpanded}
         className="flex items-center gap-2 w-full text-left hover:bg-amber-500/20 rounded px-1"
       >
         <div className="flex items-center gap-1.5">
@@ -130,6 +133,7 @@ export function SyntheticErrorDisplay({ content, isExpanded, onToggle }: Synthet
           <CheckCircle className="h-3 w-3 text-amber-600" />
         </div>
       </button>
+      </Tip>
 
       {/* Expanded view */}
       {isExpanded && (
@@ -189,15 +193,17 @@ export function InterviewGateCard({ gate, onHandoff, disabled }: {
             <div className="font-semibold text-green-700 dark:text-green-400 mb-0.5">{t('interviewComplete')}</div>
             <div className="text-xs text-muted-foreground">{t('allItemsCaptured')}</div>
             {handoff && (
-              <button
-                type="button"
-                onClick={() => onHandoff?.(handoff)}
-                disabled={disabled}
-                className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium bg-green-600 hover:bg-green-700 text-white px-2.5 py-1 rounded disabled:opacity-40 disabled:cursor-default"
-              >
-                <ChevronRight className="h-3 w-3" />
-                {handoff.label}
-              </button>
+              <Tip label={t('tips.handoff')}>
+                <button
+                  type="button"
+                  onClick={() => onHandoff?.(handoff)}
+                  disabled={disabled}
+                  className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium bg-green-600 hover:bg-green-700 text-white px-2.5 py-1 rounded disabled:opacity-40 disabled:cursor-default"
+                >
+                  <ChevronRight className="h-3 w-3" />
+                  {handoff.label}
+                </button>
+              </Tip>
             )}
             <div className="text-[11px] text-muted-foreground mt-1.5">{t('orClearChat')}</div>
           </div>

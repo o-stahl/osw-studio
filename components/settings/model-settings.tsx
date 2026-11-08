@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Tip } from '@/components/ui/tooltip';
 import { Eye, EyeOff, Check, X, ExternalLink, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ModelSelector } from '@/components/model-selector';
@@ -39,6 +40,8 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
   const t = useTranslations('settings');
   const tcn = useTranslations('connections');
   const tc = useTranslations('common');
+  const tm = useTranslations('models');
+  const tconnect = useTranslations('connect');
   const [selectedProvider, setSelectedProvider] = useState<ProviderId>(() =>
     configManager.getSelectedProvider()
   );
@@ -277,33 +280,38 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
                   data-tour-id="provider-key-input"
                   disabled={validatingKey}
                 />
+                <Tip label={showApiKey ? tcn('tips.hideKey') : tcn('tips.showKey')}>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="absolute right-1 top-1 h-7 w-7"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    aria-label={showApiKey ? tcn('tips.hideKey') : tcn('tips.showKey')}
+                  >
+                    {showApiKey ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </Tip>
+              </div>
+              <Tip label={validatingKey ? undefined : currentApiKey.trim() ? tconnect('tips.connectKey') : tconnect('tips.pasteFirst')}>
                 <Button
-                  size="icon"
-                  variant="ghost"
-                  className="absolute right-1 top-1 h-7 w-7"
-                  onClick={() => setShowApiKey(!showApiKey)}
+                  onClick={handleConnect}
+                  disabled={validatingKey || !currentApiKey.trim()}
+                  size="sm"
                 >
-                  {showApiKey ? (
-                    <EyeOff className="h-4 w-4" />
+                  {validatingKey ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                      {tcn('connecting')}
+                    </>
                   ) : (
-                    <Eye className="h-4 w-4" />
+                    tcn('connect')
                   )}
                 </Button>
-              </div>
-              <Button
-                onClick={handleConnect}
-                disabled={validatingKey || !currentApiKey.trim()}
-                size="sm"
-              >
-                {validatingKey ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                    {tcn('connecting')}
-                  </>
-                ) : (
-                  tcn('connect')
-                )}
-              </Button>
+              </Tip>
             </div>
             {providerConfig.apiKeyHelpUrl && (
               <p className="text-sm text-muted-foreground mt-2">
@@ -341,26 +349,31 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
                 className="pr-10"
                 data-tour-id="provider-key-input"
               />
-              <Button
-                size="icon"
-                variant="ghost"
-                className="absolute right-1 top-1 h-7 w-7"
-                onClick={() => setShowApiKey(!showApiKey)}
-              >
-                {showApiKey ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-              </Button>
+              <Tip label={showApiKey ? tcn('tips.hideKey') : tcn('tips.showKey')}>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="absolute right-1 top-1 h-7 w-7"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  aria-label={showApiKey ? tcn('tips.hideKey') : tcn('tips.showKey')}
+                >
+                  {showApiKey ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+              </Tip>
             </div>
-            <Button
-              onClick={validateApiKey}
-              disabled={validatingKey || !currentApiKey}
-              size="sm"
-            >
-              {validatingKey ? t('validating') : t('validate')}
-            </Button>
+            <Tip label={validatingKey ? undefined : currentApiKey ? t('tips.validate', { provider: providerConfig.name }) : t('tips.keyFirst')}>
+              <Button
+                onClick={validateApiKey}
+                disabled={validatingKey || !currentApiKey}
+                size="sm"
+              >
+                {validatingKey ? t('validating') : t('validate')}
+              </Button>
+            </Tip>
             {keyValid !== null && (
               <div className="flex items-center">
                 {keyValid ? (
@@ -430,11 +443,14 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
               {t('chatModelHint')}
             </p>
           </div>
-          <Switch
-            id="separate-chat-model"
-            checked={useSeparateChatModel}
-            onCheckedChange={(checked) => setUseSeparateChatModel(checked)}
-          />
+          <Tip label={useSeparateChatModel ? t('tips.sameChatModel') : t('tips.separateChatModel')} wrap align="end">
+            <Switch
+              id="separate-chat-model"
+              aria-label={t('differentChatModel')}
+              checked={useSeparateChatModel}
+              onCheckedChange={(checked) => setUseSeparateChatModel(checked)}
+            />
+          </Tip>
         </div>
       )}
 
@@ -488,14 +504,17 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
             {t('autoCompactDesc')}
           </p>
         </div>
-        <Switch
-          id="compaction-enabled"
-          checked={compactionEnabled}
-          onCheckedChange={(checked) => {
-            setCompactionEnabled(checked);
-            configManager.setCompactionEnabled(selectedProvider, checked);
-          }}
-        />
+        <Tip label={compactionEnabled ? tm('tips.compactOff') : tm('tips.compactOn')} wrap align="end">
+          <Switch
+            id="compaction-enabled"
+            aria-label={t('autoCompact')}
+            checked={compactionEnabled}
+            onCheckedChange={(checked) => {
+              setCompactionEnabled(checked);
+              configManager.setCompactionEnabled(selectedProvider, checked);
+            }}
+          />
+        </Tip>
       </div>
 
       {compactionEnabled && (

@@ -16,6 +16,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/ui/logo';
 import { Badge } from '@/components/ui/badge';
+import { Tip } from '@/components/ui/tooltip';
 import { Github, ExternalLink, Globe, MessagesSquare } from 'lucide-react';
 import { DEMO_URL, DISCUSSIONS_URL, REPO_URL } from '@/lib/constants/links';
 
@@ -62,36 +63,42 @@ export function AboutModal({ open, onOpenChange }: AboutModalProps) {
           <section>
             <h3 className="font-semibold text-lg mb-3">{t('linksCommunity')}</h3>
             <div className="flex flex-col gap-2">
-              <a
-                href={DISCUSSIONS_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                <MessagesSquare className="h-4 w-4" />
-                {t('discussions')}
-                <ExternalLink className="h-3 w-3" />
-              </a>
-              <a
-                href={REPO_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                <Github className="h-4 w-4" />
-                {t('githubRepo')}
-                <ExternalLink className="h-3 w-3" />
-              </a>
-              <a
-                href={DEMO_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                <Globe className="h-4 w-4" />
-                {t('liveDemo')}
-                <ExternalLink className="h-3 w-3" />
-              </a>
+              <Tip label={t('tips.discussions')} align="start">
+                <a
+                  href={DISCUSSIONS_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  <MessagesSquare className="h-4 w-4" />
+                  {t('discussions')}
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </Tip>
+              <Tip label={t('tips.repo')} align="start">
+                <a
+                  href={REPO_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  <Github className="h-4 w-4" />
+                  {t('githubRepo')}
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </Tip>
+              <Tip label={t('tips.demo')} align="start">
+                <a
+                  href={DEMO_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  <Globe className="h-4 w-4" />
+                  {t('liveDemo')}
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </Tip>
             </div>
           </section>
         </div>

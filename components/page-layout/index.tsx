@@ -6,6 +6,7 @@ import { useViewNames } from '@/lib/i18n/use-view-names';
 import { Project } from '@/lib/vfs/types';
 import { Sidebar } from '@/components/sidebar';
 import { AppHeader } from '@/components/ui/app-header';
+import { Tip } from '@/components/ui/tooltip';
 import { X } from 'lucide-react';
 import { SyncDialog } from '@/components/project-manager/sync-dialog';
 import { cn } from '@/lib/utils';
@@ -128,13 +129,15 @@ export function PageLayout({
           {quotaWarning && (
             <div className="bg-orange-500/10 border-b border-orange-500/20 px-4 py-2 text-sm text-orange-400 flex items-center justify-between">
               <span>{t('pageLayout.storageWarning', quotaWarning)}</span>
-              <button
-                onClick={() => setQuotaWarning(null)}
-                aria-label={t('common.actions.dismiss')}
-                className="text-orange-400/60 hover:text-orange-400 ml-4 shrink-0"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+              <Tip label={t('pageLayout.tips.dismiss')} align="end">
+                <button
+                  onClick={() => setQuotaWarning(null)}
+                  aria-label={t('common.actions.dismiss')}
+                  className="text-orange-400/60 hover:text-orange-400 ml-4 shrink-0"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </Tip>
             </div>
           )}
           {children}
