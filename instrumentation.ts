@@ -1,4 +1,10 @@
 export async function register() {
+  // A stopping server exits after a grace period even with an events stream still open.
+  if (process.env.NEXT_RUNTIME === 'nodejs') {
+    const { exitAfterShutdownGrace } = await import('@/lib/web/shutdown');
+    exitAfterShutdownGrace();
+  }
+
   // Everything below serves Server Mode (desktop included): its scheduler, deployment routes and
   // Caddy. A Browser Mode build has better-sqlite3 installed too, so SQLite loading proves nothing.
   if (process.env.NEXT_RUNTIME === 'nodejs' && process.env.NEXT_PUBLIC_SERVER_MODE === 'true') {

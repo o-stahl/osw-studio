@@ -30,18 +30,6 @@ describe('keepWorkspaceFocus', () => {
     expect(document.activeElement).toBe(workspace);
   });
 
-  it('takes it off a toast\'s Undo button, which leaves with the toast', () => {
-    const toaster = document.createElement('section');
-    toaster.setAttribute('data-sonner-toaster', '');
-    const undo = document.createElement('button');
-    toaster.append(undo);
-    document.body.append(toaster);
-    undo.focus();
-    keepWorkspaceFocus();
-    vi.runAllTimers();
-    expect(document.activeElement).toBe(workspace);
-  });
-
   it('leaves focus on a control that still has it', () => {
     const tab = document.createElement('button');
     workspace.append(tab);

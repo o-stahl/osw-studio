@@ -20,6 +20,7 @@ const FORBIDDEN_TABLES = [
   'site_info',      // Site configuration
   'edge_functions', // Function definitions
   'function_logs',  // Execution logs
+  'osws_runtime_settings', // Runtime settings (the function log level)
   'server_functions', // Server function definitions
   'scheduled_functions', // Scheduled function definitions
   'secrets',        // Encrypted secrets

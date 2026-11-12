@@ -144,17 +144,20 @@ async function handleRequest(
     // Execute function
     const result = await executeFunction(fn, functionRequest, deploymentDb);
 
-    // Surface the sandbox's own console output when the call went wrong. Without this the
-    // function's `console.error` is collected and dropped, so an upstream 401 or 404 reaches the
-    // caller as nothing but the function's own generic error message.
-    if (result.logs.length > 0 && (result.error || result.response.status >= 400)) {
-      logger.warn(
-        `[Edge Functions] ${fn.name} (${result.response.status}) output:\n${result.logs.join('\n')}`
-      );
-    }
-
-    // Log execution (async, don't await)
+    // Logging never stands in the way of the function's response.
     try {
+      // Surface the sandbox's own console output when the call went wrong. Without this the
+      // function's `console.error` is collected and dropped, so an upstream 401 or 404 reaches the
+      // caller as nothing but the function's own generic error message. The output is whatever the
+      // function printed, so a deployment that logs nothing keeps it out of the server log too.
+      const failed = Boolean(result.error) || result.response.status >= 400;
+      if (result.logs.length > 0 && failed && deploymentDb.getFunctionLogLevel() !== 'off') {
+        logger.warn(
+          `[Edge Functions] ${fn.name} (${result.response.status}) output:\n${result.logs.join('\n')}`
+        );
+      }
+
+      // Log execution (async, don't await)
       deploymentDb.logFunctionExecution(fn.id, {
         method: request.method,
         path: functionRequest.path,

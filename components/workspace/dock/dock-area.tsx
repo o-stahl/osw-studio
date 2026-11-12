@@ -62,6 +62,12 @@ function quickLayout(keys: PanelKey[]): WorkspaceLayout {
   };
 }
 
+/** The keys a divider resizes by (react-resizable-panels' own keydown listener on the handle). */
+const RESIZE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End']);
+
+/** The Undo step of sizes a key press on a divider changed: that divider's current run of presses. */
+const keyStep = (handle: string | null, run: number) => (handle ? `key-${handle}-${run}` : undefined);
+
 const structureOf = (l: WorkspaceLayout) => l.columns.map((c) => `${c.id}[${c.cells.map((x) => x.id).join(',')}]`).join('|');
 const sizesOf = (l: WorkspaceLayout) => l.columns.map((c) => `${c.size.toFixed(2)}:${c.cells.map((x) => x.size.toFixed(2)).join(',')}`).join('|');
 
@@ -196,16 +202,34 @@ export function DockArea({ panels, quick, badges: badgesProp }: DockAreaProps) {
 
   // ------------------------------------------------------------------ divider drags
   // Sizes change on every pointer move of a divider drag. They reach the store once the drag ends, so
-  // the workspace does not render on every move; a keyboard resize has no drag and goes straight in.
+  // the workspace does not render on every move, as one Undo step. Key presses on a divider go straight
+  // in, a run of them on one divider one step: the run ends when the divider loses the focus. Sizes a
+  // panel group fits by itself (to new minimums, when the window is resized) come with no step and
+  // cannot be undone.
   const resizing = useRef(false);
+  const drags = useRef(0);
+  const keyedHandle = useRef<string | null>(null);
+  const keyRuns = useRef(0);
   const pending = useRef<{ columns: number[] | null; cells: Map<string, number[]> }>({ columns: null, cells: new Map() });
   const onColumns = useCallback((sizes: number[]) => {
     if (resizing.current) pending.current.columns = sizes;
-    else useWorkspaceStore.getState().setColumnSizes(sizes);
+    else useWorkspaceStore.getState().setColumnSizes(sizes, keyStep(keyedHandle.current, keyRuns.current));
   }, []);
   const onCells = useCallback((columnId: string, sizes: number[]) => {
     if (resizing.current) pending.current.cells.set(columnId, sizes);
-    else useWorkspaceStore.getState().setCellSizes(columnId, sizes);
+    else useWorkspaceStore.getState().setCellSizes(columnId, sizes, keyStep(keyedHandle.current, keyRuns.current));
+  }, []);
+  // A divider resizes on a key press in its own keydown listener, which reports the sizes before the
+  // event is done. This capture runs ahead of it, so the report knows which divider the key was on.
+  const trackKeyResize = useCallback((e: React.KeyboardEvent) => {
+    if (!RESIZE_KEYS.has(e.key)) return;
+    const handle = (e.target as Element).closest('[data-panel-resize-handle-id]');
+    if (!handle) return;
+    keyedHandle.current = handle.getAttribute('data-panel-resize-handle-id');
+    setTimeout(() => { keyedHandle.current = null; }, 0);
+  }, []);
+  const endKeyRun = useCallback((e: React.FocusEvent) => {
+    if ((e.target as Element).closest('[data-panel-resize-handle-id]')) keyRuns.current++;
   }, []);
   const endResize = useRef(() => {});
   endResize.current = () => {
@@ -218,8 +242,11 @@ export function DockArea({ panels, quick, badges: badgesProp }: DockAreaProps) {
     const { columns, cells } = pending.current;
     pending.current = { columns: null, cells: new Map() };
     const store = useWorkspaceStore.getState();
-    if (columns) store.setColumnSizes(columns);
-    for (const [id, sizes] of cells) store.setCellSizes(id, sizes);
+    const step = `drag-${++drags.current}`;
+    if (columns) store.setColumnSizes(columns, step);
+    for (const [id, sizes] of cells) store.setCellSizes(id, sizes, step);
+    // A divider press takes no focus, so Ctrl/Cmd+Z would miss a drag begun with focus nowhere.
+    keepWorkspaceFocus();
   };
   // The drag ends on the first release anywhere, whether or not the splitter hears it: left on, the
   // panels would stay unable to take a click.
@@ -370,8 +397,7 @@ export function DockArea({ panels, quick, badges: badgesProp }: DockAreaProps) {
     if (!at) return;
     const store = useWorkspaceStore.getState();
     store.setPanelHint(null);
-    // The last change's toast sits at the foot of the workspace, over where drops land. Ctrl+Z still
-    // takes that change back.
+    // A command's "could not" toast sits at the foot of the workspace, over where drops land.
     toast.dismiss(LAYOUT_TOAST_ID);
     const { m, pad } = measureArea(area, base);
     m.gaps = m.gaps.map((g) => {
@@ -558,7 +584,7 @@ export function DockArea({ panels, quick, badges: badgesProp }: DockAreaProps) {
     const target = splitRightTarget(base, key)!;
     const next = movePanel(base, { panel: key }, target, box(), { recent: store.recentPanels });
     const refusal = next ? checkLayout(next, box()) : null;
-    if (next && !refusal) commands.move({ panel: key }, target, t('toast.movedToColumn', { panel: titles[key] }));
+    if (next && !refusal) commands.move({ panel: key }, target);
     else commands.say(refusal ? text.refusal(refusal) : t('toast.alreadyOwnColumn', { panel: titles[key] }));
   };
 
@@ -575,6 +601,9 @@ export function DockArea({ panels, quick, badges: badgesProp }: DockAreaProps) {
       } else if (action === 'undo') {
         e.preventDefault();
         commands.undo();
+      } else if (action === 'redo') {
+        e.preventDefault();
+        commands.redo();
       } else if (action === 'split-right') {
         e.preventDefault();
         splitRightCurrent.current();
@@ -721,6 +750,8 @@ export function DockArea({ panels, quick, badges: badgesProp }: DockAreaProps) {
       data-tour-id="workspace-panels"
       data-dock-area=""
       onPointerDownCapture={quick ? undefined : trackCell}
+      onKeyDownCapture={quick ? undefined : trackKeyResize}
+      onBlurCapture={quick ? undefined : endKeyRun}
     >
       <ResizablePanelGroup
         key={groupKey}

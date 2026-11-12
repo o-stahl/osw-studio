@@ -67,6 +67,7 @@
       "cancel": "Peruuta",
       "import": "Tuo",
       "edit": "Muokkaa",
+      "view": "Näytä",
       "publish": "Julkaise",
       "republish": "Julkaise uudelleen",
       "unpublish": "Poista julkaisu",
@@ -229,6 +230,8 @@
     "unpublishedName": "”{name}” poistettu julkaisusta",
     "publishedHeader": "Julkaistu",
     "seoConfigured": "SEO määritetty",
+    "scriptCount": "{count, plural, one {# skripti} other {# skriptiä}}",
+    "cdnCount": "{count, plural, one {# CDN-resurssi} other {# CDN-resurssia}}",
     "editDeployment": "Muokkaa julkaisua",
     "viewAnalytics": "Näytä analytiikka",
     "exportAsTemplate": "Vie julkaisupohjaksi",
@@ -390,7 +393,7 @@
         "stacked": "Pinottu",
         "tabbed": "Välilehdet",
         "reset": "Palauta oletusasettelu",
-        "tip": "Asettelu: järjestä kaikki paneelit kerralla"
+        "tip": "Asettelu: kumoa tai tee muutos uudelleen, tai järjestä kaikki paneelit kerralla"
       },
       "refusal": {
         "width": "Tarvitsee {px} px leveyttä",
@@ -416,22 +419,9 @@
         "openBelow": "Avautuu alapuolelle: {panel}"
       },
       "toast": {
-        "opened": "{panel} avattu",
-        "closed": "{panel} suljettu",
-        "groupClosed": "{panel} ja {count} muuta suljettu",
-        "moved": "{panel} siirretty",
-        "groupMoved": "{panel} ja {count} muuta siirretty",
-        "movedToColumn": "{panel} siirretty uuteen sarakkeeseen",
-        "splitBelow": "{panel} jaettu alas",
-        "addedTo": "{panel} lisätty välilehdeksi: {target}",
-        "preset": "Asettelu: {name}",
-        "reset": "Asettelu palautettu",
-        "ungrouped": "Ryhmä purettu",
         "ungroupedPartly": "Ryhmä purettu; {count, plural, one {# paneeli jäi} other {# paneelia jäi}} välilehdeksi, tila ei riittänyt",
         "ungroupNoRoom": "Tila ei riitä ryhmän purkamiseen",
-        "nothingToUndo": "Ei kumottavaa",
-        "alreadyOwnColumn": "{panel} on jo omassa sarakkeessaan",
-        "undo": "Kumoa"
+        "alreadyOwnColumn": "{panel} on jo omassa sarakkeessaan"
       }
     },
     "tips": {
@@ -515,6 +505,8 @@
     "editor": {
       "createTitle": "Luo uusi skilli",
       "editTitle": "Muokkaa skilliä",
+      "viewTitle": "Skillin tiedot",
+      "viewSubtitle": "Sisäänrakennetut skillit tulevat OSW Studion mukana, eikä niitä voi muuttaa",
       "subtitle": "Määritä erikoisosaamista tekoälyavustajalle",
       "saveSkill": "Tallenna skilli",
       "formEditor": "Lomake-editori",
@@ -2819,6 +2811,14 @@
     "helperExample": "Esimerkki: käyttö edge-funktiossa",
     "loadLogsFailed": "Lokien lataus epäonnistui",
     "clearLogsFailed": "Lokien tyhjennys epäonnistui",
+    "logLevelLabel": "Mitä kirjataan",
+    "logLevel": {
+      "all": "Jokainen kutsu",
+      "errors": "Epäonnistuneet",
+      "off": "Ei mitään"
+    },
+    "logsKept": "Säilyttää viimeisimmät {count, number} kutsua",
+    "saveLogLevelFailed": "Kirjauksen muuttaminen epäonnistui",
     "logsHint": "Lokit näkyvät tässä, kun funktioita kutsutaan",
     "confirmDeleteSchedule": "Poistetaanko ajastettu funktio \"{name}\"? Tätä ei voi perua.",
     "lastRun": "Viimeksi: {status, select, success {onnistui} other {virhe}}",
@@ -2826,8 +2826,6 @@
     "rowCount": "{count, plural, one {# rivi} other {# riviä}}",
     "applyDdlFailed": "DDL:n soveltaminen epäonnistui",
     "tablesTab": "Taulut",
-    "serverSettingsTitle": "Palvelinasetukset",
-    "serverSettingsDesc": "Hallitse julkaisun {name} tietokantaa, edge-funktioita ja salaisuuksia",
     "suggestionsHint": "Näytetään chat-kentän yläpuolella ennen ensimmäistä viestiä. Ensimmäiset {count} näkyvät rivillä; loput ovat valikon takana. Jos mitään ei ole asetettu, käytetään yleisiä aloituksia.",
     "validation": {
       "functionNameRequired": "Funktion nimi on pakollinen",
@@ -2880,6 +2878,11 @@
       "refreshLogs": "Lataa uusimmat 200 merkintää uudelleen",
       "clearLogs": "Poista kaikki tämän julkaisun lokimerkinnät",
       "noLogs": "Ei tyhjennettäviä lokeja",
+      "logAll": "Kirjaa jokainen kutsu",
+      "logErrors": "Kirjaa vain epäonnistuneet kutsut",
+      "logOff": "Älä kirjaa mitään, ja pidä epäonnistuneiden kutsujen konsolituloste pois palvelimen lokista",
+      "showError": "Näytä virhe",
+      "hideError": "Piilota virhe",
       "projectTables": "Projektin tietokannan taulut ja sarakkeet",
       "projectSql": "Suorita SQL-kyselyitä projektin tietokannassa",
       "projectDdl": "Luo tai muuta tauluja ja lisää ne skeemaan, jonka tekoäly lukee",

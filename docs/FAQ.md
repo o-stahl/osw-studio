@@ -301,7 +301,7 @@ SESSION_SECRET=...
 Yes! **Scheduled Functions** let you run edge functions on a cron schedule. Use them for database cleanup, report generation, API syncing, or any recurring task.
 
 1. Create an edge function with the logic you want to run
-2. Go to **Server Settings → Schedules**
+2. Open **Schedules** in Project Settings (or under **Backend** on a deployment's page)
 3. Create a schedule with a cron expression (e.g., `0 8 * * *` for daily at 8am)
 4. Link it to your edge function and optionally pass config data
 

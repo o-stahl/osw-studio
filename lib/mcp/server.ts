@@ -747,7 +747,7 @@ export function createOswMcpServer(principal: McpPrincipal, instance?: { origin?
     });
   });
 
-  tool('deployments_sql', 'Run SQL against a deployment\'s runtime database (tables used by edge functions). Needs deploy. One statement. SELECT is allowed on any table; writes to the system tables (site_info, files, edge_functions, server_functions, secrets, scheduled_functions, function_logs, file_tree_nodes) are refused, as are PRAGMA, ATTACH, DETACH and VACUUM.', {
+  tool('deployments_sql', 'Run SQL against a deployment\'s runtime database (tables used by edge functions). Needs deploy. One statement. SELECT is allowed on any table; writes to the system tables (site_info, files, edge_functions, server_functions, secrets, scheduled_functions, function_logs, osws_runtime_settings, file_tree_nodes) are refused, as are PRAGMA, ATTACH, DETACH and VACUUM.', {
     workspaceId: ws, deploymentId: z.string().describe('Deployment id'),
     sql: z.string().min(1).describe('One SQL statement'),
   }, async ({ workspaceId, deploymentId, sql }) => {

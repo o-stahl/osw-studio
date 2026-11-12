@@ -1,15 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { useLocalFormat } from '@/lib/i18n/use-local-format';
-import { FunctionLog } from '@/lib/vfs/types';
+import { FunctionLog, FUNCTION_LOG_LEVELS, type FunctionLogLevel } from '@/lib/vfs/types';
 import {
   Loader2, AlertCircle, RefreshCw, Trash2, CheckCircle2, XCircle,
-  Clock, ArrowRight
+  Clock, ArrowRight, ChevronRight, ChevronDown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api/backend-status';
@@ -31,6 +32,14 @@ export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
   const [logs, setLogs] = useState<EnrichedLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [level, setLevel] = useState<FunctionLogLevel | null>(null);
+  const [cap, setCap] = useState<number | null>(null);
+  const [opened, setOpened] = useState<ReadonlySet<number>>(new Set());
+  const levelTips: Record<FunctionLogLevel, string> = {
+    all: t('tips.logAll'),
+    errors: t('tips.logErrors'),
+    off: t('tips.logOff'),
+  };
 
   useEffect(() => {
     loadLogs();
@@ -47,6 +56,8 @@ export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
       }
       const data = await res.json();
       setLogs(data.logs);
+      setLevel(data.level ?? null);
+      setCap(typeof data.cap === 'number' ? data.cap : null);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('loadLogsFailed'));
     } finally {
@@ -67,6 +78,38 @@ export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
       console.error('Failed to clear logs:', err);
       toast.error(err instanceof Error ? err.message : t('clearLogsFailed'));
     }
+  };
+
+  // Saved at once: the invocation route reads the level on every call. One change at a time, so a
+  // refused change puts back the level the server still has.
+  const savingLevel = useRef(false);
+  const changeLevel = async (next: FunctionLogLevel) => {
+    if (savingLevel.current) return;
+    savingLevel.current = true;
+    const previous = level;
+    setLevel(next);
+    try {
+      const res = await apiFetch(`${apiBase}/admin/deployments/${deploymentId}/database/logs`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ level: next }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || t('saveLogLevelFailed'));
+    } catch (err) {
+      setLevel(previous);
+      toast.error(err instanceof Error ? err.message : t('saveLogLevelFailed'));
+    } finally {
+      savingLevel.current = false;
+    }
+  };
+
+  const toggleOpened = (id: number) => {
+    setOpened((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const formatDate = (date: Date | string) => dateTime(date, { dateStyle: 'short', timeStyle: 'medium' });
@@ -93,9 +136,25 @@ export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
         <h3 className="text-sm font-medium">{t('executionLogs')}</h3>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {level && (
+            <ToggleGroup
+              type="single"
+              value={level}
+              onValueChange={(value) => value && value !== level && void changeLevel(value as FunctionLogLevel)}
+              aria-label={t('logLevelLabel')}
+            >
+              {FUNCTION_LOG_LEVELS.map((option) => (
+                <Tip key={option} label={levelTips[option]} wrap>
+                  <ToggleGroupItem value={option} size="sm" className="text-xs">
+                    {t(`logLevel.${option}`)}
+                  </ToggleGroupItem>
+                </Tip>
+              ))}
+            </ToggleGroup>
+          )}
           <Tip label={t('tips.refreshLogs')}>
             <Button variant="ghost" size="sm" onClick={loadLogs}>
               <RefreshCw className="h-4 w-4 mr-1" />
@@ -117,6 +176,8 @@ export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
         </div>
       </div>
 
+      <p className="text-xs text-muted-foreground mb-3">{cap !== null ? t('logsKept', { count: cap }) : '\u00a0'}</p>
+
       <div className="flex-1 overflow-auto border rounded-lg">
         {logs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center">
@@ -130,6 +191,7 @@ export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-muted">
               <tr>
+                <th className="w-8 p-3" aria-hidden />
                 <th className="text-left p-3 font-medium">{t('status')}</th>
                 <th className="text-left p-3 font-medium">{t('function')}</th>
                 <th className="text-left p-3 font-medium">{t('method')}</th>
@@ -140,7 +202,24 @@ export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
             </thead>
             <tbody>
               {logs.map(log => (
-                <tr key={log.id} className="border-t hover:bg-muted/30">
+                <React.Fragment key={log.id}>
+                <tr className="border-t hover:bg-muted/30">
+                  <td className="p-3 pr-0 align-middle">
+                    {log.error && (
+                      <Tip label={opened.has(log.id) ? t('tips.hideError') : t('tips.showError')}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          aria-expanded={opened.has(log.id)}
+                          aria-label={opened.has(log.id) ? t('tips.hideError') : t('tips.showError')}
+                          onClick={() => toggleOpened(log.id)}
+                        >
+                          {opened.has(log.id) ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                        </Button>
+                      </Tip>
+                    )}
+                  </td>
                   <td className="p-3">
                     {log.statusCode >= 200 && log.statusCode < 300 ? (
                       <CheckCircle2 className="h-4 w-4 text-green-500" />
@@ -175,6 +254,15 @@ export function LogsViewer({ deploymentId, workspaceId }: LogsViewerProps) {
                     {formatDate(log.timestamp)}
                   </td>
                 </tr>
+                {log.error && opened.has(log.id) && (
+                  <tr className="bg-muted/20">
+                    <td />
+                    <td colSpan={6} className="px-3 pb-3 pt-0">
+                      <pre className="whitespace-pre-wrap break-words font-mono text-xs text-destructive">{log.error}</pre>
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>

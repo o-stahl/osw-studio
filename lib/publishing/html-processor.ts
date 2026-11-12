@@ -1,6 +1,6 @@
-import { PublishSettings } from '../vfs/types';
+import { AnalyticsConfig, PublishSettings } from '../vfs/types';
 import { generateTrackingScript } from '../analytics/tracking-script';
-import { generateConsentBanner } from './consent-banner';
+import { generateConsentBanner, generateConsentState } from './consent-banner';
 import { generateReviewWidget, REVIEW_WIDGET_MARKER } from './review-widget';
 import { escapeHtml } from './escape-html';
 import { pageAddress } from './seo-generator';
@@ -46,7 +46,7 @@ export function processHtml(html: string, options: HtmlProcessingOptions): strin
   // 5. Inject body scripts before </body>
   processed = injectBodyScripts(processed, publishSettings);
 
-  // 6. Inject analytics tracking (if enabled and builtin)
+  // 6. Inject analytics: the built-in tracker, or a third-party provider's tag
   processed = injectAnalytics(processed, deploymentId, publishSettings);
 
   // 7. Inject compliance banner (if enabled)
@@ -314,15 +314,30 @@ function injectIntoHead(html: string, content: string): string {
 }
 
 /**
- * Inject analytics tracking script (if enabled and provider is builtin)
+ * Inject analytics: the built-in tracker before </body>, or a third-party provider's tag in <head>.
+ *
+ * Where the compliance settings block analytics until the visitor agrees, the visitor's answer is
+ * read in <head> first (generateConsentState), and each of these loads only when it is not blocked.
  */
 function injectAnalytics(html: string, deploymentId: string, settings: PublishSettings): string {
-  if (!settings.analytics.enabled || settings.analytics.provider !== 'builtin') {
+  const { analytics, compliance } = settings;
+  if (!analytics.enabled) {
     return html;
   }
 
+  const gated = compliance.enabled && compliance.blockAnalytics;
+  const consentState = gated ? generateConsentState(deploymentId, compliance.mode) + '\n' : '';
+
+  if (analytics.provider !== 'builtin') {
+    const tag = thirdPartyAnalytics(analytics, gated);
+    return tag ? injectIntoHead(html, consentState + tag) : html;
+  }
+
+  if (consentState) {
+    html = injectIntoHead(html, consentState);
+  }
+
   // Get analytics config with token and features
-  const { analytics } = settings;
   const trackingOptions = {
     deploymentId: deploymentId,
     token: analytics.token,
@@ -337,7 +352,7 @@ function injectAnalytics(html: string, deploymentId: string, settings: PublishSe
   };
 
   // If compliance is enabled and blocks analytics, wrap in consent check
-  if (settings.compliance.enabled && settings.compliance.blockAnalytics) {
+  if (gated) {
     const wrappedScript = `
 <script>
 if (!window.oswAnalyticsBlocked) {
@@ -352,6 +367,93 @@ if (!window.oswAnalyticsBlocked) {
   // Otherwise, inject directly
   const trackingScript = generateTrackingScript(trackingOptions);
   return injectBeforeBodyClose(html, trackingScript);
+}
+
+/** A JavaScript string literal of `value`, which cannot end the script element it is written into. */
+function jsString(value: string): string {
+  return JSON.stringify(value).replace(/</g, '\\u003c');
+}
+
+/**
+ * The <head> tag for a third-party analytics provider, or '' without the id it needs. Each adds its
+ * provider's script element itself, so that where `gated` it can first check the consent block.
+ */
+function thirdPartyAnalytics(analytics: AnalyticsConfig, gated: boolean): string {
+  if (analytics.provider === 'custom') {
+    return customAnalytics(analytics.customScript ?? '', gated);
+  }
+
+  const id = analytics.trackingId?.trim();
+  if (!id) {
+    return '';
+  }
+
+  let load: string;
+  switch (analytics.provider) {
+    case 'gtm':
+      load = `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s);j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+encodeURIComponent(i);f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer',${jsString(id)});`;
+      break;
+    case 'ga4':
+      load = `var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id='+encodeURIComponent(${jsString(id)});document.head.appendChild(s);window.dataLayer=window.dataLayer||[];window.gtag=function(){window.dataLayer.push(arguments);};window.gtag('js',new Date());window.gtag('config',${jsString(id)});`;
+      break;
+    case 'plausible':
+      load = `var s=document.createElement('script');s.defer=true;s.setAttribute('data-domain',${jsString(id)});s.src='https://plausible.io/js/script.js';document.head.appendChild(s);`;
+      break;
+    default:
+      return '';
+  }
+
+  return `<script>
+(function() {
+  ${gated ? 'if (window.oswAnalyticsBlocked) return;\n  ' : ''}${load}
+})();
+</script>`;
+}
+
+/**
+ * A custom analytics snippet: in <head> as written, or where `gated`, held in a template until a
+ * loader finds no consent block. The loader makes each script element again, since one copied out of
+ * a template does not run, and waits for an external script before the next, as the parser would.
+ */
+function customAnalytics(snippet: string, gated: boolean): string {
+  if (!snippet.trim()) {
+    return '';
+  }
+  if (!gated) {
+    return snippet;
+  }
+
+  return `<template id="osw-analytics-custom">${snippet}</template>
+<script>
+(function() {
+  if (window.oswAnalyticsBlocked) return;
+  var template = document.getElementById('osw-analytics-custom');
+  if (!template) return;
+  var nodes = Array.prototype.slice.call(template.content.cloneNode(true).childNodes);
+  function next() {
+    var node = nodes.shift();
+    if (!node) return;
+    if (node.nodeName !== 'SCRIPT') {
+      document.head.appendChild(node);
+      next();
+      return;
+    }
+    var script = document.createElement('script');
+    for (var i = 0; i < node.attributes.length; i++) {
+      script.setAttribute(node.attributes[i].name, node.attributes[i].value);
+    }
+    script.text = node.text;
+    if (node.hasAttribute('src') && !node.hasAttribute('async') && !node.hasAttribute('defer')) {
+      script.onload = script.onerror = next;
+      document.head.appendChild(script);
+    } else {
+      document.head.appendChild(script);
+      next();
+    }
+  }
+  next();
+})();
+</script>`;
 }
 
 /**

@@ -35,6 +35,9 @@ let root: Root;
 
 beforeEach(() => {
   (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  // Radix's popper (menus, tooltips) measures with a ResizeObserver, which jsdom lacks; without one, a
+  // popup that measures itself fails whichever test is running at the time.
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   studio = true;
   refresh.mockClear();
   setLocale.mockReset().mockResolvedValue(undefined);
@@ -48,6 +51,7 @@ afterEach(() => {
   container.remove();
   document.body.innerHTML = '';
   localStorage.removeItem('osw-admin-sidebar-pinned');
+  vi.unstubAllGlobals();
 });
 
 async function render(handlers: { onStartTour?: () => void; onOpenAbout?: () => void } = {}) {

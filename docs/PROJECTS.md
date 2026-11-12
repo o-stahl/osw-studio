@@ -56,8 +56,8 @@ The workspace shows its panels in columns. Panels can share a place as tabs, or 
 
 - **Open and close panels** from the rail on the left. A closed panel opens where it was before. The first time, it joins a related panel (File Explorer, Skills and Inspector; Console, Debug Events and Checkpoints) or takes a new column, up to three columns; after that it opens as a tab. Opening a panel never closes another. A panel behind another tab comes to the front.
 - **Drag a panel by its title or tab.** Drop it on another panel's header or middle to make a tab, near its top or bottom to stack it, or on a bar between panels to make a new column. The grip (⋮⋮) of a tab group moves the whole group. A drop that doesn't fit says why.
-- **Right-click a title or tab** for the same moves as commands: Split right (Ctrl+\\), Split below, Move to new column, Add as tab to, Maximize, Ungroup all, Close and Close group. The **Layout** button at the bottom of the rail has preset layouts and Reset layout.
-- **Undo** a change from the toast that follows it, or with Ctrl+Z (⌘Z on a Mac) while the workspace has focus. In the code editor, the chat or a text field, the key keeps its usual meaning.
+- **Right-click a title or tab** for the same moves as commands: Split right (Ctrl+\\), Split below, Move to new column, Add as tab to, Maximize, Ungroup all, Close and Close group. The **Layout** button at the bottom of the rail has Undo, Redo, preset layouts and Reset layout.
+- **Undo and redo** layout changes, divider drags and arrow-key resizes included, from the Layout button or with Ctrl+Z and Ctrl+Shift+Z (⌘Z and ⇧⌘Z on a Mac; Ctrl+Y also redoes on Windows and Linux) while the workspace has focus. In the code editor, the chat or a text field, the keys keep their usual meaning.
 - **Maximize** a panel by double-clicking its title or tab. Double-click again, use the restore button or press Esc to bring the layout back.
 - When a header runs out of room, its buttons move into a ⋯ menu.
 - In a narrow window, the rightmost columns show as tabs until the window is wide enough again. Your layout is kept.

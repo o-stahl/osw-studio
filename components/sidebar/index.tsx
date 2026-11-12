@@ -1095,6 +1095,11 @@ export const STUDIO_ONLY_VIEWS: readonly string[] = SIDEBAR_ITEMS
   .filter((item) => item.studioOnly && item.path && !item.path.startsWith('/'))
   .map((item) => item.path as string);
 
+/** The Settings panes the simple view's menu leaves out, from the same table as the menu. */
+export const STUDIO_ONLY_SETTINGS: readonly string[] = (SIDEBAR_ITEMS.find((item) => item.id === 'settings')?.subItems ?? [])
+  .filter((item) => item.studioOnly)
+  .map((item) => item.id);
+
 export function Sidebar(props: SidebarProps) {
   return (
     <Suspense fallback={<div className="w-full h-full bg-card" />}>

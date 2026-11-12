@@ -31,6 +31,8 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
   const [rawContent, setRawContent] = useState('');
   const [activeTab, setActiveTab] = useState<'form' | 'raw'>('form');
   const [saving, setSaving] = useState(false);
+  // Built-in skills ship with the app and are read, not edited: the service only saves custom ones.
+  const readOnly = !!skill?.isBuiltIn;
 
   useEffect(() => {
     if (skill) {
@@ -100,7 +102,7 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
   };
 
   useEffect(() => {
-    if (activeTab === 'form') {
+    if (activeTab === 'form' && !readOnly) {
       handleFormChange();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -112,28 +114,30 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
       <div className="border-b px-6 py-4 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Tip label={t('tips.close')} side="bottom">
-              <Button variant="ghost" size="sm" onClick={onCancel} aria-label={t('tips.close')}>
+            <Tip label={readOnly ? tc('actions.close') : t('tips.close')} side="bottom">
+              <Button variant="ghost" size="sm" onClick={onCancel} aria-label={readOnly ? tc('actions.close') : t('tips.close')}>
                 <ArrowLeft className="w-4 h-4" />
               </Button>
             </Tip>
             <div>
               <h1 className="text-2xl font-bold">
-                {mode === 'create' ? te('createTitle') : te('editTitle')}
+                {mode === 'create' ? te('createTitle') : readOnly ? te('viewTitle') : te('editTitle')}
               </h1>
               <p className="text-sm text-muted-foreground">
-                {te('subtitle')}
+                {readOnly ? te('viewSubtitle') : te('subtitle')}
               </p>
             </div>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={onCancel}>
-              {tc('actions.cancel')}
+              {readOnly ? tc('actions.close') : tc('actions.cancel')}
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              <Save className="w-4 h-4 mr-2" />
-              {saving ? tc('actions.saving') : te('saveSkill')}
-            </Button>
+            {!readOnly && (
+              <Button onClick={handleSave} disabled={saving}>
+                <Save className="w-4 h-4 mr-2" />
+                {saving ? tc('actions.saving') : te('saveSkill')}
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -142,7 +146,7 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
       <div className="flex-1 flex flex-col overflow-auto">
         <div className="border-b px-6 shrink-0">
           <div className="flex gap-2">
-            <Tip label={t('tips.formEditor')}>
+            <Tip label={readOnly ? undefined : t('tips.formEditor')}>
               <button
                 onClick={() => setActiveTab('form')}
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -154,7 +158,7 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
                 {te('formEditor')}
               </button>
             </Tip>
-            <Tip label={te('rawHelp')}>
+            <Tip label={readOnly ? undefined : te('rawHelp')}>
               <button
                 onClick={() => setActiveTab('raw')}
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -179,11 +183,12 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
                   placeholder={te('namePlaceholder')}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  readOnly={readOnly}
                   className="mt-1.5"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
+                {!readOnly && <p className="text-xs text-muted-foreground mt-1">
                   {te('nameHelp')}
-                </p>
+                </p>}
               </div>
 
               <div>
@@ -193,11 +198,12 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
                   placeholder={t('descriptionPlaceholder')}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
+                  readOnly={readOnly}
                   className="mt-1.5"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
+                {!readOnly && <p className="text-xs text-muted-foreground mt-1">
                   {te('descHelp')}
-                </p>
+                </p>}
               </div>
 
               <div>
@@ -207,6 +213,7 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
                   placeholder={te('contentPlaceholder')}
                   value={markdown}
                   onChange={(e) => setMarkdown(e.target.value)}
+                  readOnly={readOnly}
                   className="mt-1.5 font-mono text-sm min-h-[400px]"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
@@ -214,7 +221,7 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
                 </p>
               </div>
 
-              <div className="bg-muted/50 rounded-lg p-4">
+              {!readOnly && <div className="bg-muted/50 rounded-lg p-4">
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
                   <FileText className="w-4 h-4" />
                   {te('tipsTitle')}
@@ -226,7 +233,7 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
                   <li>{t('tipPractical')}</li>
                   <li>{t('tipConcise')}</li>
                 </ul>
-              </div>
+              </div>}
             </div>
           </div>
         )}
@@ -240,12 +247,13 @@ export function SkillEditor({ skill, mode, onSave, onCancel }: SkillEditorProps)
                   id="raw-content"
                   value={rawContent}
                   onChange={(e) => handleRawChange(e.target.value)}
+                  readOnly={readOnly}
                   className="mt-1.5 font-mono text-sm min-h-[600px]"
                   spellCheck={false}
                 />
-                <p className="text-xs text-muted-foreground mt-1">
+                {!readOnly && <p className="text-xs text-muted-foreground mt-1">
                   {te('rawHelp')}
-                </p>
+                </p>}
               </div>
             </div>
           </div>

@@ -15,7 +15,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { v4 as uuidv4 } from 'uuid';
-import { FileTreeNode, Deployment, EdgeFunction, FunctionLog, TableInfo, ServerFunction, Secret, ScheduledFunction } from '../types';
+import { FileTreeNode, Deployment, EdgeFunction, FunctionLog, FunctionLogLevel, FUNCTION_LOG_LEVELS, TableInfo, ServerFunction, Secret, ScheduledFunction } from '../types';
 import { encryptSecret, isEncryptionConfigured } from '../../edge-functions/secrets-crypto';
 import { getRuntimeDatabaseConnection, closeRuntimeDatabase } from './sqlite-connection';
 
@@ -55,6 +55,9 @@ function parseDate(value: string | null | undefined): Date {
   if (!value) return new Date();
   return new Date(value);
 }
+
+/** How many calls a deployment's function logs keep: each write drops the calls older than these. */
+export const FUNCTION_LOG_CAP = 1000;
 
 /**
  * Per-deployment runtime database manager
@@ -225,6 +228,16 @@ export class RuntimeDatabase {
 
     this.db.exec(`CREATE INDEX IF NOT EXISTS idx_scheduled_functions_name ON scheduled_functions(name)`);
     this.db.exec(`CREATE INDEX IF NOT EXISTS idx_scheduled_functions_next_run ON scheduled_functions(next_run_at)`);
+
+    // The deployment's own runtime settings (the function log level). A new table rather than a
+    // column: this database has no migrations, and CREATE TABLE IF NOT EXISTS reaches existing ones.
+    // The prefix keeps a name a site might give its own table free, since the site's tables live here too.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS osws_runtime_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    `);
 
     this.initialized = true;
   }
@@ -508,6 +521,7 @@ export class RuntimeDatabase {
   // Edge Functions: Logging
   // ============================================
 
+  /** Writes a call as the log level allows, then drops the calls past `FUNCTION_LOG_CAP`. */
   logFunctionExecution(functionId: string, data: {
     method: string;
     path: string;
@@ -515,12 +529,15 @@ export class RuntimeDatabase {
     durationMs: number;
     error?: string;
   }): void {
+    const level = this.getFunctionLogLevel();
+    if (level === 'off' || (level === 'errors' && !data.error && data.statusCode < 400)) return;
+
     const stmt = this.db.prepare(`
       INSERT INTO function_logs (function_id, method, path, status_code, duration_ms, error)
       VALUES (?, ?, ?, ?, ?, ?)
     `);
 
-    stmt.run(
+    const { lastInsertRowid } = stmt.run(
       functionId,
       data.method,
       data.path,
@@ -528,6 +545,18 @@ export class RuntimeDatabase {
       data.durationMs,
       data.error ?? null
     );
+    // Ids only grow, so the newest calls are the highest ids.
+    this.db.prepare('DELETE FROM function_logs WHERE id <= ?').run(Number(lastInsertRowid) - FUNCTION_LOG_CAP);
+  }
+
+  /** Which calls `logFunctionExecution` writes; every call until set. */
+  getFunctionLogLevel(): FunctionLogLevel {
+    const row = this.db.prepare(`SELECT value FROM osws_runtime_settings WHERE key = 'function_log_level'`).get() as { value: string } | undefined;
+    return FUNCTION_LOG_LEVELS.find((level) => level === row?.value) ?? 'all';
+  }
+
+  setFunctionLogLevel(level: FunctionLogLevel): void {
+    this.db.prepare(`INSERT OR REPLACE INTO osws_runtime_settings (key, value) VALUES ('function_log_level', ?)`).run(level);
   }
 
   getFunctionLogs(functionId: string, limit: number = 100): FunctionLog[] {
@@ -897,6 +926,7 @@ export class RuntimeDatabase {
     'server_functions',
     'secrets',
     'scheduled_functions',
+    'osws_runtime_settings',
   ];
 
   private static readonly BLOCKED_PATTERNS = /^\s*(ATTACH|DETACH|PRAGMA|VACUUM)\b/i;

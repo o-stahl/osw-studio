@@ -40,7 +40,7 @@ const HISTORY_MAX = 40;
 
 type LastPlaces = Partial<Record<PanelKey, LastPlace>>;
 
-/** What an Undo puts back. */
+/** What an Undo or a Redo puts back. */
 interface LayoutSnapshot {
   layout: WorkspaceLayout;
   lastPlace: LastPlaces;
@@ -86,6 +86,8 @@ export interface LayoutSlice {
   maximizedCell: string | null;
   /** The layouts Undo goes back to, oldest first. This session only. */
   layoutHistory: LayoutSnapshot[];
+  /** The layouts Redo brings back, the next one last. Filled by Undo, emptied by any other change. */
+  layoutFuture: LayoutSnapshot[];
   /**
    * The panel area's size in pixels, reported by the workspace. Opening a column works out its width
    * in pixels, so that no column is squeezed under its minimum while another has room to give.
@@ -137,12 +139,19 @@ export interface LayoutSlice {
   ungroupCell: (cellId: string) => { stayed: PanelKey[] } | null;
   /** False when there is nothing to undo. */
   undoLayout: () => boolean;
+  /** False when there is nothing to redo. */
+  redoLayout: () => boolean;
   /** Maximizes a cell, or restores the layout when it is the maximized one or null. */
   toggleMaximize: (cellId: string | null) => void;
-  /** The column widths in percent, as the panel group reports them after a resize. */
-  setColumnSizes: (sizes: number[]) => void;
-  /** A column's cell heights in percent, as its panel group reports them after a resize. */
-  setCellSizes: (columnId: string, sizes: number[]) => void;
+  /**
+   * The column widths in percent, as the panel group reports them after a resize. A resize someone
+   * made has a `step`, one per drag or per run of key presses on a divider: its first change goes on
+   * the Undo stack and the rest join it. Without one (the group fitting its sizes to new minimums by
+   * itself), the change is not undoable.
+   */
+  setColumnSizes: (sizes: number[], step?: string) => void;
+  /** A column's cell heights in percent, as its panel group reports them after a resize; `step` as above. */
+  setCellSizes: (columnId: string, sizes: number[], step?: string) => void;
   setWorkspaceBox: (box: Box) => void;
   setPanelHint: (hint: PanelHint | null) => void;
   dismissLayoutHint: () => void;
@@ -265,6 +274,10 @@ const readHintDone = () => {
   try { return localStorage.getItem(HINT_KEY) === '1'; } catch { return false; }
 };
 
+/** What Undo or Redo puts back: the layout with the closed panels' places and the recent order. */
+const snapshotOf = (s: Pick<LayoutSlice, 'layout' | 'lastPlace' | 'recentPanels'>): LayoutSnapshot =>
+  ({ layout: s.layout, lastPlace: s.lastPlace, recentPanels: s.recentPanels });
+
 const changed = (sizes: number[], items: { size: number }[]) =>
   sizes.length === items.length && sizes.some((size, i) => Math.abs(size - items[i].size) > 0.05);
 
@@ -281,14 +294,16 @@ export const createLayoutSlice: StateCreator<LayoutSlice> = (set, get) => {
   const initial = load();
   const box = () => get().workspaceBox ?? FALLBACK_BOX;
 
+  /** The resize step whose first change is the last one on the Undo stack; any other change ends it. */
+  let resizeStep: string | null = null;
+
   const commit = (next: WorkspaceLayout, opts: CommitOptions = {}) => {
     if (sizeTimer) { clearTimeout(sizeTimer); sizeTimer = null; }
+    resizeStep = null;
     const s = get();
     const lastPlace = opts.lastPlace ?? s.lastPlace;
     const recentPanels = opts.recentPanels ?? s.recentPanels;
-    const history = opts.undoable
-      ? [...s.layoutHistory, { layout: s.layout, lastPlace: s.lastPlace, recentPanels: s.recentPanels }].slice(-HISTORY_MAX)
-      : s.layoutHistory;
+    const history = opts.undoable ? [...s.layoutHistory, snapshotOf(s)].slice(-HISTORY_MAX) : s.layoutHistory;
     const keepMax = opts.keepMax && s.maximizedCell && findCell(next, s.maximizedCell) ? s.maximizedCell : null;
     set({
       layout: next,
@@ -297,9 +312,37 @@ export const createLayoutSlice: StateCreator<LayoutSlice> = (set, get) => {
       lastPlace,
       recentPanels,
       layoutHistory: history,
+      layoutFuture: [],
       maximizedCell: keepMax,
     } as Partial<LayoutSlice>);
     persist({ layout: next, lastPlace, recentPanels });
+  };
+
+  /** New sizes for the layout shown; the first of a step puts the layout before it on the Undo stack. */
+  const resize = (next: WorkspaceLayout, step: string | undefined) => {
+    const s = get();
+    const record = !!step && step !== resizeStep;
+    if (record) resizeStep = step;
+    set(record
+      ? { layout: next, layoutHistory: [...s.layoutHistory, snapshotOf(s)].slice(-HISTORY_MAX), layoutFuture: [] }
+      : { layout: next });
+    persistSoon({ layout: next, lastPlace: s.lastPlace, recentPanels: s.recentPanels });
+  };
+
+  /** Puts a layout from the Undo or Redo stack back, with the stacks it leaves. */
+  const restore = (snapshot: LayoutSnapshot, stacks: Pick<LayoutSlice, 'layoutHistory' | 'layoutFuture'>) => {
+    if (sizeTimer) { clearTimeout(sizeTimer); sizeTimer = null; }
+    resizeStep = null;
+    set({
+      layout: snapshot.layout,
+      layoutEpoch: get().layoutEpoch + 1,
+      ...flagsFor(snapshot.layout),
+      lastPlace: snapshot.lastPlace,
+      recentPanels: snapshot.recentPanels,
+      ...stacks,
+      maximizedCell: null,
+    } as Partial<LayoutSlice>);
+    persist(snapshot);
   };
 
   /** Opens a closed panel where `planOpen` says. */
@@ -338,6 +381,7 @@ export const createLayoutSlice: StateCreator<LayoutSlice> = (set, get) => {
     recentPanels: initial.recentPanels,
     maximizedCell: null,
     layoutHistory: [],
+    layoutFuture: [],
     workspaceBox: null,
     panelHint: null,
     layoutHintDone: readHintDone(),
@@ -416,17 +460,15 @@ export const createLayoutSlice: StateCreator<LayoutSlice> = (set, get) => {
       const s = get();
       const last = s.layoutHistory[s.layoutHistory.length - 1];
       if (!last) return false;
-      if (sizeTimer) { clearTimeout(sizeTimer); sizeTimer = null; }
-      set({
-        layout: last.layout,
-        layoutEpoch: s.layoutEpoch + 1,
-        ...flagsFor(last.layout),
-        lastPlace: last.lastPlace,
-        recentPanels: last.recentPanels,
-        layoutHistory: s.layoutHistory.slice(0, -1),
-        maximizedCell: null,
-      } as Partial<LayoutSlice>);
-      persist(last);
+      restore(last, { layoutHistory: s.layoutHistory.slice(0, -1), layoutFuture: [...s.layoutFuture, snapshotOf(s)] });
+      return true;
+    },
+
+    redoLayout: () => {
+      const s = get();
+      const next = s.layoutFuture[s.layoutFuture.length - 1];
+      if (!next) return false;
+      restore(next, { layoutHistory: [...s.layoutHistory, snapshotOf(s)].slice(-HISTORY_MAX), layoutFuture: s.layoutFuture.slice(0, -1) });
       return true;
     },
 
@@ -436,27 +478,21 @@ export const createLayoutSlice: StateCreator<LayoutSlice> = (set, get) => {
       if (next !== s.maximizedCell) set({ maximizedCell: next, panelHint: null });
     },
 
-    setColumnSizes: (sizes) => {
-      const s = get();
-      const view = layoutView(s);
+    setColumnSizes: (sizes, step) => {
+      const view = layoutView(get());
       if (!changed(sizes, view.columns)) return;
       // A resize while a narrow window is folded saves what is shown, like any other change made then.
-      const next = { ...view, columns: view.columns.map((col, i) => ({ ...col, size: sizes[i] })) };
-      set({ layout: next });
-      persistSoon({ layout: next, lastPlace: s.lastPlace, recentPanels: s.recentPanels });
+      resize({ ...view, columns: view.columns.map((col, i) => ({ ...col, size: sizes[i] })) }, step);
     },
 
-    setCellSizes: (columnId, sizes) => {
-      const s = get();
-      const view = layoutView(s);
+    setCellSizes: (columnId, sizes, step) => {
+      const view = layoutView(get());
       const col = view.columns.find((c) => c.id === columnId);
       if (!col || !changed(sizes, col.cells)) return;
-      const next = {
+      resize({
         ...view,
         columns: view.columns.map((c) => (c.id === columnId ? { ...c, cells: c.cells.map((cell, i) => ({ ...cell, size: sizes[i] })) } : c)),
-      };
-      set({ layout: next });
-      persistSoon({ layout: next, lastPlace: s.lastPlace, recentPanels: s.recentPanels });
+      }, step);
     },
 
     setWorkspaceBox: (next) => {
@@ -498,9 +534,11 @@ export const createLayoutSlice: StateCreator<LayoutSlice> = (set, get) => {
         lastPlace: next.lastPlace,
         recentPanels: next.recentPanels,
         layoutHistory: [],
+        layoutFuture: [],
         maximizedCell: null,
         layoutHintDone: readHintDone(),
       } as Partial<LayoutSlice>);
+      resizeStep = null;
     },
 
     resetLayout: () => {

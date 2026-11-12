@@ -67,6 +67,7 @@
       "cancel": "취소",
       "import": "가져오기",
       "edit": "편집",
+      "view": "보기",
       "publish": "배포",
       "republish": "다시 배포",
       "unpublish": "배포 취소",
@@ -229,6 +230,8 @@
     "unpublishedName": "“{name}” 배포를 취소했어요",
     "publishedHeader": "배포됨",
     "seoConfigured": "SEO 설정됨",
+    "scriptCount": "스크립트 {count}개",
+    "cdnCount": "CDN 리소스 {count}개",
     "editDeployment": "배포 편집",
     "viewAnalytics": "분석 보기",
     "exportAsTemplate": "배포 템플릿으로 내보내기",
@@ -390,7 +393,7 @@
         "stacked": "쌓기",
         "tabbed": "탭",
         "reset": "레이아웃 초기화",
-        "tip": "레이아웃: 모든 패널을 한 번에 배치해요"
+        "tip": "레이아웃: 변경을 되돌리거나 다시 실행하고, 모든 패널을 한 번에 배치해요"
       },
       "refusal": {
         "width": "너비가 {px}px 필요해요",
@@ -416,22 +419,9 @@
         "openBelow": "{panel} 아래에 열려요"
       },
       "toast": {
-        "opened": "{panel}을(를) 열었어요",
-        "closed": "{panel}을(를) 닫았어요",
-        "groupClosed": "{panel} 외 {count}개를 닫았어요",
-        "moved": "{panel}을(를) 옮겼어요",
-        "groupMoved": "{panel} 외 {count}개를 옮겼어요",
-        "movedToColumn": "{panel}을(를) 새 열로 옮겼어요",
-        "splitBelow": "{panel}을(를) 아래로 분할했어요",
-        "addedTo": "{panel}을(를) {target}에 탭으로 추가했어요",
-        "preset": "레이아웃: {name}",
-        "reset": "레이아웃을 초기화했어요",
-        "ungrouped": "그룹을 풀었어요",
         "ungroupedPartly": "그룹을 풀었어요. 공간이 부족해 {count, plural, other {패널 #개}}는 탭으로 남았어요",
         "ungroupNoRoom": "그룹을 풀 공간이 부족해요",
-        "nothingToUndo": "되돌릴 것이 없어요",
-        "alreadyOwnColumn": "{panel}은(는) 이미 자기 열에 있어요",
-        "undo": "되돌리기"
+        "alreadyOwnColumn": "{panel}은(는) 이미 자기 열에 있어요"
       }
     },
     "tips": {
@@ -515,6 +505,8 @@
     "editor": {
       "createTitle": "새 스킬 만들기",
       "editTitle": "스킬 편집",
+      "viewTitle": "스킬 보기",
+      "viewSubtitle": "OSW Studio에 기본 포함된 스킬이라 바꿀 수 없어요",
       "subtitle": "AI 어시스턴트를 위한 전문 지식을 정의해요",
       "saveSkill": "스킬 저장",
       "formEditor": "양식 편집기",
@@ -2819,6 +2811,14 @@
     "helperExample": "예시: 엣지 함수에서 사용",
     "loadLogsFailed": "로그를 불러오지 못했어요",
     "clearLogsFailed": "로그를 지우지 못했어요",
+    "logLevelLabel": "기록할 호출",
+    "logLevel": {
+      "all": "모든 호출",
+      "errors": "실패한 호출",
+      "off": "끄기"
+    },
+    "logsKept": "최근 호출 {count, number}개를 보관해요",
+    "saveLogLevelFailed": "기록 설정을 바꾸지 못했어요",
     "logsHint": "함수가 호출되면 여기에 로그가 나타나요",
     "confirmDeleteSchedule": "예약 함수 \"{name}\"을(를) 삭제할까요? 되돌릴 수 없어요.",
     "lastRun": "최근: {status, select, success {성공} other {오류}}",
@@ -2826,8 +2826,6 @@
     "rowCount": "{count}개 행",
     "applyDdlFailed": "DDL을 적용하지 못했어요",
     "tablesTab": "테이블",
-    "serverSettingsTitle": "서버 설정",
-    "serverSettingsDesc": "{name}의 데이터베이스, 엣지 함수, 시크릿을 관리해요",
     "suggestionsHint": "첫 메시지 전에 채팅창 위에 표시돼요. 처음 {count}개는 줄에 보이고, 나머지는 메뉴 안에 있어요. 설정하지 않으면 기본 시작 문구를 써요.",
     "validation": {
       "functionNameRequired": "함수 이름을 입력하세요",
@@ -2880,6 +2878,11 @@
       "refreshLogs": "최근 항목 200개를 다시 불러와요",
       "clearLogs": "이 배포의 로그 항목을 모두 삭제해요",
       "noLogs": "지울 로그가 없어요",
+      "logAll": "모든 호출을 기록해요",
+      "logErrors": "실패한 호출만 기록해요",
+      "logOff": "아무것도 기록하지 않고, 실패한 호출의 콘솔 출력도 서버 로그에 남기지 않아요",
+      "showError": "오류 보기",
+      "hideError": "오류 숨기기",
       "projectTables": "프로젝트 데이터베이스의 테이블과 열",
       "projectSql": "프로젝트 데이터베이스에서 SQL 쿼리를 실행해요",
       "projectDdl": "테이블을 만들거나 바꾸고, AI가 읽는 스키마에 추가해요",

@@ -64,9 +64,9 @@ export function AnalyticsDashboard({ deployment, isOpen, onClose }: AnalyticsDas
   useEffect(() => {
     if (!deployment) return;
 
-    // The parent keeps this mounted for any selected deployment, so the settings and server-settings
-    // dialogs mount it too. Without this guard it fetched — and toasted on failure — from behind
-    // those dialogs. A null render is not enough: effects run regardless of what render returns.
+    // Nothing is fetched while closed: a mounted but closed dashboard would otherwise fetch, and toast
+    // on failure, out of sight. A null render is not enough: effects run regardless of what render
+    // returns.
     if (!isOpen) return;
 
     // Check if deployment has been published (database enabled)

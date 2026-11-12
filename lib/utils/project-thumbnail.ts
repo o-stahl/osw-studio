@@ -8,6 +8,7 @@ import { vfs } from '@/lib/vfs';
 import { VirtualServer } from '@/lib/preview/virtual-server';
 import { captureIframeScreenshot } from './screenshot';
 import { injectVfsBlobMap } from '@/lib/preview/inject-vfs-blob-map';
+import { pointPageAtBlobs } from '@/lib/preview/page-references';
 import { prependToHead, previewBridgeScript } from '@/lib/preview/preview-bridge';
 import { loadIntoShell } from '@/lib/preview/preview-shell';
 import { getPreviewStorage } from '@/lib/preview/preview-storage';
@@ -17,7 +18,7 @@ export async function captureProjectScreenshot(projectId: string): Promise<strin
   await vfs.init();
 
   const project = await vfs.getProject(projectId);
-  const server = new VirtualServer(vfs, projectId, { runtime: project?.settings?.runtime });
+  const server = new VirtualServer(vfs, projectId, { runtime: project?.settings?.runtime, blobModules: true });
   let compiled;
   try {
     compiled = await server.compileProject();
@@ -36,28 +37,7 @@ export async function captureProjectScreenshot(projectId: string): Promise<strin
     ? indexFile.content
     : new TextDecoder().decode(indexFile.content as ArrayBuffer);
 
-  // Replace CSS href with blob URLs
-  html = html.replace(/href="([^"]+\.css)"/g, (match, href) => {
-    if (href.startsWith('http') || href.startsWith('//')) return match;
-    const path = href.startsWith('/') ? href : '/' + href;
-    const blobUrl = compiled.blobUrls.get(path);
-    return blobUrl ? `href="${blobUrl}"` : match;
-  });
-
-  // Replace JS src with blob URLs
-  html = html.replace(/src="([^"]+\.js)"/g, (match, src) => {
-    if (src.startsWith('http') || src.startsWith('//')) return match;
-    const path = src.startsWith('/') ? src : '/' + src;
-    const blobUrl = compiled.blobUrls.get(path);
-    return blobUrl ? `src="${blobUrl}"` : match;
-  });
-
-  // Replace image src with blob URLs
-  html = html.replace(/src="([^"]+\.(png|jpg|jpeg|gif|svg|webp))"/gi, (match, imgPath) => {
-    const path = imgPath.startsWith('/') ? imgPath : '/' + imgPath;
-    const blobUrl = compiled.blobUrls.get(path);
-    return blobUrl ? `src="${blobUrl}"` : match;
-  });
+  html = pointPageAtBlobs(html, '/index.html', compiled.blobUrls);
 
   // The rewrites above cover the references present in the markup; this covers the ones the page
   // asks for while it renders.

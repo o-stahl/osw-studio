@@ -10,17 +10,22 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tip } from '@/components/ui/tooltip';
 import { useWorkspaceStore } from '@/lib/stores/workspace';
 import { LAYOUT_PRESETS, presetOf } from '@/lib/workspace-layout';
+import { modShiftShortcut, modShortcut } from '@/lib/platform';
 import { useLayoutCommands } from './use-layout-commands';
 
-/** The Layout button at the foot of the rail: the preset arrangements, and Reset layout. */
+/** The Layout button at the foot of the rail: Undo and Redo, the preset arrangements, and Reset layout. */
 export function LayoutMenu() {
   const t = useTranslations('workspace.layout');
+  const tc = useTranslations('common');
   const layout = useWorkspaceStore((s) => s.layout);
+  const canUndo = useWorkspaceStore((s) => s.layoutHistory.length > 0);
+  const canRedo = useWorkspaceStore((s) => s.layoutFuture.length > 0);
   const commands = useLayoutCommands();
   const current = presetOf(layout);
 
@@ -39,6 +44,15 @@ export function LayoutMenu() {
       </DropdownMenuTrigger>
       <DropdownMenuContent side="right" align="end" sideOffset={8}>
         <DropdownMenuLabel>{t('presets.button')}</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem disabled={!canUndo} onSelect={commands.undo}>
+          {tc('actions.undo')}
+          <DropdownMenuShortcut>{modShortcut('Z')}</DropdownMenuShortcut>
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={!canRedo} onSelect={commands.redo}>
+          {tc('actions.redo')}
+          <DropdownMenuShortcut>{modShiftShortcut('Z')}</DropdownMenuShortcut>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         {LAYOUT_PRESETS.map((name) => (
           <DropdownMenuCheckboxItem key={name} checked={current === name} onSelect={() => commands.preset(name)}>

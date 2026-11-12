@@ -80,5 +80,30 @@ describe('extractBackendFeatures in a workspace', () => {
     runtime.close();
     await adapter.close?.();
   });
-});
 
+  it("copies a project's own settings table, whose name the deployment's machinery leaves free", async () => {
+    const { getWorkspaceAdapter } = await import('@/lib/vfs/adapters/server');
+    const { extractBackendFeatures } = await import('../backend-feature-extractor');
+    const { RuntimeDatabase } = await import('@/lib/vfs/adapters/runtime-database');
+
+    const adapter = getWorkspaceAdapter(WS);
+    await adapter.init();
+    await adapter.createProject({ id: PROJECT, name: 'Shop', createdAt: new Date(), updatedAt: new Date(), settings: {} } as never);
+    await adapter.createEdgeFunction!({
+      id: 'f1', projectId: PROJECT, name: 'theme', code: 'Response.json({})', method: 'GET',
+      enabled: true, timeoutMs: 5000, createdAt: new Date(), updatedAt: new Date(),
+    } as never);
+    const projectDb = adapter.getProjectDatabase(PROJECT);
+    projectDb.executeDDL('CREATE TABLE runtime_settings (key TEXT PRIMARY KEY, value TEXT, updated_by TEXT)');
+    projectDb.executeRawSQL("INSERT INTO runtime_settings (key, value, updated_by) VALUES ('theme', 'dark', 'ada')");
+
+    const summary = await extractBackendFeatures(PROJECT, DEPLOYMENT, WS);
+
+    expect(summary.errors).toEqual([]);
+    const runtime = new RuntimeDatabase(DEPLOYMENT);
+    runtime.init();
+    expect(runtime.executeRawSQL('SELECT key, value, updated_by FROM runtime_settings').rows).toEqual([['theme', 'dark', 'ada']]);
+    runtime.close();
+    await adapter.close?.();
+  });
+});

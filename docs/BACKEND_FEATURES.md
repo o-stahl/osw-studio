@@ -22,7 +22,7 @@ Backend features are **project-scoped** — they belong to the project, not to a
 You can manage backend features in three places:
 
 1. **Project Settings** (primary, in the workspace): Click **Project Settings** in the workspace header to open a modal with Schema, Functions, Helpers, Secrets, and Schedules tabs. Changes take effect in the project and will be included in the next publish.
-2. **Deployment Server Settings** (for an already-published deployment): Open the deployment in the Admin Dashboard to inspect and tweak the runtime copy of its backend. This is useful for rotating secrets or debugging a published deployment without re-publishing from the project.
+2. **A deployment's Backend section** (for an already-published deployment): Open the deployment from the Deployments page to inspect and tweak the runtime copy of its backend. This is useful for rotating secrets or debugging a published deployment without re-publishing from the project.
 3. **MCP connector**: An outside agent with `projects:write` can list, create, replace and delete functions, schedules and secrets on the project (`backend_list`, `backend_upsert`, `backend_delete`). Secret values can be set and are never returned. SQL against a deployment's live tables is `deployments_sql` (the `deploy` scope). See [MCP Server](?doc=mcp-server).
 
 ## Prerequisites
@@ -30,7 +30,7 @@ You can manage backend features in three places:
 - OSW Studio running in **Server Mode**
 - A project with Backend enabled (toggle in Project Settings)
 
-## Accessing Server Settings
+## Accessing Backend Features
 
 **From the workspace (recommended):**
 1. Open your project
@@ -38,21 +38,20 @@ You can manage backend features in three places:
 3. Toggle **Backend Enabled** if it isn't already
 4. Use the tabs to create edge functions, server functions, secrets, and schedules
 
-**From the Admin Dashboard (for published deployments):**
-1. Open the **Admin Dashboard** (`/admin`) or `/w/{workspaceId}/deployments`
-2. Navigate to **Deployments** and select your deployment
-3. Click the **Server Settings** button (server icon) next to Deployment Settings
-   - The server icon only appears for published deployments with database enabled
-   - You can also access it via the "..." dropdown menu > "Server Settings"
+**From the Deployments page (for published deployments):**
+1. Open **Deployments** from the sidebar
+2. Click **Edit Deployment** on the deployment's card
+3. Pick an entry under **Backend** in the page's menu
+   - The Backend entries only appear for deployments with a database
 
-The Server Settings modal contains seven tabs:
-- **Schema** - Browse tables and columns
-- **SQL** - Execute raw SQL queries
+The Backend section has seven entries:
 - **Functions** - Create and manage edge functions (HTTP endpoints)
 - **Helpers** - Create and manage server functions (reusable code)
 - **Secrets** - Store encrypted API keys and tokens
 - **Schedules** - Create and manage scheduled functions (cron jobs)
-- **Logs** - View function execution history
+- **Schema** - Browse tables and columns
+- **SQL** - Execute raw SQL queries
+- **Logs** - View function execution history and choose which calls are logged
 
 ---
 
@@ -60,7 +59,7 @@ The Server Settings modal contains seven tabs:
 
 ### Creating a Function
 
-1. Go to **Server Settings > Functions**
+1. Open **Functions** in Project Settings (or under **Backend** on a deployment's page)
 2. Click **New Function**
 3. Configure:
    - **Name**: Lowercase letters, numbers, and hyphens (e.g., `get-users`)
@@ -318,13 +317,12 @@ System tables are protected and cannot be accessed:
 - `site_info`
 - `files`
 - `file_tree_nodes`
-- `pageviews`
-- `interactions`
-- `sessions`
 - `edge_functions`
 - `function_logs`
 - `server_functions`
+- `scheduled_functions`
 - `secrets`
+- `osws_runtime_settings`
 
 Only user-created tables are accessible via the `db` API.
 
@@ -355,7 +353,7 @@ Server functions are reusable JavaScript helpers that can be called from your ed
 
 ### Creating a Server Function
 
-1. Go to **Server Settings > Helpers**
+1. Open **Helpers** in Project Settings (or under **Backend** on a deployment's page)
 2. Click **New Helper**
 3. Configure:
    - **Name**: Valid JavaScript identifier (camelCase or snake_case, e.g., `validateAuth`, `format_price`)
@@ -491,7 +489,7 @@ export SECRETS_ENCRYPTION_KEY="your-generated-key-here"
 
 ### Creating a Secret
 
-1. Go to **Server Settings > Secrets**
+1. Open **Secrets** in Project Settings (or under **Backend** on a deployment's page)
 2. Click **New Secret**
 3. Configure:
    - **Name**: SCREAMING_SNAKE_CASE (e.g., `STRIPE_API_KEY`, `SENDGRID_TOKEN`)
@@ -579,7 +577,7 @@ Scheduled functions run edge functions automatically on a cron schedule. Use the
 
 ### Creating a Scheduled Function
 
-1. Go to **Server Settings > Schedules**
+1. Open **Schedules** in Project Settings (or under **Backend** on a deployment's page)
 2. Click **New Schedule**
 3. Configure:
    - **Name**: Lowercase letters, numbers, and hyphens (e.g., `daily-cleanup`)
@@ -704,7 +702,7 @@ The SQL Editor allows direct SQL query execution against your deployment's datab
 
 ### Executing Queries
 
-1. Go to **Server Settings > SQL**
+1. Open **SQL** under **Backend** on a deployment's page
 2. Type your SQL query in the editor
 3. Click **Execute** or press `Ctrl/Cmd + Enter`
 4. View results in the table below
@@ -760,7 +758,7 @@ The Schema Viewer displays your database structure.
 
 ### Viewing Tables
 
-1. Go to **Server Settings > Schema**
+1. Open **Schema** in Project Settings (or under **Backend** on a deployment's page)
 2. Click on a table name to expand and view columns
 3. Each column shows: name, type, nullable, default value, primary key status
 
@@ -770,9 +768,12 @@ Toggle **Show System Tables** to view OSW Studio's internal tables:
 - `site_info` - Deployment metadata
 - `files` - File contents
 - `file_tree_nodes` - File tree structure
-- `pageviews` / `interactions` / `sessions` - Analytics data
 - `edge_functions` - Function definitions
 - `function_logs` - Execution logs
+- `server_functions` - Helper definitions
+- `scheduled_functions` - Schedule definitions
+- `secrets` - Encrypted secrets
+- `osws_runtime_settings` - The deployment's own settings, such as which calls are logged
 
 System tables are marked with a "(system)" label.
 
@@ -780,7 +781,7 @@ System tables are marked with a "(system)" label.
 
 ## Execution Logs
 
-View function execution history in the **Logs** tab.
+View function execution history under **Logs** in a deployment's Backend section.
 
 ### Log Information
 
@@ -792,11 +793,14 @@ Each log entry shows:
 - **Duration**: Execution time in milliseconds
 - **Time**: Timestamp
 
+A failed call that stored an error expands to show it.
+
 ### Managing Logs
 
+- Choose which calls are logged: **Every call**, **Failed calls** or **Off**. The change applies at once, without republishing. At **Off**, a failed call's console output also stays out of the server log.
 - Click **Refresh** to load latest logs
 - Click **Clear** to delete all logs (cannot be undone)
-- Logs are limited to the most recent 200 entries
+- A deployment keeps its latest 1,000 calls; the section shows the most recent 200
 
 ---
 
@@ -897,6 +901,7 @@ Each log entry shows:
 | GET | `/api/w/{workspaceId}/admin/deployments/{deploymentId}/database/schema` | Get schema |
 | POST | `/api/w/{workspaceId}/admin/deployments/{deploymentId}/database/query` | Execute SQL |
 | GET | `/api/w/{workspaceId}/admin/deployments/{deploymentId}/database/logs` | Get logs |
+| PUT | `/api/w/{workspaceId}/admin/deployments/{deploymentId}/database/logs` | Set which calls are logged |
 | DELETE | `/api/w/{workspaceId}/admin/deployments/{deploymentId}/database/logs` | Clear logs |
 
 ---

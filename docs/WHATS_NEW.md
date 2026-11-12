@@ -6,6 +6,27 @@ Welcome to OSW Studio! This page highlights the latest features and updates.
 
 ---
 
+## v1.110.0 - Module Imports in the Preview (2026-11-13)
+
+In static and Handlebars projects, JavaScript files can now import each other as ES modules in the preview, so a site's scripts can be split into modules without a bundler. In the workspace, Undo also covers divider resizes, and Redo is new. Server Mode fixes analytics on published pages and adds settings for function logs.
+
+### Preview
+- **Imports between project files**: a script can import another project file by relative or absolute path, JSON files and `import()` included; a package still needs a full URL, such as an esm.sh link
+- **Pages in folders**: a page in a subfolder finds the scripts, stylesheets and images it links by relative paths such as `../styles/main.css`
+
+### Workspace
+- **Undo and Redo**: Undo also takes back a divider drag or an arrow-key resize, and Redo (Ctrl+Shift+Z, or ⇧⌘Z on a Mac) brings back what Undo took
+- **No layout toasts**: moving or closing panels no longer shows a toast; Undo and Redo are in the Layout menu
+
+### Server Mode
+- **Analytics providers**: Google Tag Manager, Google Analytics 4, Plausible or a custom script chosen in a deployment's Analytics settings now reaches its published pages; until now only the built-in analytics did
+- **Consent**: a consent banner set to block analytics now blocks it; nothing is tracked after a visitor declines, or before they accept an opt-in banner
+- **Function logs**: choose in a deployment's Logs section whether to log every call, only failed calls or nothing; a failed call opens to show its error, and the latest 1,000 calls are kept
+- **Unsaved settings**: publishing from a deployment's page keeps the settings you haven't saved yet
+- **Restarts**: a self-hosted server stops within 5 seconds, where an open studio tab used to hold it until systemd's 90-second timeout
+
+---
+
 ## v1.109.0 - Panel Tabs and Stacks (2026-11-08)
 
 In a project's workspace, panels can now share a place as tabs or stack in a column as well as sit side by side, so more of them fit on screen and opening one no longer closes another. Your current panels and widths carry over. Quick edit and the phone layout don't have tabs or stacks.

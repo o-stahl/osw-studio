@@ -51,6 +51,7 @@ import {
   Power,
   FolderTree,
   MoreVertical,
+  Eye,
 } from 'lucide-react';
 import {
   Dialog,
@@ -675,7 +676,7 @@ export function SkillsManager() {
                                     <div className="flex items-center justify-end gap-1">
                                       <Tip label={skill.isBuiltIn ? t('tips.view', { name: skill.name }) : t('tips.edit', { name: skill.name })}>
                                         <Button variant="outline" size="xs" className="@max-3xl:hidden" onClick={() => handleEdit(skill)}>
-                                          <Edit className="w-3 h-3" />{tc('actions.edit')}
+                                          {skill.isBuiltIn ? <><Eye className="w-3 h-3" />{tc('actions.view')}</> : <><Edit className="w-3 h-3" />{tc('actions.edit')}</>}
                                         </Button>
                                       </Tip>
                                       <Tip
@@ -710,7 +711,9 @@ export function SkillsManager() {
                                           </DropdownMenuTrigger>
                                           <DropdownMenuContent align="end">
                                             <DropdownMenuItem onClick={() => handleEdit(skill)}>
-                                              <Edit className="w-4 h-4 mr-2" />{tc('actions.edit')}
+                                              {skill.isBuiltIn
+                                                ? <><Eye className="w-4 h-4 mr-2" />{tc('actions.view')}</>
+                                                : <><Edit className="w-4 h-4 mr-2" />{tc('actions.edit')}</>}
                                             </DropdownMenuItem>
                                             <DropdownMenuItem
                                               onClick={() => handleSkillToggle(skill.id, !enabledSkills.has(skill.id))}

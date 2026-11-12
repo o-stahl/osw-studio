@@ -555,6 +555,14 @@ export interface EdgeFunction {
   updatedAt: Date;
 }
 
+/**
+ * Which edge function calls a deployment writes to its function logs: every call, only failed ones
+ * (an error, or a 4xx/5xx status), or none. With `off`, a failed call's console output stays out of
+ * the server log as well.
+ */
+export const FUNCTION_LOG_LEVELS = ['all', 'errors', 'off'] as const;
+export type FunctionLogLevel = typeof FUNCTION_LOG_LEVELS[number];
+
 export interface FunctionLog {
   id: number;
   functionId: string;

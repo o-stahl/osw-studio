@@ -67,6 +67,7 @@
       "cancel": "Cancel",
       "import": "Import",
       "edit": "Edit",
+      "view": "View",
       "publish": "Publish",
       "republish": "Republish",
       "unpublish": "Unpublish",
@@ -229,6 +230,8 @@
     "unpublishedName": "Unpublished “{name}”",
     "publishedHeader": "Published",
     "seoConfigured": "SEO Configured",
+    "scriptCount": "{count, plural, one {# Script} other {# Scripts}}",
+    "cdnCount": "{count, plural, one {# CDN Resource} other {# CDN Resources}}",
     "editDeployment": "Edit Deployment",
     "viewAnalytics": "View Analytics",
     "exportAsTemplate": "Export as Deployment Template",
@@ -390,7 +393,7 @@
         "stacked": "Stacked",
         "tabbed": "Tabbed",
         "reset": "Reset layout",
-        "tip": "Layout: arrange every panel at once"
+        "tip": "Layout: undo or redo a change, or arrange every panel at once"
       },
       "refusal": {
         "width": "Needs {px} px of width",
@@ -416,22 +419,9 @@
         "openBelow": "Opens below {panel}"
       },
       "toast": {
-        "opened": "{panel} opened",
-        "closed": "{panel} closed",
-        "groupClosed": "{panel} and {count} more closed",
-        "moved": "{panel} moved",
-        "groupMoved": "{panel} and {count} more moved",
-        "movedToColumn": "{panel} moved to a new column",
-        "splitBelow": "{panel} split below",
-        "addedTo": "{panel} added to {target}",
-        "preset": "Layout: {name}",
-        "reset": "Layout reset",
-        "ungrouped": "Group split up",
         "ungroupedPartly": "Group split up; {count, plural, one {# panel stayed} other {# panels stayed}} tabbed, not enough room",
         "ungroupNoRoom": "Not enough room to split the group up",
-        "nothingToUndo": "Nothing to undo",
-        "alreadyOwnColumn": "{panel} already has its own column",
-        "undo": "Undo"
+        "alreadyOwnColumn": "{panel} already has its own column"
       }
     },
     "tips": {
@@ -515,6 +505,8 @@
     "editor": {
       "createTitle": "Create New Skill",
       "editTitle": "Edit Skill",
+      "viewTitle": "View Skill",
+      "viewSubtitle": "Built-in skills ship with OSW Studio and can't be changed",
       "subtitle": "Define specialized knowledge for the AI assistant",
       "saveSkill": "Save Skill",
       "formEditor": "Form Editor",
@@ -2822,6 +2814,14 @@
     "helperExample": "Example: Using in Edge Function",
     "loadLogsFailed": "Failed to load logs",
     "clearLogsFailed": "Failed to clear logs",
+    "logLevelLabel": "What to log",
+    "logLevel": {
+      "all": "Every call",
+      "errors": "Failed calls",
+      "off": "Off"
+    },
+    "logsKept": "Keeps the latest {count, number} calls",
+    "saveLogLevelFailed": "Could not change what is logged",
     "logsHint": "Logs will appear here when functions are invoked",
     "confirmDeleteSchedule": "Delete scheduled function \"{name}\"? This cannot be undone.",
     "lastRun": "Last: {status, select, success {success} other {error}}",
@@ -2829,8 +2829,6 @@
     "rowCount": "{count, plural, one {# row} other {# rows}}",
     "applyDdlFailed": "Failed to apply DDL",
     "tablesTab": "Tables",
-    "serverSettingsTitle": "Server Settings",
-    "serverSettingsDesc": "Manage database, edge functions, and secrets for {name}",
     "suggestionsHint": "Shown above the chat box before the first message. The first {count} appear on the row; any others sit behind a menu. With none set, the generic starters are used.",
     "validation": {
       "functionNameRequired": "Function name is required",
@@ -2883,6 +2881,11 @@
       "refreshLogs": "Load the newest 200 entries again",
       "clearLogs": "Delete every log entry for this deployment",
       "noLogs": "No logs to clear",
+      "logAll": "Log every call",
+      "logErrors": "Log only the calls that fail",
+      "logOff": "Log nothing, and keep failed calls' console output out of the server log",
+      "showError": "Show the error",
+      "hideError": "Hide the error",
       "projectTables": "The tables and columns of the project's database",
       "projectSql": "Run SQL queries on the project's database",
       "projectDdl": "Create or change tables, and add them to the schema the AI reads",

@@ -15,6 +15,7 @@ import { FrameScrollMemory, frameScrollReport, type FrameScroll } from '@/lib/pr
 import { AckPairer } from '@/lib/preview/ack-pairing';
 import { prependToHead, previewBridgeScript } from '@/lib/preview/preview-bridge';
 import { previewShellHtml, sendShellContent } from '@/lib/preview/preview-shell';
+import { pointPageAtBlobs } from '@/lib/preview/page-references';
 import { answerFunctionCall } from '@/lib/preview/function-proxy';
 import { getPreviewStorage, setPreviewStorageArea, storageReportProject } from '@/lib/preview/preview-storage';
 import { PreviewCompileGate, mergeCompileRequests, observePreviewRoot } from '@/lib/preview/compile-gate';
@@ -1683,7 +1684,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
         serverRef.current.cleanupBlobUrls();
       }
 
-      const server = new VirtualServer(vfs, projectId, { deploymentId: deploymentId || undefined, entryPoint, runtime: resolvedRuntime, provenance });
+      const server = new VirtualServer(vfs, projectId, { deploymentId: deploymentId || undefined, entryPoint, runtime: resolvedRuntime, provenance, blobModules: true });
       serverRef.current = server;
 
       const compiled = await withTimeout(server.compileProject(), COMPILE_TIMEOUT_MS, 'Compile');
@@ -1935,41 +1936,8 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
       ? htmlFile.content 
       : new TextDecoder().decode(htmlFile.content as ArrayBuffer);
     
-    processedHtml = processedHtml.replace(/href="([^"]+)"/g, (match, href) => {
-      // Skip if not a CSS file or if it's an external URL
-      if (!href.endsWith('.css') || href.startsWith('http') || href.startsWith('//')) {
-        return match;
-      }
-      
-      const normalizedHref = href.startsWith('/') ? href : '/' + href;
-      const blobUrl = projectToUse.blobUrls.get(normalizedHref);
-      
-      if (blobUrl) {
-        return `href="${blobUrl}"`;
-      }
-      return match;
-    });
-    
-    // Replace JavaScript sources
-    processedHtml = processedHtml.replace(/src="([^"]+)"/g, (match, src) => {
-      if (!src.endsWith('.js') || src.startsWith('http') || src.startsWith('//')) {
-        return match;
-      }
-      
-      const normalizedSrc = src.startsWith('/') ? src : '/' + src;
-      const blobUrl = projectToUse.blobUrls.get(normalizedSrc);
-      
-      if (blobUrl) {
-        return `src="${blobUrl}"`;
-      }
-      return match;
-    });
-    
-    processedHtml = processedHtml.replace(/src="([^"]+\.(png|jpg|jpeg|gif|svg|webp))"/gi, (match, imgPath) => {
-      const normalizedImgPath = imgPath.startsWith('/') ? imgPath : '/' + imgPath;
-      const blobUrl = projectToUse.blobUrls.get(normalizedImgPath);
-      return blobUrl ? `src="${blobUrl}"` : match;
-    });
+    // The stylesheets, scripts and images the page names, resolved from the page's own folder.
+    processedHtml = pointPageAtBlobs(processedHtml, filePath, projectToUse.blobUrls);
 
     // The resolved runtime, not the prop: a project whose settings never named one is compiled as
     // the fallback, and asking `supportsDirectEditing` about `undefined` answered "no toolbar" for a

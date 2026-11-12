@@ -16,6 +16,28 @@ export interface ConsentBannerOptions {
   compliance: ComplianceConfig;
 }
 
+/** Where the visitor's answer to a deployment's banner is kept. */
+const consentKey = (deploymentId: string) => `osw_consent_${deploymentId}`;
+
+/**
+ * Reads the visitor's answer to the banner and sets `window.oswAnalyticsBlocked` while analytics may
+ * not run: until a yes in opt-in mode, and after a no. It goes in the head, ahead of every analytics
+ * script, which each check the flag; the banner's own script comes at the end of the body.
+ */
+export function generateConsentState(deploymentId: string, mode: ComplianceConfig['mode']): string {
+  return `<script>
+(function() {
+  var consent = null;
+  try {
+    consent = localStorage.getItem(${JSON.stringify(consentKey(deploymentId))});
+  } catch (e) {}
+  if (consent === 'declined' || (consent !== 'accepted' && ${JSON.stringify(mode)} === 'opt-in')) {
+    window.oswAnalyticsBlocked = true;
+  }
+})();
+</script>`;
+}
+
 /**
  * Generate the consent banner HTML, CSS, and JS
  */
@@ -34,7 +56,6 @@ export function generateConsentBanner(options: ConsentBannerOptions): string {
     declineButtonText,
     privacyPolicyUrl,
     cookiePolicyUrl,
-    mode,
     blockAnalytics,
   } = compliance;
 
@@ -271,8 +292,7 @@ export function generateConsentBanner(options: ConsentBannerOptions): string {
 <script>
 (function() {
   'use strict';
-  var STORAGE_KEY = 'osw_consent_${deploymentId}';
-  var MODE = '${mode}';
+  var STORAGE_KEY = ${JSON.stringify(consentKey(deploymentId))};
   var BLOCK_ANALYTICS = ${blockAnalytics};
 
   function getConsent() {
@@ -320,30 +340,14 @@ export function generateConsentBanner(options: ConsentBannerOptions): string {
     hideBanner();
   }
 
-  // Check existing consent
+  // Show the banner until the visitor answers. Whether analytics may run was settled in the head,
+  // by the script generateConsentState writes, before any of it loaded.
   var consent = getConsent();
 
-  if (consent === 'accepted') {
-    // Consent already given, don't show banner
+  if (consent === 'accepted' || consent === 'declined') {
     hideBanner();
-  } else if (consent === 'declined') {
-    // Consent declined, don't show banner, block analytics if needed
-    hideBanner();
-    if (BLOCK_ANALYTICS) {
-      window.oswAnalyticsBlocked = true;
-    }
   } else {
-    // No consent recorded yet
-    if (MODE === 'opt-in') {
-      // Opt-in: show banner, block analytics by default
-      showBanner();
-      if (BLOCK_ANALYTICS) {
-        window.oswAnalyticsBlocked = true;
-      }
-    } else {
-      // Opt-out: show banner, allow analytics by default
-      showBanner();
-    }
+    showBanner();
   }
 
   // Attach event listeners

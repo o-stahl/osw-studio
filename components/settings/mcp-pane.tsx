@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Plug, Copy } from 'lucide-react';
@@ -52,6 +52,16 @@ export function when(
   const date = new Date(typeof value === 'number' ? value : String(value));
   if (Number.isNaN(date.getTime())) return t('unknownTime');
   return dateTime(date);
+}
+
+const subscribeNever = () => () => {};
+
+/**
+ * The endpoint at this browser's address. The server has none to give, so it renders the path, and
+ * hydration does too before the address replaces it.
+ */
+function useEndpoint(): string {
+  return useSyncExternalStore(subscribeNever, () => `${window.location.origin}/api/mcp`, () => '/api/mcp');
 }
 
 export function McpPane({ workspaceId }: { workspaceId?: string }) {
@@ -127,7 +137,7 @@ export function McpPane({ workspaceId }: { workspaceId?: string }) {
     }
   };
 
-  const endpoint = typeof window !== 'undefined' ? `${window.location.origin}/api/mcp` : '/api/mcp';
+  const endpoint = useEndpoint();
   const docsHref = workspaceId ? `/w/${workspaceId}/docs?doc=mcp-server` : '/admin/docs?doc=mcp-server';
 
   const copyEndpoint = async () => {

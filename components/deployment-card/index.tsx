@@ -69,6 +69,8 @@ export function DeploymentCard({
   // Determine status
   const isPublished = deployment.lastPublishedVersion !== null && deployment.lastPublishedVersion !== undefined;
   const hasPendingChanges = isPublished && Number(deployment.settingsVersion) > Number(deployment.lastPublishedVersion);
+  const enabledScripts = deployment.headScripts.filter(s => s.enabled).length + deployment.bodyScripts.filter(s => s.enabled).length;
+  const enabledCdnLinks = deployment.cdnLinks.filter(c => c.enabled).length;
 
   // Resolved by the server, which is the only side that knows whether the static proxy routes
   // slug subdomains. Deriving it here from `slug` produced a dead https://{slug}.localhost.
@@ -207,22 +209,14 @@ export function DeploymentCard({
 
         {/* Stats Badges */}
         <div className="flex flex-wrap gap-2 mb-4">
-          {deployment.headScripts.filter(s => s.enabled).length +
-            deployment.bodyScripts.filter(s => s.enabled).length >
-            0 && (
+          {enabledScripts > 0 && (
             <Badge variant="secondary" className="text-xs">
-              {deployment.headScripts.filter(s => s.enabled).length +
-                deployment.bodyScripts.filter(s => s.enabled).length}{' '}
-              Script
-              {deployment.headScripts.filter(s => s.enabled).length +
-                deployment.bodyScripts.filter(s => s.enabled).length !==
-                1 && 's'}
+              {td('scriptCount', { count: enabledScripts })}
             </Badge>
           )}
-          {deployment.cdnLinks.filter(c => c.enabled).length > 0 && (
+          {enabledCdnLinks > 0 && (
             <Badge variant="secondary" className="text-xs">
-              {deployment.cdnLinks.filter(c => c.enabled).length} CDN Resource
-              {deployment.cdnLinks.filter(c => c.enabled).length !== 1 && 's'}
+              {td('cdnCount', { count: enabledCdnLinks })}
             </Badge>
           )}
           {deployment.analytics.enabled && (

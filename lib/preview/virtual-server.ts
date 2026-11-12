@@ -7,6 +7,8 @@ import { logger } from '@/lib/utils';
 import { beginCompilation, pushCompileError, commitCompilation } from './compile-errors';
 import { isRuntimeBundled } from '@/lib/runtimes/registry';
 import { injectProvenance } from './provenance';
+import { MODULE_SCHEME, rewriteInlineModules, rewriteModuleSpecifiers } from './module-specifiers';
+import { resolveFromPage } from './page-references';
 
 export class VirtualServer {
   private vfs: VirtualFileSystem;
@@ -22,8 +24,9 @@ export class VirtualServer {
   private runtime: ProjectRuntime;
   private minify: boolean;
   private provenance: boolean;
+  private blobModules: boolean;
 
-  constructor(vfs: VirtualFileSystem, projectId: string, opts?: { deploymentId?: string; entryPoint?: string; runtime?: ProjectRuntime; minify?: boolean; provenance?: boolean }) {
+  constructor(vfs: VirtualFileSystem, projectId: string, opts?: { deploymentId?: string; entryPoint?: string; runtime?: ProjectRuntime; minify?: boolean; provenance?: boolean; blobModules?: boolean }) {
     this.vfs = vfs;
     this.projectId = projectId;
     this.deploymentId = opts?.deploymentId;
@@ -39,6 +42,10 @@ export class VirtualServer {
     // reach published output, and the publish, export and thumbnail paths all construct a
     // VirtualServer in the same browser tab as the preview.
     this.provenance = opts?.provenance === true;
+    // For a page that runs its modules from their blobs, as the preview and thumbnails do: each
+    // module's blob names the project files it imports by their MODULE_SCHEME keys, which the import
+    // map adds. Export and publishing swap the blobs for paths, so they want neither.
+    this.blobModules = opts?.blobModules === true;
     this.baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
     // Initialize Handlebars instance
@@ -212,8 +219,13 @@ export class VirtualServer {
         content: file.content,
         mimeType: file.mimeType
       };
-      
-      const contentHash = this.hashContent(processedFile.content);
+      // A module run from its blob names the project files it imports by their import-map keys, in
+      // the blob only: the file keeps its source.
+      const blobContent = this.blobModules && typeof file.content === 'string' && /\.m?js$/i.test(file.path) && !isRuntimeBundled(this.runtime)
+        ? await rewriteModuleSpecifiers(file.content, file.path)
+        : processedFile.content;
+
+      const contentHash = this.hashContent(blobContent);
       const previousHash = this.fileHashes.get(processedFile.path);
       
       if (incrementalUpdate && previousHash === contentHash && oldBlobUrls.has(processedFile.path)) {
@@ -222,7 +234,7 @@ export class VirtualServer {
         processedFile.blobUrl = existingUrl;
         oldBlobUrls.delete(processedFile.path);
       } else {
-        const blob = new Blob([processedFile.content], { type: processedFile.mimeType });
+        const blob = new Blob([blobContent], { type: processedFile.mimeType });
         const blobUrl = URL.createObjectURL(blob);
         newBlobUrls.set(processedFile.path, blobUrl);
         processedFile.blobUrl = blobUrl;
@@ -232,7 +244,32 @@ export class VirtualServer {
       rawProcessedFiles.push(processedFile);
     }
     
-    // Second pass: Process HTML files with available blob URLs
+    // Stylesheets before pages, so that a page's import map can name them for a module to import.
+    for (const file of files) {
+      if (file.type === 'css') {
+        const processedFile = await this.processCSS(file, newBlobUrls);
+        
+        const contentHash = this.hashContent(processedFile.content);
+        const previousHash = this.fileHashes.get(processedFile.path);
+        
+        if (incrementalUpdate && previousHash === contentHash && oldBlobUrls.has(processedFile.path)) {
+          const existingUrl = oldBlobUrls.get(processedFile.path)!;
+          newBlobUrls.set(processedFile.path, existingUrl);
+          processedFile.blobUrl = existingUrl;
+          oldBlobUrls.delete(processedFile.path);
+        } else {
+          const blob = new Blob([processedFile.content], { type: processedFile.mimeType });
+          const blobUrl = URL.createObjectURL(blob);
+          newBlobUrls.set(processedFile.path, blobUrl);
+          processedFile.blobUrl = blobUrl;
+          this.fileHashes.set(processedFile.path, contentHash);
+        }
+        
+        rawProcessedFiles.push(processedFile);
+      }
+    }
+    
+    // Then the pages, with every other file's blob URL available
     for (const file of files) {
       if (file.type !== 'html') {
         continue;
@@ -260,30 +297,7 @@ export class VirtualServer {
     }
     
     const processedFiles = [...rawProcessedFiles];
-    for (const file of files) {
-      if (file.type === 'css') {
-        const processedFile = await this.processCSS(file, newBlobUrls);
-        
-        const contentHash = this.hashContent(processedFile.content);
-        const previousHash = this.fileHashes.get(processedFile.path);
-        
-        if (incrementalUpdate && previousHash === contentHash && oldBlobUrls.has(processedFile.path)) {
-          const existingUrl = oldBlobUrls.get(processedFile.path)!;
-          newBlobUrls.set(processedFile.path, existingUrl);
-          processedFile.blobUrl = existingUrl;
-          oldBlobUrls.delete(processedFile.path);
-        } else {
-          const blob = new Blob([processedFile.content], { type: processedFile.mimeType });
-          const blobUrl = URL.createObjectURL(blob);
-          newBlobUrls.set(processedFile.path, blobUrl);
-          processedFile.blobUrl = blobUrl;
-          this.fileHashes.set(processedFile.path, contentHash);
-        }
-        
-        processedFiles.push(processedFile);
-      }
-    }
-    
+
     const routes = this.generateRoutes(files);
     
     if (incrementalUpdate) {
@@ -425,7 +439,13 @@ export class VirtualServer {
     }
 
     // Then process internal references with available blob URLs
-    content = await this.processInternalReferences(content, blobUrls, projectPaths);
+    content = await this.processInternalReferences(content, file.path, blobUrls, projectPaths);
+
+    // A page runs in the preview's frame, not at its own address, so its inline modules' relative
+    // imports are resolved here, from the page, as its module files' are.
+    if (this.blobModules && !isRuntimeBundled(this.runtime)) {
+      content = await rewriteInlineModules(content, file.path);
+    }
     
     // Inject VFS asset interceptor for transparent HTTP requests
     // Always inject the interceptor, even if no blob URLs yet (for future dynamic loading)
@@ -950,14 +970,17 @@ export class VirtualServer {
 </script>`;
 
     // Build ES module import map for non-bundled runtimes.
-    // Maps VFS JS/TS paths to blob URLs so <script type="module"> imports resolve.
+    // Maps the paths of the files a module can import (scripts, JSON, stylesheets) to blob URLs so
+    // <script type="module"> imports resolve: the page's own modules name them by path, and module
+    // files run from their blobs by their MODULE_SCHEME key.
     let importMapScript = '';
     if (!isRuntimeBundled(this.runtime) && blobUrls) {
       const imports: Record<string, string> = {};
       for (const [path, url] of blobUrls) {
-        if (/\.(js|mjs|ts)$/i.test(path)) {
+        if (/\.(js|mjs|ts|json|css)$/i.test(path)) {
           imports[path] = url;                                       // /scripts/utils.js
           if (path.startsWith('/')) imports['.' + path] = url;       // ./scripts/utils.js
+          if (this.blobModules) imports[MODULE_SCHEME + path] = url; // osws-module:/scripts/utils.js
         }
       }
       if (Object.keys(imports).length > 0) {
@@ -1128,6 +1151,7 @@ export class VirtualServer {
    */
   private async processInternalReferences(
     content: string,
+    pagePath: string,
     blobUrls?: Map<string, string>,
     projectPaths?: ReadonlySet<string>
   ): Promise<string> {
@@ -1159,14 +1183,16 @@ export class VirtualServer {
           return match; // Keep navigation links unchanged
         }
 
-        const normalizedPath = this.normalizePath(url);
-        
-        const fileExists = paths.has(normalizedPath);
-        if (fileExists) {
-          // Check if we have a blob URL for this file
-          const blobUrl = urlMap.get(normalizedPath);
+        // A stylesheet link keeps its path, so an exported page keeps it as written; whoever renders
+        // the page points it at its blob (`pointPageAtBlobs`).
+        if (isHref && /\.css$/i.test(url.split(/[?#]/)[0])) {
+          return match;
+        }
+
+        // From the page's folder, as a browser resolves it, then from the root, as pages were before.
+        for (const candidate of [resolveFromPage(pagePath, url), this.normalizePath(url)]) {
+          const blobUrl = paths.has(candidate) ? urlMap.get(candidate) : undefined;
           if (blobUrl) {
-            // Replace the URL with the blob URL
             return match.replace(url, blobUrl);
           }
         }
@@ -1195,7 +1221,7 @@ export class VirtualServer {
 
       // `?v=2` and `#iefix` / `#Font` aren't part of the file's path; a fragment is kept on the result.
       const [, target, , fragment = ''] = url.match(/^([^?#]*)(\?[^#]*)?(#.*)?$/) || [];
-      const blobUrl = blobUrls.get(this.resolveFrom(cssPath, target ?? url)) ?? blobUrls.get(this.normalizePath(url));
+      const blobUrl = blobUrls.get(resolveFromPage(cssPath, target ?? url)) ?? blobUrls.get(this.normalizePath(url));
       if (blobUrl) {
         return `url('${blobUrl}${fragment}')`;
       }
@@ -1205,17 +1231,6 @@ export class VirtualServer {
   }
 
   /** `ref` as a browser resolves it from a file at `fromPath`: relative to its folder, `.` and `..` applied. */
-  private resolveFrom(fromPath: string, ref: string): string {
-    const base = ref.startsWith('/') ? [] : fromPath.split('/').slice(0, -1);
-    const parts = [...base, ...ref.split('/')];
-    const out: string[] = [];
-    for (const part of parts) {
-      if (part === '' || part === '.') continue;
-      if (part === '..') out.pop(); else out.push(part);
-    }
-    return '/' + out.join('/');
-  }
-
   private normalizePath(path: string): string {
     if (path.startsWith('./')) {
       path = path.slice(2);

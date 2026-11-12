@@ -49,7 +49,7 @@ describe('function code and the runtime database', () => {
     expect(second).toEqual({ changes: 1, lastInsertRowid: 2 });
   });
 
-  it.each(['secrets', 'edge_functions', 'server_functions', 'scheduled_functions', 'function_logs', 'site_info', 'files', 'file_tree_nodes'])(
+  it.each(['secrets', 'edge_functions', 'server_functions', 'scheduled_functions', 'function_logs', 'osws_runtime_settings', 'site_info', 'files', 'file_tree_nodes'])(
     'is refused the system table %s',
     (table) => {
       expect(() => api.query(`SELECT * FROM ${table}`)).toThrow(/system table/);

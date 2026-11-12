@@ -4,18 +4,19 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { createTranslator } from 'next-intl';
 
-const toast = vi.hoisted(() => Object.assign(vi.fn(), { dismiss: vi.fn() }));
+const toast = vi.hoisted(() => vi.fn());
 vi.mock('sonner', () => ({ toast }));
 
 import en from '@/messages/en.json';
 import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import { useWorkspaceStore } from '@/lib/stores/workspace';
 import { shapeOf, type WorkspaceLayout } from '@/lib/workspace-layout';
-import { LAYOUT_TOAST_ID, layoutShortcut, useLayoutCommands, WORKSPACE_FOCUS_ATTR, type LayoutCommands } from '../use-layout-commands';
+import { layoutShortcut, useLayoutCommands, WORKSPACE_FOCUS_ATTR, type LayoutCommands } from '../use-layout-commands';
 
 /**
- * The layout's commands as the menus, the rail and the keys reach them: each change toasts what it
- * did, with an Undo, and a key acts on the layout only where the focus leaves it to the layout.
+ * The layout's commands as the menus, the rail and the keys reach them: a change is made without a
+ * toast and Undo and Redo take it back and forth; only a command that cannot run says why. A key acts
+ * on the layout only where the focus leaves it to the layout.
  */
 
 const t = createTranslator({ locale: 'en', messages: en });
@@ -26,7 +27,7 @@ const start = (): WorkspaceLayout => ({ v: 1, columns: [
   { id: 'col5', size: 33, cells: [{ id: 'cell6', size: 100, tabs: ['console', 'debug'], active: 'console' }] },
 ] });
 const shape = () => shapeOf(useWorkspaceStore.getState().layout);
-const lastToast = () => toast.mock.calls.at(-1) as [string, { action?: { label: string; onClick: () => void } }];
+const lastToast = () => toast.mock.calls.at(-1) as [string, { action?: unknown }];
 
 describe('useLayoutCommands', () => {
   let commands: LayoutCommands;
@@ -40,9 +41,8 @@ describe('useLayoutCommands', () => {
 
   beforeEach(() => {
     (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    useWorkspaceStore.setState({ layout: start(), layoutHistory: [], maximizedCell: null, lastPlace: {}, recentPanels: [], workspaceBox: null });
+    useWorkspaceStore.setState({ layout: start(), layoutHistory: [], layoutFuture: [], maximizedCell: null, lastPlace: {}, recentPanels: [], workspaceBox: null });
     toast.mockClear();
-    toast.dismiss.mockClear();
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -55,53 +55,55 @@ describe('useLayoutCommands', () => {
     localStorage.clear();
   });
 
-  it('toasts what a move did, and the toast\'s Undo takes it back', () => {
+  it('moves a panel without a toast, and Undo and Redo take the move back and forth', () => {
     expect(commands.move({ panel: 'debug' }, { kind: 'tab', cell: 'cell2', index: null })).toBe(true);
-    expect(shape()).toBe('chat,debug>debug|preview>preview|console>console');
-    const [text, options] = lastToast();
-    expect(text).toBe(t('workspace.layout.toast.moved', { panel: t('workspace.tabs.debugEvents') }));
-    expect(options.action?.label).toBe(t('workspace.layout.toast.undo'));
-    act(() => options.action!.onClick());
+    const moved = 'chat,debug>debug|preview>preview|console>console';
+    expect(shape()).toBe(moved);
+    act(() => commands.undo());
     expect(shape()).toBe(shapeOf(start()));
-    expect(toast.dismiss).toHaveBeenCalledWith(LAYOUT_TOAST_ID);
-  });
-
-  it('answers false for a move that changes nothing, and says nothing', () => {
-    expect(commands.move({ panel: 'chat' }, { kind: 'tab', cell: 'cell2', index: null })).toBe(false);
+    act(() => commands.redo());
+    expect(shape()).toBe(moved);
     expect(toast).not.toHaveBeenCalled();
   });
 
-  it('names a closed group by its front panel and how many more', () => {
+  it('answers false for a move that changes nothing', () => {
+    expect(commands.move({ panel: 'chat' }, { kind: 'tab', cell: 'cell2', index: null })).toBe(false);
+    expect(shape()).toBe(shapeOf(start()));
+  });
+
+  it('brings forward, closes a group, and opens and closes from the rail, without a toast', () => {
+    commands.toggle('debug');
+    expect(shape()).toBe('chat>chat|preview>preview|console,debug>debug');
     commands.closeGroup('cell6');
     expect(shape()).toBe('chat>chat|preview>preview');
-    expect(lastToast()[0]).toBe(t('workspace.layout.toast.groupClosed', { panel: t('workspace.tabs.console'), count: 1 }));
-  });
-
-  it('toasts an open and a close from the rail, and nothing for bringing a tab forward', () => {
     commands.toggle('files');
-    expect(lastToast()[0]).toBe(t('workspace.layout.toast.opened', { panel: t('workspace.tabs.fileExplorer') }));
-    const toasts = toast.mock.calls.length;
-    commands.toggle('debug');
-    expect(toast.mock.calls.length).toBe(toasts);
-    commands.toggle('debug');
-    expect(lastToast()[0]).toBe(t('workspace.layout.toast.closed', { panel: t('workspace.tabs.debugEvents') }));
+    expect(useWorkspaceStore.getState().showFiles).toBe(true);
+    commands.toggle('files');
+    expect(useWorkspaceStore.getState().showFiles).toBe(false);
+    expect(toast).not.toHaveBeenCalled();
   });
 
-  it('says there is nothing to undo, with no Undo of its own', () => {
+  it('leaves the layout and says nothing for an Undo or Redo with nothing to take', () => {
     commands.undo();
-    const [text, options] = lastToast();
-    expect(text).toBe(t('workspace.layout.toast.nothingToUndo'));
-    expect(options.action).toBeUndefined();
+    commands.redo();
+    expect(shape()).toBe(shapeOf(start()));
+    expect(toast).not.toHaveBeenCalled();
   });
 
-  it('splits a group up with an Undo, and says so when it cannot', () => {
+  it('splits a group up without a toast, and says so when it cannot, or only in part', () => {
     commands.ungroup('cell6');
     expect(shape()).toBe('chat>chat|preview>preview|console>console/debug>debug');
-    expect(lastToast()[0]).toBe(t('workspace.layout.toast.ungrouped'));
-    expect(lastToast()[1].action).toBeDefined();
+    expect(toast).not.toHaveBeenCalled();
     commands.ungroup('cell2');
     expect(lastToast()[0]).toBe(t('workspace.layout.toast.ungroupNoRoom'));
     expect(lastToast()[1].action).toBeUndefined();
+
+    // 500 px fits two columns and no stack: the preview gets the second column and the files stay.
+    useWorkspaceStore.setState({ workspaceBox: { w: 500, h: 500 }, layout: { v: 1, columns: [
+      { id: 'col1', size: 100, cells: [{ id: 'cell2', size: 100, tabs: ['chat', 'preview', 'files'], active: 'chat' }] },
+    ] } });
+    commands.ungroup('cell2');
+    expect(lastToast()[0]).toBe(t('workspace.layout.toast.ungroupedPartly', { count: 1 }));
   });
 });
 
@@ -132,15 +134,23 @@ describe('layoutShortcut', () => {
     expect(layoutShortcut(key('Escape'), el('tab'), false)).toBe('restore');
   });
 
-  it('leaves redo, and the key with other modifiers or none, alone', () => {
-    expect(layoutShortcut(key('z', { ctrlKey: true, shiftKey: true }), el('tab'), false)).toBeNull();
+  it('redoes with Ctrl+Shift+Z or Ctrl+Y, and with Cmd+Shift+Z on a Mac', () => {
+    expect(layoutShortcut(key('Z', { ctrlKey: true, shiftKey: true }), el('tab'), false)).toBe('redo');
+    expect(layoutShortcut(key('y', { ctrlKey: true }), el('tab'), false)).toBe('redo');
+    expect(layoutShortcut(key('Z', { metaKey: true, shiftKey: true }), el('tab'), true)).toBe('redo');
+    expect(layoutShortcut(key('y', { metaKey: true }), el('tab'), true)).toBeNull();
+  });
+
+  it('leaves the key with other modifiers or none alone', () => {
     expect(layoutShortcut(key('z', { ctrlKey: true, altKey: true }), el('tab'), false)).toBeNull();
+    expect(layoutShortcut(key('Z', { ctrlKey: true, shiftKey: true, altKey: true }), el('tab'), false)).toBeNull();
     expect(layoutShortcut(key('z'), el('tab'), false)).toBeNull();
   });
 
   it('leaves the keys to Monaco, the chat composer and fields', () => {
     for (const id of ['composer', 'field', 'monaco', 'editable']) {
       expect(layoutShortcut(key('z', { ctrlKey: true }), el(id), false), id).toBeNull();
+      expect(layoutShortcut(key('Z', { ctrlKey: true, shiftKey: true }), el(id), false), id).toBeNull();
       expect(layoutShortcut(key('Escape'), el(id), false), id).toBeNull();
     }
   });

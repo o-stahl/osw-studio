@@ -56,7 +56,7 @@ function PanelMenuItems({ panel }: { panel: PanelKey }) {
   const title = text.titles[panel];
   const maximized = maximizedCell === at.cell.id;
 
-  const option = (label: string, target: DropTarget | null, toast: string, already: string, extra: { shortcut?: string; inset?: boolean } = {}) => {
+  const option = (label: string, target: DropTarget | null, already: string, extra: { shortcut?: string; inset?: boolean } = {}) => {
     const next = target ? movePanel(view, { panel }, target, box, { recent }) : null;
     const refusal = next ? checkLayout(next, box) : null;
     const disabled = !next || !!refusal;
@@ -66,7 +66,7 @@ function PanelMenuItems({ panel }: { panel: PanelKey }) {
         key={label}
         inset={extra.inset}
         disabled={disabled}
-        onSelect={() => { if (target) commands.move({ panel }, target, toast); }}
+        onSelect={() => { if (target) commands.move({ panel }, target); }}
       >
         {label}
         {note && <ContextMenuShortcut className={disabled ? 'pl-4 tracking-normal' : undefined}>{note}</ContextMenuShortcut>}
@@ -81,16 +81,15 @@ function PanelMenuItems({ panel }: { panel: PanelKey }) {
     <ContextMenuContent className="min-w-[14rem]">
       <ContextMenuLabel>{title}</ContextMenuLabel>
       <ContextMenuSeparator />
-      {option(t('menu.splitRight'), splitRightTarget(view, panel), t('toast.movedToColumn', { panel: title }), t('menu.alreadyOwnColumn'), { shortcut: modShortcut('\\') })}
-      {option(t('menu.splitBelow'), { kind: 'stack', cell: at.cell.id, side: 'below' }, t('toast.splitBelow', { panel: title }), t('menu.alreadyAlone'))}
-      {option(t('menu.moveToNewColumn'), { kind: 'column', before: null }, t('toast.movedToColumn', { panel: title }), t('menu.alreadyLastColumn'))}
+      {option(t('menu.splitRight'), splitRightTarget(view, panel), t('menu.alreadyOwnColumn'), { shortcut: modShortcut('\\') })}
+      {option(t('menu.splitBelow'), { kind: 'stack', cell: at.cell.id, side: 'below' }, t('menu.alreadyAlone'))}
+      {option(t('menu.moveToNewColumn'), { kind: 'column', before: null }, t('menu.alreadyLastColumn'))}
       {others.length > 0 && (
         <>
           <ContextMenuLabel className="font-normal text-muted-foreground">{t('menu.addAsTabTo')}</ContextMenuLabel>
           {others.map((cell) => option(
             text.titles[cell.active],
             { kind: 'tab', cell: cell.id, index: null },
-            t('toast.addedTo', { panel: title, target: text.titles[cell.active] }),
             '',
             { inset: true },
           ))}

@@ -174,7 +174,15 @@ export function DeploymentDetail({
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Reset local state when the deployment prop changes (e.g. after save)
+  // The saved settings the local state mirrors. A new copy of the deployment that saved nothing new,
+  // as a publish hands over with its published version and timestamps, keeps the edits in progress.
+  const saved = JSON.stringify([
+    deployment.id, deployment.projectId, deployment.underConstruction, deployment.customDomain,
+    deployment.headScripts, deployment.bodyScripts, deployment.cdnLinks, deployment.analytics,
+    deployment.seo, deployment.compliance, deployment.review,
+  ]);
+
+  // Reset local state when the saved settings change (after a save, or for another deployment)
   useEffect(() => {
     setProjectId(deployment.projectId);
     setUnderConstruction(deployment.underConstruction);
@@ -187,7 +195,8 @@ export function DeploymentDetail({
     setCompliance(deployment.compliance);
     setReview(toReviewDraft(deployment.review));
     setIsDirty(false);
-  }, [deployment]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `saved` covers every field read here
+  }, [saved]);
 
   // Track dirty state
   useEffect(() => {

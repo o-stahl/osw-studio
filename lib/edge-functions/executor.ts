@@ -85,8 +85,10 @@ export async function executeFunction(
   const startTime = Date.now();
   const logs: string[] = [];
 
-  // Track response
+  // Track response, and the message of an error response (Response.error, or a throw the wrapper
+  // turned into one), which is the call's error
   let responseSet = false;
+  let responseError: string | undefined;
   let response: FunctionResponse = {
     status: 200,
     headers: {},
@@ -158,10 +160,11 @@ export async function executeFunction(
       logs,
       decryptedSecrets,
       serverFunctions,
-      setResponse: (newResponse: FunctionResponse) => {
+      setResponse: (newResponse: FunctionResponse, error?: string) => {
         if (!responseSet) {
           responseSet = true;
           response = newResponse;
+          responseError = error;
         } else {
           logs.push('[WARN] Response already set, ignoring subsequent call');
         }
@@ -237,6 +240,7 @@ export async function executeFunction(
       response,
       logs,
       durationMs: Date.now() - startTime,
+      ...(responseError !== undefined && { error: responseError }),
     };
   } catch (error) {
     const errorMessage = formatError(error);
@@ -284,7 +288,8 @@ interface GlobalsConfig {
   logs: string[];
   decryptedSecrets: Record<string, string>;
   serverFunctions: ServerFunction[];
-  setResponse: (response: FunctionResponse) => void;
+  /** `error` is the message of an error response, which the call reports as its error. */
+  setResponse: (response: FunctionResponse, error?: string) => void;
   fetchState: FetchState;
   /** When the invoking function's budget expires; outbound requests are bounded by it. */
   deadline: number;
@@ -372,7 +377,7 @@ function injectConsole(context: QuickJSContext, logs: string[]): void {
 /**
  * Inject Response helper object
  */
-function injectResponseHelpers(context: QuickJSContext, setResponse: (response: FunctionResponse) => void): void {
+function injectResponseHelpers(context: QuickJSContext, setResponse: GlobalsConfig['setResponse']): void {
   const responseObj = context.newObject();
 
   // Response.json(data, status?, headers?)
@@ -405,14 +410,14 @@ function injectResponseHelpers(context: QuickJSContext, setResponse: (response: 
 
   // Response.error(message, status?, headers?)
   const errorFn = context.newFunction('error', (msgHandle: QuickJSHandle, statusHandle?: QuickJSHandle, headersHandle?: QuickJSHandle) => {
-    const message = context.dump(msgHandle) as string;
+    const message: unknown = context.dump(msgHandle);
     const status = statusHandle ? (context.dump(statusHandle) as number) : 500;
     const extraHeaders = headersHandle ? (context.dump(headersHandle) as Record<string, string>) : {};
     setResponse({
       status,
       headers: { 'Content-Type': 'application/json', ...extraHeaders },
       body: { error: message },
-    });
+    }, typeof message === 'string' ? message : JSON.stringify(message));
   });
   context.setProp(responseObj, 'error', errorFn);
   errorFn.dispose();

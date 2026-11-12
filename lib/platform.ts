@@ -4,3 +4,6 @@ export const isMac = (): boolean =>
 
 /** A shortcut with the platform's modifier, as menus write it: ⌘S on a Mac, Ctrl+S elsewhere. */
 export const modShortcut = (key: string): string => (isMac() ? `⌘${key}` : `Ctrl+${key}`);
+
+/** The same with Shift: ⇧⌘Z on a Mac, Ctrl+Shift+Z elsewhere. */
+export const modShiftShortcut = (key: string): string => (isMac() ? `⇧⌘${key}` : `Ctrl+Shift+${key}`);

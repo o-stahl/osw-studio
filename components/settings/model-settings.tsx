@@ -335,8 +335,8 @@ export function ModelSettingsPanel({ onClose, onModelChange, showJudgeModel, onJ
       ) : providerConfig.isLocal ? (
         <div>
           <Label htmlFor="api-key">
-            {providerConfig.name} API Key
-            <span className="text-muted-foreground text-xs ml-1">(optional)</span>
+            {t('providerApiKey', { provider: providerConfig.name })}
+            <span className="text-muted-foreground text-xs ml-1">{tc('labels.optionalParen')}</span>
           </Label>
           <div className="flex gap-2 mt-2">
             <div className="relative flex-1">

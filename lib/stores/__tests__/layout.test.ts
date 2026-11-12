@@ -151,15 +151,51 @@ describe('layout slice', () => {
       expect(store.getState().undoLayout()).toBe(false);
     });
 
-    it('leaves out tab switches and resizes', () => {
+    it('leaves out tab switches, and sizes no one dragged', () => {
       store.setState({ layout: { v: 1, columns: [
         { id: 'col1', size: 50, cells: [{ id: 'cell2', size: 100, tabs: ['chat'], active: 'chat' }] },
         { id: 'col3', size: 50, cells: [{ id: 'cell4', size: 100, tabs: ['console', 'debug'], active: 'console' }] },
       ] } });
       store.getState().activatePanel('debug');
+      // Sizes without a step, as when the panel group fits them to new minimums by itself.
       store.getState().setColumnSizes([60, 40]);
       expect(store.getState().layoutHistory).toHaveLength(0);
       expect(store.getState().undoLayout()).toBe(false);
+    });
+
+    it('takes back a divider drag as one step, widths and heights together', () => {
+      store.setState({ layout: { v: 1, columns: [
+        { id: 'col1', size: 50, cells: [{ id: 'cell1', size: 50, tabs: ['chat'], active: 'chat' }, { id: 'cell2', size: 50, tabs: ['console'], active: 'console' }] },
+        { id: 'col2', size: 50, cells: [{ id: 'cell3', size: 100, tabs: ['preview'], active: 'preview' }] },
+      ] } });
+      const before = store.getState().layout;
+      store.getState().setColumnSizes([60, 40], 'drag-1');
+      store.getState().setCellSizes('col1', [70, 30], 'drag-1');
+      expect(store.getState().layoutHistory).toHaveLength(1);
+      expect(store.getState().undoLayout()).toBe(true);
+      expect(store.getState().layout).toEqual(before);
+    });
+
+    it('takes back each drag on its own, and a run of key presses on one divider as one', () => {
+      store.setState({ layout: columnsOf('chat', 'preview') });
+      store.getState().setColumnSizes([45, 55], 'drag-1');
+      store.getState().setColumnSizes([40, 60], 'drag-2');
+      for (const size of [41, 42, 43]) store.getState().setColumnSizes([size, 100 - size], 'key-h1');
+      expect(widths(store.getState().layout)).toEqual([43, 57]);
+      store.getState().undoLayout();
+      expect(widths(store.getState().layout)).toEqual([40, 60]);
+      store.getState().undoLayout();
+      expect(widths(store.getState().layout)).toEqual([45, 55]);
+      store.getState().undoLayout();
+      expect(widths(store.getState().layout)).toEqual([50, 50]);
+    });
+
+    it('starts a new step on the same divider once anything else has changed', () => {
+      store.setState({ layout: columnsOf('chat', 'preview', 'files') });
+      store.getState().setColumnSizes([30, 40, 30], 'key-h1');
+      store.getState().closePanel('files');
+      store.getState().setColumnSizes([45, 55], 'key-h1');
+      expect(store.getState().layoutHistory).toHaveLength(3);
     });
 
     it('puts back the places the change forgot', () => {
@@ -169,6 +205,51 @@ describe('layout slice', () => {
       expect(store.getState().lastPlace).toEqual({});
       store.getState().undoLayout();
       expect(Object.keys(store.getState().lastPlace)).toEqual(['files']);
+    });
+  });
+
+  describe('redo', () => {
+    it('puts back what Undo took, the most recent undo first', () => {
+      store.setState({ layout: columnsOf('chat', 'preview', 'files') });
+      store.getState().movePanel({ panel: 'files' }, { kind: 'tab', cell: 'cell1', index: null });
+      const moved = store.getState().layout;
+      store.getState().setColumnSizes([60, 40], 'drag-1');
+      const resized = store.getState().layout;
+      store.getState().undoLayout();
+      store.getState().undoLayout();
+      expect(store.getState().redoLayout()).toBe(true);
+      expect(store.getState().layout).toEqual(moved);
+      expect(store.getState().redoLayout()).toBe(true);
+      expect(store.getState().layout).toEqual(resized);
+      expect(store.getState().redoLayout()).toBe(false);
+    });
+
+    it('puts back the closed panels\' places and the recent order too', () => {
+      store.setState({ layout: columnsOf('chat', 'preview', 'files'), recentPanels: ['files', 'preview'] });
+      store.getState().closePanel('files');
+      store.getState().resetPanelLayout();
+      store.getState().undoLayout();
+      expect(Object.keys(store.getState().lastPlace)).toEqual(['files']);
+      expect(store.getState().recentPanels).toEqual(['files', 'preview']);
+      store.getState().redoLayout();
+      expect(store.getState().lastPlace).toEqual({});
+      expect(store.getState().recentPanels).toEqual([]);
+    });
+
+    it('has nothing to put back once the layout changes again', () => {
+      for (const change of [
+        () => store.getState().closePanel('preview'),
+        () => store.getState().setColumnSizes([30, 40, 30], 'drag-9'),
+        () => store.getState().revealPanel('editor'),
+      ]) {
+        store.setState({ layout: columnsOf('chat', 'preview', 'files'), layoutHistory: [], layoutFuture: [] });
+        store.getState().closePanel('files');
+        store.getState().undoLayout();
+        const before = store.getState().layout;
+        change();
+        expect(store.getState().layout, change.toString()).not.toEqual(before);
+        expect(store.getState().redoLayout(), change.toString()).toBe(false);
+      }
     });
   });
 
@@ -233,7 +314,7 @@ describe('layout slice', () => {
   it('counts layout changes, but not divider drags, so the splitters remount only for the first', () => {
     store.setState({ layout: columnsOf('chat', 'preview', 'files') });
     const epoch = store.getState().layoutEpoch;
-    store.getState().setColumnSizes([40, 35, 25]);
+    store.getState().setColumnSizes([40, 35, 25], 'drag-1');
     expect(store.getState().layoutEpoch).toBe(epoch);
     store.getState().closePanel('files');
     expect(store.getState().layoutEpoch).toBe(epoch + 1);

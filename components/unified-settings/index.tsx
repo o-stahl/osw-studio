@@ -69,10 +69,10 @@ interface PaneDef {
 const PANES: PaneDef[] = [
   { id: 'connections', label: 'Connections',   icon: <FileText className="size-4 shrink-0" /> },
   { id: 'models',      label: 'Models',        icon: <LayoutGrid className="size-4 shrink-0" /> },
-  { id: 'templates',   label: 'Templates',     icon: <Layers className="size-4 shrink-0" /> },
+  { id: 'templates',   label: 'Templates',     icon: <Layers className="size-4 shrink-0" />, studioOnly: true },
   { id: 'appearance',  label: 'Appearance',    icon: <Palette className="size-4 shrink-0" /> },
   { id: 'costs',       label: 'Cost Tracking', icon: <DollarSign className="size-4 shrink-0" /> },
-  { id: 'permissions', label: 'Permissions',   icon: <Shield className="size-4 shrink-0" /> },
+  { id: 'permissions', label: 'Permissions',   icon: <Shield className="size-4 shrink-0" />, studioOnly: true },
   { id: 'data',        label: 'Data',          icon: <Database className="size-4 shrink-0" /> },
   { id: 'mcp', label: 'MCP', icon: <Plug className="size-4 shrink-0" />, serverModeOnly: true, studioOnly: true },
   { id: 'mail',        label: 'Mail',          icon: <Mail className="size-4 shrink-0" />, serverModeOnly: true, studioOnly: true },

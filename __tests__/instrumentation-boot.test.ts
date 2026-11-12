@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   systemDatabaseExists: vi.fn(),
   backfillDeploymentRoutes: vi.fn(),
   regenerateInstanceCaddy: vi.fn(),
+  exitAfterShutdownGrace: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
@@ -33,6 +34,9 @@ vi.mock('@/lib/auth/default-workspace', () => ({
   backfillDeploymentRoutes: mocks.backfillDeploymentRoutes,
 }));
 vi.mock('@/lib/caddy/regenerate', () => ({ regenerateInstanceCaddy: mocks.regenerateInstanceCaddy }));
+// The real one installs SIGTERM and SIGINT handlers on the test worker, which then outlives the
+// runner's own stop signal until it is killed.
+vi.mock('@/lib/web/shutdown', () => ({ exitAfterShutdownGrace: mocks.exitAfterShutdownGrace }));
 
 async function boot() {
   const { register } = await import('@/instrumentation');
@@ -131,5 +135,16 @@ describe('boot', () => {
     expect(mocks.order).toEqual([]);
     expect(mocks.systemDatabaseExists).not.toHaveBeenCalled();
     expect(mocks.regenerateInstanceCaddy).not.toHaveBeenCalled();
+  });
+
+  it('gives a stopping server its shutdown grace period, in a Browser Mode build too', async () => {
+    for (const serverMode of ['true', 'false']) {
+      vi.stubEnv('NEXT_PUBLIC_SERVER_MODE', serverMode);
+      mocks.exitAfterShutdownGrace.mockClear();
+
+      await boot();
+
+      expect(mocks.exitAfterShutdownGrace, serverMode).toHaveBeenCalledTimes(1);
+    }
   });
 });

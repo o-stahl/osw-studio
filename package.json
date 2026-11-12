@@ -1,6 +1,6 @@
 {
   "name": "osw-studio-v1",
-  "version": "1.109.0",
+  "version": "1.110.0",
   "private": true,
   "license": "MIT",
   "scripts": {
@@ -41,6 +41,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cron-parser": "^4.9.0",
+    "es-module-lexer": "^1.7.0",
     "esbuild-wasm": "^0.24.0",
     "handlebars": "^4.7.8",
     "jose": "^6.1.0",
