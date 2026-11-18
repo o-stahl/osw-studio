@@ -7,17 +7,17 @@
 import { vfs } from '@/lib/vfs';
 import { readOpenTagAt, type OpenTag } from '@/lib/preview/provenance';
 import { resolveSelection } from './resolution';
-import type { ApplyResult, PreviewSelection } from './types';
+import type { ApplyResult, PreviewSelection, WriteRecorder } from './types';
 import { asText } from '@/lib/vfs/as-text';
 
-/** Void elements have no text content to read. */
-const VOID_TAGS = new Set([
+/** Void elements have no text content to read, and no close tag. */
+export const VOID_TAGS = new Set([
   'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param',
   'source', 'track', 'wbr',
 ]);
 
 /** Tags whose content is raw text, not element text. */
-const RAW_TEXT_TAGS = new Set(['script', 'style', 'title', 'textarea']);
+export const RAW_TEXT_TAGS = new Set(['script', 'style', 'title', 'textarea']);
 
 /**
  * Whitespace that may be reflowed. **U+00A0 is deliberately absent**, and so is every other
@@ -185,7 +185,7 @@ function closeTagNameEnd(s: string, i: number): number {
  * backwards from the `>` rather than matched, because an attribute value can end in `/`
  * (`href="/about/"`) and the quote is what sits between it and the tag end.
  */
-function isSelfClosing(content: string, tag: OpenTag): boolean {
+export function isSelfClosing(content: string, tag: OpenTag): boolean {
   if (content[tag.tagEnd - 1] !== '>') return false;
   let i = tag.tagEnd - 2;
   while (i > tag.nameEnd && isReflowSpace(content[i])) i--;
@@ -410,7 +410,7 @@ export async function applyText(
   projectId: string,
   selection: PreviewSelection,
   nextText: string,
-  opts?: { confirmedMultiInstance?: boolean; isGenerating?: () => boolean },
+  opts?: { confirmedMultiInstance?: boolean; isGenerating?: () => boolean; record?: WriteRecorder },
 ): Promise<ApplyResult> {
   // A write landing mid-generation races the agent's own edits over the same files.
   if (opts?.isGenerating?.()) return { ok: false, reason: 'generating', filesWritten: [] };
@@ -449,5 +449,6 @@ export async function applyText(
   if (next === located.content) return { ok: true, filesWritten: [] };
 
   await vfs.updateFile(projectId, located.file, next);
+  opts?.record?.({ path: located.file, before: located.content, after: next, silent: false });
   return { ok: true, file: located.file, filesWritten: [located.file] };
 }

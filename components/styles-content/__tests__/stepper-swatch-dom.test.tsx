@@ -6,6 +6,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { StylesContent, type StylesContentHandle } from '..';
 import type { FocusContextPayload } from '@/lib/preview/types';
 import type { ApplyResult } from '@/lib/direct-edit/types';
+import { createTranslator } from 'next-intl';
+import en from '@/messages/en.json';
 
 /**
  * The two reworked controls, mounted — the wiring their pure halves cannot show.
@@ -32,29 +34,34 @@ let container: HTMLDivElement;
 let root: Root;
 const ref = createRef<StylesContentHandle>();
 let applyStyle: ReturnType<typeof vi.fn>;
-let removeStyle: ReturnType<typeof vi.fn>;
 let readOverrides: ReturnType<typeof vi.fn>;
 
-const okResult: ApplyResult = { ok: true, markerId: 'm1', filesWritten: ['/overrides.css'] };
+const okResult: ApplyResult = { ok: true, markerId: 'm1', filesWritten: ['/overrides.css'], css: '' };
+
+/** What reading `/overrides.css` back says the marker sets for every width. */
+const fileSays = (properties: readonly string[]) => ({
+  byScope: new Map([['all' as const, Object.fromEntries(properties.map(p => [p, 'x']))]]),
+  text: '',
+  widths: [],
+});
 
 function mount(options: {
-  removable?: boolean;
+  /** False: the host passes no write path at all. */
+  writable?: boolean;
   /** The element as the frame reports it — a marker here means it was edited before today. */
   selection?: FocusContextPayload;
   /** What `/overrides.css` says the marker's block declares. Absent = the host offers no reader. */
   overridden?: readonly string[];
 } = {}): void {
   applyStyle = vi.fn(async () => okResult);
-  removeStyle = vi.fn(async () => okResult);
-  readOverrides = vi.fn(async () => options.overridden ?? []);
+  readOverrides = vi.fn(async () => fileSays(options.overridden ?? []));
   act(() => {
     root.render(withMessages(
       <StylesContent
         ref={ref}
         selection={options.selection ?? payload()}
         sendToFrame={vi.fn()}
-        applyStyle={applyStyle}
-        removeStyle={options.removable === false ? undefined : removeStyle}
+        applyStyle={options.writable === false ? null : applyStyle}
         onReadOverrides={options.overridden === undefined ? undefined : readOverrides}
         tokens={[]}
         onOpenFile={vi.fn()}
@@ -101,10 +108,9 @@ function found(selector: string): Element | null {
  * Everything about a colour now lives behind it, so a test that does not open it is testing a shut
  * door. Verified in jsdom: Radix opens on a plain click and portals the content out of the host.
  */
-async function openColour(label: string): Promise<void> {
-  const trigger = Array.from(container.querySelectorAll<HTMLButtonElement>('[data-osw-color-trigger]'))
-    .find(el => el.getAttribute('aria-label') === `${label} colour`);
-  expect(trigger, `no ${label} colour trigger`).toBeTruthy();
+async function openColour(row: string): Promise<void> {
+  const trigger = colourTrigger(row);
+  expect(trigger, `no ${row} colour trigger`).toBeTruthy();
   // Idempotent, because Radix's trigger is a toggle and the popover stays open after a press.
   if (trigger!.getAttribute('data-state') === 'open') return;
   // Awaited: Radix opens through a state update, and a synchronous `act` returns before the content
@@ -118,14 +124,62 @@ async function openColour(label: string): Promise<void> {
  * Keyed on the data attribute rather than the translated label, so an absence means no Reset, not
  * a renamed one. Throws if that popover is not open, which an absence would otherwise also cover.
  */
-function resetIn(label: string): Element | null {
-  const trigger = Array.from(container.querySelectorAll<HTMLButtonElement>('[data-osw-color-trigger]'))
-    .find(el => el.getAttribute('aria-label') === `${label} colour`);
-  const id = trigger?.getAttribute('aria-controls');
-  const popover = id ? document.getElementById(id) : null;
-  if (!popover) throw new Error(`the ${label} colour popover is not open`);
-  return popover.querySelector('[data-osw-color-reset]');
+function resetIn(row: string): Element | null {
+  return popoverOf(row).querySelector('[data-osw-color-reset]');
 }
+
+/** One row's colour trigger, by the row's id. */
+function colourTrigger(row: string): HTMLButtonElement | null {
+  return container.querySelector<HTMLButtonElement>(`[data-osw-row="${row}"] [data-osw-color-trigger]`);
+}
+
+/** One row's open colour popover, found through its trigger's `aria-controls`. Throws if it is shut. */
+function popoverOf(row: string): HTMLElement {
+  const id = colourTrigger(row)?.getAttribute('aria-controls');
+  const popover = id ? document.getElementById(id) : null;
+  if (!popover) throw new Error(`the ${row} colour popover is not open`);
+  return popover;
+}
+
+/** The custom colour picker in one row's open colour popover. */
+const pickerIn = (row: string) => popoverOf(row).querySelector<HTMLInputElement>('[data-osw-color-picker]')!;
+
+const ts = createTranslator({ locale: 'en', messages: en, namespace: 'styles' });
+/** The text size row's value, and its unit menu. */
+const SIZE_VALUE = '[data-osw-row="font-size"] [data-osw-stepper-value]';
+const SIZE_UNIT = '[data-osw-row="font-size"] [data-osw-stepper-unit]';
+/** The text size row's +, which only its name tells apart from its −. */
+const SIZE_INCREASE = `[data-osw-row="font-size"] [aria-label="${ts('increase', { label: en.styleProps.labels['font-size'] })}"]`;
+
+/**
+ * A part of one row's own stepper, not of a side opened under it: a side is a row of its own,
+ * nested in its parent's, so the part's nearest row has to be the one asked for.
+ */
+function inRow<T extends Element = HTMLElement>(row: string, part: string): T | null {
+  return Array.from(container.querySelectorAll<T>(`[data-osw-row="${row}"] ${part}`))
+    .find(el => el.closest('[data-osw-row]')?.getAttribute('data-osw-row') === row) ?? null;
+}
+
+/** As `inRow`, for a part that has to be there. */
+function partOf<T extends Element = HTMLElement>(row: string, part: string): T {
+  const el = inRow<T>(row, part);
+  expect(el, `no ${part} in the ${row} row`).not.toBeNull();
+  return el!;
+}
+
+const valueIn = (row: string) => partOf<HTMLButtonElement>(row, '[data-osw-stepper-value]');
+const unitIn = (row: string) => partOf<HTMLSelectElement>(row, 'select[data-osw-stepper-unit]');
+const expanderIn = (row: string) => inRow<HTMLButtonElement>(row, '[data-osw-stepper-expand]');
+/** A row's − or +, which only their names tell apart. */
+const stepIn = (row: string, direction: 'increase' | 'decrease', label: string) =>
+  partOf<HTMLButtonElement>(row, `[aria-label="${ts(direction, { label })}"]`);
+
+/** The side rows the vertical padding and horizontal margin open into. */
+const TOP = 'padding-block:padding-block-start';
+const BOTTOM = 'padding-block:padding-block-end';
+const LEFT = 'margin-inline:margin-inline-start';
+const RIGHT = 'margin-inline:margin-inline-end';
+const sides = en.styleProps.sides;
 
 /** Set a controlled input's value the way a user's typing reaches React. */
 function type(input: HTMLInputElement, value: string): void {
@@ -143,9 +197,9 @@ async function settle(): Promise<void> {
   });
 }
 
-/** Every declaration the panel actually wrote, in order. */
-function written(): { property: string; value: string }[] {
-  return applyStyle.mock.calls.map(call => call[1]);
+/** Every change the panel actually wrote, in order. */
+function written(): { property: string; value: string | null }[] {
+  return applyStyle.mock.calls.flatMap(call => call[1]);
 }
 
 beforeEach(() => {
@@ -167,7 +221,7 @@ describe('the value control', () => {
     mount();
     computed({ 'padding-block-start': '16px', 'padding-block-end': '16px' }, '16px');
 
-    const open = find<HTMLButtonElement>('[aria-label="Padding, vertical value"]');
+    const open = valueIn('padding-block');
     expect(open.textContent).toBe('1');
     act(() => { open.click(); });
 
@@ -185,7 +239,7 @@ describe('the value control', () => {
     mount();
     computed({ 'padding-block-start': '16px', 'padding-block-end': '16px' }, '16px');
 
-    act(() => { find<HTMLButtonElement>('[aria-label="Padding, vertical value"]').click(); });
+    act(() => { valueIn('padding-block').click(); });
     const input = find<HTMLInputElement>('input[data-osw-stepper-input]');
     type(input, '12px}');
     act(() => {
@@ -207,7 +261,7 @@ describe('the value control', () => {
     ].map(name => [name, '20px']));
     computed(corners, '10px');
 
-    const unit = find<HTMLSelectElement>('[aria-label="Corner radius unit"]');
+    const unit = unitIn('border-radius');
     expect(unit.value).toBe('px');
     act(() => {
       unit.value = 'rem';
@@ -217,34 +271,78 @@ describe('the value control', () => {
 
     expect(written()).toEqual([{ property: 'border-radius', value: '2rem' }]);
     // And the control now shows, and writes in, the unit it was switched to.
-    expect(find('[aria-label="Corner radius value"]').textContent).toBe('2');
-    expect(find<HTMLSelectElement>('[aria-label="Corner radius unit"]').value).toBe('rem');
+    expect(valueIn('border-radius').textContent).toBe('2');
+    expect(unitIn('border-radius').value).toBe('rem');
   });
 
   it('offers the unitless option on line-height and nowhere else', () => {
     mount();
     computed({ 'line-height': '30px', 'font-size': '20px' }, '16px');
 
-    const lineHeight = find<HTMLSelectElement>('[aria-label="Line height unit"]');
+    const lineHeight = unitIn('line-height');
     expect(Array.from(lineHeight.options).map(o => o.value)).toEqual(['', 'rem', 'px']);
     expect(lineHeight.value).toBe('');
 
-    const padding = find<HTMLSelectElement>('[aria-label="Padding, vertical unit"]');
+    const padding = unitIn('padding-block');
     expect(Array.from(padding.options).map(o => o.value)).toEqual(['rem', 'px']);
+  });
+
+  it('writes nothing for a field opened and left, or entered, as it was', async () => {
+    mount();
+    computed({ 'font-size': '16px' }, '16px');
+
+    act(() => { find<HTMLButtonElement>(SIZE_VALUE).click(); });
+    act(() => { find<HTMLInputElement>('input[data-osw-stepper-input]').blur(); });
+    act(() => { find<HTMLButtonElement>(SIZE_VALUE).click(); });
+    act(() => {
+      find<HTMLInputElement>('input[data-osw-stepper-input]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    await settle();
+
+    expect(written()).toEqual([]);
+  });
+
+  it('shows the element\'s own value again when a change it asked about is cancelled', async () => {
+    mount();
+    applyStyle.mockResolvedValue({ ok: false, reason: 'needs-confirmation', instances: 3, filesWritten: [] });
+    computed({ 'font-size': '16px' }, '16px');
+    expect(find(SIZE_VALUE).textContent).toBe('1');
+
+    act(() => { find<HTMLButtonElement>(SIZE_INCREASE).click(); });
+    await settle();
+    const cancel = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(b => b.textContent === en.common.actions.cancel);
+    expect(cancel, 'the confirmation is not on show').toBeTruthy();
+    act(() => { cancel!.click(); });
+
+    expect(find(SIZE_VALUE).textContent).toBe('1');
+  });
+
+  it('stops a drag on a label at the bottom of the scale, in the unit on screen', async () => {
+    mount();
+    computed({ 'font-size': '16px' }, '16px');
+    const unit = find<HTMLSelectElement>(SIZE_UNIT);
+    act(() => {
+      unit.value = 'px';
+      unit.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await settle();
+    applyStyle.mockClear();
+
+    // Dragged far to the left: the type scale starts at 0.75rem, which is 12px here.
+    const label = find<HTMLElement>('[data-osw-row="font-size"] [data-osw-scrub]');
+    act(() => { label.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 0 })); });
+    act(() => { window.dispatchEvent(new PointerEvent('pointermove', { clientX: -400 })); });
+    act(() => { window.dispatchEvent(new PointerEvent('pointerup', {})); });
+    await settle();
+
+    expect(written()).toEqual([{ property: 'font-size', value: '12px' }]);
   });
 });
 
 describe('opening a value into its sides', () => {
-  const valueOf = (label: string) => find<HTMLElement>(`[aria-label="${label} value"]`);
-
-  function expander(label: string): HTMLButtonElement | undefined {
-    return Array.from(container.querySelectorAll<HTMLButtonElement>('[data-osw-stepper-expand]'))
-      .find(el => el.getAttribute('aria-label') === `${label} sides`);
-  }
-
-  function open(label: string): void {
-    const button = expander(label);
-    expect(button, `no disclosure on ${label}`).toBeTruthy();
+  function open(row: string): void {
+    const button = expanderIn(row);
+    expect(button, `no disclosure on ${row}`).toBeTruthy();
     act(() => { button!.click(); });
   }
 
@@ -261,37 +359,38 @@ describe('opening a value into its sides', () => {
     mount();
     lopsided();
 
-    expect(expander('Padding, vertical')).toBeTruthy();
+    expect(expanderIn('padding-block')).toBeTruthy();
     // `Size` is one number about the whole element; there is nothing to open it into.
-    expect(expander('Size')).toBeUndefined();
+    expect(valueIn('font-size')).toBeTruthy();
+    expect(expanderIn('font-size')).toBeNull();
   });
 
   it('stays shut until asked', () => {
     mount();
     lopsided();
 
-    expect(expander('Padding, vertical')!.getAttribute('aria-expanded')).toBe('false');
-    expect(container.querySelector('[aria-label="Top value"]')).toBeNull();
+    expect(expanderIn('padding-block')!.getAttribute('aria-expanded')).toBe('false');
+    expect(inRow(TOP, '[data-osw-stepper-value]')).toBeNull();
   });
 
   it('shows each side its own value, not the one the collapsed control shows', () => {
     mount();
     lopsided();
-    open('Padding, vertical');
+    open('padding-block');
 
     // Collapsed it can only say the sides disagree. That is the whole reason to open it.
-    expect(valueOf('Padding, vertical').textContent).toBe('Mixed');
-    expect(valueOf('Top').textContent).toBe('0.5');
-    expect(valueOf('Bottom').textContent).toBe('1.5');
+    expect(valueIn('padding-block').textContent).toBe(ts('mixed'));
+    expect(valueIn(TOP).textContent).toBe('0.5');
+    expect(valueIn(BOTTOM).textContent).toBe('1.5');
   });
 
   it('writes the side it was stepped on, not the shorthand', async () => {
     mount();
     lopsided();
-    open('Padding, vertical');
+    open('padding-block');
 
     act(() => {
-      find<HTMLButtonElement>('[aria-label="Increase Top"]').click();
+      stepIn(TOP, 'increase', sides.top).click();
     });
     await settle();
 
@@ -303,12 +402,13 @@ describe('opening a value into its sides', () => {
   it('does not offer to open a side into further sides', () => {
     mount();
     lopsided();
-    open('Padding, vertical');
+    open('padding-block');
 
     // A part that kept its parent's `parts` would carry a disclosure of its own, back into the very
     // sides it is one of.
-    expect(expander('Top')).toBeUndefined();
-    expect(expander('Bottom')).toBeUndefined();
+    expect(valueIn(TOP)).toBeTruthy();
+    expect(expanderIn(TOP)).toBeNull();
+    expect(expanderIn(BOTTOM)).toBeNull();
   });
 
   it('offers horizontal margin, and opens it into left and right', async () => {
@@ -321,13 +421,13 @@ describe('opening a value into its sides', () => {
 
     // Left out originally, on the grounds that horizontal margin is the layout's business. Offered
     // now by decision — see the note in `properties.ts`, which also records what it costs.
-    expect(valueOf('Margin, horizontal').textContent).toBe('Mixed');
-    open('Margin, horizontal');
-    expect(valueOf('Left').textContent).toBe('1');
-    expect(valueOf('Right').textContent).toBe('3');
+    expect(valueIn('margin-inline').textContent).toBe(ts('mixed'));
+    open('margin-inline');
+    expect(valueIn(LEFT).textContent).toBe('1');
+    expect(valueIn(RIGHT).textContent).toBe('3');
 
     act(() => {
-      find<HTMLButtonElement>('[aria-label="Decrease Right"]').click();
+      stepIn(RIGHT, 'decrease', sides.right).click();
     });
     await settle();
 
@@ -337,28 +437,28 @@ describe('opening a value into its sides', () => {
   it('shows the new number on the side that was stepped', () => {
     mount();
     lopsided();
-    open('Padding, vertical');
-    expect(valueOf('Top').textContent).toBe('0.5');
+    open('padding-block');
+    expect(valueIn(TOP).textContent).toBe('0.5');
 
     act(() => {
-      find<HTMLButtonElement>('[aria-label="Increase Top"]').click();
+      stepIn(TOP, 'increase', sides.top).click();
     });
 
     // The optimistic overlay, not the frame: a write is answered by a fresh `style-computed` much
     // later, and the control has to move under the finger or it reads as a dead button.
-    expect(valueOf('Top').textContent).toBe('0.75');
+    expect(valueIn(TOP).textContent).toBe('0.75');
     // And only that side.
-    expect(valueOf('Bottom').textContent).toBe('1.5');
+    expect(valueIn(BOTTOM).textContent).toBe('1.5');
   });
 
   it('closes again', () => {
     mount();
     lopsided();
-    open('Padding, vertical');
-    expect(container.querySelector('[aria-label="Top value"]')).not.toBeNull();
+    open('padding-block');
+    expect(inRow(TOP, '[data-osw-stepper-value]')).not.toBeNull();
 
-    open('Padding, vertical');
-    expect(container.querySelector('[aria-label="Top value"]')).toBeNull();
+    open('padding-block');
+    expect(inRow(TOP, '[data-osw-stepper-value]')).toBeNull();
   });
 });
 
@@ -367,9 +467,9 @@ describe('the colour picker', () => {
     mount();
     computed({ color: 'rgb(0, 0, 0)' }, '16px');
 
-    await openColour('Text');
+    await openColour('color');
 
-    const picker = find<HTMLInputElement>('[aria-label="Custom colour: Text"]');
+    const picker = pickerIn('color');
     expect(picker.getAttribute('type')).toBe('color');
     type(picker, '#ff8800');
     await settle();
@@ -378,16 +478,16 @@ describe('the colour picker', () => {
     // Nothing to press afterwards: a control whose result can be left uncommitted is the thing
     // being avoided, and this panel has no Save for any other control either.
     const labels = Array.from(container.querySelectorAll('button')).map(b => b.textContent);
-    expect(labels).not.toContain('Save');
+    expect(labels).not.toContain(en.common.actions.save);
     expect(labels).not.toContain('Apply');
   });
 
   it('opens on the element\'s current colour', async () => {
     mount();
     computed({ color: 'rgb(18, 52, 86)' }, '16px');
-    await openColour('Text');
+    await openColour('color');
 
-    expect(find<HTMLInputElement>('[aria-label="Custom colour: Text"]').value).toBe('#123456');
+    expect(pickerIn('color').value).toBe('#123456');
   });
 });
 
@@ -395,47 +495,62 @@ describe('Reset', () => {
   it('is not offered until this element actually overrides the property', async () => {
     mount();
     computed({ color: 'rgb(0, 0, 0)' }, '16px');
-    await openColour('Text');
+    await openColour('color');
     expect(found('[data-osw-color-reset]')).toBeNull();
 
-    type(find<HTMLInputElement>('[aria-label="Custom colour: Text"]'), '#ff8800');
+    type(pickerIn('color'), '#ff8800');
     await settle();
 
-    expect(found('[aria-label="Reset colour: Text"]')).toBeTruthy();
+    expect(resetIn('color')).not.toBeNull();
 
     // The other colour row was not touched, so it gets no Reset either. Opened, or its absence
     // would only mean that popover was shut.
-    await openColour('Background');
-    expect(resetIn('Background')).toBeNull();
+    await openColour('background-color');
+    expect(resetIn('background-color')).toBeNull();
   });
 
-  it('is never offered when the host passes no removal path', async () => {
-    mount({ removable: false });
+  it('cannot be reached when the host passes no write path: the colour control does not open', async () => {
+    // A removal is a write: with nothing to write through, a Reset could only refuse.
+    mount({ writable: false, selection: payload({ attributes: { class: 'card', 'data-osw-id': 'm1' } }), overridden: ['color'] });
+    await act(async () => {});
     computed({ color: 'rgb(0, 0, 0)' }, '16px');
-    await openColour('Text');
-    type(find<HTMLInputElement>('[aria-label="Custom colour: Text"]'), '#ff8800');
-    await settle();
+    await openColour('color');
 
-    expect(found('[data-osw-color-reset]')).toBeNull();
+    const trigger = find<HTMLButtonElement>('[data-osw-row="color"] [data-osw-color-trigger]');
+    expect(trigger.disabled).toBe(true);
+    expect(trigger.getAttribute('data-state')).toBe('closed');
+  });
+
+  it('is taken out of an open colour popover when the host takes its write path away, even for what the file sets', async () => {
+    const marked = payload({ attributes: { class: 'card', 'data-osw-id': 'm1' } });
+    mount({ selection: marked, overridden: ['color'] });
+    await act(async () => {});
+    computed({ color: 'rgb(0, 0, 0)' }, '16px');
+    await openColour('color');
+    expect(resetIn('color')).not.toBeNull();
+
+    // The popover stays open; what is in it follows the host.
+    mount({ writable: false, selection: marked, overridden: ['color'] });
+
+    expect(resetIn('color')).toBeNull();
   });
 
   it('removes that property, against the marker the write returned', async () => {
     mount();
     computed({ color: 'rgb(0, 0, 0)' }, '16px');
-    await openColour('Text');
-    type(find<HTMLInputElement>('[aria-label="Custom colour: Text"]'), '#ff8800');
+    await openColour('color');
+    type(pickerIn('color'), '#ff8800');
     await settle();
 
     await act(async () => {
       find<HTMLButtonElement>('[data-osw-color-reset]').click();
     });
 
-    expect(removeStyle).toHaveBeenCalledTimes(1);
-    const [selection, markerId, property, confirmed] = removeStyle.mock.calls[0];
+    expect(applyStyle).toHaveBeenCalledTimes(2);
+    const [selection, changes, opts] = applyStyle.mock.calls[1];
     expect(selection.nodeId).toBe('n1');
-    expect(markerId).toBe('m1');
-    expect(property).toBe('color');
-    expect(confirmed).toBe(false);
+    expect(changes).toEqual([{ property: 'color', value: null }]);
+    expect(opts).toMatchObject({ markerId: 'm1', scope: 'all', confirmedMultiInstance: false });
     // And it stops being offered, because there is nothing left to remove.
     expect(found('[data-osw-color-reset]')).toBeNull();
   });
@@ -456,8 +571,6 @@ describe('Reset', () => {
  * fits the panel without the `overflow-auto` clipping its rounded right edge.
  */
 describe('the stepper group', () => {
-  const valueOf = (label: string) => find<HTMLElement>(`[aria-label="${label} value"]`);
-
   it('gives Mixed and a four-decimal number the same box', () => {
     mount();
     // `Margin, vertical` reads Mixed — the sides disagree — while `Size` has a long single value.
@@ -467,9 +580,9 @@ describe('the stepper group', () => {
       'font-size': '10.8624px',
     }, '16px');
 
-    const mixed = valueOf('Margin, vertical');
-    const long = valueOf('Size');
-    expect(mixed.textContent).toBe('Mixed');
+    const mixed = valueIn('margin-block');
+    const long = valueIn('font-size');
+    expect(mixed.textContent).toBe(ts('mixed'));
     expect(long.textContent).toBe('0.6789');
     // Same box: identical classes, so nothing about the box is decided by what is in it.
     expect(mixed.className).toBe(long.className);
@@ -490,7 +603,7 @@ describe('the stepper group', () => {
     // so without `min-w-0` opening the field for editing widens the whole group.
     mount();
     computed({ 'font-size': '16px' }, '16px');
-    act(() => { valueOf('Size').click(); });
+    act(() => { valueIn('font-size').click(); });
 
     const input = find<HTMLInputElement>('input[data-osw-stepper-input]');
     const classes = input.className.split(/\s+/);
@@ -501,10 +614,10 @@ describe('the stepper group', () => {
   it('right-aligns the value', () => {
     mount();
     computed({ 'font-size': '16px' }, '16px');
-    expect(valueOf('Size').className.split(/\s+/)).toContain('text-right');
-    expect(valueOf('Size').className).not.toContain('text-center');
+    expect(valueIn('font-size').className.split(/\s+/)).toContain('text-right');
+    expect(valueIn('font-size').className).not.toContain('text-center');
 
-    act(() => { valueOf('Size').click(); });
+    act(() => { valueIn('font-size').click(); });
     const input = find<HTMLInputElement>('input[data-osw-stepper-input]');
     expect(input.className.split(/\s+/)).toContain('text-right');
     expect(input.className).not.toContain('text-center');
@@ -529,46 +642,56 @@ describe('Reset after a reload', () => {
     expect(readOverrides).toHaveBeenCalledWith('m1');
     // Nothing was written this session: the control is there because the *file* says so.
     expect(applyStyle).not.toHaveBeenCalled();
-    await openColour('Text');
-    expect(find('[aria-label="Reset colour: Text"]')).toBeTruthy();
+    await openColour('color');
+    expect(resetIn('color')).not.toBeNull();
     // And only for the property the file names — the background is not overridden. Opened, or its
     // absence would only mean that popover was shut.
-    await openColour('Background');
-    expect(resetIn('Background')).toBeNull();
+    await openColour('background-color');
+    expect(resetIn('background-color')).toBeNull();
   });
 
   it('removes against the marker the element arrived with', async () => {
     mount({ selection: marked, overridden: ['color'] });
     await act(async () => {});
     computed({ color: 'rgb(0, 0, 0)' }, '16px');
-    await openColour('Text');
+    await openColour('color');
 
     await act(async () => {
       find<HTMLButtonElement>('[data-osw-color-reset]').click();
     });
 
-    expect(removeStyle).toHaveBeenCalledTimes(1);
-    const [, markerId, property] = removeStyle.mock.calls[0];
-    expect(markerId).toBe('m1');
-    expect(property).toBe('color');
+    expect(applyStyle).toHaveBeenCalledTimes(1);
+    const [, changes, opts] = applyStyle.mock.calls[0];
+    expect(changes).toEqual([{ property: 'color', value: null }]);
+    expect(opts.markerId).toBe('m1');
   });
 
-  it('is read on the element, not on the keystroke', async () => {
-    // The read scans a project file. Putting it behind a control would run it once per debounced
-    // commit — four presses of `+`, four scans — for an answer that cannot have changed: what this
-    // session writes is already known to be resettable without asking anyone.
+  it('is read on the element and after each write, not on the keystroke', async () => {
+    // The read scans a project file. Behind the debounce, four presses of `+` are one write and one
+    // read; the read is what keeps the dots and the CSS readout in step with the file.
     mount({ selection: marked, overridden: ['color'] });
     await act(async () => {});
     computed({ 'font-size': '16px' }, '16px');
     expect(readOverrides).toHaveBeenCalledTimes(1);
 
     for (let i = 0; i < 4; i++) {
-      act(() => { find<HTMLButtonElement>('[aria-label="Increase Size"]').click(); });
+      act(() => { find<HTMLButtonElement>(SIZE_INCREASE).click(); });
     }
     await settle();
 
-    expect(applyStyle).toHaveBeenCalled();
-    expect(readOverrides).toHaveBeenCalledTimes(1);
+    expect(applyStyle).toHaveBeenCalledTimes(1);
+    expect(readOverrides).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears a custom property the file declares, as it is spelled', async () => {
+    // The `style` command writes custom properties as spelled, and CSS tells `--cardBg` from `--cardbg`.
+    mount({ selection: marked, overridden: ['--cardBg', 'color'] });
+    await act(async () => {});
+    computed({ color: 'rgb(0, 0, 0)' }, '16px');
+
+    await act(async () => { ref.current!.runCommand('clear-scope'); });
+
+    expect(written()).toEqual([{ property: '--cardBg', value: null }, { property: 'color', value: null }]);
   });
 
   it('stays hidden when the file has no block for this marker', async () => {

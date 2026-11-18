@@ -12,6 +12,11 @@ import type {
   UsageInfo,
 } from './types';
 
+/** What one attached image counts for in the estimate: about what a page screenshot costs a model. */
+const IMAGE_TOKENS = 1_500;
+/** What one audio clip counts for: about 30 seconds of speech, at the 32 tokens a second Gemini counts. */
+const AUDIO_TOKENS = 1_000;
+
 export class ContextManagerImpl implements ContextManager {
   private messages: Message[] = [];
   private compactionCount = 0;
@@ -71,6 +76,29 @@ export class ContextManagerImpl implements ContextManager {
     }
   }
 
+  /**
+   * A user message carrying a command's images, after the tool results: most providers carry only
+   * text in a tool result. Not passed to `onMessageAdded`, so it stays out of the stored
+   * conversation, and an earlier one is reduced to its caption, so a run of screenshots does not
+   * send every image again with every later request.
+   */
+  addImages(images: { mediaType: string; data: string }[], caption: string): void {
+    if (images.length === 0) return;
+    for (const msg of this.messages) {
+      if (!msg.metadata?.screenshot || typeof msg.content === 'string') continue;
+      const text = msg.content.find((block): block is { type: 'text'; text: string } => block.type === 'text')?.text ?? '';
+      msg.content = `${text} (no longer attached)`;
+    }
+    this.messages.push({
+      role: 'user',
+      content: [
+        { type: 'text', text: caption },
+        ...images.map((image) => ({ type: 'image_url' as const, image_url: { url: `data:${image.mediaType};base64,${image.data}` } })),
+      ],
+      metadata: { screenshot: true },
+    });
+  }
+
   importMessages(messages: Message[]): void {
     this.messages = [...messages];
   }
@@ -104,9 +132,13 @@ export class ContextManagerImpl implements ContextManager {
     provider: ProviderAdapter,
     opts?: { freshSystemPrompt?: string; projectContext?: string; signal?: AbortSignal }
   ): Promise<UsageInfo | undefined> {
-    // 1. Separate system messages from conversation messages
+    // 1. Separate system messages from conversation messages. A screenshot is for the moment it was
+    //    taken, so none is summarised; the newest is kept, after the recent messages, because the
+    //    model may not have seen it yet (`addImages` runs just before the compaction check).
     const systemMessages = this.messages.filter(m => m.role === 'system');
-    const nonSystemMessages = this.messages.filter(m => m.role !== 'system');
+    const nonSystemMessages = this.messages.filter(m => m.role !== 'system' && !m.metadata?.screenshot);
+    const screenshots = this.messages.filter(m => m.metadata?.screenshot);
+    const newestScreenshot = screenshots[screenshots.length - 1];
 
     if (nonSystemMessages.length < 3) {
       return undefined;
@@ -259,15 +291,17 @@ export class ContextManagerImpl implements ContextManager {
       ? `${projectContext}\n\nThe earlier conversation was compacted into the summary below.`
       : 'The earlier conversation was compacted into the summary below.';
 
-    this.messages = [
+    const conversation: Message[] = [
       { role: 'system', content: freshSystemPrompt },
       { role: 'user', content: contextUserContent },
       { role: 'assistant', content: summaryContent, metadata: { isCompactSummary: true } },
       ...recentMessages,
     ];
+    // The screenshot stays out of the stored conversation, as `addImages` keeps it out.
+    this.messages = newestScreenshot ? [...conversation, newestScreenshot] : conversation;
 
     this.compactionCount++;
-    this.onMessagesReplaced?.(this.messages);
+    this.onMessagesReplaced?.(conversation);
 
     return result.usage;
   }
@@ -354,11 +388,18 @@ export class ContextManagerImpl implements ContextManager {
 
   /**
    * Estimate token count of a message (content + tool call arguments).
-   * Uses char/3.5 heuristic — fast and reasonable for context budgeting.
+   * Uses char/3.5 heuristic: fast and reasonable for context budgeting. An image is counted as
+   * IMAGE_TOKENS and an audio clip as AUDIO_TOKENS rather than by their base64 data, which a
+   * provider does not read as text.
    */
   static estimateMessageTokens(msg: Message): number {
-    const contentLen = typeof msg.content === 'string' ? msg.content.length : JSON.stringify(msg.content).length;
+    const blocks = Array.isArray(msg.content) ? msg.content : null;
+    const images = blocks ? blocks.filter(block => block.type === 'image_url').length : 0;
+    const clips = blocks ? blocks.filter(block => block.type === 'input_audio').length : 0;
+    const contentLen = typeof msg.content === 'string'
+      ? msg.content.length
+      : JSON.stringify(blocks ? blocks.filter(block => block.type !== 'image_url' && block.type !== 'input_audio') : msg.content).length;
     const argsLen = msg.tool_calls?.reduce((s, tc) => s + (tc.function?.arguments?.length ?? 0), 0) ?? 0;
-    return Math.round((contentLen + argsLen) / 3.5);
+    return Math.round((contentLen + argsLen) / 3.5) + images * IMAGE_TOKENS + clips * AUDIO_TOKENS;
   }
 }

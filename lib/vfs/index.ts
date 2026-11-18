@@ -1750,6 +1750,13 @@ export class VirtualFileSystem {
     return projects.filter((project) => !isTemplatePreviewProject(project.id));
   }
 
+  /** The project's file paths, without reading the files where the storage allows it. */
+  async listFilePaths(projectId: string): Promise<string[]> {
+    this.ensureInitialized();
+    if (this.adapter.listFilePaths) return this.adapter.listFilePaths(projectId);
+    return (await this.adapter.listFiles(projectId)).map(file => file.path);
+  }
+
   async listFiles(projectId: string): Promise<VirtualFile[]> {
     this.ensureInitialized();
 

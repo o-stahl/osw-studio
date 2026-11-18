@@ -1,194 +1,256 @@
 import type { ShellEnv, ShellResult } from '../types';
-import { applyRedirectGuarded, normalizePath, truncate } from '../runtime';
-import { contextWindow, matchingLines, searchableFiles } from './search-shared';
+import { applyRedirectGuarded, truncate } from '../runtime';
+import {
+  asCount,
+  compilePattern,
+  flagTable,
+  linesOf,
+  matchTexts,
+  nameMatcher,
+  parseFlags,
+  printLines,
+  searchTargets,
+  tooSlow,
+  type FlagTable,
+  type LinePlan,
+} from './search-shared';
+
+const FLAGS: FlagTable = {
+  ...flagTable([
+    ['line-number', 'n'],
+    ['ignore-case', 'i'],
+    ['no-ignore-case'],
+    ['only-matching', 'o'],
+    ['fixed-strings', 'F'],
+    ['extended-regexp', 'E'],
+    ['perl-regexp', 'P'],
+    ['basic-regexp', 'G'],
+    ['word-regexp', 'w'],
+    ['invert-match', 'v'],
+    ['count', 'c'],
+    ['files-with-matches', 'l'],
+    ['with-filename', 'H'],
+    ['no-filename', 'h'],
+    ['regexp', 'e', true],
+    ['max-count', 'm', true],
+    ['after-context', 'A', true],
+    ['before-context', 'B', true],
+    ['context', 'C', true],
+    ['include', null, true],
+    ['exclude', null, true],
+    ['exclude-dir', null, true],
+    ['no-messages', 's'],
+    // Taken and without effect: a folder is always searched through, binary content never is, and
+    // the output has no colours.
+    ['recursive', 'r'],
+    ['dereference-recursive', 'R'],
+    ['text', 'a'],
+    ['binary-files', null, true],
+    ['color', null, 'attached'],
+    ['colour', null, 'attached'],
+  ]),
+  I: { option: 'binary-files' },
+  // `-3` is three lines of context.
+  '#': { option: 'context' },
+};
+
+const SUPPORTED = '-n -i -o -F -E -P -w -v -c -l -h -e PATTERN -m NUM -A NUM -B NUM -C NUM --include=GLOB --exclude=GLOB --exclude-dir=GLOB';
+
+const USAGE = `  Usage: grep [FLAGS] PATTERN [PATH ...]
+
+  PATH is a file, a folder or a glob, and several can be given. A folder is searched all the way
+  down, with or without -r. Without a path, / is searched.
+
+  Flags:
+    -n              Show line numbers
+    -i              Ignore case
+    -F              The pattern is text, not a regular expression
+    -E, -P          Extended, Perl-style expression: | ( ) { } + ? are operators as written.
+                    Without either, they are operators with a backslash too: 'a\\|b', 'x\\+'
+    -w              Whole words only
+    -v              Lines that do not match
+    -e PATTERN      A pattern; repeat for several
+    -o              Print only the matching part of each line
+    -c              Print the number of matching lines instead of the lines
+    -l              Print only the paths of files with a match
+    -h              No file names
+    -m NUM          Stop after NUM matching lines in a file
+    -A NUM, -B NUM  NUM lines after, before each match
+    -C NUM, -NUM    NUM lines of context before and after each match
+    --include=GLOB, --exclude=GLOB   Only, or all but, files whose name matches
+    --exclude-dir=GLOB               Skip folders whose name matches
+
+  Examples:
+    grep -n 'pattern' /file.txt
+    grep -rn 'TODO\\|FIXME' /scripts /index.html
+    grep -c -i todo /
+    grep -o 'href="[^"]*"' /index.html
+    grep -rl --include='*.css' 'var(--accent)' /
+
+  rg is also available, and numbers lines without being asked.`;
+
+const refuse = (message: string): ShellResult => ({ stdout: '', stderr: message, exitCode: 2 });
 
 /** `grep` — search file contents. */
 export async function grepCommand(env: ShellEnv): Promise<ShellResult> {
   const { vfs, projectId, args, stdin, ctx, redirect } = env;
 
-          // Supported: grep [-n] [-i] [-o] [-F] [-P] [-A num] [-B num] [-C num] pattern path  (always recursive)
-          const flags: Record<string, any> = { n: false, i: false, o: false, F: false, c: false, l: false, C: 0, A: 0, B: 0 };
-          const unknownFlags: string[] = [];
-          const fargs: string[] = [];
-          for (let i = 0; i < args.length; i++) {
-            const a = args[i];
-            if (a.startsWith('-') && a.length > 1 && !/^-\d+$/.test(a)) {
-              const flagStr = a.slice(1);
-              for (let j = 0; j < flagStr.length; j++) {
-                const ch = flagStr[j];
-                if (ch === 'n') flags.n = true;
-                else if (ch === 'i') flags.i = true;
-                else if (ch === 'o') flags.o = true;
-                else if (ch === 'F') flags.F = true;
-                else if (ch === 'P') {} // no-op — JS regex covers most PCRE patterns
-                else if (ch === 'c') flags.c = true;
-                else if (ch === 'l') flags.l = true;
-                else if (ch === 'C') { flags.C = parseInt(args[++i]) || 2; break; }
-                else if (ch === 'A') { flags.A = parseInt(args[++i]) || 2; break; }
-                else if (ch === 'B') { flags.B = parseInt(args[++i]) || 2; break; }
-                // An unsupported flag used to be dropped silently, so `grep -c` printed matching
-                // lines and read as a count of one. Fail loudly instead — a wrong-shaped result
-                // is worse than no result.
-                else unknownFlags.push(`-${ch}`);
-              }
-            } else {
-              fargs.push(a);
-            }
-          }
-          if (unknownFlags.length > 0) {
-            return {
-              stdout: '',
-              stderr: `grep: unsupported flag${unknownFlags.length > 1 ? 's' : ''}: ${unknownFlags.join(', ')}\n\n  Supported: -n -i -o -F -P -c -l -A NUM -B NUM -C NUM\n  Run grep with no pattern for full usage.`,
-              exitCode: 2
-            };
-          }
+  const parsed = parseFlags(args, FLAGS);
+  // A flag this command lacks is refused, never dropped: a dropped flag leaves output of another
+  // shape (matching lines where a count was asked for) that reads as an answer. A wrong-shaped
+  // result is worse than no result.
+  if (parsed.unknown.length > 0) {
+    return refuse(`grep: unsupported flag${parsed.unknown.length > 1 ? 's' : ''}: ${parsed.unknown.join(', ')}\n\n  Supported: ${SUPPORTED}\n  Run grep with no pattern for full usage.`);
+  }
+  if (parsed.valueless.length > 0) return refuse(`grep: ${parsed.valueless[0]} needs a value after it`);
 
-          const pattern = fargs[0];
-          const path = normalizePath(fargs[1]) || '/';
-          if (!pattern) {
-            return {
-              stdout: '',
-              stderr: `grep: missing pattern
+  let mode: 'lines' | 'paths' | 'count' = 'lines';
+  let dialect: 'basic' | 'extended' = 'basic';
+  let lineNumbers = false;
+  /** -H or -h, the last given; without either, names are printed except on one named file's count. */
+  let filenames: boolean | null = null;
+  let ignoreCase = false;
+  let fixed = false;
+  let word = false;
+  let invert = false;
+  let only = false;
+  let quiet = false;
+  let max: number | null = null;
+  let context: number | null = null;
+  let before: number | null = null;
+  let after: number | null = null;
+  const patterns: string[] = [];
+  const include: string[] = [];
+  const exclude: string[] = [];
+  const excludeDir: string[] = [];
 
-  Usage: grep [FLAGS] PATTERN [PATH]
+  for (const flag of parsed.given) {
+    switch (flag.option) {
+      case 'line-number': lineNumbers = true; break;
+      case 'ignore-case': ignoreCase = true; break;
+      case 'no-ignore-case': ignoreCase = false; break;
+      case 'only-matching': only = true; break;
+      case 'fixed-strings': fixed = true; break;
+      // The engine's own syntax serves for both: it is a superset of an extended expression.
+      case 'extended-regexp':
+      case 'perl-regexp': dialect = 'extended'; break;
+      case 'basic-regexp': dialect = 'basic'; break;
+      case 'word-regexp': word = true; break;
+      case 'invert-match': invert = true; break;
+      case 'count': mode = 'count'; break;
+      case 'files-with-matches': mode = 'paths'; break;
+      case 'with-filename': filenames = true; break;
+      case 'no-filename': filenames = false; break;
+      case 'no-messages': quiet = true; break;
+      case 'regexp': patterns.push(flag.value!); break;
+      case 'include': include.push(flag.value!); break;
+      case 'exclude': exclude.push(flag.value!); break;
+      case 'exclude-dir': excludeDir.push(flag.value!); break;
+      case 'max-count':
+      case 'after-context':
+      case 'before-context':
+      case 'context': {
+        const count = asCount(flag.value);
+        if (count === null) return refuse(`grep: ${flag.as} needs a number after it, not "${flag.value}"`);
+        if (flag.option === 'max-count') max = count;
+        else if (flag.option === 'after-context') after = count;
+        else if (flag.option === 'before-context') before = count;
+        else context = count;
+        break;
+      }
+    }
+  }
 
-  Supported flags:
-    -n      Show line numbers
-    -i      Case insensitive search
-    -o      Print only the matched parts of each line (one per line)
-    -F      Treat pattern as literal string (not regex)
-    -P      Perl-compatible regex (accepted, JS regex used)
-    -c      Print the count of matching lines instead of the lines
-    -l      Print only the paths of files that contain a match
-    -A NUM  Show NUM lines after each match
-    -B NUM  Show NUM lines before each match
-    -C NUM  Show NUM lines of context (before and after)
+  const positionals = [...parsed.positionals];
+  if (patterns.length === 0) {
+    const pattern = positionals.shift();
+    if (!pattern) return refuse(`grep: missing pattern\n\n${USAGE}`);
+    patterns.push(pattern);
+  }
+  const paths = stdin !== undefined ? positionals.filter(path => path !== '-') : positionals;
 
-  Examples:
-    {"cmd": ["grep", "searchterm", "/path"]}
-    {"cmd": ["grep", "-n", "pattern", "/file.txt"]}
-    {"cmd": ["grep", "-i", "TODO", "/"]}
-    {"cmd": ["grep", "-o", "href=\"[^\"]*\"", "/index.html"]}
-    {"cmd": ["grep", "-F", "exact.string", "/src"]}
-    {"cmd": ["grep", "-A", "3", "pattern", "/file.txt"]}
-    {"cmd": ["grep", "-C", "5", "function", "/src"]}
+  let keep: (path: string) => boolean;
+  try {
+    const wanted = include.map(nameMatcher);
+    const unwanted = exclude.map(nameMatcher);
+    const skipped = excludeDir.map(nameMatcher);
+    keep = (path) => {
+      if (wanted.length > 0 && !wanted.some(matches => matches(path))) return false;
+      if (unwanted.some(matches => matches(path))) return false;
+      if (skipped.length === 0) return true;
+      const folders = path.split('/').slice(1, -1);
+      return !folders.some(folder => skipped.some(matches => matches(folder)));
+    };
+  } catch (error) {
+    return refuse(`grep: invalid glob: ${error instanceof Error ? error.message : String(error)}`);
+  }
 
-  Note: grep always searches recursively. rg (ripgrep) is also available.`,
-              exitCode: 2
-            };
-          }
+  let plan: LinePlan;
+  try {
+    const regex = compilePattern({ patterns, fixed, basic: dialect === 'basic', word, ignoreCase });
+    plan = { regex, invert, only, before: before ?? context ?? 0, after: after ?? context ?? 0, max, lineNumbers };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return refuse(`grep: ${detail}\n\n  To search for the text as it is written, add -F.`);
+  }
 
-          // Create regex - escape special chars if -F flag is used
-          let regex: RegExp;
-          if (flags.F) {
-            const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            regex = new RegExp(escaped, flags.i ? 'i' : '');
-          } else {
-            regex = new RegExp(pattern, flags.i ? 'i' : '');
-          }
+  const out: string[] = [];
+  let missing: string[] = [];
 
-          const outLines: string[] = [];
-          const hasContext = flags.C > 0 || flags.A > 0 || flags.B > 0;
-          const globalRegex = flags.o ? new RegExp(regex.source, regex.flags + 'g') : null;
+  if (paths.length === 0 && stdin !== undefined) {
+    const lines = linesOf(stdin);
+    const matched = await matchTexts([lines], plan, mode === 'lines', ctx);
+    if (!matched.ok) return refuse(tooSlow('grep', matched.limitMs));
+    const found = matched.found[0];
+    // One line at a time: a spread of a large file's lines overflows the call stack.
+    if (mode === 'lines') for (const line of printLines(lines, plan, null, found)) out.push(line);
+    else {
+      // -c and -l count or name whole matching lines, whatever -o and the context flags say.
+      const count = found.lines.length;
+      if (mode === 'count') out.push(String(count));
+      else if (count > 0) out.push('(standard input)');
+    }
+  } else {
+    const targets = await searchTargets(env, paths.length > 0 ? paths : ['/']);
+    missing = targets.missing;
+    const separated = plan.before > 0 || plan.after > 0;
+    const files = targets.files.filter(file => keep(file.path));
+    const texts = files.map(file => linesOf(file.content));
+    const matched = await matchTexts(texts, plan, mode === 'lines', ctx);
+    if (!matched.ok) return refuse(tooSlow('grep', matched.limitMs));
+    for (let k = 0; k < files.length; k++) {
+      const file = files[k];
+      const found = matched.found[k];
+      if (mode === 'lines') {
+        const printed = printLines(texts[k], plan, filenames !== false ? file.path : null, found);
+        if (printed.length === 0) continue;
+        if (out.length > 0 && separated && !only) out.push('');
+        for (const line of printed) out.push(line);
+        continue;
+      }
+      const count = found.lines.length;
+      if (mode === 'paths') {
+        if (count > 0) out.push(file.path);
+      } else if (filenames === false || (targets.single && filenames === null)) {
+        // A path naming one file reports a bare count, as grep does, the zero included: without
+        // it, `grep -c missing /file` would answer with silence.
+        out.push(String(count));
+      } else if (count > 0 || targets.single) {
+        out.push(`${file.path}:${count}`);
+      }
+    }
+  }
 
-          // -c / -l count or name whole matching lines, so they ignore -o and the context flags
-          // rather than post-processing the formatted output those produce.
-          if (flags.c || flags.l) {
-            const countLines = (content: string) =>
-              content.split(/\r?\n/).reduce((n, line) => (regex.test(line) ? n + 1 : n), 0);
-
-            const lines: string[] = [];
-            if (!fargs[1] && stdin !== undefined) {
-              const n = countLines(stdin);
-              if (flags.l) { if (n > 0) lines.push('(standard input)'); }
-              else lines.push(String(n));
-            } else {
-              const counts: Array<{ path: string; n: number }> = [];
-              for (const file of await searchableFiles(env, path)) {
-                counts.push({ path: file.path, n: countLines(file.content) });
-              }
-
-              // A path naming one file reports a bare count, as grep does — including the zero.
-              // Suppressing zeroes here is what made `grep -c missing /file` answer with silence.
-              const single = counts.length === 1 && counts[0].path === path;
-              if (flags.l) {
-                for (const c of counts) if (c.n > 0) lines.push(c.path);
-              } else if (single) {
-                lines.push(String(counts[0].n));
-              } else {
-                for (const c of counts) if (c.n > 0) lines.push(`${c.path}:${c.n}`);
-              }
-            }
-
-            const result: ShellResult = {
-              stdout: truncate(lines.join('\n')),
-              stderr: '',
-              exitCode: 0
-            };
-            if (redirect) return applyRedirectGuarded(vfs, projectId, result.stdout, redirect, ctx);
-            return result;
-          }
-
-          // If no file path provided and stdin is available, search stdin
-          if (!fargs[1] && stdin !== undefined) {
-            const stdinLines = stdin.split(/\r?\n/);
-            if (flags.o) {
-              for (let i = 0; i < stdinLines.length; i++) {
-                const matches = [...stdinLines[i].matchAll(globalRegex!)];
-                for (const m of matches) {
-                  outLines.push(flags.n ? `${i + 1}:${m[0]}` : m[0]);
-                }
-              }
-            } else if (hasContext) {
-              const matched = matchingLines(stdinLines, regex);
-              if (matched.length > 0) {
-                const window = contextWindow(matched, stdinLines.length, flags.C || flags.B, flags.C || flags.A);
-                for (const ln of window) {
-                  outLines.push(flags.n ? `${ln + 1}:${stdinLines[ln]}` : stdinLines[ln]);
-                }
-              }
-            } else {
-              for (let i = 0; i < stdinLines.length; i++) {
-                if (regex.test(stdinLines[i])) {
-                  outLines.push(flags.n ? `${i + 1}:${stdinLines[i]}` : stdinLines[i]);
-                }
-              }
-            }
-          } else {
-            for (const entry of await searchableFiles(env, path)) {
-              const lines = entry.content.split(/\r?\n/);
-
-              if (flags.o) {
-                for (let i = 0; i < lines.length; i++) {
-                  const matches = [...lines[i].matchAll(globalRegex!)];
-                  for (const m of matches) {
-                    outLines.push(`${entry.path}${flags.n ? ':' + (i + 1) : ''}:${m[0]}`);
-                  }
-                }
-              } else if (hasContext) {
-                const matched = matchingLines(lines, regex);
-                if (matched.length === 0) continue;
-
-                const sortedLines = contextWindow(matched, lines.length, flags.C || flags.B, flags.C || flags.A);
-                if (outLines.length > 0) outLines.push(''); // separator between files
-                for (const lineNum of sortedLines) {
-                  outLines.push(`${entry.path}${flags.n ? ':' + (lineNum + 1) : ''}:${lines[lineNum]}`);
-                }
-              } else {
-                for (let i = 0; i < lines.length; i++) {
-                  if (regex.test(lines[i])) {
-                    outLines.push(`${entry.path}${flags.n ? ':' + (i + 1) : ''}:${lines[i]}`);
-                  }
-                }
-              }
-            }
-          }
-
-          const output = outLines.join('\n');
-          if (outLines.length === 0) {
-            return { stdout: '', stderr: '', exitCode: 0 };
-          }
-          const grepResult: ShellResult = { stdout: truncate(output), stderr: '', exitCode: 0 };
-          if (redirect) return applyRedirectGuarded(vfs, projectId, grepResult.stdout, redirect, ctx);
-          return grepResult;
+  const stdout = truncate(out.join('\n'));
+  // -s leaves the messages out and the exit status as it is.
+  const stderr = quiet ? '' : missing.map(path => `grep: ${path}: No such file or directory`).join('\n');
+  if (missing.length > 0) {
+    if (!redirect) return { stdout, stderr, exitCode: 2 };
+    // What the paths that exist gave still goes to the file, as in a shell; the answer is the failure.
+    const written = await applyRedirectGuarded(vfs, projectId, stdout, redirect, ctx);
+    return written.exitCode !== 0 ? written : { stdout: '', stderr, exitCode: 2 };
+  }
+  // An output of nothing goes to a redirect too, and empties the file, as in a shell.
+  if (redirect) return applyRedirectGuarded(vfs, projectId, stdout, redirect, ctx);
+  return { stdout, stderr: '', exitCode: 0 };
 }

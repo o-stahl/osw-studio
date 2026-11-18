@@ -134,7 +134,7 @@ describe('POST /api/mcp', () => {
 
     expect(tools.map(t => t.name).sort()).toEqual([
       'agent_cancel', 'agent_run', 'agent_status', 'analytics_overview',
-      'backend_delete', 'backend_list', 'backend_upsert', 'bash',
+      'backend_delete', 'backend_list', 'backend_upsert', 'bash', 'canvas_selection',
       'deployments_create', 'deployments_list', 'deployments_publish',
       'deployments_sql', 'deployments_unpublish', 'deployments_update',
       'deployments_url',
@@ -142,6 +142,7 @@ describe('POST /api/mcp', () => {
       'files_read',
       'files_upload_url',
       'files_write',
+      'preview_screenshot',
       'projects_create', 'projects_get', 'projects_list',
     ]);
     // A client that is refused needs to know which scope was missing, so each description says.
@@ -280,11 +281,41 @@ describe('POST /api/mcp', () => {
     expect(listed.find((p: { id: string }) => p.id === created.id)).toMatchObject({ runtime: 'static' });
   });
 
+  it('stores the surface the template opens on, and none for a template that declares none', async () => {
+    const site = JSON.parse((await callTool('projects_create', { workspaceId, name: 'Site', template: 'business-website' })).text!);
+    const plain = JSON.parse((await callTool('projects_create', { workspaceId, name: 'Plain', template: 'blank' })).text!);
+    const { getWorkspaceAdapter } = await import('@/lib/vfs/adapters/server');
+    const adapter = getWorkspaceAdapter(workspaceId);
+    expect((await adapter.getProject(site.id))!.settings.opensIn).toBe('canvas');
+    expect((await adapter.getProject(plain.id))!.settings).not.toHaveProperty('opensIn');
+  });
+
   it('refuses an unknown template and says which exist', async () => {
     const out = await callTool('projects_create', { workspaceId, name: 'X', template: 'not-a-template' });
 
     expect(out.isError).toBe(true);
     expect(out.text).toMatch(/handlebars-starter/);
+  });
+
+  it('refuses a project past the workspace\'s project limit, and creates one below it', async () => {
+    const { updateWorkspace } = await import('@/lib/auth/system-database');
+    const { getWorkspaceAdapter } = await import('@/lib/vfs/adapters/server');
+    const count = async () => (await getWorkspaceAdapter(workspaceId).listProjects()).length;
+    const before = await count();
+    updateWorkspace(workspaceId, { max_projects: before });
+    try {
+      const over = await callTool('projects_create', { workspaceId, name: 'One too many', template: 'blank' });
+      expect(over.isError).toBe(true);
+      expect(over.text).toContain(`Project limit reached (${before})`);
+      expect(await count()).toBe(before);
+
+      updateWorkspace(workspaceId, { max_projects: before + 1 });
+      const under = await callTool('projects_create', { workspaceId, name: 'The last one', template: 'blank' });
+      expect(under.isError).toBe(false);
+      expect(await count()).toBe(before + 1);
+    } finally {
+      updateWorkspace(workspaceId, { max_projects: 9999 });
+    }
   });
 
   it('refuses to create a project on a read-only grant', async () => {
@@ -516,4 +547,152 @@ describe('POST /api/mcp', () => {
 
     expect(seen).toContain('mcp_project_changed');
   });
+
+  it('tells an open tab about a bash write whose redirect is written against its path', async () => {
+    const { eventBus } = await import('@/lib/server-generate/singleton');
+    const seen: string[] = [];
+    const listener = (e: { event: string }) => seen.push(e.event);
+    eventBus.addListener(userId, listener);
+
+    const out = await callTool('bash', { workspaceId, projectId: 'p1', command: 'echo hi>/index.html' });
+    eventBus.removeListener(userId, listener);
+
+    expect(out.isError, out.text).toBe(false);
+    expect(seen).toContain('mcp_project_changed');
+  });
+
+  it('styles an element through bash on the server, matching its selector without a browser', async () => {
+    const out = await callTool('bash', { workspaceId, projectId: 'p1', command: 'style /index.html h1 color=red' });
+    expect(out.isError, out.text).toBe(false);
+    expect(out.text).toMatch(/^Styled <h1> \/index\.html:\d+:\d+ \(marker @[a-z0-9]{8}\)\./);
+    const css = await callTool('files_read', { workspaceId, projectId: 'p1', path: '/overrides.css' });
+    expect(JSON.parse(css.text!).content).toMatch(/\[data-osw-id="[a-z0-9]{8}"\]\[data-osw-id\] \{\n {2}color: red;\n\}/);
+  });
 });
+
+describe('the page tools, answered by an open tab', () => {
+  it('shows a page as the tab rendered it: a summary, then the images', async () => {
+    const { eventBus } = await import('@/lib/server-generate/singleton');
+    const { claimRenderRequest, settleRenderRequest } = await import('@/lib/server-generate/render-requests');
+    const jobs: Record<string, unknown>[] = [];
+    const tab = (e: { event: string; data: Record<string, unknown> }) => {
+      if (e.event !== 'render_requested') return;
+      jobs.push(e.data.job as Record<string, unknown>);
+      const id = e.data.requestId as string;
+      claimRenderRequest(id, userId);
+      settleRenderRequest(id, userId, {
+        ok: true, kind: 'screenshot', width: 375, height: 667, pageHeight: 900,
+        images: [{ mediaType: 'image/jpeg', data: 'QUJD', width: 375, height: 667, region: { x: 0, y: 0, w: 375, h: 667 } }],
+      });
+    };
+    eventBus.addListener(userId, tab);
+    const out = await rpc({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'preview_screenshot', arguments: { workspaceId, projectId: 'p1', page: 'about', width: 375 } } });
+    eventBus.removeListener(userId, tab);
+    expect(jobs).toEqual([{ kind: 'screenshot', projectId: 'p1', page: '/about', width: 375, full: false }]);
+    const content = out.result.content as { type: string; text?: string; data?: string; mimeType?: string }[];
+    expect(content.map((c) => c.type)).toEqual(['text', 'image']);
+    expect(JSON.parse(content[0].text!)).toMatchObject({ page: 'about', width: 375, pageHeight: 900, images: [{ x: 0, y: 0, w: 375, h: 667 }] });
+    expect(content[1]).toEqual({ type: 'image', data: 'QUJD', mimeType: 'image/jpeg' });
+  });
+
+  it('tells the tab about a bash write once, before the render that reads it, and not for a render with nothing new', async () => {
+    const { eventBus } = await import('@/lib/server-generate/singleton');
+    const { claimRenderRequest, settleRenderRequest } = await import('@/lib/server-generate/render-requests');
+    const seen: string[] = [];
+    const tab = (e: { event: string; data: Record<string, unknown> }) => {
+      seen.push(e.event);
+      if (e.event !== 'render_requested') return;
+      const job = e.data.job as { page: string; width: number; target?: string; props?: string[] };
+      const id = e.data.requestId as string;
+      claimRenderRequest(id, userId);
+      // Every property asked about is in force, held by the element's own rule.
+      settleRenderRequest(id, userId, {
+        ok: true, kind: 'inspect',
+        report: {
+          page: job.page, width: job.width, height: 900, pageHeight: 900, matches: 1,
+          node: { tag: 'h1', classes: [], src: '/index.html:0', marker: job.target?.startsWith('@') ? job.target.slice(1) : null, box: { x: 0, y: 0, w: 10, h: 10 } },
+          styles: (job.props ?? []).map((property) => ({ property, computed: 'red', declared: { value: 'red', selector: `[data-osw-id="${job.target?.slice(1)}"][data-osw-id]`, origin: '/overrides.css', ours: true } })),
+        },
+      });
+    };
+    eventBus.addListener(userId, tab);
+    const out = await callTool('bash', { workspaceId, projectId: 'p1', command: 'inspect /index.html h1 && style /index.html h1 color=red' });
+    eventBus.removeListener(userId, tab);
+
+    expect(out.isError, out.text).toBe(false);
+    expect(out.text).toContain('Checked on /index.html at 1440 px: in force.');
+    expect(seen).toEqual(['render_requested', 'mcp_project_changed', 'render_requested']);
+  });
+
+  it('says so when no tab is open to render', async () => {
+    const out = await callTool('preview_screenshot', { workspaceId, projectId: 'p1' });
+    expect(out.isError).toBe(true);
+    expect(out.text).toMatch(/no OSW Studio tab is open/);
+  });
+
+  it('reports the newest selection the open tabs have', async () => {
+    const { eventBus } = await import('@/lib/server-generate/singleton');
+    const { answerSelectionRequest } = await import('@/lib/server-generate/render-requests');
+    const tab = (e: { event: string; data: Record<string, unknown> }) => {
+      if (e.event !== 'selection_requested') return;
+      answerSelectionRequest(e.data.requestId as string, userId, {
+        projectId: 'p1', projectName: 'Site', surface: 'canvas', page: '/index.html', width: 375, tag: 'h1',
+        domPath: 'body > h1', source: '/index.html:1:1', snippet: '<h1>Hi</h1>', selectedAt: 5,
+      });
+    };
+    const older = (e: { event: string; data: Record<string, unknown> }) => {
+      if (e.event !== 'selection_requested') return;
+      answerSelectionRequest(e.data.requestId as string, userId, {
+        projectId: 'p1', projectName: 'Site', surface: 'preview', page: '/about.html', width: 1440, tag: 'p',
+        domPath: 'body > p', source: '/about.html:2:1', snippet: '<p>Older</p>', selectedAt: 1,
+      });
+    };
+    eventBus.addListener(userId, older);
+    eventBus.addListener(userId, tab);
+    const out = await callTool('canvas_selection', { workspaceId, projectId: 'p1' });
+    eventBus.removeListener(userId, tab);
+    eventBus.removeListener(userId, older);
+    const selection = JSON.parse(out.text!).selection;
+    expect(selection).toMatchObject({ projectId: 'p1', surface: 'canvas', width: 375, source: '/index.html:1:1', selectedAt: 5 });
+    // Where an outside agent meets `style`: with this element filled in, as the in-app agent's message has it.
+    const { styleHint } = await import('@/lib/direct-edit/style-hint');
+    expect(selection.restyle).toBe(styleHint('/index.html:1:1', 375));
+    expect(selection.restyle).toMatch(/style \/index\.html:1:1 .*--width 375/);
+  });
+
+  it('reports only a selection in a project of the granted workspace, however new another tab\'s is', async () => {
+    const { eventBus } = await import('@/lib/server-generate/singleton');
+    const { answerSelectionRequest } = await import('@/lib/server-generate/render-requests');
+    const answering = (projectId: string, selectedAt: number) => (e: { event: string; data: Record<string, unknown> }) => {
+      if (e.event !== 'selection_requested') return;
+      answerSelectionRequest(e.data.requestId as string, userId, {
+        projectId, projectName: 'Private', surface: 'preview', tag: 'h1', domPath: 'body > h1',
+        snippet: '<h1>Private</h1>', selectedAt,
+      });
+    };
+    const elsewhere = answering('p-in-another-workspace', 9);
+    const here = answering('p1', 5);
+    eventBus.addListener(userId, elsewhere);
+    eventBus.addListener(userId, here);
+    const both = await callTool('canvas_selection', { workspaceId });
+    eventBus.removeListener(userId, here);
+    const foreignOnly = await callTool('canvas_selection', { workspaceId });
+    eventBus.removeListener(userId, elsewhere);
+
+    expect(JSON.parse(both.text!).selection).toMatchObject({ projectId: 'p1', selectedAt: 5 });
+    expect(JSON.parse(foreignOnly.text!).selection).toBeNull();
+    expect(foreignOnly.text).not.toContain('Private');
+  });
+
+  // The description goes into every client's context for every project, so it teaches the commands
+  // and leaves what a user's hand edits put in a project to where it is met: the selection above,
+  // the header of /overrides.css, and the note the write guard puts under a command's reply.
+  it('describes bash without a glossary of the app\'s attributes or a lesson on style', async () => {
+    const out = await rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    const bash = (out.result.tools as { name: string; description: string }[]).find(t => t.name === 'bash')!.description;
+    expect(bash).toContain('inspect /index.html [element] [--width N]');
+    expect(bash).toMatch(/Commands: .*\bstyle\b/);
+    for (const word of ['data-osw-block', 'data-osw-lock', 'data-osw-frame', 'overrides.css', 'style <element>']) expect(bash, word).not.toContain(word);
+  });
+});
+

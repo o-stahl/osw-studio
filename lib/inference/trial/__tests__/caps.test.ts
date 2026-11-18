@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { addressKeys, DEFAULT_TRIAL_CAPS, noteFailedTrialCheck, reserveTrialSession, resetTrialCaps, trialCaps, trialSessionRoom } from '../caps';
+import { addressKeys, DEFAULT_TRIAL_CAPS, noteFailedTrialCheck, reserveTrialSession, resetTrialCaps, trialCaps, trialSessionRoom, trialSessionsLeftFor } from '../caps';
 
 /** The demo's daily caps on trial sessions: per address, per network block and in all. */
 const CAPS = { perAddress: 2, perBlock: 3, total: 5 };
@@ -17,6 +17,21 @@ describe('addressKeys', () => {
     expect(addressKeys('2001:db8:1:2:ffff:ffff:ffff:ffff')).toEqual(addressKeys('2001:db8:1:2::'));
     expect(addressKeys('::ffff:203.0.113.7')).toEqual(addressKeys('203.0.113.7'));
     expect(addressKeys('not an address')).toBeNull();
+  });
+});
+
+describe('trialSessionsLeftFor', () => {
+  it("counts what an address can still start: its own cap, its block's and the day's, whichever is tightest", () => {
+    expect(trialSessionsLeftFor('203.0.113.7', NOON, CAPS)).toBe(2);
+    reserveTrialSession('203.0.113.7', NOON, CAPS);
+    expect(trialSessionsLeftFor('203.0.113.7', NOON, CAPS)).toBe(1);
+    reserveTrialSession('203.0.113.7', NOON, CAPS);
+    expect(trialSessionsLeftFor('203.0.113.7', NOON, CAPS)).toBe(0);
+    // A neighbour in the same /24 has its own two, but the block has one left.
+    expect(trialSessionsLeftFor('203.0.113.8', NOON, CAPS)).toBe(1);
+    // Asking counts nothing.
+    expect(trialSessionsLeftFor('203.0.113.8', NOON, CAPS)).toBe(1);
+    expect(trialSessionsLeftFor('203.0.113.7', Date.parse('2026-10-23T00:00:01Z'), CAPS)).toBe(2);
   });
 });
 

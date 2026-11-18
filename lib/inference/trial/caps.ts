@@ -140,6 +140,12 @@ export function reserveTrialSession(ip: string | null, now = Date.now(), caps: T
   return { ok: true };
 }
 
+/** Sessions an address could still start today: what the tightest of its three counters leaves. */
+export function trialSessionsLeftFor(ip: string | null, now = Date.now(), caps: TrialCaps = trialCaps()): number {
+  today(now);
+  return Math.max(0, Math.min(...sessionCounters(ip, caps).map(([key, cap]) => cap - (counts.get(key) ?? 0))));
+}
+
 /** Sessions left in the day's total, for the demo's status check. */
 export function trialSessionsLeftToday(now = Date.now(), caps: TrialCaps = trialCaps()): number {
   today(now);

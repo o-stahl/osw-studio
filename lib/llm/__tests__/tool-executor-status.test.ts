@@ -114,3 +114,26 @@ describe('OswsToolExecutor status signal extraction', () => {
     expect(result.signals?.statusResult).toBeUndefined();
   });
 });
+
+describe('OswsToolExecutor and a command\'s images', () => {
+  it('hands the shell a way to pass images, and returns them as the result\'s images signal', async () => {
+    const { toolRegistry } = await import('../tool-registry');
+    const image = { mediaType: 'image/jpeg' as const, data: 'AAAA', width: 2, height: 2, region: { x: 0, y: 0, w: 2, h: 2 } };
+    vi.mocked(toolRegistry.execute).mockImplementationOnce(async (_call, _project, context) => {
+      context.onImages?.([image]);
+      return 'Screenshot of /';
+    });
+    const executor = new OswsToolExecutor({
+      projectId: 'p1',
+      progress: { onEvent: vi.fn() },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      getAgent: () => ({ type: 'orchestrator', hasTool: () => true, tools: ['bash'] } as any),
+      chatMode: false,
+      abortSignal: new AbortController().signal,
+      imageInput: true,
+    });
+    const result = await executor.execute(statusCall('screenshot /'), { agentType: 'orchestrator', isReadOnly: false });
+    expect(result.signals?.images).toEqual([image]);
+    expect(vi.mocked(toolRegistry.execute).mock.calls.at(-1)![2]).toMatchObject({ imageInput: true });
+  });
+});

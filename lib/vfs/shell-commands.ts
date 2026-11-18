@@ -62,6 +62,8 @@ export const SHELL_COMMANDS: ShellCommandSpec[] = [
   { name: 'cp', writes: 'always', handledBy: 'shell', summary: 'Copy files or directories' },
   { name: 'sed', writes: 'conditional', handledBy: 'shell', summary: 'Text substitution; -i edits in place' },
   { name: 'generate-image', writes: 'always', handledBy: 'shell', summary: 'Generate an image into the project' },
+  // Writes /overrides.css, and stamps the element's marker into its source file the first time.
+  { name: 'style', writes: 'always', handledBy: 'shell', summary: "Set an element's style overrides at a width" },
 
   // ── Project and environment ─────────────────────────────────────────────
   { name: 'curl', writes: 'conditional', handledBy: 'shell', summary: 'Fetch a compiled page; -o writes the response' },
@@ -69,6 +71,8 @@ export const SHELL_COMMANDS: ShellCommandSpec[] = [
   { name: 'sleep', writes: 'never', handledBy: 'shell', summary: 'Pause briefly' },
   { name: 'sqlite3', writes: 'never', handledBy: 'shell', summary: 'Run SQL against a deployment database (Server Mode)' },
   { name: 'build', writes: 'never', handledBy: 'shell', summary: 'Compile the project and report errors' },
+  { name: 'inspect', writes: 'never', handledBy: 'shell', summary: 'Read a rendered page: elements, source positions, winning styles' },
+  { name: 'screenshot', writes: 'never', handledBy: 'shell', summary: 'Look at a rendered page, or one element on it' },
   { name: 'status', writes: 'never', handledBy: 'shell', summary: 'Report task progress and completion' },
   // Writes /.PROMPT.md when changing the runtime, which is why it counts as a write.
   { name: 'runtime', writes: 'always', handledBy: 'shell', summary: 'Show or change the project runtime' },

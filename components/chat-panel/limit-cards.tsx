@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ArrowLeftRight, Clock, ExternalLink, OctagonPause, Play, Sparkles } from 'lucide-react';
 import { getDefaultModel, getProvider } from '@/lib/llm/providers/registry';
@@ -37,8 +37,10 @@ const providerName = (id: string) => (id ? getProvider(id).name : '');
 
 /** A note about a provider limit or a model choice, as the event carried it. */
 export interface LimitNoticeData {
-  kind: 'retrying' | 'switched' | 'picked' | 'resolved';
+  kind: 'retrying' | 'switched' | 'picked' | 'resolved' | 'low';
   provider: string;
+  /** For `low`: when the allowance renews, epoch ms. */
+  resetAt?: number;
   /** The HTTP status being retried: 429 is a rate limit, 5xx the provider not answering. */
   status?: number;
   fromModel?: string;
@@ -65,6 +67,15 @@ function ChatNotice({ icon: Icon, iconClassName, children }: {
 
 export function LimitNotice({ data }: { data: LimitNoticeData }) {
   const t = useTranslations('limits');
+  const format = useLocalFormat();
+  if (data.kind === 'low') {
+    // OSW Studio inference is nearly used up for the day: the task may be cut off before it is done.
+    return (
+      <ChatNotice icon={Clock}>
+        <span>{data.resetAt ? t('allowanceLow', { when: format.relativeTime(data.resetAt) }) : t('allowanceLowNoTime')}</span>
+      </ChatNotice>
+    );
+  }
   if (data.kind === 'retrying') {
     return (
       <ChatNotice icon={Clock}>
@@ -117,6 +128,29 @@ const SHOW_DETAILS = new Set(['auth_expired', 'blocked', 'model_refused']);
 /** OpenRouter's documented free tier: 50 free requests a day until $10 of credit is bought. */
 const OPENROUTER_FREE_TIER_DAILY = 50;
 
+/** The longest wait `setTimeout` takes; a reset further off is looked at again then. */
+const LONGEST_TIMER_MS = 2 ** 31 - 1;
+
+/** Whether a limit's reset time has passed, turning true when it does while the card is on screen. */
+function useRenewed(resetAt: number | undefined): boolean {
+  const [renewed, setRenewed] = useState(() => resetAt !== undefined && Date.now() >= resetAt);
+  useEffect(() => {
+    if (resetAt === undefined) {
+      setRenewed(false);
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout>;
+    const look = () => {
+      const wait = resetAt - Date.now();
+      setRenewed(wait <= 0);
+      if (wait > 0) timer = setTimeout(look, Math.min(wait, LONGEST_TIMER_MS));
+    };
+    look();
+    return () => clearTimeout(timer);
+  }, [resetAt]);
+  return renewed;
+}
+
 /** A model's name for the card, with "Free models" named in the current language. */
 function useModelName() {
   const tm = useTranslations('models');
@@ -143,6 +177,11 @@ export function StoppedCard({ data, live, onContinue }: {
   const model = data.model ? nameOf(provider, data.model) : '';
   // The free allowance has no credit to add and no key to replace.
   const allowance = provider === OSWS_PROVIDER;
+  // A spent limit that says when it renews: once that time has passed, the same model can go on.
+  const renewsAt = category === 'daily_limit'
+    ? (data.quota?.kind === 'daily' ? data.quota.resetAt : data.resetAt)
+    : category === 'credit_exhausted' && allowance ? data.resetAt : undefined;
+  const renewed = useRenewed(renewsAt);
 
   const title = (() => {
     switch (category) {
@@ -163,9 +202,9 @@ export function StoppedCard({ data, live, onContinue }: {
 
   const lines: string[] = [];
   const quota = data.quota;
-  if (category === 'daily_limit') {
-    const resetAt = quota?.kind === 'daily' ? quota.resetAt : data.resetAt;
-    const when = resetAt ? format.relativeTime(resetAt) : '';
+  if (renewed) lines.push(t('limitRenewed'));
+  else if (category === 'daily_limit') {
+    const when = renewsAt ? format.relativeTime(renewsAt) : '';
     if (quota?.kind === 'daily' && when) lines.push(t('dailyCount', { used: quota.used, limit: quota.limit, when }));
     else lines.push(when ? t('dailyReset', { when }) : t('dailyEachDay'));
     // Only when the live limit is the documented free-tier one, so a changed policy stops matching
@@ -196,7 +235,7 @@ export function StoppedCard({ data, live, onContinue }: {
   }, [live, allowance, spent]);
   const working = configManager.getActiveAssignment().agent;
   const movedOn = working.provider !== provider || working.model !== data.model;
-  const offerContinue = (data.canRetrySame !== false && !spent) || movedOn;
+  const offerContinue = (data.canRetrySame !== false && !spent) || movedOn || renewed;
 
   return (
     <ChatNotice icon={OctagonPause} iconClassName="text-amber-500">

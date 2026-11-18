@@ -127,6 +127,7 @@ const registryMock = vi.hoisted(() => ({ usesOAuth: false, isLocal: false }));
 vi.mock('@/lib/llm/providers/registry', () => ({
   getProvider: () => ({ apiKeyRequired: false, usesOAuth: registryMock.usesOAuth, isLocal: registryMock.isLocal }),
   getModelContextLength: () => 128000,
+  resolveInputModalities: () => ['text'],
 }));
 
 vi.mock('../cost-calculator', () => ({

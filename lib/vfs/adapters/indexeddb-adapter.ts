@@ -357,6 +357,25 @@ export class IndexedDBAdapter implements StorageAdapter {
     return result || [];
   }
 
+  async listFilePaths(projectId: string): Promise<string[]> {
+    // A key cursor over the [projectId, path] index: the paths, and none of the contents. The upper
+    // bound is an array because arrays sort after every string, so no path falls outside it.
+    const tx = this.getDB().transaction(['files'], 'readonly');
+    const index = tx.objectStore('files').index('path');
+    const range = IDBKeyRange.bound([projectId, ''], [projectId, []]);
+    return new Promise((resolve, reject) => {
+      const paths: string[] = [];
+      const request = index.openKeyCursor(range);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) { resolve(paths); return; }
+        paths.push((cursor.key as [string, string])[1]);
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
   async deleteProjectFiles(projectId: string): Promise<void> {
     const files = await this.listFiles(projectId);
     const tx = this.getDB().transaction(['files'], 'readwrite');

@@ -119,6 +119,53 @@ describe('files_write', () => {
     expect(new TextDecoder().decode(await storedBytes('/notes.txt'))).toBe('second');
   });
 
+  it('puts back a marker a page rewrite left off, and says so in its answer', async () => {
+    const page = '<body>\n<h1 data-osw-id="h7x2m4qp" class="title">Welcome</h1>\n</body>';
+    await callTool('files_write', { workspaceId, projectId: 'p1', path: '/index.html', content: page });
+    await callTool('files_write', {
+      workspaceId, projectId: 'p1', path: '/overrides.css', content: '[data-osw-id="h7x2m4qp"][data-osw-id] {\n  color: red;\n}\n',
+    });
+
+    const out = await callTool('files_write', {
+      workspaceId, projectId: 'p1', path: '/index.html', content: '<body>\n<h1 class="title">Welcome</h1>\n</body>',
+    });
+
+    expect(out.isError).toBe(false);
+    expect(JSON.parse(out.text!).note).toContain('It was put back');
+    expect(new TextDecoder().decode(await storedBytes('/index.html'))).toContain('<h1 data-osw-id="h7x2m4qp" class="title">');
+  });
+
+  it('guards a page sent as base64 as it guards one sent as text, and stores it as text', async () => {
+    const page = '<body>\n<h1 data-osw-id="h7x2m4qp" class="title">Welcome</h1>\n</body>';
+    await callTool('files_write', { workspaceId, projectId: 'p1', path: '/index.html', content: page });
+    await callTool('files_write', {
+      workspaceId, projectId: 'p1', path: '/overrides.css', content: '[data-osw-id="h7x2m4qp"][data-osw-id] {\n  color: red;\n}\n',
+    });
+
+    const rewrite = Buffer.from('<body>\n<h1 class="title">Welcome</h1>\n</body>').toString('base64');
+    const out = await callTool('files_write', { workspaceId, projectId: 'p1', path: '/index.html', content: rewrite, encoding: 'base64' });
+
+    expect(out.isError).toBe(false);
+    expect(JSON.parse(out.text!).note).toContain('It was put back');
+    const { getWorkspaceAdapter } = await import('@/lib/vfs/adapters/server');
+    const stored = (await getWorkspaceAdapter(workspaceId).getFile('p1', '/index.html'))?.content;
+    expect(typeof stored).toBe('string');
+    expect(stored).toContain('<h1 data-osw-id="h7x2m4qp" class="title">');
+  });
+
+  it('refuses base64 for a text file when the bytes are not UTF-8 text', async () => {
+    const out = await callTool('files_write', {
+      workspaceId, projectId: 'p1', path: '/index.html', content: PNG_BASE64, encoding: 'base64',
+    });
+    expect(out.isError).toBe(true);
+    expect(out.text).toContain('UTF-8');
+  });
+
+  it('answers a write that harms nothing without a note', async () => {
+    const out = await callTool('files_write', { workspaceId, projectId: 'p1', path: '/index.html', content: '<h1>Plain</h1>' });
+    expect(JSON.parse(out.text!)).not.toHaveProperty('note');
+  });
+
   it('refuses base64 that has been mangled rather than storing a short file', async () => {
     const out = await callTool('files_write', {
       workspaceId, projectId: 'p1', path: '/assets/icon.png', content: 'not*valid*base64!!', encoding: 'base64',

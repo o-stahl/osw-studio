@@ -7,7 +7,7 @@ import { vfs } from '@/lib/vfs';
 import { readOpenTagAt } from '@/lib/preview/provenance';
 import { countAttributeIn, findAttributeIn } from './attributes';
 import { resolveSelection } from './resolution';
-import type { ApplyResult, PreviewSelection } from './types';
+import type { ApplyResult, PreviewSelection, WriteRecorder } from './types';
 import { asText } from '@/lib/vfs/as-text';
 
 /** The attribute an image is replaced through. */
@@ -90,7 +90,7 @@ export async function applyImageSrc(
   projectId: string,
   selection: PreviewSelection,
   nextSrc: string,
-  opts?: { confirmedMultiInstance?: boolean; isGenerating?: () => boolean },
+  opts?: { confirmedMultiInstance?: boolean; isGenerating?: () => boolean; record?: WriteRecorder },
 ): Promise<ApplyResult> {
   // A write landing mid-generation races the agent's own edits over the same files.
   if (opts?.isGenerating?.()) return { ok: false, reason: 'generating', filesWritten: [] };
@@ -139,5 +139,6 @@ export async function applyImageSrc(
   if (rewrite.content === original) return { ok: true, filesWritten: [] };
 
   await vfs.updateFile(projectId, file, rewrite.content);
+  opts?.record?.({ path: file, before: original, after: rewrite.content, silent: false });
   return { ok: true, file, filesWritten: [file] };
 }

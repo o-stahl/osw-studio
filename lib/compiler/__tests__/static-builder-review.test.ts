@@ -113,6 +113,24 @@ describe('review build', () => {
     expect(review).not.toContain('Under Construction');
   });
 
+  it('publishes both copies without the placeholder of a block nobody has built', async () => {
+    // A placeholder is a request to the agent. Its look is added only in the preview, so a visitor
+    // would see a bare box with the block's name; the project's own file keeps it.
+    const page = '<html><head></head><body>\n<h1>Site</h1>\n<div data-osw-block="hero-k3j9x2m1">Hero Section</div>\n</body></html>';
+    await addFile('/about.html', page, 'html');
+    const { buildStaticDeployment } = await import('../static-builder');
+    await createDeployment({ review: { enabled: true } });
+    expect((await buildStaticDeployment('d1', 'w1')).success).toBe(true);
+
+    for (const base of [publicDir(), reviewDir()]) {
+      const out = read(base, 'about.html');
+      expect(out).toContain('<h1>Site</h1>');
+      expect(out).not.toContain('data-osw-block');
+      expect(out).not.toContain('Hero Section');
+    }
+    expect((await adapter.getFile('p1', '/about.html'))?.content).toBe(page);
+  });
+
   it('does not prefix asset paths twice', async () => {
     const { buildStaticDeployment } = await import('../static-builder');
     await createDeployment({ review: { enabled: true } });

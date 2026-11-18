@@ -63,6 +63,13 @@ export interface BuiltInTemplateMetadata {
    * already exists.
    */
   promptSuggestions?: PromptSuggestion[];
+  /**
+   * The surface a project made from this template opens on (`Project.settings.opensIn`). Set from
+   * what the template's pages are made of, measured on Canvas (`lib/canvas/tracing.ts`): `canvas`
+   * where they are written as HTML, `preview` where a script or a bundle draws them. Absent: no
+   * preference.
+   */
+  opensIn?: 'canvas' | 'preview';
 }
 
 /**

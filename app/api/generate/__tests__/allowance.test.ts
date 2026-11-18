@@ -230,6 +230,46 @@ describe("the free allowance's limits", () => {
     expect(paused).not.toHaveProperty('resetAt');
   });
 
+  it('names the limit in its answer, for telemetry', async () => {
+    await asDemo();
+    const { cookie } = await trialCookie();
+    upstream(402, { error: { code: 402, message: 'used up', metadata: { limit_source: 'osws_pool' } } });
+    await expect((await post({}, { cookie })).json()).resolves.toMatchObject({ code: 'daily_limit', limitSource: 'osws_pool' });
+    upstream(429, { error: { code: 429, message: 'busy', metadata: { limit_source: 'osws_fair_share' } } });
+    await expect((await post({}, { cookie })).json()).resolves.toMatchObject({ limitSource: 'osws_fair_share' });
+  });
+
+  it("on the demo, passes on how much of the session is used and how many more the network can start", async () => {
+    await asDemo();
+    const { cookie } = await trialCookie();
+    const { reserveTrialSession } = await import('@/lib/inference/trial/caps');
+    reserveTrialSession(VISITOR_IP);
+    upstream(200, ok, { 'x-osws-allowance-spent': '85000', 'x-osws-allowance-limit': '100000', 'x-osws-allowance-reset': reset });
+    const res = await post({}, { cookie });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-osws-allowance-used')).toBe('0.850');
+    expect(res.headers.get('x-osws-allowance-reset')).toBe(reset);
+    expect(res.headers.get('x-osws-allowance-sessions-left')).toBe('2');
+    // The amounts themselves stay on the server.
+    expect(res.headers.get('x-osws-allowance-spent')).toBeNull();
+    expect(res.headers.get('x-osws-allowance-limit')).toBeNull();
+  });
+
+  it('on a hosted instance, passes on the share of the account\'s day, with no sessions', async () => {
+    asHosted();
+    session.value = { userId: 'user-1' };
+    getAccountToken.mockResolvedValue({ token: 'account-token' });
+    upstream(200, ok, { 'x-osws-allowance-spent': '20000', 'x-osws-allowance-limit': '100000' });
+    // Streamed, as the agent asks for its answers.
+    const res = await post({ stream: true });
+    expect(res.headers.get('content-type')).toBe('text/event-stream');
+    expect(res.headers.get('x-osws-allowance-used')).toBe('0.200');
+    expect(res.headers.get('x-osws-allowance-sessions-left')).toBeNull();
+    // An answer that says nothing about the allowance adds nothing.
+    upstream(200, ok);
+    expect((await post({})).headers.get('x-osws-allowance-used')).toBeNull();
+  });
+
   it("ends a trial session whose own allowance is spent, so the page starts a new one", async () => {
     await asDemo();
     const { cookie } = await trialCookie();

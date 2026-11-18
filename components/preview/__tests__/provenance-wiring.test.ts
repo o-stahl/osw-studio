@@ -127,10 +127,10 @@ describe('selector script — provenance never reaches the agent', () => {
     expect(emitted).toContain('outerHTML: __oswStripNodeId(__oswStripProv(target.outerHTML');
   });
 
-  it('counts instances by comparing attribute values, not by building a selector', () => {
+  it('counts instances without building a selector out of a source value', () => {
     // Building `[data-osw-src="' + srcAttr + '"]` would need escaping inside a template literal —
-    // the trap this whole file exists for.
-    expect(emitted).toContain("all[q].getAttribute('data-osw-src') === srcAttr");
+    // the trap this whole file exists for. The count itself, for a source whose path holds a quote
+    // and a backslash, is run in a document in selection-page-dom.test.ts.
     expect(emitted).not.toContain('[data-osw-src="');
   });
 });

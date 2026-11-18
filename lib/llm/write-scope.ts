@@ -9,6 +9,7 @@
 import { alwaysWriteCommands, isScriptCommand, isSedInPlaceFlag, parseSedArgs } from '@/lib/vfs/shell-commands';
 import { sqliteChangesData } from './permissions';
 import { normalizePath } from '@/lib/vfs/shell/paths';
+import { commandStages } from './bash-command';
 
 /** Derived from the command registry so a new writing command cannot be missed here. */
 const WRITE_COMMANDS = alwaysWriteCommands();
@@ -37,13 +38,12 @@ function isWriteCommand(cmd: string[]): boolean {
  * header calls it a display grouping rather than a description, so a write reached through a pipe
  * read as a plain command: the call asked only for `projects:read`, and the change notification
  * that tells an open browser to pull never fired.
+ *
+ * Read from the tokens the shell runs (`commandStages`), so a redirect written against its path
+ * (`cat >/index.html << 'EOF'`) is a write, and a heredoc body, which is input, decides nothing.
  */
 export function commandLineWrites(command: string): boolean {
-  return command
-    .split(/\n|\||&&|\|\||;/)
-    .map(segment => segment.trim())
-    .filter(Boolean)
-    .some(segment => isWriteCommand(segment.split(/\s+/)));
+  return commandStages(command).some(isWriteCommand);
 }
 
 /** A path token as the shell resolves it. */
@@ -69,6 +69,12 @@ function ownTargets(cmd: string[]): string[] | null {
     // Writes the image to --out/-o when given, otherwise to /.generated/.
     const outs = flagValues(cmd, ['--out', '-o']);
     return outs === null ? null : outs.length > 0 ? outs : ['/.generated/'];
+  }
+
+  if (c === 'style') {
+    // Writes /overrides.css, and the element's source file when it stamps a marker; which file that
+    // is depends on the project, not on argv.
+    return null;
   }
 
   if (c === 'runtime') {

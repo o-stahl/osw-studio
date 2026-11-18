@@ -6,7 +6,7 @@ import {
   getBuiltInTemplateDefinition,
 } from '@/lib/vfs/templates/registry';
 import { TEMPLATE_INTENTS } from '@/lib/vfs/templates/intents';
-import { RUNTIME_CONFIGS } from '@/lib/runtimes/registry';
+import { RUNTIME_CONFIGS, canvasSupport } from '@/lib/runtimes/registry';
 
 /**
  * The registry is the one place an id becomes a template, so what it guarantees is worth pinning:
@@ -76,6 +76,21 @@ describe('built-in template registry', () => {
     for (const definition of BUILT_IN_TEMPLATE_DEFINITIONS) {
       expect(known).toContain(definition.runtime);
     }
+  });
+
+  it('opens a template on Canvas only where its pages are HTML the Canvas can edit', () => {
+    // Canvas edits pages that come from HTML source. A bundled runtime draws its pages itself, so a
+    // template on one that asked for Canvas would open on a surface where nothing can be selected.
+    for (const template of BUILT_IN_TEMPLATES) {
+      if (template.opensIn === 'canvas') expect(canvasSupport(template.runtime), template.id).toBe('edit');
+    }
+    // What each template's pages are made of, measured on Canvas (`lib/canvas/tracing.ts`): pages
+    // written as HTML, and pages a script or a bundle draws.
+    const declared = Object.fromEntries(BUILT_IN_TEMPLATES.filter((t) => t.opensIn).map((t) => [t.id, t.opensIn]));
+    expect(declared).toEqual({
+      demo: 'canvas', 'business-website': 'canvas', portfolio: 'canvas', 'contact-landing': 'canvas', blog: 'canvas',
+      'llm-wiki': 'preview', 'store-locator': 'preview', 'project-tracker': 'preview', 'react-demo': 'preview',
+    });
   });
 
   it('lists the templates it places in exactly the order it places them', () => {

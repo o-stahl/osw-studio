@@ -32,7 +32,8 @@ import { track } from '@/lib/telemetry';
 import { newPromptSuggestion, usablePromptSuggestions } from '@/lib/vfs/prompt-suggestions';
 import { INLINE_SUGGESTION_COUNT } from '@/lib/constants/suggestion-pills';
 import type { Project, ProjectRuntime, PromptSuggestion } from '@/lib/vfs/types';
-import { getProjectRuntimes } from '@/lib/runtimes/registry';
+import { canvasSupport, getProjectRuntimes } from '@/lib/runtimes/registry';
+import { normalizeProjectSettings, resolveRuntime } from '@/lib/vfs/project-settings';
 import { useRuntimeDescriptions } from '@/lib/i18n/use-runtime-descriptions';
 import type {
   FunctionsDataProvider,
@@ -251,9 +252,30 @@ function GeneralTab({ project, onProjectUpdate }: { project: Project; onProjectU
   const t = useTranslations('backend');
   const runtimeDescriptions = useRuntimeDescriptions();
   const tc = useTranslations('common');
-  const [editingEntryPoint, setEditingEntryPoint] = useState(
-    project.settings?.previewEntryPoint || '/index.html'
-  );
+
+  // Every control here reads the project as stored: read when the tab mounts, replaced on each save.
+  // The workspace passes the project as it was opened and never a newer one, and the agent and the
+  // file tree change these settings too.
+  const [latest, setLatest] = useState(project);
+  useEffect(() => {
+    let cancelled = false;
+    setLatest(project);
+    vfs.getProject(project.id)
+      .then((stored) => { if (!cancelled) setLatest(stored); })
+      .catch((err) => logger.warn('Could not read the project settings:', err));
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id]);
+  const saved = (proj: Project) => {
+    setLatest(proj);
+    onProjectUpdate(proj);
+  };
+  const runtime = latest.settings?.runtime || 'handlebars';
+  const entryPoint = latest.settings?.previewEntryPoint || '/index.html';
+  const opensIn = normalizeProjectSettings(latest.settings).opensIn;
+
+  const [editingEntryPoint, setEditingEntryPoint] = useState(entryPoint);
+  useEffect(() => { setEditingEntryPoint(entryPoint); }, [entryPoint]);
   const [promptOverwriteConfirm, setPromptOverwriteConfirm] = useState<{
     runtime: ProjectRuntime;
     label: string;
@@ -306,14 +328,14 @@ function GeneralTab({ project, onProjectUpdate }: { project: Project; onProjectU
 
   const handleRuntimeChange = async (value: ProjectRuntime) => {
     try {
-      const previousRuntime = project.settings?.runtime || 'handlebars';
+      const previousRuntime = runtime;
       const proj = await vfs.getProject(project.id);
       proj.settings = { ...proj.settings, runtime: value };
       await vfs.updateProject(proj);
       // Project settings are stored server-side; opened from the gallery there is no save
       // that would otherwise push this.
       vfs.scheduleAutoSync(proj.id);
-      onProjectUpdate(proj);
+      saved(proj);
       const label = getProjectRuntimes().find(r => r.value === value)?.label || value;
       toast.success(t('runtimeChanged', { label }));
       track('runtime_switch', { from: previousRuntime, to: value });
@@ -324,16 +346,31 @@ function GeneralTab({ project, onProjectUpdate }: { project: Project; onProjectU
     }
   };
 
+  const handleOpensInChange = async (value: string) => {
+    try {
+      const proj = await vfs.getProject(project.id);
+      const settings = { ...proj.settings };
+      if (value === 'canvas' || value === 'preview') settings.opensIn = value;
+      else delete settings.opensIn;
+      proj.settings = settings;
+      await vfs.updateProject(proj);
+      vfs.scheduleAutoSync(proj.id);
+      saved(proj);
+    } catch (err) {
+      logger.error('Failed to update the surface a project opens on:', err);
+      toast.error(t('opensInUpdateFailed'));
+    }
+  };
+
   const handleEntryPointCommit = async () => {
     const trimmed = editingEntryPoint.trim();
-    const current = project.settings?.previewEntryPoint || '/index.html';
-    if (trimmed === current) return;
+    if (trimmed === entryPoint) return;
     try {
       const proj = await vfs.getProject(project.id);
       proj.settings = { ...proj.settings, previewEntryPoint: trimmed };
       await vfs.updateProject(proj);
       vfs.scheduleAutoSync(proj.id);
-      onProjectUpdate(proj);
+      saved(proj);
       toast.success(t('entryPointSetTo', { path: trimmed }));
     } catch (err) {
       logger.error('Failed to update entry point:', err);
@@ -345,11 +382,11 @@ function GeneralTab({ project, onProjectUpdate }: { project: Project; onProjectU
     <div className="p-4 space-y-6">
       <div className="space-y-2">
         <Label htmlFor="runtime">{tc('labels.runtime')}</Label>
-        <Select value={project.settings?.runtime || 'handlebars'} onValueChange={handleRuntimeChange}>
-          <Tip label={runtimeDescriptions[project.settings?.runtime || 'handlebars']} wrap wrapClassName="flex w-full">
+        <Select value={runtime} onValueChange={handleRuntimeChange}>
+          <Tip label={runtimeDescriptions[runtime]} wrap wrapClassName="flex w-full">
             <SelectTrigger id="runtime" className="w-full">
               <div className="truncate flex-1 text-left">
-                {getProjectRuntimes().find(r => r.value === (project.settings?.runtime || 'handlebars'))?.label}
+                {getProjectRuntimes().find(r => r.value === runtime)?.label}
               </div>
             </SelectTrigger>
           </Tip>
@@ -381,8 +418,27 @@ function GeneralTab({ project, onProjectUpdate }: { project: Project; onProjectU
         </p>
       </div>
 
+      {canvasSupport(resolveRuntime(latest.settings)) !== null ? (
+        <div className="space-y-2">
+          <Label htmlFor="opens-in">{t('opensIn')}</Label>
+          <Select value={opensIn ?? 'last'} onValueChange={handleOpensInChange}>
+            <SelectTrigger id="opens-in" className="w-full">
+              <div className="truncate flex-1 text-left">
+                {t(opensIn === 'canvas' ? 'opensInCanvas' : opensIn === 'preview' ? 'opensInPreview' : 'opensInLast')}
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="last">{t('opensInLast')}</SelectItem>
+              <SelectItem value="canvas">{t('opensInCanvas')}</SelectItem>
+              <SelectItem value="preview">{t('opensInPreview')}</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">{t('opensInHelp')}</p>
+        </div>
+      ) : null}
+
       <div id="project-settings-suggestions" className="scroll-mt-4">
-        <PromptSuggestionsEditor project={project} onProjectUpdate={onProjectUpdate} />
+        <PromptSuggestionsEditor project={latest} onProjectUpdate={saved} />
       </div>
 
       <Dialog open={!!promptOverwriteConfirm} onOpenChange={(open) => !open && setPromptOverwriteConfirm(null)}>

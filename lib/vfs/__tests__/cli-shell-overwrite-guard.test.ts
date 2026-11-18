@@ -222,3 +222,15 @@ describe('read-before-edit guard', () => {
     expect(store.get('/index.html')?.content).toBe('<h1>new</h1>');
   });
 });
+
+describe('cat into a redirect, with a path that names nothing', () => {
+  it('still writes the files that exist, and answers with the failure', async () => {
+    seed('/a.txt', 'alpha');
+    const r = await exec(['cat', '/a.txt', '/nope.txt', '>', '/out.txt']);
+    // As in a shell: the file gets what could be read, and the command still fails.
+    expect(store.get('/out.txt')?.content).toBe('=== /a.txt ===\nalpha');
+    expect(r).toMatchObject({ success: false, stdout: '' });
+    // The read's own error, after the path, and nothing about the write.
+    expect(r.stderr).toBe('cat: /nope.txt: File not found: /nope.txt');
+  });
+});

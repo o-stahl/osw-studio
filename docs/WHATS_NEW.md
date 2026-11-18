@@ -6,6 +6,28 @@ Welcome to OSW Studio! This page highlights the latest features and updates.
 
 ---
 
+## v1.111.0 - The Canvas Panel (2026-11-18)
+
+You can now see every page of a project side by side at phone, tablet and desktop widths in the new Canvas panel, and in static and Handlebars projects select, restyle, rearrange and add elements there. Every change is written into the project's own HTML and CSS, the same files the agent works on, and the agent can now look at a rendered page and restyle an element itself. Bundled projects such as React and Vue show on Canvas without editing, and the phone layout has no Canvas.
+
+### Canvas
+- **Selecting**: click an element to select it and double-click to go a level deeper; the Inspector follows the artboard you picked on
+- **Adding and resizing**: add a frame, text, image, button or divider with F, T, I, B or D, type text in place, and drag handles for size, padding and gaps
+- **Use the pages (P)**: links, menus and forms work on a live artboard, and a link to another page moves the canvas to it
+
+### Editing in Canvas and Live Preview
+- **Styles tab**: a change can apply at every width or only up to one of the project's breakpoints, such as ≤ 768, and there are Size, Position and Effects groups
+- **CSS variables**: with nothing selected, the Styles tab lists the project's variables to edit, and a row shows the variable its value comes from
+- **Rearranging**: move, wrap, duplicate or delete an element from Canvas, the keyboard or the Elements tab's toolbar, right-click menu and row dragging
+- **Undo and Redo**: Ctrl+Z and Ctrl+Shift+Z (⌘Z and ⇧⌘Z on a Mac) undo and redo style, text, image and structure edits
+
+### The agent
+- **Pages**: `inspect` reads a rendered page's elements and styles, `screenshot` shows it to models that read images, and `style` changes an element the way the Styles tab does
+- **MCP**: in Server Mode, `preview_screenshot` and `canvas_selection` show a connected agent a page and what you have selected, while the project is open in a browser tab
+- **Limits**: the chat says when OSW Studio inference is nearly used up, and a run stopped by a daily or monthly limit offers Continue once the limit resets
+
+---
+
 ## v1.110.0 - Module Imports in the Preview (2026-11-13)
 
 In static and Handlebars projects, JavaScript files can now import each other as ES modules in the preview, so a site's scripts can be split into modules without a bundler. In the workspace, Undo also covers divider resizes, and Redo is new. Server Mode fixes analytics on published pages and adds settings for function logs.

@@ -64,6 +64,21 @@ describe('applying a built-in template to an empty project', () => {
     expect(vfs.projects.get('p1')!.settings.runtime).toBe('react');
   });
 
+  it('sets the surface the template opens on, and none for a template that declares none', async () => {
+    // The surface comes from the definition handed in, whichever template that is.
+    const canvas = fakeVfs().seed('p-canvas');
+    await applyBuiltInTemplate(canvas, 'p-canvas', { ...definition('blank'), opensIn: 'canvas' });
+    expect(canvas.projects.get('p-canvas')!.settings.opensIn).toBe('canvas');
+
+    const preview = fakeVfs().seed('p-preview');
+    await applyBuiltInTemplate(preview, 'p-preview', { ...definition('blank'), opensIn: 'preview' });
+    expect(preview.projects.get('p-preview')!.settings.opensIn).toBe('preview');
+
+    const none = fakeVfs().seed('p-none');
+    await applyBuiltInTemplate(none, 'p-none', { ...definition('blank'), opensIn: undefined });
+    expect(none.projects.get('p-none')!.settings).not.toHaveProperty('opensIn');
+  });
+
   it('seeds the chat starters the template ships', async () => {
     const vfs = fakeVfs().seed('p2');
     const def = definition('llm-wiki');

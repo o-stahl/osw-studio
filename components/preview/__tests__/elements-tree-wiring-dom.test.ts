@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { generateNavigationScript, generatePlacementScript } from '../multipage-preview';
 import type { FocusContextPayload, TreeNode } from '@/lib/preview/types';
+import { emptyTreeState, flattenTree, reduceTree } from '@/components/elements-panel';
 
 /**
  * The Elements tree's three frame handlers, run for real against a live document.
@@ -27,6 +28,8 @@ interface PostedMessage {
   nodes?: TreeNode[];
   truncated?: number;
   nodeId?: string;
+  levels?: Array<{ parentId: string | null; nodes: TreeNode[]; truncated: number }>;
+  path?: string[];
 }
 
 /**
@@ -108,6 +111,8 @@ function isolatedInstance(markup: string): Instance {
     parent: { postMessage: (message: unknown) => { instancePosted.push(message as PostedMessage); } },
     scrollX: 0,
     scrollY: 0,
+    // The payload names the width the page was laid out at; the shared window's is jsdom's 1024.
+    innerWidth: window.innerWidth,
     addEventListener: (type: string, handler: EventListener, capture?: boolean) =>
       bus.addEventListener(type, handler, capture),
     removeEventListener: (type: string, handler: EventListener, capture?: boolean) =>
@@ -246,6 +251,88 @@ describe('tree-select', () => {
     // The point of the whole addressing scheme: a dead id must not fall through to a payload built
     // from a detached node, whose domPath resolves to nothing or to a different element.
     expect(posted.filter(m => m.type === 'selector-selection')).toHaveLength(0);
+  });
+});
+
+/**
+ * `tree-path`, answered over a fresh document and read back through the panel's own reveal, so
+ * what is asserted is the row the Elements tab selects rather than the shape of the reply.
+ */
+describe('tree-path', () => {
+  /** Pick an element in the frame as a click does, and hand back the id its selection carries. */
+  function pick(instance: Instance, el: Element): string {
+    instance.send({ type: 'selector-toggle', active: true });
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    const selection = instance.posted.find(m => m.type === 'selector-selection');
+    expect(selection, 'the pick produced no selection').toBeTruthy();
+    return selection!.payload!.nodeId as string;
+  }
+
+  /** The frame's answer for a node, and the rows the panel shows once it has revealed it. */
+  function reveal(instance: Instance, nodeId: string) {
+    instance.posted.length = 0;
+    instance.send({ type: 'tree-path', nodeId });
+    const reply = instance.posted.find(m => m.type === 'tree-levels');
+    expect(reply, 'no tree-levels reply').toBeTruthy();
+    const { state } = reduceTree(emptyTreeState(), { type: 'reveal', levels: reply!.levels!, path: reply!.path! });
+    const rows = flattenTree(state).flatMap(row => (row.kind === 'node' ? [row] : []));
+    return { path: reply!.path!, levels: reply!.levels!, rows };
+  }
+
+  it('ends the path with an authored element, every ancestor open', () => {
+    const instance = isolatedInstance(MARKUP);
+    const id = pick(instance, instance.doc.querySelectorAll('h2')[1]);
+
+    const { path, rows } = reveal(instance, id);
+
+    expect(path).toHaveLength(3);
+    expect(path[path.length - 1]).toBe(id);
+    expect(rows.filter(r => r.selected).map(r => r.node.id)).toEqual([id]);
+    expect(rows.map(r => r.node.tag)).toEqual(['main', 'article', 'article', 'h2']);
+  });
+
+  it('ends the path with an element the page script built, selecting its own row', () => {
+    const instance = isolatedInstance('<main data-osw-src="/index.hbs:0"><ul data-osw-src="/index.hbs:6"></ul></main>');
+    const built = instance.doc.createElement('li');
+    built.textContent = 'built';
+    instance.doc.querySelector('ul')!.appendChild(built);
+    const id = pick(instance, built);
+
+    const { path, levels, rows } = reveal(instance, id);
+
+    expect(path[path.length - 1]).toBe(id);
+    expect(levels[levels.length - 1].nodes.map(n => n.id)).toContain(id);
+    expect(rows.filter(r => r.selected).map(r => r.node.id)).toEqual([id]);
+    expect(rows.find(r => r.selected)!.node.script).toBe(true);
+  });
+
+  it('opens a row with no source on the way, so an element under it is on screen', () => {
+    // A script-built container, and the element picked inside it: the container's own row has no
+    // source, and the picked element sits in the level under it.
+    const instance = isolatedInstance('<main data-osw-src="/index.hbs:0"></main>');
+    const widget = instance.doc.createElement('div');
+    widget.innerHTML = '<span>deep</span>';
+    instance.doc.querySelector('main')!.appendChild(widget);
+    const id = pick(instance, widget.querySelector('span')!);
+
+    const { path, rows } = reveal(instance, id);
+
+    expect(path[path.length - 1]).toBe(id);
+    expect(rows.map(r => r.node.tag)).toEqual(['main', 'div', 'span']);
+    expect(rows.filter(r => r.selected).map(r => r.node.id)).toEqual([id]);
+  });
+
+  it('opens the tbody the parser put between an authored table and its rows', () => {
+    const instance = isolatedInstance(
+      '<table data-osw-src="/index.hbs:0"><tr data-osw-src="/index.hbs:7"><td data-osw-src="/index.hbs:11">cell</td></tr></table>',
+    );
+    expect(instance.doc.querySelector('tbody')!.hasAttribute('data-osw-src')).toBe(false);
+    const id = pick(instance, instance.doc.querySelector('td')!);
+
+    const { rows } = reveal(instance, id);
+
+    expect(rows.map(r => r.node.tag)).toEqual(['table', 'tbody', 'tr', 'td']);
+    expect(rows.filter(r => r.selected).map(r => r.node.id)).toEqual([id]);
   });
 });
 

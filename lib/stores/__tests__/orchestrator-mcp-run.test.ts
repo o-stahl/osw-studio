@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createTestStore, setupOrchestratorMocks } from './test-helpers';
 
 setupOrchestratorMocks();
+vi.mock('@/lib/server-generate/render-delegation-handler', () => ({
+  handleRenderRequested: vi.fn().mockResolvedValue(undefined),
+  handleSelectionRequested: vi.fn().mockResolvedValue(undefined),
+}));
 
 /**
  * A run asked for over MCP reaches every tab the account has open on its SSE channel.
@@ -199,5 +203,49 @@ describe('orchestrator slice — an MCP run request for a project busy on the se
     await vi.waitFor(() => expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('agent-result'))).toBe(true));
     const result = fetchMock.mock.calls.find((c) => String(c[0]).includes('agent-result'))!;
     expect(JSON.parse(result[1].body)).toEqual({ requestId: 'r1', ok: false, error: 'A task is already running on this project. Try again when it has finished.' });
+  });
+});
+
+/**
+ * A page asked of the account's tabs for a server run's inspect or screenshot, or for an MCP client.
+ * The tab renders the files it has, so it first waits for the pulls of the project already under way.
+ */
+describe('orchestrator slice — a render request arriving at a tab', () => {
+  let store: ReturnType<typeof createTestStore>;
+
+  beforeEach(() => {
+    store = createTestStore();
+    vi.clearAllMocks();
+    vi.stubEnv('NEXT_PUBLIC_SERVER_MODE', 'true');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('renders once the file pulls under way for the project have landed', async () => {
+    const { whenFilesSynced } = await import('@/lib/server-generate/file-sync-handler');
+    const { handleRenderRequested } = await import('@/lib/server-generate/render-delegation-handler');
+    let land!: () => void;
+    vi.mocked(whenFilesSynced).mockReturnValueOnce(new Promise<void>((resolve) => { land = resolve; }));
+
+    store.getState().connectSSE();
+    const { SSEClient } = await import('@/lib/server-generate/sse-client');
+    const ctor = SSEClient as unknown as { mock: { calls: [{ onEvent: (e: string, d: unknown) => void }][] } };
+    const request = { sourceProjectId: 'p1', requestId: 'r1', job: { kind: 'inspect', projectId: 'p1', page: '/', width: 1440 } };
+    ctor.mock.calls[ctor.mock.calls.length - 1][0].onEvent('render_requested', request);
+
+    expect(handleRenderRequested).toHaveBeenCalledWith(request, expect.any(Function));
+    // What the handler awaits before it renders.
+    const synced = vi.mocked(handleRenderRequested).mock.calls[0][1];
+    let ready = false;
+    const waited = synced('p1').then(() => { ready = true; });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(whenFilesSynced).toHaveBeenCalledWith('p1');
+    expect(ready).toBe(false);
+
+    land();
+    await waited;
+    expect(ready).toBe(true);
   });
 });

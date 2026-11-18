@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, DragEvent, ClipboardEvent } from 'react';
 import { useTranslations } from 'next-intl';
 import { MessageSquare, Loader2, ClipboardList, Send, ChevronUp, ChevronDown, Code, Trash2, Image as ImageIcon, Type, Mic, Square, Plus, FileText, LogIn, Settings2, Camera } from 'lucide-react';
-import type { WorkspaceMode, ActiveInterview } from '@/lib/stores/slices/project';
+import type { WorkspaceMode, ActiveInterview, FocusTarget } from '@/lib/stores/slices/project';
 import { InterviewPicker } from './interview-picker';
 import { InterviewTemplatesManager } from '@/components/interview/InterviewTemplatesManager';
 import { interviewTemplatesService } from '@/lib/interview/templates-service';
@@ -36,7 +36,6 @@ import { ConnectChooser } from './connect-options';
 import { connectSettled } from '@/lib/llm/models/global-auto-assign';
 import { isFreeModels } from '@/lib/llm/suggestions/free-models';
 import { detectDeploymentType } from '@/lib/telemetry/config';
-import { FocusContextPayload } from '@/lib/preview/types';
 import { PendingImage, PendingAudio, PendingFile } from '@/lib/llm/multi-agent-orchestrator';
 import { useAudioRecorder } from '@/lib/audio/use-audio-recorder';
 import { useSpeechRecognition } from '@/lib/audio/use-speech-recognition';
@@ -51,8 +50,6 @@ import { toast } from 'sonner';
 import { useWorkspaceStore } from '@/lib/stores/workspace';
 import { resolveActiveAssignment } from '@/lib/llm/models/template-store';
 import { selectPromptSuggestions } from '@/lib/vfs/suggestion-paths';
-
-type FocusTarget = FocusContextPayload & { timestamp: number };
 
 interface ChatPanelProps {
   events: DebugEvent[];
@@ -698,7 +695,7 @@ export function ChatPanel({
 
   // Focus context snippet for unified context component
   const trimmedSnippet = focusPreviewSnippet?.trim() ?? '';
-  const focusContextData = focusContext ? { domPath: focusContext.domPath, snippet: trimmedSnippet } : null;
+  const focusContextData = focusContext ? { domPath: focusContext.domPath, snippet: trimmedSnippet, width: focusContext.viewportWidth } : null;
 
   const nothingToSend = !prompt.trim() && pendingImages.length === 0 && pendingAudio.length === 0 && pendingFiles.length === 0;
   // What Send does, or why it is off. The tour holds the composer and says why itself.

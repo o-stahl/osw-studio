@@ -45,6 +45,8 @@ function walkAttributes(
   s: string,
   tag: OpenTag,
   visit: (name: string, span: AttributeSpan) => boolean | void,
+  /** Told about attributes written without a value (`<div hidden>`), which `visit` never sees. */
+  valueless?: (name: string) => boolean | void,
 ): void {
   const to = tag.tagEnd;
   let i = tag.nameEnd;
@@ -69,7 +71,10 @@ function walkAttributes(
     const attr = s.slice(nameStart, i).toLowerCase();
 
     while (i < to && isSpace(s[i])) i++;
-    if (s[i] !== '=') continue;              // valueless attribute — next name starts here
+    if (s[i] !== '=') {                      // valueless attribute — next name starts here
+      if (attr && valueless?.(attr) === true) return;
+      continue;
+    }
     i++;
     while (i < to && isSpace(s[i])) i++;
 
@@ -104,6 +109,19 @@ export function findAttributeIn(s: string, tag: OpenTag, name: string): Attribut
     found = span;
     return true;
   });
+  return found;
+}
+
+/** Whether one open tag carries `name`, with or without a value (`data-osw-lock` usually has none). */
+export function hasAttributeIn(s: string, tag: OpenTag, name: string): boolean {
+  const wanted = name.toLowerCase();
+  let found = false;
+  const hit = (attr: string) => {
+    if (attr !== wanted) return;
+    found = true;
+    return true;
+  };
+  walkAttributes(s, tag, hit, hit);
   return found;
 }
 

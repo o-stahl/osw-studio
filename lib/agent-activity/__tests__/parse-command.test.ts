@@ -181,4 +181,26 @@ describe('parseCommand, around the shapes the agent actually writes', () => {
   it('runs python3, not only python', () => {
     expect(parseCommand('python3 -c "print(1)"')?.kind).toBe('run');
   });
+
+  it('reads style as an edit of /overrides.css on its element\'s file', () => {
+    expect(parseCommand('style /index.html ".hero h1" font-size=36px')).toMatchObject({ kind: 'edit', path: '/overrides.css', paths: ['/overrides.css', '/index.html'] });
+    expect(parseCommand('style /templates/nav.hbs:120 gap=12px')).toMatchObject({ paths: ['/overrides.css', '/templates/nav.hbs'] });
+    expect(parseCommand('style @h7x2m4qp color=red')).toMatchObject({ kind: 'edit', paths: ['/overrides.css'] });
+    expect(parseCommand('style / ".hero h1" font-size=34px')).toMatchObject({ paths: ['/overrides.css', '/index.html'] });
+    expect(parseCommand('style /about .lead color=red')).toMatchObject({ paths: ['/overrides.css', '/about.html'] });
+  });
+
+  it('reads inspect and screenshot as reads of their page', () => {
+    expect(parseCommand('inspect /about.html .hero --width 375')).toMatchObject({ kind: 'read', path: '/about.html' });
+    expect(parseCommand('screenshot /index.html --full')).toMatchObject({ kind: 'read', path: '/index.html' });
+    expect(parseCommand('screenshot / --width 375')).toMatchObject({ kind: 'read', path: '/index.html' });
+  });
+
+  it('takes the file out of a position with a line, or a line and a column', () => {
+    expect(parseCommand('style /index.html:42:5 color=red')).toMatchObject({ paths: ['/overrides.css', '/index.html'] });
+    expect(parseCommand('inspect /index.html:16:5')).toMatchObject({ kind: 'read', path: '/index.html', paths: ['/index.html'] });
+    expect(parseCommand('inspect /index.html:16')).toMatchObject({ path: '/index.html' });
+    expect(parseCommand('screenshot /templates/nav.hbs:12:3 --width 375')).toMatchObject({ path: '/templates/nav.hbs' });
+  });
 });
+

@@ -45,6 +45,14 @@ export interface FocusContextPayload {
    * Absent means "not stated", read as not text by `elementKind`.
    */
   textBearing?: boolean;
+  /** It or an element around it carries `data-osw-lock`: restyle only, no structural edits. */
+  locked?: boolean;
+  /** A frame Canvas made (`data-osw-frame`), which Unwrap takes apart. */
+  frame?: boolean;
+  /** The page file the element was picked on (`/about.html`). */
+  page?: string;
+  /** The width in CSS px the page was laid out at when the element was picked. */
+  viewportWidth?: number;
 }
 
 /**
@@ -66,6 +74,16 @@ export interface TreeNode {
   /** How many rendered elements in the page share this node's `data-osw-src`. */
   instances: number;
   hasChildren: boolean;
+  /** A leaf's words, shortened. */
+  text?: string;
+  /** `display: none` at the frame's width. */
+  hidden?: boolean;
+  /** Carries `data-osw-lock`: restyle only. */
+  locked?: boolean;
+  /** A frame Canvas made (`data-osw-frame`). */
+  frame?: boolean;
+  /** Built by the page's script: no `data-osw-src`, nothing in source to act on. */
+  script?: boolean;
 }
 
 export interface PlacementBlockInfo {
@@ -74,15 +92,59 @@ export interface PlacementBlockInfo {
   wireframeHtml: string;
 }
 
-export interface PlacementResult {
-  blockId: string;
-  placementId: string;
-  domPath: string;
-  position: 'before' | 'after';
-  htmlContext: string;
-}
+/**
+ * A block dropped in a frame. On a page compiled with source positions, the drop as a place in
+ * source terms (`null` where the page's source has none, between elements of other files), how
+ * many times that place renders, and the page's file; the host writes the placeholder. On one
+ * without, the frame shows its own placeholder and says where it put it.
+ */
+export type PlacementResult =
+  | { blockId: string; place: StructurePlace | null; instances: number; page: string | null }
+  | {
+    blockId: string;
+    placementId: string;
+    domPath: string;
+    position: 'before' | 'after';
+    htmlContext: string;
+  };
 
 export type ConsoleLevel = 'log' | 'warn' | 'error' | 'info' | 'debug';
+
+/** Where an element goes, by the `data-osw-src` of the elements around it. */
+export type StructurePlace =
+  | { before: string }
+  | { after: string }
+  | { parent: string; at: 'start' | 'end' };
+
+/** The change a frame makes to show a structural edit at once, named by the offsets it has now. */
+export type StructurePatchOp =
+  | { kind: 'move'; target: string; place: StructurePlace }
+  | { kind: 'delete'; target: string }
+  | { kind: 'wrap'; target: string; html: string }
+  | { kind: 'unwrap'; target: string }
+  | { kind: 'duplicate'; target: string; ids: Record<string, string> }
+  | { kind: 'insert'; place: StructurePlace; html: string };
+
+/**
+ * An element to mark with the id its first edit will stamp into source, so the edit shows before the
+ * write lands: every element rendered from `src` (a `data-osw-src` value) that has no marker yet.
+ */
+export interface OverrideMark {
+  src: string;
+  markerId: string;
+}
+
+/** The declaration that wins the cascade for one property of one element, as the frame reads it. */
+export interface SpecifiedValue {
+  /** As written, `100%` or `var(--font-body)`, not as computed. */
+  value: string;
+  /** A VFS path, `/overrides.css`, `inline style` or `a stylesheet`. */
+  origin: string;
+  /** It is the element's own override. */
+  ours: boolean;
+  /** When it is: the declaration that would win without it, or `null` for none. */
+  under?: { value: string; origin: string } | null;
+}
 
 export type PreviewMessage =
   /** The document stamped with `loadId` reached its load event. See `previewBridgeScript`. */
@@ -152,6 +214,21 @@ export type PreviewMessage =
        * never 16.
        */
       rootFontSize?: string;
+      /**
+       * The winning declaration for each property `specified` asked about: its value as written,
+       * where it came from, and whether it is the element's own override. `null` where nothing
+       * declares it.
+       */
+      specified?: Record<string, SpecifiedValue | null>;
+      /**
+       * For each property `variables` asked about whose winning declaration is one `var(--name)`
+       * and nothing else: that name. A property set any other way is left out.
+       */
+      variables?: Record<string, string>;
+      /** The frame's width in CSS px: which width block the Inspector writes into here. */
+      viewportWidth?: number;
+      /** The parent's layout, which decides what Fill writes. `null` with no parent element. */
+      parent?: { display: string; flexDirection: string } | null;
     }
   /**
    * The answer to a `style-probe`: which of the asked-about properties the override did **not**
@@ -165,10 +242,15 @@ export type PreviewMessage =
    * `winner` is a VFS path where one is knowable, else `inline style` / `a stylesheet` — never a
    * blob id. Absent when nothing was lost, and also when something was lost to a cause the scan
    * cannot name (a UA default, or a rule inside an `@media` block, which is deliberately not walked).
+   *
+   * `written` is the asked-about names, as asked, that lost somewhere (`padding` when a side of it
+   * did), and `tag` is the request's own, handed back.
    */
-  | { type: 'style-probe-result'; nodeId: string; lost: string[]; winner?: string }
+  | { type: 'style-probe-result'; nodeId: string; lost: string[]; winner?: string; written?: string[]; tag?: string }
   /** A fresh payload for a `selection-resolve`, or `null` when that `domPath` no longer resolves. */
   | { type: 'selection-resolved'; payload: FocusContextPayload | null }
+  /** A `structure-patch` was applied (`ok`), or could not be and the recompile will show it. */
+  | { type: 'structure-patched'; ok: boolean }
   /**
    * Relayed to the host because every action depends on host state (panels, tabs, message inclusion).
    */
@@ -215,17 +297,23 @@ export type PreviewHostMessage =
    * frame-scoped id the tree mints — so a clicked element can be asked about, not just a tree row.
    * Shorthands in `properties` are expanded before they are read; the reply names what came back.
    */
-  | { type: 'style-query'; nodeId: string; properties: string[] }
+  | { type: 'style-query'; nodeId: string; properties: string[]; specified?: string[]; variables?: string[] }
   /**
-   * `markerId` identifies the rule; `css` is the element's whole accumulated block (needed because
-   * silent writes skip recompile). `null` clears the transient style.
+   * `/overrides.css` as the Inspector just wrote it, whole: the frame swaps it in where the file's
+   * link was, since the write is silent and starts no recompile.
    */
-  | { type: 'style-preview'; markerId: string; css: string | null }
+  | { type: 'overrides-preview'; css: string; marks?: OverrideMark[]; unmarks?: string[] }
+  /** A custom property's value while it is being edited, set on the root element; `null` takes it off. */
+  | { type: 'variable-preview'; name: string; value: string | null }
+  /** A structural edit just written, for the frame to show before the recompile (`structure-patch.ts`). */
+  | { type: 'structure-patch'; file: string; pieces: Array<[number, number] | number>; op: StructurePatchOp; created: number[] }
+  /** Select the element carrying this `data-osw-src`; answered with `selector-selection`. */
+  | { type: 'select-src'; src: string }
   /**
    * Both `nodeId` and `markerId` needed: one identifies the element, the other identifies the rule
    * to lift out.
    */
-  | { type: 'style-probe'; nodeId: string; markerId: string; properties: string[] }
+  | { type: 'style-probe'; nodeId: string; markerId: string; properties: string[]; tag?: string }
   /** Uses `domPath` because a recompile mints new `nodeId`s but `domPath` survives. */
   | { type: 'selection-resolve'; domPath: string }
   /** Clears the toolbar anchor. Not needed after a recompile (the new document has no selection). */

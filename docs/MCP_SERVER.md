@@ -102,6 +102,8 @@ These five are the whole list. A scope outside it is ignored rather than granted
 | `backend_list` | `projects:read` | Edge functions, server functions, schedules and secret names (values are never returned) |
 | `backend_upsert` | `projects:write` | Create or replace an edge function, server function, schedule or secret |
 | `backend_delete` | `projects:write` | Remove an edge function, server function, schedule or secret by name |
+| `preview_screenshot` | `projects:read` | See a page as a visitor would, at a width: the first screen, the whole page, or one element |
+| `canvas_selection` | `projects:read` | The element you have selected on Canvas or in Live Preview: its page, width, position in source (`/index.html:16:5`) and marker, and the `style` command that changes only that element (`restyle`) |
 | `agent_run` | `agent` | Ask the OSW Studio agent to work on a project |
 | `agent_status` | `agent` | How a task is going, and what it has done |
 | `agent_cancel` | `agent` | Stop a running task |
@@ -122,7 +124,7 @@ There is no tool to delete a project or a deployment (unpublish the deployment i
 
 ```
 cat, head, tail, ls, tree, grep, rg, find, wc, sort, uniq, tr,
-echo, mkdir, rmdir, touch, mv, cp, rm, sed, ss, curl, runtime
+echo, mkdir, rmdir, touch, mv, cp, rm, sed, ss, style, curl, inspect, runtime
 ```
 
 Pipes, redirects (`> file`, `>> file`), heredocs (`<< 'EOF'`), chaining (`&&`, `||`, `;`) and brace expansion all work.
@@ -147,7 +149,11 @@ EOF
 curl localhost/
 ```
 
-`curl localhost/<path>` is how to see compiled output without publishing anything.
+`curl localhost/<path>` is how to see compiled output without publishing anything. `inspect /index.html [element] --width 375` reads the page as a browser lays it out: its elements with their positions in source and sizes, and for one element the rule that sets each value. An element is a page and a selector (`inspect /index.html ".hero h1"`), a position (`/index.html:16`, the element whose tag starts on line 16, or `/index.html:16:5` with a column), or a marker (`@h7x2m4qp`).
+
+`style <element> prop=value --width 375` changes one element the way the Inspector does, in `/overrides.css` (static and Handlebars projects). Its reply says whether the change is in force when a tab is open to check it, and a change that a stronger rule would beat is marked `!important` so it applies. `canvas_selection` gives this command for the element you have selected, as `restyle`; `style --help` has the rest.
+
+A write that drops something you set by hand on a page is answered with a note: a `data-osw-id` attribute that carried your styles is put back where the element can still be recognised, and a removed block placeholder or a changed locked element is named. `bash` puts the note under the command's output, and `files_write` in its answer's `note`.
 
 Reading needs `projects:read`. Anything that writes needs `projects:write`.
 
@@ -165,6 +171,7 @@ still limited to public hosts, so a connector cannot reach a private address on 
 | `build`, `python`, `python3`, `lua` | Need the browser runtime (esbuild-wasm, Pyodide, Fengari) |
 | `sqlite3` | Needs a deployment selected in the app; use `deployments_sql` instead |
 | `status` | The in-app agent's task-completion report, which does nothing for an outside client |
+| `screenshot` | Its images have no way through `bash`; use `preview_screenshot` |
 
 ### Binary files
 
@@ -260,13 +267,13 @@ Turning collection on is `deployments_update` with `analyticsEnabled: true` (the
 
 ---
 
-## Running the agent needs a browser tab open
+## Some tools need a browser tab open
 
-`agent_run` is the one tool that cannot run on the server alone.
+`agent_run`, `preview_screenshot`, `canvas_selection` and `bash`'s `inspect` cannot run on the server alone.
 
-Your provider API key lives in your browser's local storage and is never stored server-side, so the server has no way to start a task with a cloud model. Instead the server asks an open OSW Studio tab for your account to run it, and reports back what that tab does.
+Your provider API key lives in your browser's local storage and is never stored server-side, so the server has no way to start a task with a cloud model. Pages are rendered in the browser too, and what you have selected is in your tab. So the server asks an open OSW Studio tab for your account, and reports back what that tab does. A page is rendered by a tab that has the project.
 
-So before calling `agent_run`, **have OSW Studio open in a browser** and signed in to the same account. With no tab attached the call returns a message saying so rather than waiting.
+So before calling these, **have OSW Studio open in a browser** and signed in to the same account. With no tab attached the call returns a message saying so rather than waiting.
 
 Every other tool needs no browser tab, `agent_status` and `agent_cancel` included: once a task exists, its progress and its cancellation are handled on the server, so a client can start a task with a tab open and follow it after the tab is gone.
 

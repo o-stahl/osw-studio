@@ -39,6 +39,7 @@ export const GLOSS_KEYS = {
   cp: 'gloss.cp',
   rm: 'gloss.rm',
   ss: 'gloss.ss',
+  style: 'gloss.style',
   ask: 'gloss.ask',
   search: 'gloss.search',
 } as const;

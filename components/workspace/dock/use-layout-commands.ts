@@ -4,6 +4,9 @@ import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { useWorkspaceStore } from '@/lib/stores/workspace';
+import { layoutRedoAt, layoutUndoAt } from '@/lib/stores/slices/layout';
+import { editHistory } from '@/lib/direct-edit/edit-history';
+import { newestHistory } from '@/lib/direct-edit/journal';
 import { isPanelKey, type DragSource, type DropTarget, type LayoutPreset, type PanelKey } from '@/lib/workspace-layout';
 
 /** One toast at a time: a command that could not run replaces the last one's. */
@@ -60,8 +63,12 @@ export interface LayoutCommands {
   preset: (name: LayoutPreset) => void;
   reset: () => void;
   ungroup: (cellId: string) => void;
+  /** Ctrl/Cmd+Z: takes back whichever of the layout and the Inspector's edits changed last. */
   undo: () => void;
   redo: () => void;
+  /** The Layout menu's own Undo and Redo, which only ever act on the layout. */
+  undoLayout: () => void;
+  redoLayout: () => void;
   /** A toast for a command that could not run, saying why. */
   say: (text: string) => void;
 }
@@ -113,9 +120,25 @@ export function useLayoutCommands(): LayoutCommands {
         else keepWorkspaceFocus();
       },
       undo() {
+        const edits = editHistory();
+        if (newestHistory(layoutUndoAt(store()), edits?.undoAt() ?? null) === 'edit') {
+          edits!.undo();
+          return;
+        }
         if (store().undoLayout()) keepWorkspaceFocus();
       },
       redo() {
+        const edits = editHistory();
+        if (newestHistory(layoutRedoAt(store()), edits?.redoAt() ?? null) === 'edit') {
+          edits!.redo();
+          return;
+        }
+        if (store().redoLayout()) keepWorkspaceFocus();
+      },
+      undoLayout() {
+        if (store().undoLayout()) keepWorkspaceFocus();
+      },
+      redoLayout() {
         if (store().redoLayout()) keepWorkspaceFocus();
       },
       say,

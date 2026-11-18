@@ -272,3 +272,16 @@ describe('the writable set', () => {
     expect(rows).toEqual(STYLE_PROPERTIES.map(e => e.id));
   });
 });
+
+describe('rowProperties', () => {
+  it('covers a row\'s sides and their physical spellings, so its dot resets all of them', async () => {
+    const { rowProperties, STYLE_PROPERTIES } = await import('../properties');
+    const row = (id: string) => STYLE_PROPERTIES.find((e) => e.id === id)!;
+    expect(rowProperties(row('padding-block'))).toEqual(
+      ['padding-block', 'padding-block-start', 'padding-block-end', 'padding-top', 'padding-bottom'],
+    );
+    expect(rowProperties(row('border-radius'))).toContain('border-top-left-radius');
+    expect(rowProperties(row('overflow'))).toEqual(['overflow', 'overflow-x', 'overflow-y']);
+    expect(rowProperties(row('color'))).toEqual(['color']);
+  });
+});

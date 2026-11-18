@@ -78,6 +78,8 @@ export async function catCommand(env: ShellEnv): Promise<ShellResult> {
   const stderr = errorMessages.join('\n');
 
   const catResult: ShellResult = { stdout: truncate(stdout), stderr, exitCode: hadError ? 1 : 0 };
-  if (redirect && !hadError) return applyRedirectGuarded(vfs, projectId, catResult.stdout, redirect, ctx);
-  return catResult;
+  if (!redirect) return catResult;
+  // What could be read still goes to the file, as in a shell; a path that could not be is then the answer.
+  const written = await applyRedirectGuarded(vfs, projectId, catResult.stdout, redirect, ctx);
+  return !hadError || written.exitCode !== 0 ? written : { stdout: '', stderr, exitCode: 1 };
 }

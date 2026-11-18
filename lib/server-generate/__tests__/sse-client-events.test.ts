@@ -59,4 +59,12 @@ describe('SSEClient event subscriptions', () => {
       expect(subscribed.has(name), name).toBe(true);
     }
   });
+
+  it('subscribes to the render and selection questions, so a server run or an MCP client can be answered', () => {
+    new SSEClient({ onEvent: vi.fn() }).connect();
+
+    const subscribed = FakeEventSource.last!.listeners;
+    expect(subscribed.has('render_requested')).toBe(true);
+    expect(subscribed.has('selection_requested')).toBe(true);
+  });
 });

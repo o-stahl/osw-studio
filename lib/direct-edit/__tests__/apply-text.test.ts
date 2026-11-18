@@ -90,6 +90,20 @@ describe('applyText', () => {
       .toBe('<html><head></head><body><h1 class="hero">New words</h1></body></html>');
   });
 
+  it('tells the recorder what the page held before and after, for undo', async () => {
+    const projectId = await seed({ '/index.html': PAGE });
+    const writes: unknown[] = [];
+    await applyText(projectId, { srcAttr: src('/index.html', PAGE, '<h1'), tagName: 'h1' }, 'New words', {
+      record: (write) => writes.push(write),
+    });
+    expect(writes).toEqual([{
+      path: '/index.html',
+      before: PAGE,
+      after: '<html><head></head><body><h1 class="hero">New words</h1></body></html>',
+      silent: false,
+    }]);
+  });
+
   it('writes the one index it was given, not the first identical run in the file', async () => {
     // The design, end to end. Three identical paragraphs are three provenance indices, and the user
     // selected the third — an implementation that searched for the string would rewrite the first.

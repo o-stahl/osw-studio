@@ -20,10 +20,10 @@ import { answerFunctionCall } from '@/lib/preview/function-proxy';
 import { getPreviewStorage, setPreviewStorageArea, storageReportProject } from '@/lib/preview/preview-storage';
 import { PreviewCompileGate, mergeCompileRequests, observePreviewRoot } from '@/lib/preview/compile-gate';
 import type { CompileRequest } from '@/lib/preview/compile-gate';
-import { STRIP_PROVENANCE_JS } from '@/lib/preview/provenance';
-import { SERIALIZE_TREE_JS } from '@/lib/preview/element-tree';
-import { STYLE_QUERY_JS, STYLE_PREVIEW_JS, STYLE_LOCATOR_JS, STYLE_PROBE_JS } from '@/lib/preview/style-preview';
-import { TOOLBAR_DOM_JS, TOOLBAR_HOST_ATTR, resolveToolbarTheme } from '@/lib/preview/toolbar-dom';
+import { ESCAPE_CSS_IDENT_JS, STRIP_NODE_ID_JS, generateNavigationScript } from '@/lib/preview/navigation-script';
+import { generatePlacementScript } from '@/lib/preview/placement-script';
+import { PLACEHOLDER_CSS } from '@/lib/semantic-blocks/placeholder';
+import { resolveToolbarTheme } from '@/lib/preview/toolbar-dom';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -56,6 +56,9 @@ import type { SemanticBlock } from '@/lib/semantic-blocks/types';
 import { useWorkspaceStore } from '@/lib/stores/workspace';
 import { PREVIEW_SANDBOX } from '@/lib/sandbox';
 
+export { ESCAPE_CSS_IDENT_JS, STRIP_NODE_ID_JS, generateNavigationScript };
+export { generatePlacementScript };
+
 export interface MultipagePreviewHandle {
   /**
    * A JPEG data URL of the frame, full page, scaled to `outputWidth` (the thumbnail size when
@@ -76,6 +79,8 @@ export interface MultipagePreviewHandle {
    * for `onFrameReady` before the first send, and again after every reload.
    */
   sendToFrame: (message: PreviewHostMessage) => void;
+  /** Show the page at a device's size, as the toolbar's toggles do: for the Styles tab's Applies to. */
+  setDevice: (size: 'mobile' | 'tablet' | 'desktop') => void;
 }
 
 interface MultipagePreviewProps {
@@ -212,1043 +217,8 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   });
 }
 
-/**
- * Strip the Elements tree's transient node id, as JavaScript source for injection into the iframe.
- *
- * `data-osw-node` is stamped onto live elements as the tree is serialized, so anything read out of
- * the frame's DOM after an expansion carries it: the focus payload's `outerHTML` and the placement
- * request's `htmlContext` both do, and both end up in the agent's prompt.
- */
-export const STRIP_NODE_ID_JS =
-  `function __oswStripNodeId(h){return String(h||'').replace(/\\s?data-osw-node="[^"]*"/g,'');}`;
 
-/**
- * Escape an element id for use inside a CSS selector, as JavaScript source for the iframe.
- *
- * `CSS.escape` is absent in jsdom, so this is hand-written.
- */
-export const ESCAPE_CSS_IDENT_JS = `
-function __oswEscapeIdent(value) {
-  var s = String(value == null ? '' : value);
-  var bs = String.fromCharCode(92);
-  var out = '';
-  for (var i = 0; i < s.length; i++) {
-    var c = s.charAt(i);
-    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c === '_' || c === '-' || c > '~') {
-      out += c;
-      continue;
-    }
-    if (c >= '0' && c <= '9') {
-      // A digit is an ordinary ident character anywhere but the front.
-      out += i === 0 ? bs + '3' + c + ' ' : c;
-      continue;
-    }
-    out += bs + c;
-  }
-  return out;
-}
-`;
 
-/**
- * The preview's semantic-block placement script, as source for the iframe.
- *
- * Exported for the same reason as generateNavigationScript below: the escaping of anything authored
- * inside this template literal is only observable in the emitted string.
- */
-export function generatePlacementScript(): string {
-  return `<script>(function() {
-    ${STRIP_PROVENANCE_JS}
-    ${STRIP_NODE_ID_JS}
-    var state = {
-      active: false,
-      block: null,
-      indicator: null,
-      currentTarget: null,
-      currentPosition: 'after',
-      lastX: 0,
-      lastY: 0,
-      scrollRaf: null,
-      scrollSpeed: 0
-    };
-
-    function createIndicator() {
-      if (state.indicator) return state.indicator;
-      var el = document.createElement('div');
-      el.setAttribute('data-semantic-indicator', 'true');
-      el.style.cssText = 'position:fixed;height:0;border:2px solid rgba(99,102,241,0.95);border-radius:12px;box-shadow:0 0 0 4px rgba(99,102,241,0.32);pointer-events:none;transition:top 0.15s ease-out,left 0.15s ease-out,width 0.15s ease-out,opacity 0.15s;opacity:0;z-index:2147483646;box-sizing:border-box;';
-      document.body.appendChild(el);
-      state.indicator = el;
-      return el;
-    }
-
-    function removeIndicator() {
-      if (state.indicator) {
-        state.indicator.style.opacity = '0';
-      }
-    }
-
-    function isPlaceholderOrIndicator(el) {
-      if (!el || !el.getAttribute) return false;
-      return el.getAttribute('data-semantic-placeholder') === 'true' ||
-             el.getAttribute('data-semantic-indicator') === 'true' ||
-             // The selector's highlight overlay. It stays in the document once created — hidden
-             // rather than detached — so findDropTarget's fallback, which returns the last body
-             // child when the pointer is over bare body, would otherwise pick it and hand the agent
-             // a domPath into preview furniture.
-             el.getAttribute('data-osw-overlay') !== null ||
-             // The selection toolbar, for the same reason and more sharply: it is *appended* on
-             // every selection, so it is the last body child whenever anything is selected — which
-             // is precisely when a user is dragging a block around. The fallback walks backwards and
-             // would hand back the toolbar every time.
-             el.getAttribute('${TOOLBAR_HOST_ATTR}') !== null;
-    }
-
-    function getInsertPosition(el, x, y) {
-      var rect = el.getBoundingClientRect();
-      var style = window.getComputedStyle(el.parentNode || el);
-      var isHorizontal = style.display === 'flex' && (style.flexDirection === 'row' || style.flexDirection === 'row-reverse');
-
-      if (isHorizontal) {
-        return (x - rect.left) < (rect.width / 2) ? 'before' : 'after';
-      }
-      return (y - rect.top) < (rect.height / 2) ? 'before' : 'after';
-    }
-
-    function findDropTarget(x, y) {
-      var el = document.elementFromPoint(x, y);
-      if (!el || el === document.documentElement || el === document.body) {
-        var children = document.body.children;
-        for (var i = children.length - 1; i >= 0; i--) {
-          if (!isPlaceholderOrIndicator(children[i]) && children[i].tagName !== 'SCRIPT') {
-            return children[i];
-          }
-        }
-        return null;
-      }
-      while (el && (isPlaceholderOrIndicator(el) || el.tagName === 'SCRIPT')) {
-        el = el.parentElement;
-      }
-      if (el && el !== document.body && el !== document.documentElement) {
-        var pos = window.getComputedStyle(el).position;
-        if (pos === 'absolute' || pos === 'fixed') {
-          el = el.parentElement;
-        }
-      }
-      return el && el !== document.body && el !== document.documentElement ? el : null;
-    }
-
-    function buildDomPath(el) {
-      var parts = [];
-      while (el && el !== document.body && el !== document.documentElement) {
-        var tag = el.tagName.toLowerCase();
-        if (el.id) {
-          parts.unshift(tag + '#' + el.id);
-          break;
-        }
-        var parent = el.parentElement;
-        if (parent) {
-          var siblings = Array.prototype.filter.call(parent.children, function(c) {
-            return c.tagName === el.tagName && !isPlaceholderOrIndicator(c);
-          });
-          if (siblings.length > 1) {
-            var idx = siblings.indexOf(el) + 1;
-            tag += ':nth-of-type(' + idx + ')';
-          }
-        }
-        parts.unshift(tag);
-        el = parent;
-      }
-      return 'body > ' + parts.join(' > ');
-    }
-
-    function showIndicator(target, position) {
-      var indicator = createIndicator();
-      var rect = target.getBoundingClientRect();
-      var y = position === 'before' ? rect.top : rect.bottom;
-      indicator.style.top = y + 'px';
-      indicator.style.left = rect.left + 'px';
-      indicator.style.width = rect.width + 'px';
-      indicator.offsetHeight;
-      indicator.style.opacity = '1';
-      state.currentTarget = target;
-      state.currentPosition = position;
-    }
-
-    function startAutoScroll() {
-      if (state.scrollRaf) return;
-      function tick() {
-        if (state.scrollSpeed !== 0) {
-          window.scrollBy(0, state.scrollSpeed);
-        }
-        state.scrollRaf = requestAnimationFrame(tick);
-      }
-      state.scrollRaf = requestAnimationFrame(tick);
-    }
-
-    function stopAutoScroll() {
-      if (state.scrollRaf) {
-        cancelAnimationFrame(state.scrollRaf);
-        state.scrollRaf = null;
-      }
-      state.scrollSpeed = 0;
-    }
-
-    function updateAutoScroll(y) {
-      var vh = window.innerHeight;
-      var edgeZone = vh * 0.08;
-      var maxSpeed = 12;
-      if (y < edgeZone) {
-        // Top edge — scroll up, faster closer to edge
-        state.scrollSpeed = -maxSpeed * (1 - y / edgeZone);
-        startAutoScroll();
-      } else if (y > vh - edgeZone) {
-        // Bottom edge — scroll down
-        state.scrollSpeed = maxSpeed * (1 - (vh - y) / edgeZone);
-        startAutoScroll();
-      } else {
-        state.scrollSpeed = 0;
-      }
-    }
-
-    function handleHover(x, y) {
-      if (!state.active) return;
-      state.lastX = x;
-      state.lastY = y;
-      updateAutoScroll(y);
-      var target = findDropTarget(x, y);
-      if (!target) {
-        removeIndicator();
-        state.currentTarget = null;
-        return;
-      }
-      var position = getInsertPosition(target, x, y);
-      if (target === state.currentTarget && position === state.currentPosition) return;
-      showIndicator(target, position);
-    }
-
-    function buildHtmlContext(target, position, blockName) {
-      // Get the parent element that contains the insertion point
-      var parent = target.parentNode;
-      if (!parent || parent === document.body || parent === document.documentElement) {
-        parent = target; // use target itself if parent is body
-      }
-      // Clone the parent to insert a marker comment without modifying the real DOM
-      var clone = parent.cloneNode(true);
-      // Find the corresponding target in the clone
-      var children = Array.prototype.slice.call(parent.children);
-      var cloneChildren = Array.prototype.slice.call(clone.children);
-      var targetIndex = -1;
-      for (var i = 0; i < children.length; i++) {
-        if (children[i] === target) { targetIndex = i; break; }
-      }
-      if (targetIndex >= 0 && targetIndex < cloneChildren.length) {
-        var marker = document.createComment(' INSERT ' + blockName + ' HERE ');
-        if (position === 'before') {
-          clone.insertBefore(marker, cloneChildren[targetIndex]);
-        } else {
-          clone.insertBefore(marker, cloneChildren[targetIndex].nextSibling);
-        }
-      }
-      // Remove any semantic placeholders/indicators from the clone, and the selection toolbar with
-      // them. The toolbar's chrome is in a shadow root and never serialises, but its host is an
-      // ordinary empty div and does — and this string becomes the placement request's htmlContext.
-      //
-      // Belt and braces, measured as such: the clone root is either the target's parent or the
-      // target itself, and the toolbar host is only ever a direct child of document.body, so it can
-      // land inside this clone only when it *is* the target — which findDropTarget above no longer
-      // hands back. The same is already true of the indicator beside it, which is also body-only.
-      // Both stay, because nothing enforces "body child" as an invariant.
-      var placeholders = clone.querySelectorAll('[data-semantic-placeholder],[data-semantic-indicator],[${TOOLBAR_HOST_ATTR}]');
-      for (var j = placeholders.length - 1; j >= 0; j--) {
-        placeholders[j].parentNode.removeChild(placeholders[j]);
-      }
-      // Remove script tags from clone
-      var scripts = clone.querySelectorAll('script');
-      for (var k = scripts.length - 1; k >= 0; k--) {
-        scripts[k].parentNode.removeChild(scripts[k]);
-      }
-      // Preview-only instrumentation must not reach the agent: this string becomes the placement
-      // request's htmlContext. A separate code path from the focus-context payload, so both
-      // strippers have to be applied here too.
-      return __oswStripNodeId(__oswStripProv(clone.outerHTML));
-    }
-
-    function handleDrop() {
-      stopAutoScroll();
-      if (!state.active || !state.currentTarget || !state.block) return;
-      var domPath = buildDomPath(state.currentTarget);
-      var position = state.currentPosition;
-
-      // Capture HTML context BEFORE inserting placeholder
-      var htmlContext = buildHtmlContext(state.currentTarget, position, state.block.name);
-
-      removeIndicator();
-      var wrapper = document.createElement('div');
-      var placementId = 'sb-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6);
-
-      wrapper.innerHTML = state.block.wireframeHtml;
-      var placeholder = wrapper.firstChild;
-      if (placeholder) {
-        // Tag with placementId so it can be removed later
-        if (placeholder.setAttribute) placeholder.setAttribute('data-placement-id', placementId);
-        if (position === 'before') {
-          state.currentTarget.parentNode.insertBefore(placeholder, state.currentTarget);
-        } else {
-          state.currentTarget.parentNode.insertBefore(placeholder, state.currentTarget.nextSibling);
-        }
-      }
-
-      window.parent.postMessage({
-        type: 'placement-complete',
-        payload: {
-          blockId: state.block.id,
-          placementId: placementId,
-          domPath: domPath,
-          position: position,
-          htmlContext: htmlContext
-        }
-      }, '*');
-
-      state.currentTarget = null;
-      state.currentPosition = 'after';
-    }
-
-    function activate(block) {
-      state.active = true;
-      state.block = block;
-      document.body.style.cursor = 'crosshair';
-    }
-
-    function deactivate(cancelled) {
-      stopAutoScroll();
-      state.active = false;
-      state.block = null;
-      state.currentTarget = null;
-      removeIndicator();
-      document.body.style.cursor = '';
-      if (cancelled) {
-        window.parent.postMessage({ type: 'placement-cancelled' }, '*');
-      }
-    }
-
-    document.addEventListener('click', function(event) {
-      // A press on the selection toolbar is not a click in the page. The host reacts to this
-      // message by closing the block palette and firing onPlacementToggle, so relaying it would
-      // make a toolbar button toggle unrelated UI.
-      //
-      // One check on event.target is enough, and no composed-path walk is needed: the toolbar's
-      // chrome is inside a shadow root, so a click on a button in it arrives at this listener
-      // already retargeted to the host — the element carrying the attribute.
-      var t = event && event.target;
-      if (t && t.getAttribute && t.getAttribute('${TOOLBAR_HOST_ATTR}') !== null) return;
-      window.parent.postMessage({ type: 'iframe-click' }, '*');
-    });
-
-    window.addEventListener('message', function(event) {
-      // Messages from any window but the host (a page project code opened) are ignored.
-      if (event.source !== window.parent) return;
-      var data = event.data;
-      if (!data || typeof data !== 'object') return;
-
-      if (data.type === 'placement-start') {
-        activate(data.block);
-      } else if (data.type === 'placement-hover') {
-        handleHover(data.x, data.y);
-      } else if (data.type === 'placement-drop') {
-        handleDrop();
-      } else if (data.type === 'placement-cancel') {
-        deactivate(true);
-      } else if (data.type === 'placement-remove') {
-        var pid = data.placementId;
-        // The doubled backslash below is deliberate: this is a template literal, so a single one
-        // would collapse before the script is emitted and the guard would match a literal "d"
-        // rather than a digit, rejecting every real id. Same doubling as the external-link test.
-        if (typeof pid === 'string' && /^sb-\\d+-[a-z0-9]+$/.test(pid)) {
-          var el = document.querySelector('[data-placement-id="' + pid + '"]');
-          if (el && el.parentNode) el.parentNode.removeChild(el);
-        }
-      }
-    });
-  })();<\/script>`;
-}
-
-/**
- * The preview's navigation + element-selector script, as source for the iframe.
- *
- * Module level and exported so a test can assert on the *emitted* text. These literals are the
- * one place in this file where an authored `\s` silently collapses to a literal `s` before it is
- * ever emitted, so the emitted string — not the source — is what has to be checked.
- */
-export function generateNavigationScript(normalizedPath: string, directEdit: boolean = true): string {
-  return `
-      <script>
-        (function() {
-          ${STRIP_PROVENANCE_JS}
-          ${STRIP_NODE_ID_JS}
-          ${SERIALIZE_TREE_JS}
-          ${STYLE_QUERY_JS}
-          ${STYLE_PREVIEW_JS}
-          ${STYLE_LOCATOR_JS}
-          ${STYLE_PROBE_JS}
-          ${ESCAPE_CSS_IDENT_JS}
-          var __oswDirectEdit = ${directEdit ? 'true' : 'false'};
-          ${TOOLBAR_DOM_JS}
-          const isInIframe = window !== window.parent;
-
-          function resolveInternalPath(href) {
-            let path = href;
-            if (!path.startsWith('/')) {
-              const currentPath = '${normalizedPath}';
-              const currentDir = currentPath.substring(0, currentPath.lastIndexOf('/'));
-              path = currentDir + '/' + path;
-            }
-
-            if (path.endsWith('.html')) {
-              path = path.slice(0, -5);
-            }
-            if (path === '/index') {
-              path = '/';
-            }
-            return path;
-          }
-
-          document.addEventListener('click', function(e) {
-            // Respect app-handled navigation: a client router (react-router, vue-router,
-            // svelte Link) calls preventDefault at/near the link, which bubbles to us already
-            // marked handled. Never hijack those — that is what broke framework routing.
-            if (e.defaultPrevented) return;
-            const target = e.target && e.target.closest ? e.target.closest('a') : null;
-            if (!target || !target.getAttribute) return;
-            const href = target.getAttribute('href');
-            if (!href) return;
-
-            // Hash links: a srcdoc document resolves '#x' against the PARENT's base URL, so letting
-            // the browser navigate would load the parent app into the frame. Instead, set the hash
-            // on the current document — this scrolls to '#section' and fires hashchange for a hash
-            // router, with no navigation. (A router that handles the click itself already
-            // preventDefaulted above, so we don't reach here for those.)
-            if (href.charAt(0) === '#') {
-              e.preventDefault();
-              var id = href.length > 1 ? href.slice(1) : '';
-              var scrollEl = id ? document.getElementById(id) : null;
-              if (scrollEl) {
-                scrollEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              } else {
-                // No matching element — likely a hash-router route (e.g. #/about); set the hash to
-                // fire hashchange so the router responds. No navigation in either case.
-                try { window.location.hash = href; } catch (e) { /* best-effort */ }
-              }
-              return;
-            }
-            // Native schemes and downloads — let the browser handle them.
-            if (/^(mailto:|tel:|javascript:)/i.test(href) || target.hasAttribute('download')) return;
-
-            if (!isInIframe) return;
-
-            // External: don't let the frame navigate away (that replaces the preview). Hand off
-            // to the host, which confirms and opens a new tab with noopener,noreferrer.
-            if (/^(https?:)?\\/\\//i.test(href)) {
-              e.preventDefault();
-              window.parent.postMessage({ type: 'preview:external', href: href }, '*');
-              return;
-            }
-            // Internal, not app-handled → host serves the file (no server behind srcdoc). Storage
-            // written just before the click goes first, or the next page starts without it.
-            e.preventDefault();
-            if (window.__oswFlushStorage) window.__oswFlushStorage();
-            window.parent.postMessage({ type: 'navigate', path: resolveInternalPath(href) }, '*');
-          });
-
-          const selectorState = {
-            active: false,
-            overlay: null,
-            lastTarget: null,
-            previousCursor: ''
-          };
-
-          function isElement(node) {
-            return node && node.nodeType === 1;
-          }
-
-          // Is this event target the selection toolbar?
-          //
-          // Checking the target alone is sufficient and is not a shortcut: the toolbar's chrome
-          // lives in a shadow root, and an event that starts on a button inside it is *retargeted*
-          // before any document-level listener sees it — event.target is the host, which is the
-          // element carrying the attribute. There is no composed path to walk.
-          function isToolbarTarget(node) {
-            return !!(isElement(node) && node.getAttribute && node.getAttribute('${TOOLBAR_HOST_ATTR}') !== null);
-          }
-
-          function ensureOverlay() {
-            if (selectorState.overlay) {
-              // Re-attach if something replaced the body's children out from under us — a user
-              // project's own script can do it, and so can an agent edit. The node is cached, so
-              // without this the overlay stays detached and the highlight silently stops working for
-              // the rest of the document's life.
-              if (!selectorState.overlay.isConnected && document.body) {
-                document.body.appendChild(selectorState.overlay);
-              }
-              return selectorState.overlay;
-            }
-            const overlay = document.createElement('div');
-            // The one thing that tells this div apart from a user's own. Nothing could recognise it
-            // before, so neither a serializer walking document.body nor any future consumer could
-            // exclude it.
-            overlay.setAttribute('data-osw-overlay', '1');
-            overlay.style.position = 'absolute';
-            overlay.style.pointerEvents = 'none';
-            overlay.style.border = '2px solid rgba(99, 102, 241, 0.95)';
-            overlay.style.background = 'rgba(99, 102, 241, 0.08)';
-            overlay.style.boxShadow = '0 0 0 4px rgba(99, 102, 241, 0.32), 0 20px 40px rgba(15, 23, 42, 0.28)';
-            overlay.style.borderRadius = '12px';
-            overlay.style.zIndex = '2147483647';
-            overlay.style.transition = 'top 0.12s ease-out, left 0.12s ease-out, width 0.12s ease-out, height 0.12s ease-out';
-            overlay.style.willChange = 'top, left, width, height';
-            selectorState.overlay = overlay;
-            document.body.appendChild(overlay);
-            return overlay;
-          }
-
-          // The second argument is an optional rect the caller already took. The toolbar passes the
-          // very rect it placed itself from, so the bar and the outline cannot be positioned from two
-          // different moments in a layout that is still settling. Omitted by the hover path, which has
-          // no rect of its own and wants the current one.
-          function positionOverlay(target, measured) {
-            if (!isElement(target)) {
-              return;
-            }
-            const overlay = ensureOverlay();
-            const rect = measured || target.getBoundingClientRect();
-            overlay.style.top = (rect.top + window.scrollY) + 'px';
-            overlay.style.left = (rect.left + window.scrollX) + 'px';
-            overlay.style.width = Math.max(rect.width, 1) + 'px';
-            overlay.style.height = Math.max(rect.height, 1) + 'px';
-            overlay.style.opacity = '1';
-          }
-
-          // The single entry point for the highlight: an element to show it on, or null to hide it.
-          //
-          // Hides rather than removes, and every path goes through here. Detaching and re-appending
-          // the node would churn document.body.children between two serializations of the same
-          // level, which is exactly the instability the Elements tree has to be immune to. It also
-          // means a highlight raised while the click-selector is off has a way back down — the old
-          // teardown was reachable only from disableSelector, which early-returns when the selector
-          // is inactive.
-          function setOverlayVisible(target, measured) {
-            if (isElement(target)) {
-              positionOverlay(target, measured);
-              return;
-            }
-            if (selectorState.overlay) {
-              selectorState.overlay.style.opacity = '0';
-            }
-          }
-
-          // The outline the toolbar asks for. Selection is no longer a momentary act — the toolbar
-          // stays on the element and so must the mark saying which element it is, otherwise the two
-          // disagree about what is selected the moment the picker disarms.
-          //
-          // Hover wins while the picker is armed: handleMouseMove is writing the outline to whatever
-          // is under the pointer, and a reposition from the ResizeObserver must not yank it back to
-          // the previous selection mid-hover. disableSelector restores it on the way out.
-          function __oswToolbarOnPlace(target, measured) {
-            if (selectorState.active) {
-              return;
-            }
-            setOverlayVisible(target, measured);
-          }
-
-          function buildDomPath(element) {
-            if (!isElement(element)) {
-              return '';
-            }
-            const segments = [];
-            let current = element;
-            while (current && current.nodeType === 1) {
-              let segment = current.tagName.toLowerCase();
-              if (current.id) {
-                // Escaped, because this path is fed back to querySelector by selection-resolve
-                // after a recompile. A raw '#' + id makes an id starting with a digit or containing
-                // '.', ':' or '/' either throw a SyntaxError or — worse — quietly select something
-                // else. Ordinary ids come through unchanged, so the emitted format is untouched for
-                // everything that already worked. (No backticks in this comment: it lives inside a
-                // template literal, and one would terminate it.)
-                segment += '#' + __oswEscapeIdent(current.id);
-                segments.unshift(segment);
-                break;
-              }
-              const parent = current.parentElement;
-              if (parent) {
-                const siblings = parent.children;
-                let index = 0;
-                for (let i = 0; i < siblings.length; i++) {
-                  if (siblings[i].tagName === current.tagName) {
-                    index++;
-                  }
-                  if (siblings[i] === current) {
-                    if (index > 1) {
-                      segment += ':nth-of-type(' + index + ')';
-                    } else {
-                      const hasSame = Array.from(siblings).some(function(child, childIndex) {
-                        return childIndex !== i && child.tagName === current.tagName;
-                      });
-                      if (hasSame) {
-                        segment += ':nth-of-type(' + index + ')';
-                      }
-                    }
-                    break;
-                  }
-                }
-              }
-              segments.unshift(segment);
-              current = parent;
-            }
-            return segments.join(' > ');
-          }
-
-          function gatherAttributes(element) {
-            const attributes = {};
-            if (!isElement(element) || !element.attributes) {
-              return attributes;
-            }
-            const maxAttributes = 25;
-            for (let i = 0; i < element.attributes.length && i < maxAttributes; i++) {
-              const attr = element.attributes[i];
-              if (!attr) continue;
-              const name = attr.name;
-              if (!name || name === 'style' || name.startsWith('on')) {
-                continue;
-              }
-              // Preview-only instrumentation. Injection lands immediately after the tag name, so
-              // this is always attribute index 0 — describeFocusTarget renders the first six
-              // attributes into the prompt, so leaving it in would both show it to the agent and
-              // evict a real attribute.
-              if (name === 'data-osw-src') {
-                continue;
-              }
-              // Same reasoning for the Elements tree's transient node id: stamped on the live
-              // element as the tree serializes it, so it would otherwise be attribute index 1 of
-              // anything the user has expanded to.
-              if (name === 'data-osw-node') {
-                continue;
-              }
-              attributes[name] = attr.value;
-            }
-            return attributes;
-          }
-
-          // The one place a focus payload is built. Every field derives from the target element
-          // alone — nothing comes from the click event — so any caller holding an element can
-          // produce the identical payload, and the Elements tree's select path does exactly that.
-          //
-          // The guarantee has to live in this function rather than in a test comparing two copies:
-          // a comparison test passes right up until the copies drift, which is the next change.
-          function buildSelectionPayload(target) {
-            // The frame used to discard the selection the moment it was made — handleClick calls
-            // disableSelector, which nulls lastTarget, and neither tree-select nor selection-resolve
-            // held the element either. The toolbar has to stay anchored to it, so the one builder
-            // all three paths reach is where the element is kept. Tracking here rather than in each
-            // caller is what makes a tree selection and a click produce the same toolbar; the
-            // observer it re-targets is constructed once, at script init, so this cannot stack.
-            // No toolbar where nothing it offers can work. In a bundled runtime the framework
-            // draws the element, so it carries no provenance and Style, Text and Replace would each
-            // refuse; a bar of four dead buttons is worse than no bar. The selection itself still
-            // happens, and still reaches the agent.
-            if (__oswDirectEdit) __oswToolbarTrack(target);
-            // Stamped before anything else is read, so the attribute is genuinely on the element by
-            // the time outerHTML is taken — the stripper is then what keeps it out of the payload,
-            // rather than the order these fields happen to be evaluated in. __oswNodeId hands back
-            // an existing id, so an element the tree already serialized keeps the id the host holds.
-            var nodeId = __oswNodeId(target);
-            // Provenance is read here and counted here: the host cannot reach into
-            // contentDocument, so anything derived from the live DOM has to be computed inside
-            // the frame. Attribute values are compared in a loop rather than built into a
-            // selector string — no escaping, so there is nothing to get wrong.
-            var srcAttr = target.getAttribute ? target.getAttribute('data-osw-src') : null;
-            var instanceCount = 0;
-            if (srcAttr) {
-              var all = document.querySelectorAll('[data-osw-src]');
-              for (var q = 0; q < all.length; q++) {
-                if (all[q].getAttribute('data-osw-src') === srcAttr) instanceCount++;
-              }
-            }
-            return {
-              domPath: buildDomPath(target),
-              tagName: target.tagName.toLowerCase(),
-              attributes: gatherAttributes(target),
-              outerHTML: __oswStripNodeId(__oswStripProv(target.outerHTML || '')),
-              srcAttr: srcAttr || undefined,
-              instanceCount: instanceCount || undefined,
-              // Read off the live element, not recovered from the outerHTML above: the host would
-              // have to parse a string to learn what two property accesses say here, and the string
-              // it would parse has already been through the provenance stripper. Always a boolean,
-              // because "no element children and no text" is an answer.
-              textBearing: __oswToolbarTextBearing(target),
-              nodeId: nodeId
-            };
-          }
-
-          function handleMouseMove(event) {
-            if (!selectorState.active) {
-              return;
-            }
-            // The toolbar sits right beside the element it is anchored to, so reaching for one of
-            // its buttons means moving the pointer over it. Leave the highlight where it is rather
-            // than painting it onto preview furniture. lastTarget is left alone deliberately: it
-            // still names the highlighted element, so moving back off the toolbar onto that same
-            // element is correctly a no-op rather than a re-paint.
-            if (isToolbarTarget(event.target)) {
-              return;
-            }
-            const target = isElement(event.target) ? event.target : (event.target && event.target.parentElement);
-            if (!isElement(target) || target === selectorState.lastTarget) {
-              return;
-            }
-            selectorState.lastTarget = target;
-            setOverlayVisible(target);
-          }
-
-          function handleClick(event) {
-            if (!selectorState.active) {
-              return;
-            }
-            // A press on the toolbar is not a selection of the toolbar. Returned before
-            // preventDefault and before disableSelector, both deliberately: the toolbar's own
-            // button handlers live inside the shadow root and still need the event, and the tool
-            // the user armed stays armed, still waiting for the element they meant to pick.
-            if (isToolbarTarget(event.target)) {
-              return;
-            }
-            event.preventDefault();
-            event.stopPropagation();
-            if (typeof event.stopImmediatePropagation === 'function') {
-              event.stopImmediatePropagation();
-            }
-            const target = isElement(event.target) ? event.target : (event.target && event.target.parentElement);
-            if (!isElement(target)) {
-              disableSelector(false);
-              return;
-            }
-            const payload = buildSelectionPayload(target);
-            if (isInIframe) {
-              window.parent.postMessage({ type: 'selector-selection', payload: payload }, '*');
-            }
-            disableSelector(false);
-          }
-
-          function handleContextMenu(event) {
-            if (!selectorState.active) {
-              return;
-            }
-            event.preventDefault();
-            event.stopPropagation();
-          }
-
-          function handleKeyDown(event) {
-            if (!selectorState.active) {
-              return;
-            }
-            if (event.key === 'Escape') {
-              event.preventDefault();
-              disableSelector(true);
-            }
-          }
-
-          function enableSelector() {
-            if (selectorState.active) {
-              return;
-            }
-            selectorState.active = true;
-            selectorState.previousCursor = document.body.style.cursor;
-            const overlay = ensureOverlay();
-            overlay.style.opacity = '0';
-            document.body.style.cursor = 'crosshair';
-            document.addEventListener('mousemove', handleMouseMove, true);
-            document.addEventListener('click', handleClick, true);
-            document.addEventListener('contextmenu', handleContextMenu, true);
-            document.addEventListener('keydown', handleKeyDown, true);
-          }
-
-          function disableSelector(notifyCancel) {
-            if (!selectorState.active) {
-              return;
-            }
-            selectorState.active = false;
-            selectorState.lastTarget = null;
-            // Back to the selection's own outline, not blank. Clicking an element runs this
-            // immediately after tracking it, so clearing here is what used to make a click-selected
-            // element lose its mark while a tree-selected one kept it.
-            setOverlayVisible(__oswToolbarState.tracked || null);
-            document.body.style.cursor = selectorState.previousCursor || '';
-            document.removeEventListener('mousemove', handleMouseMove, true);
-            document.removeEventListener('click', handleClick, true);
-            document.removeEventListener('contextmenu', handleContextMenu, true);
-            document.removeEventListener('keydown', handleKeyDown, true);
-            if (notifyCancel && isInIframe) {
-              window.parent.postMessage({ type: 'selector-cancelled' }, '*');
-            }
-          }
-
-          // Resolve an Elements-tree node id back to its live element, or null when it is gone.
-          // querySelector rather than a Map of id to element: a map hands back a *detached* node
-          // for a removed element, which positions a 1x1 overlay at (0,0) and builds a domPath from
-          // a non-document root. null is the stale signal the panel wants.
-          //
-          // The selector is assembled by concatenation, and the id is checked to be decimal digits
-          // first. Inside this frame ids can only be digits — __oswSerializeLevel mints them as
-          // String(counter) — but the value arriving here came from the host over postMessage, so
-          // the frame is not the only writer. A quote in it injects nothing (querySelector executes
-          // nothing) but does throw a SyntaxError, which would abort the rest of this handler; the
-          // digit check makes that unreachable without needing to reason about escaping.
-          function __oswResolveNode(nodeId) {
-            if (typeof nodeId !== 'string' || nodeId.length === 0) {
-              return null;
-            }
-            for (let i = 0; i < nodeId.length; i++) {
-              const c = nodeId.charAt(i);
-              if (c < '0' || c > '9') return null;
-            }
-            return document.querySelector('[data-osw-node="' + nodeId + '"]');
-          }
-
-          window.addEventListener('message', function(event) {
-            // Messages from any window but the host (a page project code opened) are ignored.
-            if (event.source !== window.parent) {
-              return;
-            }
-            const data = event.data;
-            if (!data || typeof data !== 'object') {
-              return;
-            }
-            if (data.type === 'selector-toggle') {
-              if (data.active) {
-                enableSelector();
-              } else {
-                disableSelector(false);
-              }
-            }
-
-            if (data.type === 'tree-request') {
-              // null id is the body level. An id that no longer resolves passes null through to the
-              // serializer, which returns an empty level — the reply still names the parent the
-              // host asked about, so an expansion of a vanished branch resolves as empty rather
-              // than leaving the panel waiting for a message that never comes.
-              const root = data.nodeId == null ? document.body : __oswResolveNode(data.nodeId);
-              const level = __oswSerializeLevel(root);
-              if (isInIframe) {
-                window.parent.postMessage({
-                  type: 'tree-level',
-                  parentId: data.nodeId == null ? null : data.nodeId,
-                  nodes: level.nodes,
-                  truncated: level.truncated
-                }, '*');
-              }
-              return;
-            }
-
-            if (data.type === 'tree-path') {
-              // Every level from the body down to the node's parent, in one reply. The host cannot
-              // walk this itself: a TreeNode carries no path, and the reducer drops a level whose
-              // parent it has not seen, so the levels have to arrive in order and together.
-              const target = __oswResolveNode(data.nodeId);
-              if (!target) {
-                if (isInIframe) {
-                  window.parent.postMessage({ type: 'tree-levels', levels: [], path: [] }, '*');
-                }
-                return;
-              }
-              // Only elements carrying provenance are rows, so the chain skips everything else.
-              // A target without provenance of its own (built by JS at runtime) therefore reveals
-              // its nearest ancestor that does have a row, rather than nothing. The attribute name
-              // appears here only as a string literal, which provenance-wiring.test.ts enforces.
-              const chain = [];
-              let walk = target;
-              while (walk && walk !== document.body) {
-                if (walk.getAttribute('data-osw-src') !== null) chain.unshift(walk);
-                walk = walk.parentElement;
-              }
-              const bodyLevel = __oswSerializeLevel(document.body);
-              const levels = [{ parentId: null, nodes: bodyLevel.nodes, truncated: bodyLevel.truncated }];
-              // The node itself is not expanded, so its own level is not serialized.
-              for (let i = 0; i < chain.length - 1; i++) {
-                const lvl = __oswSerializeLevel(chain[i]);
-                levels.push({ parentId: __oswNodeId(chain[i]), nodes: lvl.nodes, truncated: lvl.truncated });
-              }
-              const path = [];
-              for (let j = 0; j < chain.length; j++) path.push(__oswNodeId(chain[j]));
-              if (isInIframe) {
-                window.parent.postMessage({ type: 'tree-levels', levels: levels, path: path }, '*');
-              }
-              return;
-            }
-
-            if (data.type === 'tree-highlight') {
-              // The click selector's overlay, through its one visibility control — not a second
-              // highlight mechanism, so a hover from the tree and a hover in the preview cannot
-              // both be showing at once.
-              setOverlayVisible(data.nodeId == null ? null : __oswResolveNode(data.nodeId));
-              return;
-            }
-
-            if (data.type === 'tree-select') {
-              const selected = __oswResolveNode(data.nodeId);
-              if (!selected) {
-                // Stop here. Falling through would build a payload for a detached or absent
-                // element and hand the agent a domPath that resolves to nothing, or to something
-                // else. The host is told the id is dead instead.
-                if (isInIframe) {
-                  window.parent.postMessage({ type: 'tree-stale', nodeId: data.nodeId }, '*');
-                }
-                return;
-              }
-              // The same builder the click path uses, so the two selections cannot differ.
-              if (isInIframe) {
-                window.parent.postMessage({ type: 'selector-selection', payload: buildSelectionPayload(selected) }, '*');
-              }
-              return;
-            }
-
-            if (data.type === 'style-query') {
-              // Answered unconditionally, including for an id that no longer resolves:
-              // __oswReadComputed returns {} for a null element. Returning early instead would
-              // leave the host unable to tell a dead id from a frame that has not replied yet.
-              const queried = __oswResolveNode(data.nodeId);
-              if (isInIframe) {
-                window.parent.postMessage({
-                  type: 'style-computed',
-                  nodeId: data.nodeId,
-                  values: __oswReadComputed(queried, data.properties),
-                  // What one rem is worth in this document, on the same reply as the values it is
-                  // the divisor for. Sent even when the node is dead, because it is a fact about
-                  // the document rather than about the element.
-                  rootFontSize: __oswRootFontSize()
-                }, '*');
-              }
-              return;
-            }
-
-            if (data.type === 'style-preview') {
-              // No reply: the host is not waiting on one, and the next style-query reads the
-              // result out of the live document anyway.
-              //
-              // Deliberately not re-applied on frame-ready. A recompile mints a new document and
-              // takes the transient <style> with it, which is the wanted behaviour — by then
-              // /overrides.css carries the rule, and putting a stale copy back would mask the next
-              // edit the agent makes to the same element.
-              __oswApplyStylePreview(data.markerId, data.css);
-              // The element may have just changed size — padding, font-size, border-width all do it
-              // — with no scroll, no message and no recompile to prompt a new position. The
-              // ResizeObserver covers the real browser; this covers the same instant synchronously
-              // and is the only path that works where ResizeObserver is absent.
-              __oswToolbarReposition();
-              return;
-            }
-
-            if (data.type === 'style-probe') {
-              // Answered unconditionally, for the same reason style-query is: a dead id, a marker
-              // with no rule in the document and an override that is simply winning all look
-              // identical to a host that got no reply.
-              const probed = __oswResolveNode(data.nodeId);
-              const outcome = __oswProbeStyleLoss(probed, data.markerId, data.properties);
-              if (isInIframe) {
-                const reply = { type: 'style-probe-result', nodeId: data.nodeId, lost: outcome.lost };
-                // Only when there is one to name. An always-present winner:null would have 4b's
-                // message renderer branching on a value that is null in the ordinary case.
-                if (outcome.winner) reply.winner = outcome.winner;
-                window.parent.postMessage(reply, '*');
-              }
-              return;
-            }
-
-            if (data.type === 'toolbar-theme') {
-              // Kept whether or not a toolbar exists yet: this arrives on frame-ready, which is
-              // before any selection has mounted one for the colours to land on.
-              __oswToolbarTheme(data.colors);
-              return;
-            }
-
-            if (data.type === 'scroll-restore') {
-              // A recompile mints a new document, and a new document starts at the top. That now
-              // matters far more than it used to: every Text or Replace edit writes a source file,
-              // which recompiles, which used to throw the user back to the top of the page away from
-              // the element they were working on.
-              //
-              // The host captured this off the outgoing document and only sends it back for the same
-              // page, so navigating somewhere else cannot restore a stale position.
-              //
-              // Applied synchronously, and the host sends it *before* the selection-resolve that
-              // re-anchors the toolbar: the bar's side is chosen from the viewport, so placing it
-              // against scroll 0 and then scrolling to 500 would decide it against a viewport the
-              // user never saw.
-              //
-              // A message naming no position at all is not a request to go to the top — that is
-              // where an untouched fresh document already is, and acting on it would turn a
-              // malformed message into a jump.
-              if (typeof data.scrollY !== 'number' && typeof data.scrollX !== 'number') return;
-              var restoreY = typeof data.scrollY === 'number' ? data.scrollY : 0;
-              var restoreX = typeof data.scrollX === 'number' ? data.scrollX : 0;
-              if (typeof window.scrollTo === 'function') {
-                try {
-                  // The options form, with behavior 'instant'. Not scrollTo(x, y): the two-argument
-                  // form obeys the document's own scroll-behavior, and three of the built-in
-                  // templates set that to smooth — so restoring a position animated a scroll over a
-                  // document that had only just been replaced, which reads as a lurch rather than as
-                  // the page opening where it was left. 'instant' overrides the CSS; 'auto' defers
-                  // to it, which is the bug.
-                  window.scrollTo({ left: restoreX, top: restoreY, behavior: 'instant' });
-                } catch (err) {
-                  // A document old enough to reject the options form still scrolls the plain way.
-                  try {
-                    window.scrollTo(restoreX, restoreY);
-                  } catch (err2) {
-                    // Best effort. A frame that refuses to scroll is a frame that opens at the top,
-                    // which is exactly the behaviour this replaces — not a reason to stop.
-                  }
-                }
-              }
-              // For the case where a toolbar is somehow already up when this arrives. On the ordinary
-              // frame-ready path there is none yet, which is the point of the ordering above.
-              __oswToolbarCheckFit();
-              return;
-            }
-
-            if (data.type === 'selection-clear') {
-              // The only way the frame lets go of a selection. Nothing else releases it: the click
-              // selector disarms itself after a selection but the element stays tracked, which is
-              // the point — the toolbar outlives the tool that made it.
-              __oswToolbarRelease();
-              return;
-            }
-
-            if (data.type === 'selection-resolve') {
-              // The recompile took every node id with it, so the host is holding a domPath and
-              // nothing else. querySelector is wrapped because the path can predate the escaping
-              // above — a selection made before this version, or an id the escape does not cover —
-              // and a SyntaxError here would abort the rest of this handler.
-              let resolved = null;
-              try {
-                resolved = typeof data.domPath === 'string' && data.domPath !== ''
-                  ? document.querySelector(data.domPath)
-                  : null;
-              } catch (err) {
-                resolved = null;
-              }
-              if (isInIframe) {
-                // The same builder the click and tree paths use, so a re-resolved selection is not
-                // a second, subtly different kind of selection.
-                window.parent.postMessage({
-                  type: 'selection-resolved',
-                  payload: resolved ? buildSelectionPayload(resolved) : null
-                }, '*');
-              }
-              return;
-            }
-          });
-        })();
-      </script>
-    `;
-}
 
 /**
  * The extra classes the header's crosshair wears while the pointer is on the Inspector's
@@ -1345,6 +315,9 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
 
   const selectorActive = useWorkspaceStore(s => s.focusToolArmed);
   const [draggingBlock, setDraggingBlock] = useState<PlacementBlockInfo | null>(null);
+  // The block a drop made here is waiting on the frame for. The frame runs the project's scripts, so
+  // a `placement-complete` it posts is taken only for this block, and only once.
+  const pendingDropRef = useRef<string | null>(null);
   const [paletteVisible, setPaletteVisible] = useState(true);
   const [localPaletteOpen, setLocalPaletteOpen] = useState(false);
   const paletteStateRef = useRef({ localPaletteOpen: false, paletteVisible: true, draggingBlock: null as PlacementBlockInfo | null });
@@ -1471,6 +444,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
   const handlePlacementDrop = useCallback((e: React.DragEvent) => {
     if (!draggingBlock) return;
     e.preventDefault();
+    pendingDropRef.current = draggingBlock.id;
     postMessageToIframe({ type: 'placement-drop' });
     setDraggingBlock(null);
     setPaletteVisible(true);
@@ -1486,6 +460,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
   }, [draggingBlock, postMessageToIframe]);
 
   const startBlockDrag = useCallback((block: PlacementBlockInfo) => {
+    pendingDropRef.current = null;
     setDraggingBlock(block);
     postMessageToIframe({ type: 'placement-start', block });
   }, [postMessageToIframe]);
@@ -1519,7 +494,8 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
       postMessageToIframe({ type: 'placement-remove', placementId });
     },
     sendToFrame: postMessageToIframe,
-  }), [iframeReady, startBlockDrag, activePath, postMessageToIframe]);
+    setDevice: handleSetDeviceSize,
+  }), [iframeReady, startBlockDrag, activePath, postMessageToIframe, handleSetDeviceSize]);
 
   const compilingRef = useRef(false);
   const pendingCompileOptionsRef = useRef<CompileRequest | null>(null);
@@ -1942,9 +918,9 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     // The resolved runtime, not the prop: a project whose settings never named one is compiled as
     // the fallback, and asking `supportsDirectEditing` about `undefined` answered "no toolbar" for a
     // document that had just been stamped with the provenance the toolbar runs on.
-    const navigationScript = generateNavigationScript(normalizedPath, supportsDirectEditing(resolvedRuntime));
+    const navigationScript = generateNavigationScript(normalizedPath, supportsDirectEditing(resolvedRuntime), '', filePath);
     
-    const placementScript = generatePlacementScript();
+    const placementScript = generatePlacementScript(filePath);
     const injectedScripts = navigationScript + placementScript;
     if (processedHtml.includes('</body>')) {
       processedHtml = processedHtml.replace('</body>', injectedScripts + '</body>');
@@ -1971,7 +947,8 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
     lifecycleRef.current.beginLoad(loadId, isRecovery);
     ackPairerRef.current.begin(loadId);
     const bridgeScript = previewBridgeScript(loadId);
-    const headInject = bridgeScript + vfsMapScript;
+    // Placeholders of Semantic blocks have no look in the source: the preview gives them one.
+    const headInject = bridgeScript + vfsMapScript + `<style data-osw-placeholder>${PLACEHOLDER_CSS}</style>`;
     processedHtml = prependToHead(processedHtml, headInject);
 
     // Clear stale runtime errors before loading new content —
@@ -2139,12 +1116,15 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
       }
 
       if (data.type === 'placement-complete' && data.payload) {
+        if (pendingDropRef.current === null || data.payload.blockId !== pendingDropRef.current) return;
+        pendingDropRef.current = null;
         setPaletteVisible(true);
         onPlacementComplete?.(data.payload);
         return;
       }
 
       if (data.type === 'placement-cancelled') {
+        pendingDropRef.current = null;
         setDraggingBlock(null);
         setPaletteVisible(true);
         return;
@@ -2320,7 +1300,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
         <Button
           size="icon"
           variant="ghost"
-          className={cn('h-5 w-5', crosshairHintClasses)}
+          className={cn('h-5 w-5 rounded-sm', crosshairHintClasses)}
           onClick={() => {
             const next = !selectorActive;
             useWorkspaceStore.getState().setFocusToolArmed(next);
@@ -2343,7 +1323,7 @@ const MultipagePreviewComponent = forwardRef<MultipagePreviewHandle, MultipagePr
           <Button
             size="icon"
             variant="ghost"
-            className="h-5 w-5"
+            className="h-5 w-5 rounded-sm"
             onClick={() => {
               setLocalPaletteOpen(prev => !prev);
               setTimeout(() => onPlacementToggle?.(), 0);

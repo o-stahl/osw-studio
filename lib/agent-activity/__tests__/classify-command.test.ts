@@ -127,3 +127,10 @@ describe('classifyCommand, on the shapes the agent actually writes', () => {
     expect(classifyCommand("tee /file.txt <<-'HEREDOC'")).toBe('write');
   });
 });
+
+describe('style', () => {
+  it('groups with the writes, since it writes /overrides.css', () => {
+    expect(classifyCommand('style @h7x2m4qp color=red')).toBe('write');
+    expect(classifyCommand('inspect /index.html')).toBe('bash');
+  });
+});

@@ -7,7 +7,7 @@ import type { PanelKey, WorkspaceLayout } from './types';
  * Chat and preview lead because they are the pair that stays open: the work is asking for a change
  * and looking at the result, and everything else is opened to answer a question and closed again.
  */
-export const DEFAULT_PANEL_ORDER: readonly PanelKey[] = ['chat', 'preview', 'files', 'editor', 'skills', 'console', 'elements', 'checkpoints', 'debug'];
+export const DEFAULT_PANEL_ORDER: readonly PanelKey[] = ['chat', 'preview', 'canvas', 'files', 'editor', 'skills', 'console', 'elements', 'checkpoints', 'debug'];
 
 const OPEN_BY_DEFAULT: ReadonlySet<PanelKey> = new Set<PanelKey>(['chat', 'preview', 'files']);
 

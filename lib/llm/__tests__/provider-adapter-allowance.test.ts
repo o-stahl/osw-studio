@@ -123,6 +123,47 @@ describe('the free allowance on the demo', () => {
     expect(apiFetch).toHaveBeenCalledTimes(1);
   });
 
+  it('names the limit that refused a request, and the trial sessions cap when no session is left', async () => {
+    vi.mocked(apiFetch).mockImplementation(async () => new Response(JSON.stringify({ error: 'used up', code: 'daily_limit', limitSource: 'osws_pool' }), { status: 429 }));
+    const pool = await adapter().call({ messages }).then(() => null, (e) => e);
+    expect(pool.limitSource).toBe('osws_pool');
+
+    // Only an id is passed on, never a provider's free text.
+    vi.mocked(apiFetch).mockImplementation(async () => new Response(JSON.stringify({ error: 'used up', code: 'daily_limit', limitSource: 'Your account (a@b.c) is over its limit' }), { status: 429 }));
+    expect((await adapter().call({ messages }).then(() => null, (e) => e)).limitSource).toBeUndefined();
+
+    vi.mocked(apiFetch).mockImplementation(async () => sessionNeeded());
+    trial.start.mockRejectedValue(new trial.Err('trial_limit', 1_800_000_000_000));
+    expect((await adapter().call({ messages }).then(() => null, (e) => e)).limitSource).toBe('osws_trial_sessions');
+  });
+
+  it('says once a task that the allowance is running low, when no further session is to come', async () => {
+    const answer = (headers: Record<string, string>) => new Response(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'ok' } }] }), { status: 200, headers });
+    const onEvent = vi.fn();
+    const a = adapter('osws', { progress: { onEvent } });
+    const low = () => onEvent.mock.calls.filter(([event]) => event === 'allowance_low');
+
+    vi.mocked(apiFetch).mockImplementation(async () => answer({ 'x-osws-allowance-used': '0.500', 'x-osws-allowance-sessions-left': '0' }));
+    await a.call({ messages });
+    vi.mocked(apiFetch).mockImplementation(async () => answer({ 'x-osws-allowance-used': '0.900', 'x-osws-allowance-sessions-left': '1' }));
+    await a.call({ messages });
+    expect(low()).toHaveLength(0);
+
+    vi.mocked(apiFetch).mockImplementation(async () => answer({ 'x-osws-allowance-used': '0.850', 'x-osws-allowance-reset': '1794700800000', 'x-osws-allowance-sessions-left': '0' }));
+    await a.call({ messages });
+    await a.call({ messages });
+    expect(low()).toEqual([['allowance_low', { provider: 'osws', resetAt: 1794700800000 }]]);
+
+    // A hosted account has no sessions: the share alone decides. Another provider's headers are not read.
+    vi.mocked(apiFetch).mockImplementation(async () => answer({ 'x-osws-allowance-used': '0.850' }));
+    const hosted = vi.fn();
+    await adapter('osws', { progress: { onEvent: hosted } }).call({ messages });
+    expect(hosted.mock.calls.filter(([event]) => event === 'allowance_low')).toHaveLength(1);
+    const other = vi.fn();
+    await adapter('openrouter', { progress: { onEvent: other } }).call({ messages });
+    expect(other.mock.calls.filter(([event]) => event === 'allowance_low')).toHaveLength(0);
+  });
+
   it("sends a server-side run's own headers with each request", async () => {
     delete document.documentElement.dataset.demoGateway;
     vi.mocked(apiFetch).mockImplementation(async () => okResponse());

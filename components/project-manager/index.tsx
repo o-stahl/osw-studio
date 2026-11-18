@@ -345,6 +345,8 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
         templateCatalog.demo.name,
         templateCatalog.demo.description
       );
+      const demoOpensIn = getBuiltInTemplateDefinition('demo')?.opensIn;
+      if (demoOpensIn) await vfs.updateProject({ ...demoProject, settings: { ...demoProject.settings, opensIn: demoOpensIn } });
       await createProjectFromTemplate(vfs, demoProject.id, demo, demo.assets);
       toast.success(t('demoCreated'));
       await reloadProjects();
@@ -450,6 +452,8 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
       let backendFeatures: BackendFeatures | undefined;
       let templateIntent: TemplateIntent | undefined;
       let promptSuggestions: PromptSuggestion[] | undefined;
+      /** The surface the template's pages suit, where it declares one (`BuiltInTemplateMetadata.opensIn`). */
+      let opensIn: Project['settings']['opensIn'];
 
       if (newProjectTemplate.startsWith('custom:')) {
         const customTemplateId = newProjectTemplate.replace('custom:', '');
@@ -469,6 +473,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
           backendFeatures = projectTemplate.backendFeatures;
           templateIntent = definition.metadata?.intent;
           promptSuggestions = seedPromptSuggestions(definition.promptSuggestions);
+          opensIn = definition.opensIn;
         }
       }
 
@@ -480,7 +485,7 @@ export function ProjectManager({ onProjectSelect, hideHeader = false, hideFooter
       // Persist runtime in project settings and keep updated object for onProjectSelect
       const finalProject: Project = {
         ...project,
-        settings: { ...project.settings, runtime: newProjectRuntime, promptSuggestions },
+        settings: { ...project.settings, runtime: newProjectRuntime, promptSuggestions, ...(opensIn ? { opensIn } : {}) },
       };
       await vfs.updateProject(finalProject);
 

@@ -617,17 +617,17 @@ describe('lifetime', () => {
     expect(hostTop()).toBe(300 - TOOLBAR_HEIGHT - TOOLBAR_GAP);
   });
 
-  it('re-positions after a style-preview', () => {
+  it('re-positions after an overrides-preview', () => {
     const el = document.querySelector('#one')!;
     setRect(el, { top: 100, left: 40, width: 200, height: 50 });
     select('#one');
 
-    // A transient style is how the Inspector shows an uncommitted change, and padding, font-size and
-    // border-width all move the element. Nothing else would ask for a new position: there is no
+    // A swapped-in /overrides.css is how the Inspector shows a write without a recompile, and
+    // padding, font-size and border-width all move the element. Nothing else would ask for a new position: there is no
     // scroll, no message back to the host and no recompile. This is also the only path that works
     // where ResizeObserver is absent.
     setRect(el, { top: 100, left: 40, width: 200, height: 140 });
-    send({ type: 'style-preview', markerId: 'm1', css: 'padding: 40px' });
+    send({ type: 'overrides-preview', css: '[data-osw-id="m1"][data-osw-id] { padding: 40px; }' });
 
     expect(host()!.getAttribute(TOOLBAR_PLACEMENT_ATTR)).toBe('above');
     expect(hostTop()).toBe(100 - TOOLBAR_HEIGHT - TOOLBAR_GAP);
@@ -635,7 +635,7 @@ describe('lifetime', () => {
     // Proven by the flip: the same reposition on an element that has moved to the document top must
     // now place below, which a reposition that never ran cannot produce.
     setRect(el, { top: 4, left: 40, width: 200, height: 140 });
-    send({ type: 'style-preview', markerId: 'm1', css: 'padding: 40px' });
+    send({ type: 'overrides-preview', css: '[data-osw-id="m1"][data-osw-id] { padding: 40px; }' });
 
     expect(host()!.getAttribute(TOOLBAR_PLACEMENT_ATTR)).toBe('below');
     expect(hostTop()).toBe(4 + 140 + TOOLBAR_GAP);
@@ -645,7 +645,7 @@ describe('lifetime', () => {
     select('#one');
     document.querySelector('#one')!.remove();
 
-    send({ type: 'style-preview', markerId: 'm1', css: 'color: red' });
+    send({ type: 'overrides-preview', css: '[data-osw-id="m1"][data-osw-id] { color: red; }' });
 
     // The frame holds the element in a closure, so nothing else would ever let go of it.
     expect(host()).toBeNull();

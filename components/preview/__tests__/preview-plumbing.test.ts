@@ -186,3 +186,17 @@ describe('preview-only attributes are skipped when gathering attributes', () => 
     expect(gather).toContain("if (name === 'data-osw-node')");
   });
 });
+
+describe('the page path in the script', () => {
+  const path = "/it's/a\\b.html";
+  const source = scriptSource(generateNavigationScript(path));
+
+  it('parses for a page whose path has a quote or a backslash in it', () => {
+    expect(() => new Function(source)).not.toThrow();
+  });
+
+  it('resolves a relative link against that path', () => {
+    const resolve = new Function('href', `${functionText(source, 'resolveInternalPath')}\nreturn resolveInternalPath(href);`);
+    expect(resolve('next.html')).toBe("/it's/next");
+  });
+});

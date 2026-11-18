@@ -4,15 +4,15 @@
  */
 
 import type { FocusContextPayload } from '@/lib/preview/types';
-import type { ApplyResult, PreviewSelection, StyleDeclaration } from '@/lib/direct-edit/types';
+import type { ApplyResult, PreviewSelection, RecordedWrite, StyleChange, WriteRecorder } from '@/lib/direct-edit/types';
+import type { OverrideScope } from '@/lib/direct-edit/overrides-css';
+import type { MarkerOverrides } from '@/lib/direct-edit/apply-style';
 import { WRITABLE_PROPERTIES, valueNames, type StyleProperty, type StyleUnit } from './properties';
 import { pxPerUnit, unknownUnitContext, type UnitContext } from './controls';
 
 /**
- * How long a stepper press waits before it is written.
- *
- * `applyStyleOverride` runs `countMarkerOccurrences` on every success, which char-scans every markup
- * file in the project. Unthrottled that runs on every press of `+`.
+ * How long a change waits before it is written. The frames show it at once, laid over the file; the
+ * wait makes a run of presses one write and one undo step.
  */
 export const COMMIT_DEBOUNCE_MS = 300;
 
@@ -30,22 +30,51 @@ export function toPreviewSelection(payload: FocusContextPayload): PreviewSelecti
 export type StyleWriter = (
   projectId: string,
   selection: PreviewSelection,
-  declaration: StyleDeclaration,
-  opts: { confirmedMultiInstance: boolean; isGenerating: () => boolean },
+  changes: readonly StyleChange[],
+  opts: {
+    scope: OverrideScope;
+    markerId: string | null;
+    newMarkerId?: string;
+    confirmedMultiInstance: boolean;
+    strengthen?: readonly string[];
+    isGenerating: () => boolean;
+    record?: WriteRecorder;
+  },
 ) => Promise<ApplyResult>;
 
 export interface StyleApplyDeps {
   apply: StyleWriter;
   /** Injected, not imported: lib/direct-edit/ must not depend on lib/stores/. */
   isGenerating: () => boolean;
+  /** The edit journal, told about every file a write changes under the gesture's group key. */
+  record?: (group: string, write: RecordedWrite) => void;
 }
 
-/** One committed declaration, against whichever element is selected when it runs. */
+/** What a write is, besides its changes. */
+export interface ApplyOptions {
+  /** The width block it goes in. */
+  scope: OverrideScope;
+  /** The marker the panel knows, for a removal the payload may not carry it for yet. */
+  markerId: string | null;
+  /** For an unmarked element: the id to stamp, which the frames are already showing the change on. */
+  newMarkerId?: string;
+  confirmedMultiInstance: boolean;
+  /** Properties to mark `!important` because a render showed them losing (`applyStyleOverride`). */
+  strengthen?: readonly string[];
+  /** One undo step: writes sharing a key (a scrub) are undone together. Absent, the write is its own. */
+  group?: string;
+}
+
+/** One committed list of changes, against whichever element is selected when it runs. */
 export type ApplyStyle = (
   selection: FocusContextPayload,
-  declaration: StyleDeclaration,
-  confirmedMultiInstance: boolean,
+  changes: readonly StyleChange[],
+  opts: ApplyOptions,
 ) => Promise<ApplyResult>;
+
+let groupSeq = 0;
+/** A group key no other gesture has. */
+export const newGroup = () => `g${Date.now().toString(36)}.${++groupSeq}`;
 
 /**
  * Bind a project and its dependencies to the write path.
@@ -54,50 +83,25 @@ export type ApplyStyle = (
  * user clicked elsewhere is still written against the element it was made on.
  */
 export function buildApplyStyle(projectId: string, deps: StyleApplyDeps): ApplyStyle {
-  return (selection, declaration, confirmedMultiInstance) =>
-    deps.apply(projectId, toPreviewSelection(selection), declaration, {
-      confirmedMultiInstance,
+  return (selection, changes, opts) => {
+    const group = opts.group ?? newGroup();
+    return deps.apply(projectId, toPreviewSelection(selection), changes, {
+      scope: opts.scope,
+      markerId: opts.markerId,
+      newMarkerId: opts.newMarkerId,
+      confirmedMultiInstance: opts.confirmedMultiInstance,
+      strengthen: opts.strengthen,
       isGenerating: deps.isGenerating,
+      record: deps.record ? (write) => deps.record!(group, write) : undefined,
     });
-}
-
-/** The shape of `removeStyleOverride`, as this module needs it. */
-export type StyleRemover = (
-  projectId: string,
-  selection: PreviewSelection,
-  markerId: string,
-  property: string,
-  opts: { confirmedMultiInstance: boolean; isGenerating: () => boolean },
-) => Promise<ApplyResult>;
-
-/** Drop one property from the selected element's override block. */
-export type RemoveStyle = (
-  selection: FocusContextPayload,
-  markerId: string,
-  property: string,
-  confirmedMultiInstance: boolean,
-) => Promise<ApplyResult>;
-
-export interface StyleRemoveDeps {
-  remove: StyleRemover;
-  /** Same gate, same reason as {@link StyleApplyDeps.isGenerating}. */
-  isGenerating: () => boolean;
-}
-
-/** Bind a project and its dependencies to the removal path. The selection is passed per call. */
-export function buildRemoveStyle(projectId: string, deps: StyleRemoveDeps): RemoveStyle {
-  return (selection, markerId, property, confirmedMultiInstance) =>
-    deps.remove(projectId, toPreviewSelection(selection), markerId, property, {
-      confirmedMultiInstance,
-      isGenerating: deps.isGenerating,
-    });
+  };
 }
 
 /**
- * Reads which properties have overrides so Reset survives a reload.
+ * Reads what `/overrides.css` holds for a marker, so dots and Reset survive a reload.
  * No generation gate: reads cannot race the agent.
  */
-export type ReadOverrides = (markerId: string) => Promise<readonly string[]>;
+export type ReadOverrides = (markerId: string) => Promise<MarkerOverrides>;
 
 /** The number out of a value this panel wrote itself: `1.5rem` + `rem` → `1.5`, `2` + `` → `2`. */
 export function writtenNumber(written: string, unit: string): number | null {
@@ -122,7 +126,8 @@ function computedForm(
   values: Record<string, string>,
   ctx: UnitContext,
 ): string | null {
-  if (entry.control === 'swatch' || entry.kind === 'keyword') return written;
+  // Only a stepper shows a number converted out of px; every other control shows what was written.
+  if (entry.control !== 'stepper') return written;
   const unit = writtenUnit(written);
   const n = writtenNumber(written, unit);
   if (n === null) return null;
@@ -153,22 +158,25 @@ export function overlayRequested(
 }
 
 export interface CommitScheduler {
-  /** Record a declaration and (re)arm the timer. A second call for the same property replaces it. */
-  schedule: (declaration: StyleDeclaration) => void;
+  /** Record changes and (re)arm the timer. A later change to the same property replaces the earlier one. */
+  schedule: (changes: readonly StyleChange[]) => void;
   /** Commit whatever is outstanding, now. A no-op when nothing is. */
   flush: () => void;
   /** Throw away whatever is outstanding. */
   cancel: () => void;
   /** What is outstanding, for the host's own bookkeeping. */
-  pending: () => StyleDeclaration[];
+  pending: () => StyleChange[];
 }
 
-/** Trailing-edge debounce. Multiple properties in one window commit together in touch order. */
+/**
+ * Trailing-edge debounce. Changes made in one window commit together, as one list in first-touch
+ * order, so a control that writes several properties (Fill: width and flex) is one write.
+ */
 export function createCommitScheduler(
   delayMs: number,
-  commit: (declarations: StyleDeclaration[]) => void,
+  commit: (changes: StyleChange[]) => void,
 ): CommitScheduler {
-  const outstanding = new Map<string, string>();
+  const outstanding = new Map<string, string | null>();
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   const disarm = () => {
@@ -178,17 +186,19 @@ export function createCommitScheduler(
     }
   };
 
+  const list = () => Array.from(outstanding, ([property, value]) => ({ property, value }));
+
   const flush = () => {
     disarm();
     if (outstanding.size === 0) return;
-    const declarations = Array.from(outstanding, ([property, value]) => ({ property, value }));
+    const changes = list();
     outstanding.clear();
-    commit(declarations);
+    commit(changes);
   };
 
   return {
-    schedule(declaration) {
-      outstanding.set(declaration.property, declaration.value);
+    schedule(changes) {
+      for (const change of changes) outstanding.set(change.property, change.value);
       disarm();
       timer = setTimeout(flush, delayMs);
     },
@@ -197,8 +207,6 @@ export function createCommitScheduler(
       disarm();
       outstanding.clear();
     },
-    pending() {
-      return Array.from(outstanding, ([property, value]) => ({ property, value }));
-    },
+    pending: list,
   };
 }

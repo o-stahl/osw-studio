@@ -1,13 +1,35 @@
 import { SemanticBlock } from './types';
 
+/** A placeholder's size, by the kind of block it stands for. */
+const SIZING: Record<SemanticBlock['category'], string> = {
+  Sections: 'display:flex;min-height:80px;',
+  Content: 'display:flex;min-height:48px;',
+  Interactive: 'display:inline-flex;min-height:32px;padding:8px 16px;',
+  Data: 'display:flex;min-height:64px;',
+};
+const BOX = 'align-items:center;justify-content:center;border:2px dashed rgba(99,102,241,0.6);background:rgba(99,102,241,0.08);border-radius:6px;margin:4px 0;box-sizing:border-box;';
+const LABEL = 'color:rgba(99,102,241,0.8);font-size:13px;font-family:system-ui,sans-serif;font-weight:500;';
+
+/**
+ * The look of the placeholders written into a page, as a stylesheet the preview frames add:
+ * `[attr]` for the box, `[attr^="<block id>-"]` for each block's size. One attribute selector,
+ * so the element's own overrides (two) win and styling a placeholder shows.
+ */
+export function placeholderCss(attr: string): string {
+  const byCategory = new Map<SemanticBlock['category'], string[]>();
+  for (const block of SEMANTIC_BLOCKS) {
+    const list = byCategory.get(block.category) ?? [];
+    list.push(`[${attr}^="${block.id}-"]`);
+    byCategory.set(block.category, list);
+  }
+  const sized = [...byCategory].map(([category, selectors]) => `${selectors.join(',')}{${SIZING[category]}}`);
+  return `[${attr}]{display:flex;min-height:64px;${BOX}${LABEL}}${sized.join('')}`;
+}
+
+/** The placeholder the preview frame shows for a block placed on a page with no source positions. */
 function wireframe(name: string, category: SemanticBlock['category']): string {
-  const sizing: Record<SemanticBlock['category'], string> = {
-    Sections: 'width:100%;min-height:80px;display:flex;',
-    Content: 'width:100%;min-height:48px;display:flex;',
-    Interactive: 'display:inline-flex;min-height:32px;padding:8px 16px;',
-    Data: 'width:100%;min-height:64px;display:flex;',
-  };
-  return `<div data-semantic-placeholder="true" style="border:2px dashed rgba(99,102,241,0.6);background:rgba(99,102,241,0.08);${sizing[category]}align-items:center;justify-content:center;border-radius:6px;margin:4px 0;box-sizing:border-box;"><span style="color:rgba(99,102,241,0.8);font-size:13px;font-family:system-ui,sans-serif;font-weight:500;">${name}</span></div>`;
+  const width = category === 'Interactive' ? '' : 'width:100%;';
+  return `<div data-semantic-placeholder="true" style="${width}${SIZING[category]}${BOX}"><span style="${LABEL}">${name}</span></div>`;
 }
 
 export const SEMANTIC_BLOCKS: SemanticBlock[] = [

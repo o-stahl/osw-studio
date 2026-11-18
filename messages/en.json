@@ -277,6 +277,7 @@
       "fileExplorer": "File Explorer",
       "codeEditor": "Code Editor",
       "preview": "Preview",
+      "canvas": "Canvas",
       "inspector": "Inspector",
       "console": "Console",
       "checkpoints": "Checkpoints",
@@ -398,7 +399,7 @@
       "refusal": {
         "width": "Needs {px} px of width",
         "height": "{panel} needs {px} px of height",
-        "inspectorPreview": "Inspector needs the preview visible"
+        "inspectorSurface": "Inspector needs {panel} visible"
       },
       "target": {
         "reorder": "Reorder tabs",
@@ -436,6 +437,33 @@
       "afterRun": "Available once the AI has finished",
       "deploy": "Deploy to a host, or export as a ZIP",
       "settings": "Settings for the app and this project"
+    },
+    "editUndoChanged": "{path} has changed since that edit, so it was not undone. The edit history is cleared.",
+    "editRedoChanged": "{path} has changed since that undo, so the edit was not redone. The edit history is cleared.",
+    "editUndoFailed": "Undo stopped part way: {path} could not be written. The edit history is cleared.",
+    "editRedoFailed": "Redo stopped part way: {path} could not be written. The edit history is cleared.",
+    "structure": {
+      "confirmShared": "{file} is a partial: every page that includes it changes.",
+      "confirmMany": "This element renders {count} times here, and every one of them changes.",
+      "confirmAction": "Change it",
+      "copied": "Copied {count, plural, one {# declaration} other {# declarations}}",
+      "nothingToCopy": "This element has no overrides to copy.",
+      "refused": {
+        "locked": "Locked with data-osw-lock: it can be restyled, not rearranged.",
+        "crossesTemplate": "That would carry markup into or out of a template block, so nothing changed. The agent can do it.",
+        "intoItself": "An element can't go inside itself.",
+        "notAFrame": "Only a frame made on Canvas can be unwrapped.",
+        "noPlace": "There's nothing there to move it past.",
+        "crossFile": "That would move it into another file. Elements stay in the file they're written in.",
+        "unclosed": "{file} has no closing tag where one was expected, so the element's extent isn't certain.",
+        "stale": "The page changed since it was shown. Try again once it has reloaded.",
+        "missing": "{file} is no longer there.",
+        "generating": "The agent is writing. Try again when it has finished.",
+        "unresolvable": "This element was built by the page's script, so there's no source to change.",
+        "stylesheet": "overrides.css could not be updated safely: {message}",
+        "writeFailed": "The change could not be saved: {message}"
+      },
+      "blockNoPlace": "Between elements from other files: drop the block next to one from this page"
     }
   },
   "skills": {
@@ -1484,6 +1512,83 @@
       "desktop": "Desktop width (up to 1440 px)"
     }
   },
+  "canvas": {
+    "unavailable": "Canvas needs a project with HTML pages",
+    "unavailableHint": "{runtime} projects run in the Console, so there are no pages to lay out.",
+    "tools": {
+      "select": "Select (V)",
+      "usePages": "Use the pages (P): links, menus and forms answer the pointer",
+      "frame": "Frame (F)",
+      "text": "Text (T)",
+      "image": "Image (I)",
+      "button": "Button (B)",
+      "divider": "Divider (D)",
+      "blocks": "Semantic blocks: drag a section in for the AI to build",
+      "label": "Canvas tools"
+    },
+    "page": "Go to a page",
+    "widths": {
+      "phone": "Phone width (375 px)",
+      "tablet": "Tablet width (768 px)",
+      "desktop": "Desktop width (1440 px)"
+    },
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "fit": "Fit the page",
+    "zoom": "Zoom",
+    "compiling": "Compiling…",
+    "loading": "Loading",
+    "noPages": "No pages yet",
+    "noPagesHint": "Canvas lays out the project's HTML pages as they are added.",
+    "compileFailed": "The project didn't compile",
+    "viewOnly": "{runtime} pages are drawn by their bundle, so their elements can't be selected here.",
+    "drawnByScript": "Most of what these pages show is drawn by their scripts, so there is little here to select or style by hand.",
+    "openLivePreview": "Open Live Preview",
+    "toolbar": {
+      "style": "Style",
+      "editText": "Edit text",
+      "replaceImage": "Replace image",
+      "include": "Add to next message",
+      "dismiss": "Dismiss"
+    },
+    "insert": {
+      "textPlaceholder": "New text",
+      "buttonLabel": "Button",
+      "kind": {
+        "frame": "Frame",
+        "text": "Text",
+        "image": "Image",
+        "button": "Button",
+        "divider": "Divider"
+      },
+      "into": "{kind} → {parent}",
+      "locked": "Locked: {parent}",
+      "noPlace": "Between elements from other files: drop it next to one from this page"
+    },
+    "menu": {
+      "lockedNote": "Locked by data-osw-lock: restyle only",
+      "editText": "Edit text",
+      "doubleClick": "Double-click",
+      "selectParent": "Select parent",
+      "selectChild": "Select first child",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "wrap": "Wrap in frame",
+      "unwrap": "Unwrap frame",
+      "duplicate": "Duplicate",
+      "copyStyle": "Copy style",
+      "pasteStyle": "Paste style",
+      "clearAll": "Clear overrides at all widths",
+      "clearUpTo": "Clear overrides at ≤ {width}",
+      "show": "Show",
+      "hideAll": "Hide at all widths",
+      "hideUpTo": "Hide at ≤ {width}",
+      "include": "Add to next message",
+      "delete": "Delete"
+    },
+    "size": "{width} × {height}",
+    "agentWriting": "Agent writing"
+  },
   "editor": {
     "noFilesOpen": "No files open",
     "selectFile": "Select a file from the explorer to edit",
@@ -1788,7 +1893,16 @@
     "expand": "Expand {tag}",
     "sharedSource": "This source is shared by {count} rendered elements — editing it affects all of them.",
     "moreNotShown": "{count, plural, one {# more element not shown} other {# more elements not shown}}",
-    "sourceOffset": "{file} (offset {offset})"
+    "sourceOffset": "{file} (offset {offset})",
+    "structure": "Structure",
+    "dragHint": "Drag rows to reorder. Right-click a row, or an element on Canvas, for every action.",
+    "script": "script",
+    "scriptTip": "Built by the page's script while it loaded; not in the source",
+    "scriptClick": "Built by the page's script: style it through its class in the stylesheet.",
+    "hidden": "hidden",
+    "hiddenTip": "display: none at this width",
+    "lock": "lock",
+    "lockTip": "data-osw-lock: restyle it, don't rearrange it"
   },
   "telemetry": {
     "title": "Anonymous Usage Analytics",
@@ -1893,6 +2007,7 @@
       "cp": "copy",
       "rm": "delete",
       "ss": "search/replace edit",
+      "style": "element overrides",
       "ask": "prompt the user",
       "search": "web"
     },
@@ -2652,6 +2767,12 @@
     "promptUpdateFailed": "Failed to update .PROMPT.md",
     "runtimeUpdateFailed": "Failed to update runtime",
     "entryPointUpdateFailed": "Failed to update entry point",
+    "opensIn": "Opens in",
+    "opensInLast": "As the workspace was left",
+    "opensInCanvas": "Canvas",
+    "opensInPreview": "Live Preview",
+    "opensInHelp": "Which of the two comes forward when this project opens, where they share a tab group. Canvas suits a site whose pages are written as HTML; Live Preview suits a game or an app that draws itself.",
+    "opensInUpdateFailed": "Couldn't change where the project opens",
     "previewEntryPoint": "Preview Entry Point",
     "chatSuggestions": "Chat suggestions",
     "buttonText": "Button text",
@@ -3615,7 +3736,10 @@
       "Type": "Type",
       "Colour": "Colour",
       "Border": "Border",
-      "Layout": "Layout"
+      "Layout": "Layout",
+      "Size": "Size",
+      "Position": "Position",
+      "Effects": "Effects"
     },
     "labels": {
       "padding-block": "Padding, vertical",
@@ -3630,7 +3754,33 @@
       "border-style": "Style",
       "border-width": "Width",
       "border-radius": "Corner radius",
-      "display": "Display"
+      "display": "Display",
+      "aspect-ratio": "Aspect ratio",
+      "object-fit": "Fit",
+      "max-width": "Max width",
+      "min-width": "Min width",
+      "max-height": "Max height",
+      "min-height": "Min height",
+      "position": "Position",
+      "rotate": "Rotation",
+      "letter-spacing": "Letter spacing",
+      "font-weight": "Weight",
+      "font-style": "Italic",
+      "text-decoration-line": "Decoration",
+      "text-transform": "Case",
+      "text-wrap": "Wrap",
+      "border-color": "Colour",
+      "flex-direction": "Direction",
+      "flex-wrap": "Wrap",
+      "gap": "Gap",
+      "grid-template-columns": "Columns",
+      "column-gap": "Column gap",
+      "row-gap": "Row gap",
+      "overflow": "Overflow",
+      "opacity": "Opacity",
+      "mix-blend-mode": "Blend",
+      "width": "W",
+      "height": "H"
     },
     "sides": {
       "top": "Top",
@@ -3646,7 +3796,59 @@
     "borderStyle": {
       "none": "None",
       "solid": "Solid",
-      "dashed": "Dashed"
+      "dashed": "Dashed",
+      "dotted": "Dotted"
+    },
+    "options": {
+      "weight": {
+        "100": "Thin",
+        "200": "Extra light",
+        "300": "Light",
+        "400": "Regular",
+        "500": "Medium",
+        "600": "Semibold",
+        "700": "Bold",
+        "800": "Extra bold",
+        "900": "Black"
+      },
+      "decoration": {
+        "none": "None",
+        "underline": "Underline",
+        "line-through": "Strike"
+      },
+      "case": {
+        "none": "As written",
+        "uppercase": "Uppercase",
+        "lowercase": "Lowercase",
+        "capitalize": "Each word capitalised"
+      },
+      "wrap": {
+        "wrap": "Normal",
+        "balance": "Balance",
+        "pretty": "Pretty",
+        "nowrap": "No wrap"
+      },
+      "direction": {
+        "row": "Row",
+        "column": "Column"
+      },
+      "flexWrap": {
+        "nowrap": "No wrap",
+        "wrap": "Wrap"
+      },
+      "overflow": {
+        "visible": "Visible",
+        "hidden": "Clip",
+        "auto": "Scroll"
+      },
+      "fit": {
+        "fill": "Fill",
+        "contain": "Contain",
+        "cover": "Cover",
+        "none": "None"
+      },
+      "justify": "Justify",
+      "auto": "Auto"
     }
   },
   "syncStatus": {
@@ -3673,6 +3875,33 @@
     "cancelSelectionLong": "Cancel element selection",
     "cancelSelection": "Cancel selection",
     "reading": "Reading what this says…",
+    "variables": {
+      "title": "Variables",
+      "hint": "What this project's CSS defines. A change is written into the stylesheet and applies wherever the variable is used.",
+      "groups": {
+        "color": "Colours",
+        "length": "Sizes and numbers",
+        "font": "Fonts",
+        "shadow": "Shadows",
+        "other": "Other"
+      },
+      "uses": "{count, plural, one {used in # place} other {used in # places}}",
+      "notUsed": "not used in the CSS",
+      "valueOf": "Value of {name}",
+      "pick": "Pick a colour for {name}",
+      "decrease": "Decrease {name}",
+      "increase": "Increase {name}",
+      "edit": "Edit the variable {name}",
+      "editHint": "This value comes from {name}. Changing the variable changes every place that uses it.",
+      "reason": {
+        "generating": "Not changed: the agent is working. Try again when it has finished.",
+        "missing-file": "Not changed: {file} no longer exists.",
+        "gone": "Not changed: {file} no longer defines this variable there.",
+        "unsafe": "Not changed: that value can't be written as CSS.",
+        "failed": "Not changed: {file} could not be written."
+      }
+    },
+    "makeApply": "Make it apply",
     "askAgent": "Ask the agent",
     "overrideNotInForce": "This override is not in force — see the note at the foot of the panel",
     "changeTokenInstead": "Change the token instead",
@@ -3733,7 +3962,87 @@
       "typeValue": "Click to type a value",
       "pickColour": "Pick any colour",
       "resetColour": "Remove this element's own colour, so it follows the stylesheet again",
-      "askAgent": "Puts a request in the chat, ready for you to send"
+      "changeVariable": "Writes this colour into the variable, and takes this element's own colour off so it follows the variable again",
+      "makeApply": "Marks these values !important, so they win over the project's rule",
+      "askAgent": "Puts a request in the chat, ready for you to send",
+      "eyedropper": "Pick a colour from anywhere on the screen",
+      "setDotAll": "Set for every width in overrides.css. Click to go back to the stylesheet’s value.",
+      "setDotUpTo": "Set for widths up to {width} px in overrides.css. Click to go back to the stylesheet’s value."
+    },
+    "resetRow": "Reset {label}",
+    "eyedropper": "Pick from the screen",
+    "padCell": "Justify {justify}, align {align}",
+    "alignment": "Alignment",
+    "font": "Font",
+    "fontInherited": "From the stylesheets",
+    "align": "Align",
+    "spaceBetween": "Space between",
+    "stretch": "Stretch",
+    "inline": "Inline",
+    "scope": {
+      "heading": "Applies to",
+      "width": "Width",
+      "all": "All widths",
+      "upTo": "≤ {width}",
+      "hintAll": "Editing at {width} px. Rules apply at every width; the {narrower} blocks still win below them.",
+      "hintBlock": "Editing at {width} px. Rules go in @media (max-width: {scope}px); wider frames keep theirs.",
+      "hintElsewhere": "Rules go in @media (max-width: {scope}px), which this {width} px frame does not show."
+    },
+    "header": {
+      "width": "The width of the frame it was picked in",
+      "marker": "Its data-osw-id: what overrides.css keys its rules to",
+      "show": "Show it again",
+      "hideShort": "Hide",
+      "showShort": "Show",
+      "hideAll": "Hide it at every width",
+      "hideUpTo": "Hide it at widths up to {width} px"
+    },
+    "size": {
+      "width": "Width",
+      "height": "Height",
+      "auto": "Auto",
+      "hug": "Hug",
+      "fill": "Fill",
+      "fixed": "Fixed",
+      "hintFillFlex": "Fill writes flex: 1 1 0, because the parent is a flex row.",
+      "hintFill": "Fill writes width: 100%.",
+      "hintHug": "Hug writes width: fit-content.",
+      "hintFixed": "Fixed: {value}, from {file}.",
+      "hintCustom": "Kept as written: {value}, from {file}.",
+      "hintAuto": "No width declared; the layout decides ({px} px now)."
+    },
+    "effects": {
+      "shadow": "Shadow",
+      "blur": "Blur",
+      "backdrop": "Backdrop blur",
+      "gradient": "Gradient",
+      "angle": "Angle",
+      "from": "From",
+      "to": "To",
+      "blurRadius": "Blur",
+      "spread": "Spread",
+      "colour": "Colour",
+      "radius": "Radius",
+      "removeShadow": "Remove the shadow",
+      "removeBlur": "Remove the blur",
+      "removeBackdrop": "Remove the backdrop blur",
+      "removeGradient": "Remove the gradient"
+    },
+    "css": {
+      "heading": "CSS",
+      "copy": "Copy CSS",
+      "copied": "Copied",
+      "open": "Open overrides.css",
+      "none": "No overrides on this element yet. Every control writes CSS into overrides.css, in the block for the width you are editing.",
+      "clearAll": "Clear all widths",
+      "clearUpTo": "Clear ≤ {width}",
+      "wholeFile": "All of overrides.css",
+      "foldIn": "Move into stylesheets",
+      "foldInTip": "Asks the agent to move every override into the project's own stylesheets, then empty overrides.css",
+      "sweep": "Remove unused",
+      "sweepTip": "Removes the rules of elements no file has any more",
+      "swept": "Removed the overrides of {count, plural, one {# element} other {# elements}} that no longer exist",
+      "sweptNone": "Every override belongs to an element that still exists"
     }
   },
   "about": {
@@ -4208,6 +4517,9 @@
     "allowanceMonthBody": "It renews {when}. Connect your own provider to keep going.",
     "titleAllowanceCheck": "The check before OSW Studio inference did not pass.",
     "allowanceCheckBody": "Try again in a moment, or connect your own provider.",
+    "allowanceLow": "OSW Studio's free inference is nearly used up for today, so this task may stop before it is done. It renews {when}; you can continue then, or with another model.",
+    "limitRenewed": "The limit has reset since, so this can continue on the same model.",
+    "allowanceLowNoTime": "OSW Studio's free inference is nearly used up for today, so this task may stop before it is done. You can continue tomorrow, or with another model.",
     "tips": {
       "billing": "Opens HuggingFace billing in a new tab",
       "continue": "Pick the run up where it stopped",

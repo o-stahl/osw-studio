@@ -2,12 +2,21 @@
 
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
+import { ArrowDown, ArrowUp, ClipboardPaste, Copy, Group, Paintbrush, Trash2, Ungroup } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
+import { ElementMenu, type ElementAction, type ElementMenuFacts } from '@/components/canvas/element-menu';
+import { altShortcut, modAltShortcut, modShortcut } from '@/lib/platform';
+import type { StructureOp } from '@/lib/direct-edit/apply-structure';
+import type { PreviewSelection, StyleChange } from '@/lib/direct-edit/types';
+import { MARKER_ATTR } from '@/lib/direct-edit/marker';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ElementsTreeRow } from './tree-node';
-import { StylesContent, type StylesContentHandle } from '@/components/styles-content';
-import type { ApplyStyle, ReadOverrides, RemoveStyle } from '@/components/styles-content/commit';
-import type { ColorToken } from '@/components/styles-content/tokens';
+import { ElementsTreeRow, formatClassName } from './tree-node';
+import { StylesContent, type NodeDocument, type StylesContentHandle, type StylesContentProps } from '@/components/styles-content';
+import type { ApplyStyle, ReadOverrides } from '@/components/styles-content/commit';
+import type { ColorToken, FontToken } from '@/components/styles-content/tokens';
+import type { OverrideScope } from '@/lib/direct-edit/overrides-css';
 import type { ApplyResult } from '@/lib/direct-edit/types';
 import type { TextReadResult } from '@/lib/direct-edit/apply-text';
 import type { FocusContextPayload, PreviewHostMessage, PreviewMessage, TreeNode } from '@/lib/preview/types';
@@ -312,6 +321,22 @@ export interface ElementsPanelHandle {
   handleStyleComputed: (message: Extract<PreviewMessage, { type: 'style-computed' }>) => void;
   /** Which properties an override failed to produce, and what beat it. */
   handleStyleProbeResult: (message: Extract<PreviewMessage, { type: 'style-probe-result' }>) => void;
+  /** The files changed under the Styles tab (an undo or redo of its writes). */
+  handleOverridesChanged: () => void;
+  /** A drag on one of Canvas's handles, written through the Styles tab. See `StylesContentHandle.dragStyle`. */
+  dragStyle: (phase: 'start' | 'move' | 'end', changes: StyleChange[]) => void;
+  /**
+   * Hide/Show or Clear from the element menu, through the Styles tab: for the element `nodeId` and
+   * `where` name, or the Styles tab's selection without them. See `StylesContentHandle.runCommand`.
+   */
+  styleCommand: (command: 'toggle-hide' | 'clear-scope', nodeId?: string, where?: NodeDocument) => void;
+  /**
+   * The document under the tree changed: a structural edit, or Canvas's Inspector moved to another
+   * artboard, whose document numbers its elements its own way. Read it again.
+   */
+  handleStructureChanged: () => void;
+  /** Light the row of the element hovered on Canvas, or none. */
+  highlightNode: (nodeId: string | null) => void;
 }
 
 export interface ElementsPanelProps {
@@ -331,22 +356,27 @@ export interface ElementsPanelProps {
    * same gesture, so the payload has to come back down as a prop rather than be synthesised here.
    */
   selection: FocusContextPayload | null;
-  /** The durable write, bound to the project. `null` disables the Styles tab's controls. */
+  /** The durable write, removals included, bound to the project. `null` disables the Styles tab's controls. */
   applyStyle: ApplyStyle | null;
   /**
-   * The durable removal, bound to the project — the Styles tab's Reset.
-   *
-   * Optional and passed straight through, like the CONTENT section's halves: a host that omits it
-   * gets no Reset control rather than one that refuses.
-   */
-  removeStyle?: RemoveStyle | null;
-  /**
-   * What `/overrides.css` already declares for an element — what makes the Styles tab's Reset
-   * survive a reload. Optional and passed straight through, like the removal beside it.
+   * What `/overrides.css` already holds for an element: what makes the Styles tab's dots and Reset
+   * survive a reload. Optional and passed straight through, like the CONTENT section's halves.
    */
   onReadOverrides?: ReadOverrides;
   /** The project's own colour tokens. */
   colorTokens: readonly ColorToken[];
+  /** The Styles tab's width scopes, font menu and frame updates; passed straight through. See `StylesContentProps`. */
+  onOverrides?: StylesContentProps['onOverrides'];
+  readOverridesText?: () => Promise<string>;
+  breakpoints?: readonly number[];
+  surfaceWidths?: readonly number[];
+  onScope?: (scope: OverrideScope) => void;
+  fontTokens?: readonly FontToken[];
+  /** The project's custom properties and their editing; passed straight through. See `StylesContentProps`. */
+  variables?: StylesContentProps['variables'];
+  variableUses?: StylesContentProps['variableUses'];
+  onApplyVariable?: StylesContentProps['onApplyVariable'];
+  onPreviewVariable?: StylesContentProps['onPreviewVariable'];
   /**
    * The Styles tab's CONTENT section: read and write the selected element's text, and open the
    * project's image picker for a selected image.
@@ -366,6 +396,8 @@ export interface ElementsPanelProps {
   imageUrl?: string | null;
   onOpenFile: (path: string) => void;
   onAskAgent: (prompt: string) => void;
+  /** The Styles tab's Remove unused: how many elements' rules went, or `null` when it could not run. */
+  onSweepOverrides?: () => Promise<number | null>;
   onRefreshPreview: () => void;
   /**
    * The Styles tab's empty state offers to arm the preview's element picker. Both passed straight
@@ -394,6 +426,25 @@ export interface ElementsPanelProps {
    */
   activeTab: ElementsTab;
   onTabChange: (tab: ElementsTab) => void;
+  /**
+   * The structure toolbar's and the row menu's actions on the selected element, for the workspace to
+   * carry out. Absent, neither is offered. Selecting the parent or a child, Hide and Clear are done
+   * here.
+   */
+  onElementAction?: (action: ElementAction, target?: PreviewSelection) => void;
+  /** A row dragged onto another: a move of that row's element, which need not be the selected one. */
+  onStructure?: (op: StructureOp, target: PreviewSelection) => void;
+  /** Copy style has something for Paste. */
+  canPasteStyle?: boolean;
+}
+
+/** Tags a row can be dropped into, rather than only before or after. */
+const CONTAINER_TAGS = new Set(['section', 'div', 'article', 'header', 'nav', 'main', 'footer', 'aside', 'ul', 'ol', 'form', 'figure']);
+
+/** A row as the write path names it: its provenance value, tag and instance count. */
+function rowSelection(node: TreeNode): PreviewSelection | null {
+  if (!node.file || node.line === undefined) return null;
+  return { srcAttr: `${node.file}:${node.line}`, tagName: node.tag, instanceCount: node.instances };
 }
 
 function Unavailable({ title, hint, action }: { title: string; hint: string; action?: React.ReactNode }) {
@@ -438,21 +489,34 @@ export const ElementsPanel = forwardRef<ElementsPanelHandle, ElementsPanelProps>
     sendToFrame,
     selection,
     applyStyle,
-    removeStyle,
     onReadOverrides,
     colorTokens,
+    onOverrides,
+    readOverridesText,
+    breakpoints,
+    surfaceWidths,
+    onScope,
+    fontTokens,
+    variables,
+    variableUses,
+    onApplyVariable,
+    onPreviewVariable,
     onReadText,
     onApplyText,
     onReplaceImage,
     imageUrl,
     onOpenFile,
     onAskAgent,
+    onSweepOverrides,
     onRefreshPreview,
     onSelectElement,
     onSelectElementHover,
     focusToolArmed,
     activeTab,
     onTabChange,
+    onElementAction,
+    onStructure,
+    canPasteStyle = false,
   },
   ref
 ) {
@@ -467,8 +531,19 @@ export const ElementsPanel = forwardRef<ElementsPanelHandle, ElementsPanelProps>
   sendRef.current = sendToFrame;
   /** The node the tree was last opened onto, so one selection is not revealed twice. */
   const revealedRef = useRef<string | null>(null);
+  /** The row of the element hovered on Canvas. */
+  const [lit, setLit] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ at: { x: number; y: number }; nodeId: string } | null>(null);
+  /** Opening a level to select its first child: the parent whose level is awaited. */
+  const childOfRef = useRef<string | null>(null);
+  const tc = useTranslations('canvas.menu');
 
   const dispatch = useCallback((event: TreeEvent) => {
+    // A first child awaited by Select first child is not wanted once the selection moves or the tree
+    // starts over: ids restart with each document, so a later level can carry the awaited id.
+    if (event.type === 'select' || event.type === 'reveal' || event.type === 'frame-ready' || event.type === 'refresh' || event.type === 'stale') {
+      childOfRef.current = null;
+    }
     const { state: next, requests } = reduceTree(stateRef.current, event);
     stateRef.current = next;
     setState(next);
@@ -497,10 +572,25 @@ export const ElementsPanel = forwardRef<ElementsPanelHandle, ElementsPanelProps>
     },
     handleStyleComputed: (message) => stylesRef.current?.handleStyleComputed(message),
     handleStyleProbeResult: (message) => stylesRef.current?.handleStyleProbeResult(message),
+    handleOverridesChanged: () => stylesRef.current?.handleOverridesChanged(),
+    dragStyle: (phase, changes) => stylesRef.current?.dragStyle(phase, changes),
+    styleCommand: (command, nodeId, where) => stylesRef.current?.runCommand(command, nodeId, where),
+    handleStructureChanged: () => {
+      dispatch({ type: 'refresh' });
+      revealedRef.current = null;
+    },
+    highlightNode: (nodeId) => setLit(nodeId),
   }), [dispatch]);
 
   const unavailable = describeUnavailable({ hasProject: Boolean(projectId), previewOpen, runtime });
   const copy = unavailable ? unavailableCopy(t, unavailable, runtime) : null;
+
+  // Opened onto a frame that is already loaded (Live Preview behind Canvas, the Inspector opened
+  // later), no frame-ready is coming to ask for the tree, so ask now. A frame that is not ready yet
+  // drops the request, and its frame-ready asks again.
+  useEffect(() => {
+    if (previewOpen && projectId) dispatch({ type: 'refresh' });
+  }, [previewOpen, projectId, dispatch]);
 
   // Drop the tree when there is nothing behind it — a closed preview unmounts the frame, and its
   // ids die with it. Keeping the rows on screen would offer selections that all resolve to nothing.
@@ -525,6 +615,8 @@ export const ElementsPanel = forwardRef<ElementsPanelHandle, ElementsPanelProps>
     if (!nodeId || unavailable) return;
     if (stateRef.current.selectedId === nodeId || revealedRef.current === nodeId) return;
     revealedRef.current = nodeId;
+    // Picked somewhere else: a first child still awaited would take the selection from it.
+    childOfRef.current = null;
     sendRef.current({ type: 'tree-path', nodeId });
   }, [selection, unavailable]);
 
@@ -539,11 +631,181 @@ export const ElementsPanel = forwardRef<ElementsPanelHandle, ElementsPanelProps>
 
   const rows = flattenTree(state);
 
+  // ---------- where the selected row sits ----------
+  const parentOf = (id: string): string | null => {
+    for (const [parent, kids] of state.children) if (kids.includes(id)) return parent;
+    return null;
+  };
+  const authoredKids = (parent: string | null) =>
+    (state.children.get(parent) ?? []).filter(id => !state.nodes.get(id)?.script);
+  const selectedId = state.selectedId;
+  const selectedNode = selectedId ? state.nodes.get(selectedId) ?? null : null;
+  const siblings = selectedId ? authoredKids(parentOf(selectedId)) : [];
+  const at = selectedId ? siblings.indexOf(selectedId) : -1;
+  const sourced = Boolean(selection?.srcAttr);
+
+  // A child awaited by Select first child: picked once its level is in.
+  useEffect(() => {
+    const parent = childOfRef.current;
+    if (!parent) return;
+    const kids = state.children.get(parent);
+    if (!kids) {
+      // The level came back empty, or the node went with its document: there is no child to pick.
+      if (!state.nodes.get(parent)?.hasChildren) childOfRef.current = null;
+      return;
+    }
+    childOfRef.current = null;
+    const first = kids.find(id => !state.nodes.get(id)?.script) ?? kids[0];
+    if (first) dispatch({ type: 'select', nodeId: first });
+  }, [state.children, state.nodes, dispatch]);
+
+  const selectChild = (id: string) => {
+    if (!state.nodes.get(id)?.hasChildren) return;
+    if (state.children.has(id)) {
+      const first = authoredKids(id)[0];
+      if (first) dispatch({ type: 'select', nodeId: first });
+      return;
+    }
+    childOfRef.current = id;
+    if (!state.expanded.has(id)) dispatch({ type: 'toggle', nodeId: id });
+  };
+
+  const act = (action: ElementAction, nodeId: string | null) => {
+    if (action === 'select-parent') { const p = nodeId ? parentOf(nodeId) : null; if (p) dispatch({ type: 'select', nodeId: p }); return; }
+    if (action === 'select-child') { if (nodeId) selectChild(nodeId); return; }
+    // Named by the row, not by the selection: a right-click selects the row, and the frame's answer
+    // can still be on its way when the menu is used.
+    if (action === 'clear-scope' || action === 'toggle-hide') { stylesRef.current?.runCommand(action, nodeId ?? undefined); return; }
+    const node = nodeId ? state.nodes.get(nodeId) : null;
+    onElementAction?.(action, node ? rowSelection(node) ?? undefined : undefined);
+  };
+
+  const menuNode = menu ? state.nodes.get(menu.nodeId) ?? null : null;
+  const menuFacts: ElementMenuFacts | null = menuNode ? {
+    name: menuNode.tag + formatClassName(menuNode.className),
+    where: menuNode.file ? menuNode.file.replace(/^.*\//, '') : t('script'),
+    locked: Boolean(menuNode.locked || (selection?.nodeId === menuNode.id && selection.locked)),
+    frame: Boolean(menuNode.frame),
+    textLeaf: Boolean(menuNode.text),
+    hasParent: parentOf(menuNode.id) !== null,
+    hasChild: menuNode.hasChildren,
+    hidden: Boolean(menuNode.hidden),
+    scope: stylesRef.current?.currentScope() ?? 'all',
+    canPaste: canPasteStyle,
+    canStyle: Boolean(applyStyle),
+    marked: Boolean(selection?.nodeId === menuNode.id && selection.attributes?.[MARKER_ATTR]),
+  } : null;
+
+  // ---------- dragging rows ----------
+  const dragRef = useRef<{ id: string; x: number; y: number; active: boolean } | null>(null);
+  const draggedRef = useRef(false);
+  const [dropOn, setDropOn] = useState<{ id: string; pos: 'before' | 'after' | 'in' } | null>(null);
+  const dropRef = useRef(dropOn);
+  dropRef.current = dropOn;
+  const nodesRef = useRef(state.nodes);
+  nodesRef.current = state.nodes;
+  const onStructureRef = useRef(onStructure);
+  onStructureRef.current = onStructure;
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      if (!d.active) { if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 5) return; d.active = true; }
+      const row = (document.elementFromPoint(e.clientX, e.clientY) as Element | null)?.closest?.('[data-osw-tree-row]');
+      const id = row?.getAttribute('data-osw-tree-row') ?? null;
+      const node = id ? nodesRef.current.get(id) : null;
+      if (!row || !id || id === d.id || !node || node.script) { setDropOn(null); return; }
+      const r = row.getBoundingClientRect();
+      const f = (e.clientY - r.top) / r.height;
+      const pos = CONTAINER_TAGS.has(node.tag) && f > 0.3 && f < 0.7 ? 'in' : f < 0.5 ? 'before' : 'after';
+      setDropOn((prev) => (prev && prev.id === id && prev.pos === pos ? prev : { id, pos }));
+    };
+    const up = () => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      if (!d || !d.active) return;
+      draggedRef.current = true;
+      setTimeout(() => { draggedRef.current = false; }, 0);
+      const drop = dropRef.current;
+      setDropOn(null);
+      const dragged = nodesRef.current.get(d.id);
+      const target = drop ? nodesRef.current.get(drop.id) : null;
+      const what = dragged ? rowSelection(dragged) : null;
+      const where = target ? rowSelection(target)?.srcAttr : null;
+      if (!drop || !what || !where) return;
+      const place = drop.pos === 'in' ? { parent: where, at: 'end' as const } : drop.pos === 'before' ? { before: where } : { after: where };
+      onStructureRef.current?.({ kind: 'move', place }, what);
+    };
+    // A press the browser takes over (a touch that becomes a scroll) is no drag: nothing is dropped.
+    const cancel = () => {
+      if (!dragRef.current) return;
+      dragRef.current = null;
+      setDropOn(null);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+    };
+  }, []);
+
+  const toolButton = (action: ElementAction, Icon: typeof ArrowUp, label: string, disabled: boolean, danger = false) => (
+    <Tip key={action} label={label} side="bottom">
+      <Button type="button" size="icon" variant="ghost" aria-label={label} disabled={disabled}
+        className={`h-5 w-5 rounded-sm${danger ? ' hover:text-destructive' : ''}`}
+        onClick={() => act(action, selectedId)}>
+        <Icon className="h-3 w-3" />
+      </Button>
+    </Tip>
+  );
+  const blocked = !selectedNode || !sourced || Boolean(selection?.locked);
+  const structureBar = onElementAction ? (
+    <div className="flex items-center gap-0.5 px-1 pb-1 mb-1 border-b border-border/50" role="toolbar" aria-label={t('structure')}>
+      {toolButton('move-up', ArrowUp, `${tc('moveUp')} (${altShortcut('↑')})`, blocked || at <= 0)}
+      {toolButton('move-down', ArrowDown, `${tc('moveDown')} (${altShortcut('↓')})`, blocked || at === -1 || at >= siblings.length - 1)}
+      <span className="w-px h-4 bg-border mx-1" />
+      {toolButton('wrap', Group, `${tc('wrap')} (${modAltShortcut('G')})`, blocked)}
+      {toolButton('unwrap', Ungroup, tc('unwrap'), blocked || !selection?.frame)}
+      {toolButton('duplicate', Copy, `${tc('duplicate')} (${modShortcut('D')})`, blocked)}
+      <span className="w-px h-4 bg-border mx-1" />
+      {toolButton('copy-style', Paintbrush, `${tc('copyStyle')} (${modAltShortcut('C')})`, !selection?.attributes?.[MARKER_ATTR])}
+      {toolButton('paste-style', ClipboardPaste, `${tc('pasteStyle')} (${modAltShortcut('V')})`, !selectedNode || !sourced || !canPasteStyle || !applyStyle)}
+      <span className="w-px h-4 bg-border mx-1" />
+      {toolButton('delete', Trash2, `${tc('delete')} (⌫)`, blocked, true)}
+    </div>
+  ) : null;
+
+  /** With the tree focused, the keys Canvas takes, on the selected row. */
+  const onTreeKey = (e: React.KeyboardEvent) => {
+    // The row menu is portalled out of the tree, but its keys reach here through React's tree: they
+    // are the menu's.
+    if (!e.currentTarget.contains(e.target as Node)) return;
+    if (!onElementAction || !selectedId || (e.target as Element).closest('input, textarea, select')) return;
+    const mod = e.metaKey || e.ctrlKey;
+    const run = (action: ElementAction) => { e.preventDefault(); act(action, selectedId); };
+    if (e.altKey && !mod && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { run(e.key === 'ArrowUp' ? 'move-up' : 'move-down'); return; }
+    if (mod && e.altKey && e.code === 'KeyC') { run('copy-style'); return; }
+    if (mod && e.altKey && e.code === 'KeyV') { run('paste-style'); return; }
+    if (mod && e.altKey && e.code === 'KeyG') { run('wrap'); return; }
+    if (mod && !e.altKey && e.code === 'KeyD') { run('duplicate'); return; }
+    if (mod || e.altKey) return;
+    if (e.key === 'Escape') { run('select-parent'); return; }
+    if (e.key === 'Enter') { run('select-child'); return; }
+    if (e.key === 'Backspace' || e.key === 'Delete') run('delete');
+  };
+
   const tree = (
     <div
-      className="h-full overflow-auto p-1"
+      className="h-full overflow-auto p-1 outline-none"
+      tabIndex={-1}
+      data-osw-tree=""
+      onKeyDown={onTreeKey}
       onMouseLeave={() => dispatch({ type: 'hover', nodeId: null })}
     >
+      {rows.length > 0 && structureBar}
       {rows.length === 0 ? (
         <Unavailable
           title={t('noElements')}
@@ -564,9 +826,23 @@ export const ElementsPanel = forwardRef<ElementsPanelHandle, ElementsPanelProps>
                 depth={row.depth}
                 expanded={row.expanded}
                 selected={row.selected}
+                lit={lit === row.node.id}
+                dropAt={dropOn?.id === row.node.id ? dropOn.pos : null}
                 onToggle={(nodeId) => dispatch({ type: 'toggle', nodeId })}
-                onSelect={(nodeId) => dispatch({ type: 'select', nodeId })}
+                onSelect={(nodeId) => {
+                  if (draggedRef.current) return;
+                  if (row.node.script) { toast(t('scriptClick')); return; }
+                  dispatch({ type: 'select', nodeId });
+                }}
                 onHover={(nodeId) => dispatch({ type: 'hover', nodeId })}
+                onContextMenu={onElementAction && !row.node.script ? (nodeId, point) => {
+                  dispatch({ type: 'select', nodeId });
+                  setMenu({ at: point, nodeId });
+                } : undefined}
+                onPointerDown={onStructure && !row.node.script ? (nodeId, e) => {
+                  if (e.button !== 0 || (e.target as Element).closest('button')) return;
+                  dragRef.current = { id: nodeId, x: e.clientX, y: e.clientY, active: false };
+                } : undefined}
               />
             );
           }
@@ -592,6 +868,13 @@ export const ElementsPanel = forwardRef<ElementsPanelHandle, ElementsPanelProps>
           );
         })
       )}
+      {rows.length > 0 && onStructure && <p className="px-2 pt-2 pb-1 text-[11px] text-muted-foreground">{t('dragHint')}</p>}
+      <ElementMenu
+        at={menu?.at ?? null}
+        facts={menuFacts}
+        onAction={(action) => { const id = menu?.nodeId ?? null; setMenu(null); act(action, id); }}
+        onClose={() => setMenu(null)}
+      />
     </div>
   );
 
@@ -649,15 +932,25 @@ export const ElementsPanel = forwardRef<ElementsPanelHandle, ElementsPanelProps>
               selection={selection}
               sendToFrame={sendToFrame}
               applyStyle={applyStyle}
-              removeStyle={removeStyle}
               onReadOverrides={onReadOverrides}
               tokens={colorTokens}
+              onOverrides={onOverrides}
+              readOverridesText={readOverridesText}
+              breakpoints={breakpoints}
+              surfaceWidths={surfaceWidths}
+              onScope={onScope}
+              fontTokens={fontTokens}
+              variables={variables}
+              variableUses={variableUses}
+              onApplyVariable={onApplyVariable}
+              onPreviewVariable={onPreviewVariable}
               onReadText={onReadText}
               onApplyText={onApplyText}
               onReplaceImage={onReplaceImage}
               imageUrl={imageUrl}
               onOpenFile={onOpenFile}
               onAskAgent={onAskAgent}
+              onSweepOverrides={onSweepOverrides}
               onRefreshPreview={onRefreshPreview}
               onSelectElement={onSelectElement}
               onSelectElementHover={onSelectElementHover}

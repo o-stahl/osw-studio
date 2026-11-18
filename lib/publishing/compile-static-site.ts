@@ -1,6 +1,7 @@
 import { getRuntimeConfig } from '@/lib/runtimes/registry';
 import { replaceBlobUrlsWithPaths } from '@/lib/publishing/rewrite-asset-urls';
 import { stripPreviewScripts } from '@/lib/preview/strip-preview-scripts';
+import { withoutPlaceholders } from '@/lib/semantic-blocks/placeholder';
 import type { VirtualFileSystem } from '@/lib/vfs';
 
 interface StaticFile {
@@ -56,7 +57,7 @@ export async function compileStaticSite(
         content = replaceBlobUrlsWithPaths(content, blobUrlToPath);
         // Strip the preview-only instrumentation (VFS interceptor, console capture)
         if (file.path.endsWith('.html')) {
-          content = stripPreviewScripts(content);
+          content = withoutPlaceholders(stripPreviewScripts(content));
         }
       }
 

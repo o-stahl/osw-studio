@@ -126,6 +126,7 @@ vi.mock('@/lib/config/storage', () => ({
 
 const registryMock = vi.hoisted(() => ({ usesOAuth: false, isLocal: false }));
 vi.mock('@/lib/llm/providers/registry', () => ({
+  resolveInputModalities: () => ['text'],
   getProvider: () => ({ apiKeyRequired: false, usesOAuth: registryMock.usesOAuth, isLocal: registryMock.isLocal }),
   getModelContextLength: () => 128000,
 }));
@@ -340,6 +341,31 @@ describe('the stopped card', () => {
   it('suggests nothing on the same provider for a task on "Free models": the rotation already tried', async () => {
     await handle(apiError('rate_limited', { model: 'a/m:free' }), assign(FREE));
     expect(suggest.nextModelAfter).not.toHaveBeenCalled();
+  });
+
+  it('names the limit that refused the request in telemetry, and on the run it ended', async () => {
+    const { track } = await import('@/lib/telemetry');
+    vi.mocked(track).mockClear();
+    const error = apiError('daily_limit', { provider: 'osws', model: 'osws/agent' });
+    error.limitSource = 'osws_pool';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    h.loopBehavior.run = async (deps: any) => { await deps.config.onProviderError(error); return failed; };
+    const o = new MultiAgentOrchestrator('test-p1', 'orchestrator', () => {}, { assignment: assign('osws/agent', 'osws') });
+    const result = await o.execute('build');
+    expect(track).toHaveBeenCalledWith('api_error', expect.objectContaining({ provider: 'osws', error_category: 'daily_limit', limit_source: 'osws_pool' }));
+    expect(result.lastApiError).toEqual({ category: 'daily_limit', limitSource: 'osws_pool' });
+
+    // An error that names no limit carries none, and the next run with no error, on the same
+    // orchestrator, has nothing to say.
+    vi.mocked(track).mockClear();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    h.loopBehavior.run = async (deps: any) => { await deps.config.onProviderError(apiError('rate_limited')); return failed; };
+    const kept = new MultiAgentOrchestrator('test-p1', 'orchestrator', () => {}, { assignment: assign('paid/model') });
+    const plain = await kept.execute('build');
+    expect(vi.mocked(track).mock.calls.find(([event]) => event === 'api_error')![1]).not.toHaveProperty('limit_source');
+    expect(plain.lastApiError).toEqual({ category: 'rate_limited' });
+    h.loopBehavior.run = async () => failed;
+    expect((await kept.execute('build')).lastApiError).toBeUndefined();
   });
 
   it('keeps the timing when the extras cannot be worked out', async () => {

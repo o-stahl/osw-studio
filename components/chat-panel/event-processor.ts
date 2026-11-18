@@ -206,6 +206,7 @@ export class EventProcessor {
           break;
 
         case 'model_picked':
+        case 'allowance_low':
           state.content.said = true;
           break;
 

@@ -1,39 +1,39 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from 'vitest';
-import { STYLE_PREVIEW_JS, TRANSIENT_STYLE_ATTR } from '../style-preview';
+import { STYLE_PREVIEW_JS, OVERRIDES_STYLE_ATTR } from '../style-preview';
 import { MARKER_SELECTOR_TEMPLATE, upsertDeclaration } from '@/lib/direct-edit/overrides-css';
 
 /**
- * The transient `<style>`, run out of the *emitted* text against a live document.
+ * Swapping a new `/overrides.css` into the frame, run out of the *emitted* text against a live
+ * document.
  *
- * `STYLE_PREVIEW_JS` only ever executes inside the preview iframe, interpolated into a template
- * literal in `components/preview/multipage-preview.tsx`. Reading the source proves nothing about
- * what the frame parses, so the functions are extracted from the constant and called — the same
- * arrangement `style-preview.test.ts` uses for the expander.
+ * `STYLE_PREVIEW_JS` only ever executes inside a preview or Canvas frame, interpolated into a
+ * template literal by `generateNavigationScript`. Reading the source proves nothing about what the
+ * frame parses, so the functions are extracted from the constant and called.
  *
- * jsdom really does cascade `<style>` elements it has in the document, so the assertions below are
- * about a rule that is in force, not about text that happens to be present.
+ * jsdom cascades `<style>` elements it has in the document, so the colour assertions below are about
+ * rules in force. It never loads a `<link>`, so the link stands for the file's place in `<head>`
+ * and nothing more; and its `matchMedia` answers false, so width blocks are asserted in the browser.
  */
 const frame = new Function(
-  `${STYLE_PREVIEW_JS}\nreturn { apply: __oswApplyStylePreview, selectorFor: __oswSelectorFor };`,
+  `${STYLE_PREVIEW_JS}\nreturn { apply: __oswApplyOverrides, selectorFor: __oswSelectorFor };`,
 )() as {
-  apply: (markerId: string, css: string | null) => Element | null;
+  apply: (css: unknown) => Element | null;
   selectorFor: (markerId: string) => string | null;
 };
 
-const SELECTOR = '[data-osw-id="m1"][data-osw-id]';
-
-function transient(): HTMLStyleElement | null {
-  return document.querySelector(`style[${TRANSIENT_STYLE_ATTR}]`);
-}
-
-function rulesOf(el: HTMLStyleElement | null): CSSStyleRule[] {
-  return [...((el?.sheet?.cssRules ?? []) as unknown as CSSStyleRule[])];
-}
+const rule = (id: string, body: string) => `[data-osw-id="${id}"][data-osw-id] { ${body} }`;
+const swapped = () => document.querySelector<HTMLStyleElement>(`style[${OVERRIDES_STYLE_ATTR}]`);
+const colorOf = (id: string) => window.getComputedStyle(document.querySelector(`[data-osw-id="${id}"]`)!).color;
 
 beforeEach(() => {
-  document.head.innerHTML = '<title>t</title><link rel="stylesheet" href="/overrides.css">';
+  delete (window as unknown as { __oswVfsBlobUrls?: unknown }).__oswVfsBlobUrls;
+  document.head.innerHTML = '<title>t</title><style>p { color: rgb(50, 50, 50); }</style>'
+    + '<link rel="stylesheet" href="blob:frame/overrides"><style id="after">.later {}</style>';
   document.body.innerHTML = '<p data-osw-id="m1">marked</p><p data-osw-id="m2">other</p>';
+  (window as unknown as { __oswVfsBlobUrls: Record<string, string> }).__oswVfsBlobUrls = {
+    '/overrides.css': 'blob:frame/overrides',
+  };
 });
 
 describe('the selector has one authored source', () => {
@@ -56,93 +56,47 @@ describe('the selector has one authored source', () => {
   });
 });
 
-describe('injecting a transient style', () => {
-  it('creates one style element carrying the doubled marker selector', () => {
-    frame.apply('m1', 'color: rgb(1, 2, 3);');
+describe('swapping in /overrides.css', () => {
+  it('puts the file in a <style> where its link was, and takes the link out', () => {
+    frame.apply(rule('m1', 'color: rgb(1, 2, 3);'));
 
-    const el = transient();
-    expect(el).not.toBeNull();
-    expect(document.querySelectorAll(`style[${TRANSIENT_STYLE_ATTR}]`)).toHaveLength(1);
-    expect(rulesOf(el)).toHaveLength(1);
-    expect(rulesOf(el)[0].selectorText).toBe(SELECTOR);
-    expect(window.getComputedStyle(document.querySelector('[data-osw-id="m1"]')!).color)
-      .toBe('rgb(1, 2, 3)');
+    // Where the link was, ahead of what came after it: the file's place in the cascade is its order
+    // in <head>, and appending at the end would let it beat a stylesheet that loads after it.
+    expect(swapped()!.nextElementSibling).toBe(document.getElementById('after'));
+    expect(document.querySelector('link')).toBeNull();
+    expect(colorOf('m1')).toBe('rgb(1, 2, 3)');
   });
 
-  it('REPLACES the block on a second injection rather than stacking a second rule', () => {
-    frame.apply('m1', 'color: rgb(1, 2, 3);');
-    frame.apply('m1', 'color: rgb(9, 9, 9);');
-
-    const el = transient();
-    // The count of elements is the weak assertion here and passes against the likelier bug:
-    // reusing the element and APPENDING to its text. One rule, and it is the new one.
-    expect(document.querySelectorAll(`style[${TRANSIENT_STYLE_ATTR}]`)).toHaveLength(1);
-    expect(rulesOf(el)).toHaveLength(1);
-    expect(el!.textContent).toBe(`${SELECTOR} { color: rgb(9, 9, 9); }`);
-    expect(el!.textContent).not.toContain('rgb(1, 2, 3)');
-    expect(window.getComputedStyle(document.querySelector('[data-osw-id="m1"]')!).color)
-      .toBe('rgb(9, 9, 9)');
+  it('finds a link the document builder marked, without the file map', () => {
+    delete (window as unknown as { __oswVfsBlobUrls?: unknown }).__oswVfsBlobUrls;
+    document.querySelector('link')!.setAttribute(OVERRIDES_STYLE_ATTR, '');
+    frame.apply(rule('m1', 'color: rgb(1, 2, 3);'));
+    expect(document.querySelector('link')).toBeNull();
+    expect(swapped()!.nextElementSibling).toBe(document.getElementById('after'));
   });
 
-  it('applies every declaration in the block, not just the first', () => {
-    // The host sends the element's whole accumulated block. An implementation that took one
-    // declaration would make each edit visually revert the last, and 4b's controls — which render
-    // from computed style — would snap back with it.
-    frame.apply('m1', 'color: rgb(4, 5, 6); font-weight: 700;');
+  it('rewrites the same element on the next write, whole', () => {
+    frame.apply(`${rule('m1', 'color: rgb(1, 2, 3);')}\n${rule('m2', 'color: rgb(4, 5, 6);')}`);
+    frame.apply(rule('m2', 'color: rgb(7, 8, 9);'));
 
-    const computed = window.getComputedStyle(document.querySelector('[data-osw-id="m1"]')!);
-    expect(computed.color).toBe('rgb(4, 5, 6)');
-    expect(computed.fontWeight).toBe('700');
+    expect(document.querySelectorAll(`style[${OVERRIDES_STYLE_ATTR}]`)).toHaveLength(1);
+    // m1's rule is not in the new file, so it is gone from the page too: a removal shows without a
+    // recompile, which one transient rule per element could not do.
+    expect(colorOf('m1')).toBe('rgb(50, 50, 50)');
+    expect(colorOf('m2')).toBe('rgb(7, 8, 9)');
   });
 
-  it('targets only the marked element', () => {
-    frame.apply('m1', 'color: rgb(4, 5, 6);');
-
-    expect(window.getComputedStyle(document.querySelector('[data-osw-id="m2"]')!).color)
-      .not.toBe('rgb(4, 5, 6)');
+  it('puts the style at the end of the head of a page with no link to the file', () => {
+    document.querySelector('link')!.remove();
+    frame.apply(rule('m1', 'color: rgb(1, 2, 3);'));
+    expect(document.head.lastElementChild).toBe(swapped());
+    expect(colorOf('m1')).toBe('rgb(1, 2, 3)');
   });
 
-  it('removes the element on css: null', () => {
-    frame.apply('m1', 'color: rgb(1, 2, 3);');
-    frame.apply('m1', null);
-
-    expect(transient()).toBeNull();
-    expect(window.getComputedStyle(document.querySelector('[data-osw-id="m1"]')!).color)
-      .not.toBe('rgb(1, 2, 3)');
-  });
-
-  it('clears rather than half-applies when the input is unusable', () => {
-    frame.apply('m1', 'color: rgb(1, 2, 3);');
-
-    frame.apply('m1', '   ');
-    expect(transient()).toBeNull();
-
-    frame.apply('m1', 'color: red;');
-    frame.apply('not a safe id"', 'color: blue;');
-    expect(transient()).toBeNull();
-  });
-});
-
-describe('where the element goes', () => {
-  it('is appended at the END of head, which is what wins the cascade', () => {
-    // Not decoration: <link> order does not beat a later <style>, so sitting last is the only
-    // reason the transient overrides the /overrides.css rule for the same marker.
-    // `insertBefore(head.firstChild)` would lose silently — the page would look unchanged.
-    frame.apply('m1', 'color: rgb(1, 2, 3);');
-
-    expect(document.head.lastElementChild).toBe(transient());
-  });
-
-  it('moves back to the end when something was appended after it', () => {
-    // The shape a recompile leaves behind: a fresh stylesheet lands in <head> after ours, and the
-    // next edit has to end up last again or it silently stops winning.
-    frame.apply('m1', 'color: rgb(1, 2, 3);');
-    document.head.appendChild(document.createElement('link'));
-
-    frame.apply('m1', 'color: rgb(9, 9, 9);');
-
-    expect(document.head.lastElementChild).toBe(transient());
-    expect(document.querySelectorAll(`style[${TRANSIENT_STYLE_ATTR}]`)).toHaveLength(1);
+  it('does nothing with anything but a string', () => {
+    for (const bad of [null, undefined, 42, { css: 'x' }]) expect(frame.apply(bad)).toBeNull();
+    expect(swapped()).toBeNull();
+    expect(document.querySelector('link')).not.toBeNull();
   });
 });
 

@@ -40,6 +40,7 @@ export async function applyBuiltInTemplate(
       ...project.settings,
       runtime: definition.runtime,
       promptSuggestions: seedPromptSuggestions(definition.promptSuggestions),
+      ...(definition.opensIn ? { opensIn: definition.opensIn } : {}),
     },
   });
 

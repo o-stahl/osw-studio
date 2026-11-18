@@ -16,6 +16,8 @@ import { handleCodexGeneration } from '@/lib/llm/codex-adapter';
 import { OSWS_PROVIDER, allowanceFromServer, freeAllowanceOffered, inferenceBaseUrl } from '@/lib/inference/allowance';
 import { forgetAccountToken, getAccountToken } from '@/lib/inference/account-token';
 import { trialClientAddress, trialCookieName, trialRequestToken, trialResponse, trialSessionNeeded } from '@/lib/inference/trial';
+import { trialSessionsLeftFor } from '@/lib/inference/trial/caps';
+import { allowanceUsageHeaders } from '@/lib/inference/allowance-usage';
 import { getSession } from '@/lib/auth/session';
 import { serverRunUser } from '@/lib/server-generate/run-auth';
 import { buildGeminiRequestBody, createGeminiToCompletionsTransformer, geminiToCompletionsResponse } from '@/lib/llm/gemini-adapter';
@@ -846,16 +848,23 @@ You can make multiple tool calls in a single response. Always include the tool_c
       );
     }
 
+    // How much of the day's OSW Studio inference is used, for the chat's note when it runs low. On the
+    // demo a spent session is followed by another while the visitor's network has sessions left.
+    const usageHeaders = allowance
+      ? allowanceUsageHeaders(response.headers, trialSession ? trialSessionsLeftFor(trialClientAddress(request.headers)) : undefined)
+      : {};
+
     // Non-streaming: return JSON directly
     if (!streamEnabled) {
       const data = await response.json();
-      return NextResponse.json(selectedProvider === 'ollama' ? ollamaToCompletionsResponse(data) : data);
+      return NextResponse.json(selectedProvider === 'ollama' ? ollamaToCompletionsResponse(data) : data, { headers: usageHeaders });
     }
 
     const responseHeaders: Record<string, string> = {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
+      ...usageHeaders,
     };
 
     if (selectedProvider === 'openrouter') {

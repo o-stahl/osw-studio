@@ -311,7 +311,9 @@ async function vfsShellExecuteSingle(
   try {
     const handler = getShellHandler(program);
     if (handler) {
-      return handler({ vfs, projectId, args, stdin, ctx, redirect });
+      // Awaited here, or a handler that throws answers past the `catch` below and takes the whole
+      // command line with it.
+      return await handler({ vfs, projectId, args, stdin, ctx, redirect });
     }
 
     // A loop splits on `;` into several unknown commands, so one `for` line came back as three
@@ -389,7 +391,7 @@ export const vfsShell = {
     cmd: string[],
     stdin?: string,
     ctx?: ShellContext
-  ): Promise<{ success: boolean; stdout?: string; stderr?: string; exitReason?: string }> => {
+  ): Promise<{ success: boolean; stdout?: string; stderr?: string; exitCode?: number; exitReason?: string }> => {
     const { getActiveVFS } = await import('./index');
     const activeVFS = getActiveVFS();
     await activeVFS.init();
@@ -398,6 +400,7 @@ export const vfsShell = {
       success: result.exitCode === 0,
       stdout: result.stdout,
       stderr: result.stderr,
+      exitCode: result.exitCode,
       exitReason: result.exitReason
     };
   }

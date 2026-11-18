@@ -129,3 +129,12 @@ describe('the runtime a project is treated as', () => {
     expect(resolveRuntime('"{}"' as never)).toBe(FALLBACK_RUNTIME);
   });
 });
+
+describe('the surface a project opens on', () => {
+  it('keeps canvas and preview, and drops anything else as no preference', () => {
+    expect(normalizeProjectSettings({ runtime: 'static', opensIn: 'canvas' }).opensIn).toBe('canvas');
+    expect(normalizeProjectSettings({ opensIn: 'preview' }).opensIn).toBe('preview');
+    expect(normalizeProjectSettings({ runtime: 'static', opensIn: 'editor' })).toEqual({ runtime: 'static' });
+    expect(normalizeProjectSettings({ opensIn: null })).toEqual({});
+  });
+});

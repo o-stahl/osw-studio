@@ -8,7 +8,9 @@ import { getActiveVFS } from '@/lib/vfs';
 import { vfsShell } from '@/lib/vfs/cli-shell';
 import { alwaysWriteCommands, isScriptCommand, isSedInPlaceFlag } from '@/lib/vfs/shell-commands';
 import { logger } from '../utils';
-import { checkWriteScope } from './write-scope';
+import { checkWriteScope, commandLineWrites } from './write-scope';
+import { parseBashCommand, splitHeredoc, splitNewlineCommands, unescapeHtmlEntities } from './bash-command';
+import { beginWriteGuard, type WriteGuard } from '@/lib/direct-edit/write-guard';
 import {
   isJSONTruncationError,
   attemptJSONRepair,
@@ -19,6 +21,8 @@ import { classifyGateKey, needsApproval, capabilityLabel, sqliteChangesData, typ
 import { configManager } from '@/lib/config/storage';
 import { apiFetch } from '@/lib/api/backend-status';
 import { readWorkspaceCookie } from '@/lib/web/workspace-cookie';
+
+export { parseBashCommand, splitNewlineCommands };
 
 export type ToolId = 'bash';
 
@@ -102,6 +106,18 @@ export interface ToolExecutionContext {
   onBuildRequested?: () => Promise<{ success: boolean; errors?: string[] }>;
   /** Delegate a web search to the browser (server-side generation only). */
   onSearchRequested?: (args: string[]) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
+  /** Selector matching where there is no DOM (server runs, MCP). See `ShellContext`. */
+  matchElements?: import('@/lib/direct-edit/targets').ElementMatcher;
+  /** `rg` and `grep` matching off the thread, with a time limit (server runs, MCP). See `ShellContext`. */
+  matchLines?: import('@/lib/vfs/shell/types').LineMatcher;
+  /** Rendering in an open tab, where there is no browser (server runs, MCP). See `ShellContext`. */
+  renderInBrowser?: (job: import('@/lib/canvas/render-types').RenderJob) => Promise<import('@/lib/canvas/render-types').RenderResult>;
+  /** Takes the images a command made for the model (`screenshot`). See `ShellContext`. */
+  onImages?: (images: import('@/lib/canvas/render-types').ScreenshotImage[]) => void;
+  /** Whether the model running the command reads images. */
+  imageInput?: boolean;
+  /** Placeholders this conversation asked the agent to build (`data-osw-block` values), for the write guard. */
+  expectedPlaceholders?: ReadonlySet<string>;
   /** Server-side generation: instead of prompting (no UI), a gated command emits
    *  `approval_required` and pauses the run (awaiting_user). The user approves/denies
    *  when they return, which restarts the task. Browser runs leave this unset and use
@@ -136,7 +152,7 @@ export class ToolRegistry {
         name: 'bash',
         description: `Run commands in the virtual file system.
 
-Commands: cat, head, tail, ls, tree, grep, rg, find, mkdir, mv, cp, rm, touch, sed, ss, echo, wc, sort, uniq, tr, curl, search, sqlite3, python, python3, lua, preview, build, status, agent, runtime, ask.
+Commands: cat, head, tail, ls, tree, grep, rg, find, mkdir, mv, cp, rm, touch, sed, ss, style, echo, wc, sort, uniq, tr, curl, inspect, screenshot, search, sqlite3, python, python3, lua, preview, build, status, agent, runtime, ask.
 Pipes (cmd1 | cmd2), redirects (> file, >> file), heredocs (<< 'EOF'), chaining (&&, ||, ;), and brace expansion ({a,b,c}) are supported.
 Run scripts: python <file>, lua <file> (for computation/output only — they run in a sandbox and CANNOT edit project files; use ss or cat > for edits). Files written to /output/ persist. Show output in preview: preview <path>.
 
@@ -209,34 +225,10 @@ One command at a time as a single string.`,
           //   cat > file << 'EOF'\ncontent\nEOF   (standard)
           //   cat << 'EOF' > file\ncontent\nEOF   (reversed — common with Gemini models)
           // Also handles trailing commands after the heredoc (e.g., ... EOF\npython file.py).
-          let heredocStdin: string | undefined;
-          let trailingCommands: string | undefined;
-          const heredocMatch = cmdString.match(/<<-?\s*['"]?(\w+)['"]?([^\n]*)\n([\s\S]*?)\n\1(?:[ \t]*\n([\s\S]+))?\s*$/);
-          if (heredocMatch) {
-            heredocStdin = heredocMatch[3];
-            cmdString = cmdString.slice(0, heredocMatch.index!).trim();
-            const afterDelimiter = (heredocMatch[2] || '').trim();
-            if (afterDelimiter) {
-              cmdString = cmdString + ' ' + afterDelimiter;
-            }
-            if (heredocMatch[4]) {
-              trailingCommands = heredocMatch[4].trim();
-            }
-          } else {
-            // Fallback: heredoc regex failed (e.g., truncated stream missing closing delimiter).
-            // Detect << in the command and extract everything after the first newline as stdin.
-            const fallbackMatch = cmdString.match(/^([^\n]*?)\s*<<-?\s*['"]?(\w+)['"]?([^\n]*)\n([\s\S]+)$/);
-            if (fallbackMatch) {
-              const beforeHeredoc = fallbackMatch[1].trim();
-              const delimiter = fallbackMatch[2];
-              const afterDelimiter = (fallbackMatch[3] || '').trim();
-              let content = fallbackMatch[4];
-              const closingRe = new RegExp('\\n' + delimiter + '\\s*$');
-              content = content.replace(closingRe, '');
-              heredocStdin = content;
-              cmdString = afterDelimiter ? beforeHeredoc + ' ' + afterDelimiter : beforeHeredoc;
-            }
-          }
+          const heredoc = splitHeredoc(cmdString);
+          cmdString = heredoc.command;
+          const heredocStdin = heredoc.stdin;
+          let trailingCommands = heredoc.trailing;
 
           // Unescape HTML entities on the COMMAND portion only. The heredoc body
           // (heredocStdin) is deliberately left untouched so file content is written verbatim.
@@ -349,9 +341,32 @@ One command at a time as a single string.`,
   }
 
   /**
-   * Execute a tool call
+   * Execute a tool call. A command that writes is followed by the write guard
+   * (`lib/direct-edit/write-guard.ts`): what it did to the user's hand edits goes under its reply.
    */
   async execute(
+    toolCall: ToolCall,
+    projectId: string,
+    context: ToolExecutionContext
+  ): Promise<string> {
+    const guard = await this.guardFor(toolCall, projectId, context);
+    const result = await this.run(toolCall, projectId, context);
+    const note = guard ? await guard.finish() : '';
+    return note ? `${result}\n\n${note}` : result;
+  }
+
+  /** The write guard for a call that may change files, or null: a read, or a project with nothing to guard. */
+  private async guardFor(toolCall: ToolCall, projectId: string, context: ToolExecutionContext): Promise<WriteGuard | null> {
+    if (toolCall.function?.name !== 'bash' || context.isReadOnly) return null;
+    if (!commandLineWrites(commandText(toolCall.function.arguments))) return null;
+    try {
+      return await beginWriteGuard(getActiveVFS(), projectId, { expectedPlaceholders: context.expectedPlaceholders });
+    } catch {
+      return null;
+    }
+  }
+
+  private async run(
     toolCall: ToolCall,
     projectId: string,
     context: ToolExecutionContext
@@ -442,6 +457,21 @@ One command at a time as a single string.`,
     }
   }
 
+}
+
+/**
+ * The command a bash call carries, read without running it. Arguments cut off mid-stream do not
+ * parse, and the repair in `run` may still execute them, so those are read as text.
+ */
+function commandText(args: string | undefined): string {
+  const raw = String(args ?? '');
+  try {
+    const parsed = JSON.parse(raw);
+    const command = parsed?.command ?? parsed?.cmd;
+    return Array.isArray(command) ? command.join(' ') : String(command ?? '');
+  } catch {
+    return raw.replace(/^\s*\{\s*["'](?:command|cmd)["']\s*:\s*["']?/, '').replace(/\\n/g, '\n').replace(/\\"/g, '"');
+  }
 }
 
 // Trailing incomplete operators that indicate the command was cut mid-syntax.
@@ -702,7 +732,7 @@ async function executeShellSegment(
       if (result.exitCode === 0) {
         return result.stdout && result.stdout.trim().length > 0 ? result.stdout : '';
       } else {
-        return `Error: ${result.stderr || 'Command failed'}`;
+        return failedCommandAnswer(result.stderr, result.stdout, result.exitCode);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Server request failed'; // i18n-ignore: returned to the agent
@@ -727,6 +757,11 @@ async function executeShellSegment(
     readVersions: context.readVersions,
     onBuildRequested: context.onBuildRequested,
     onSearchRequested: context.onSearchRequested,
+    matchElements: context.matchElements,
+    matchLines: context.matchLines,
+    renderInBrowser: context.renderInBrowser,
+    onImages: context.onImages,
+    imageInput: context.imageInput,
   });
 
   // Refresh server context if shell command modified .server/ files
@@ -737,11 +772,24 @@ async function executeShellSegment(
   }
 
   if (!result.success) {
-    const message = result.stderr && result.stderr.trim().length > 0 ? result.stderr : 'Command failed';
-    return `Error: ${message}`;
+    return failedCommandAnswer(result.stderr, result.stdout, result.exitCode);
   }
 
   return result.stdout && result.stdout.trim().length > 0 ? result.stdout : '';
+}
+
+/**
+ * The answer to a command that exited non-zero. It starts with `Error` because chains (`&&`, `||`)
+ * and the tool's failed status are decided by that prefix. A command can print results and still
+ * fail (`grep` over a found and a missing path), so its output follows under a label of its own,
+ * kept as the shell's handlers bounded it and never read as part of the error.
+ */
+function failedCommandAnswer(stderr: unknown, stdout: unknown, exitCode: unknown): string {
+  const message = typeof stderr === 'string' && stderr.trim().length > 0
+    ? stderr
+    : typeof exitCode === 'number' ? `Command failed with exit status ${exitCode}` : 'Command failed';
+  const output = typeof stdout === 'string' && stdout.trim().length > 0 ? `\n\nOutput before the failure:\n${stdout}` : '';
+  return `Error: ${message}${output}`;
 }
 
 /**
@@ -784,210 +832,6 @@ function scriptMayWriteFiles(src: string | undefined, runtime: ScriptRuntime): b
 }
 
 /**
- * Unescape HTML entities that models sometimes emit in tool call arguments.
- * Applied only to the command portion of a bash string — never to heredoc bodies.
- */
-function unescapeHtmlEntities(cmd: string): string {
-  if (!cmd.includes('&')) return cmd;
-  return cmd
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'");
-}
-
-/**
- * Parse a shell command string into an array of arguments
- */
-export function parseBashCommand(cmdStr: string): string[] {
-  const args: string[] = [];
-  const wasQuoted: boolean[] = [];
-  // Offset in each token just past its final closing quote. Everything from there on was typed
-  // unquoted, so it is the only part an operator may be split out of.
-  const quotedEnds: number[] = [];
-  let current = '';
-  let inQuotes = false;
-  let quoteChar = '';
-  let escaped = false;
-  let argWasQuoted = false;
-  let quotedEnd = 0;
-
-  for (let i = 0; i < cmdStr.length; i++) {
-    const char = cmdStr[i];
-
-    if (escaped) {
-      current += char;
-      escaped = false;
-      continue;
-    }
-
-    if (inQuotes) {
-      if (char === quoteChar) {
-        inQuotes = false;
-        quoteChar = '';
-        quotedEnd = current.length;
-      } else if (quoteChar === '"' && char === '\\') {
-        // Double quotes: only \" and \\ are escape sequences; other backslashes are literal
-        const next = cmdStr[i + 1];
-        if (next === '"' || next === '\\') {
-          escaped = true;
-          continue;
-        }
-        current += char;
-      } else {
-        // Single quotes: everything is literal (including backslashes)
-        current += char;
-      }
-    } else {
-      if (char === '\\') {
-        escaped = true;
-        continue;
-      }
-      if (char === '"' || char === "'") {
-        inQuotes = true;
-        quoteChar = char;
-        argWasQuoted = true;
-      } else if (char === ' ' || char === '\t' || char === '\n' || char === '\r') {
-        if (current.length > 0 || argWasQuoted) {
-          args.push(current);
-          wasQuoted.push(argWasQuoted);
-          quotedEnds.push(quotedEnd);
-          current = '';
-          argWasQuoted = false;
-          quotedEnd = 0;
-        }
-      } else {
-        current += char;
-      }
-    }
-  }
-
-  if (current.length > 0 || argWasQuoted) {
-    args.push(current);
-    wasQuoted.push(argWasQuoted);
-    quotedEnds.push(quotedEnd);
-  }
-
-  const split = splitOperatorTokens(args, wasQuoted, quotedEnds);
-
-  // Expand brace patterns like {a,b,c} — but not inside quoted arguments (matches bash behavior)
-  return expandBraces(split.args, split.wasQuoted);
-}
-
-/** `;`, `&&`, `||` and `|`, longest first so `||` is not read as two pipes. */
-const OPERATOR_SPLIT_RE = /(\|\||&&|;|\|)/;
-
-/**
- * A glued output redirect: `ls>out.txt`, `cat a>>b`.
- *
- * The operator must be followed by something a filename can start with. That lookahead is what
- * keeps `-->` intact — a trailing `>` with no target is not a redirect, and HTML written without
- * quotes is far more common here than a redirect someone forgot to space out.
- */
-const GLUED_REDIRECT_RE = /(>>|>)(?=[\w./~])/;
-
-/** `2>`, `1>>`, `&>`, `2>/dev/null`, `2>&1` — stripBashRedirects matches these whole, so leave them. */
-const FD_REDIRECT_RE = /^(?:0|1|2|&)>>?/;
-
-/** Tokens carrying a `<` are treated as content, not redirection: `<p>hi</p>` must survive intact. */
-function canSplitRedirect(token: string): boolean {
-  return !token.includes('<') && !FD_REDIRECT_RE.test(token) && GLUED_REDIRECT_RE.test(token);
-}
-
-/**
- * Separate control operators that were written without surrounding spaces.
- *
- * Everything downstream detects operators by whole-token equality, so `head -c 600; echo` left
- * `600;` as one token and the `;` was never seen — the pipe splitter then swallowed the rest of
- * the line and the last bare word became the command's file argument. Unquoted operators are
- * separators in bash regardless of spacing, so splitting here matches the shell being imitated.
- *
- * Quoted arguments are left alone: `echo "a;b"` is one literal argument, as in bash.
- */
-function splitOperatorTokens(
-  args: string[],
-  wasQuoted: boolean[],
-  quotedEnds: number[]
-): { args: string[]; wasQuoted: boolean[] } {
-  const outArgs: string[] = [];
-  const outQuoted: boolean[] = [];
-  const isOperator = (s: string) => s === ';' || s === '&&' || s === '||' || s === '|';
-
-  for (let i = 0; i < args.length; i++) {
-    const token = args[i];
-    // Only the run after the last closing quote is eligible. Testing the whole token treated
-    // `echo '---'; date` as one quoted argument, so the `;` never became an operator and `date`
-    // was swallowed as an argument to echo.
-    const qEnd = quotedEnds[i] ?? 0;
-    const head = token.slice(0, qEnd);
-    const tail = token.slice(qEnd);
-    if (!OPERATOR_SPLIT_RE.test(tail) && !canSplitRedirect(tail)) {
-      outArgs.push(token);
-      outQuoted.push(wasQuoted[i]);
-      continue;
-    }
-
-    const pieces: string[] = [];
-    for (const chained of tail.split(OPERATOR_SPLIT_RE)) {
-      if (chained === '') continue;
-      const split = canSplitRedirect(chained) ? chained.split(GLUED_REDIRECT_RE) : [chained];
-      for (const piece of split) {
-        if (piece !== '') pieces.push(piece);
-      }
-    }
-
-    // The quoted run belongs to whatever came before the first operator: its own argument when
-    // the tail opens with one (`'---';`), otherwise glued to the first piece (`'q'x;y` → `qx`).
-    if (head) {
-      if (pieces.length === 0 || isOperator(pieces[0])) {
-        outArgs.push(head);
-        outQuoted.push(true);
-      } else {
-        pieces[0] = head + pieces[0];
-      }
-    }
-    for (const piece of pieces) {
-      outArgs.push(piece);
-      outQuoted.push(head !== '' && piece.startsWith(head));
-    }
-  }
-
-  return { args: outArgs, wasQuoted: outQuoted };
-}
-
-/**
- * Expand brace patterns in arguments (e.g., "file{1,2,3}.txt" -> ["file1.txt", "file2.txt", "file3.txt"])
- * Skips quoted arguments — bash does not expand braces inside quotes.
- */
-function expandBraces(args: string[], wasQuoted?: boolean[]): string[] {
-  const expanded: string[] = [];
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (wasQuoted?.[i]) {
-      expanded.push(arg);
-      continue;
-    }
-    // Check if arg contains brace expansion pattern
-    const braceMatch = arg.match(/^(.+)\{([^}]+)\}(.*)$/);
-
-    if (braceMatch) {
-      const [, prefix, items, suffix] = braceMatch;
-      const itemList = items.split(',').map(item => item.trim());
-      for (const item of itemList) {
-        expanded.push(prefix + item + suffix);
-      }
-    } else {
-      expanded.push(arg);
-    }
-  }
-
-  return expanded;
-}
-
-/**
  * Check if a command is a write operation
  */
 function isWriteOperation(cmd: string[]): boolean {
@@ -1022,89 +866,6 @@ function isWriteOperation(cmd: string[]): boolean {
   // Check for redirection operators in any command
   // This catches cases like: cat file > output.txt
   return cmd.some(arg => arg === '>' || arg === '>>');
-}
-
-/**
- * Check if a string has unbalanced quotes (i.e., we're inside an open quote).
- * Respects escape sequences in double quotes (\" is not a closing quote).
- * In single quotes, backslash is literal (no escaping) per POSIX.
- */
-function hasUnbalancedQuotes(text: string): boolean {
-  let inSingle = false;
-  let inDouble = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (ch === '\\' && inDouble) { i++; continue; }
-    if (ch === "'" && !inDouble) inSingle = !inSingle;
-    else if (ch === '"' && !inSingle) inDouble = !inDouble;
-  }
-  return inSingle || inDouble;
-}
-
-/**
- * Split a newline-separated command string into individual commands,
- * preserving heredoc blocks and multiline quoted strings as part of their parent command.
- * E.g., "mkdir -p dir\ncat > file << 'EOF'\ncontent\nEOF\nls" → 3 commands
- */
-export function splitNewlineCommands(cmdStr: string): string[] {
-  const lines = cmdStr.split('\n');
-  const commands: string[] = [];
-  let current = '';
-  let heredocDelimiter: string | null = null;
-
-  for (const line of lines) {
-    if (heredocDelimiter) {
-      // Inside a heredoc — accumulate until we hit the end delimiter
-      current += '\n' + line;
-      if (line.trim() === heredocDelimiter) {
-        // Heredoc closed — the command is complete. Flush it now and reset so the
-        // heredoc BODY never feeds the quote-balance heuristic below. Otherwise a body
-        // with an odd number of quotes makes hasUnbalancedQuotes(current) true and the
-        // NEXT chained heredoc command gets swallowed as a fake quote-continuation
-        // (e.g. three chained `cat > f << 'EOF'` blocks collapsing into two).
-        heredocDelimiter = null;
-        const trimmed = current.trim();
-        if (trimmed && !trimmed.startsWith('#')) commands.push(trimmed);
-        current = '';
-      }
-      continue;
-    }
-
-    // Inside an unclosed quote — accumulate until quotes balance
-    if (current && hasUnbalancedQuotes(current)) {
-      current += '\n' + line;
-      continue;
-    }
-
-    // Check if this line starts a heredoc
-    const heredocStart = line.match(/<<-?\s*['"]?(\w+)['"]?/);
-    if (heredocStart) {
-      if (current) {
-        const trimmed = current.trim();
-        if (trimmed && !trimmed.startsWith('#')) commands.push(trimmed);
-        current = '';
-      }
-      current = line;
-      heredocDelimiter = heredocStart[1];
-      continue;
-    }
-
-    // Regular line — accumulate in current buffer
-    // (don't push directly — next iteration's unbalanced quote check needs to see it)
-    if (current) {
-      const prevTrimmed = current.trim();
-      if (prevTrimmed && !prevTrimmed.startsWith('#')) commands.push(prevTrimmed);
-    }
-    current = line;
-  }
-
-  // Flush remaining
-  if (current) {
-    const trimmed = current.trim();
-    if (trimmed && !trimmed.startsWith('#')) commands.push(trimmed);
-  }
-
-  return commands;
 }
 
 // Singleton instance

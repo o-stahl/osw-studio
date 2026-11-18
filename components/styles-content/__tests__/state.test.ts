@@ -2,11 +2,11 @@ import { createTranslator } from 'next-intl';
 import en from '@/messages/en.json';
 import { describe, it, expect } from 'vitest';
 import {
+  canMakeApply,
   OVERRIDES_PATH,
   REFUSAL_REASONS,
   canReset,
   confirmationMessage,
-  declarationBlock,
   emptyStylesState,
   lossAgentPrompt,
   lossFor,
@@ -56,8 +56,15 @@ const ok = (over: Partial<ApplyResult> = {}): ApplyResult => ({
   markerId: 'm1',
   filesWritten: [OVERRIDES_PATH],
   skippedPages: [],
-  duplicateCount: 1,
+  css: '/* the file as written */',
   ...over,
+});
+
+/** What reading `/overrides.css` back says this marker sets for every width. */
+const overridesOf = (properties: readonly string[]) => ({
+  byScope: new Map([['all' as const, Object.fromEntries(properties.map(p => [p, 'x']))]]),
+  text: '',
+  widths: [],
 });
 
 /** Fold a run of events, discarding commands. */
@@ -69,12 +76,29 @@ function kinds(commands: StylesCommand[]): string[] {
   return commands.map(c => c.kind);
 }
 
+/** The one command of a kind, by kind rather than by position. */
+function command<K extends StylesCommand['kind']>(commands: StylesCommand[], kind: K): Extract<StylesCommand, { kind: K }> {
+  const found = commands.filter(c => c.kind === kind);
+  expect(found).toHaveLength(1);
+  return found[0] as Extract<StylesCommand, { kind: K }>;
+}
+
 /** Selected, one padding edit committed to `/overrides.css`, and a probe answered. */
 function edited(): StylesState {
   let state = run(emptyStylesState(), { type: 'select', payload: payload() });
-  state = run(state, { type: 'change', declaration: padding });
-  state = run(state, { type: 'applied', declaration: padding, result: ok() });
+  state = run(state, { type: 'change', changes: [padding] });
+  state = run(state, { type: 'applied', changes: [padding], scope: 'all', result: ok() });
   return state;
+}
+
+/**
+ * `edited`, after its padding lost once and was made `!important`: from here a loss is one a
+ * stylesheet cannot beat, and is recorded.
+ */
+function strengthened(): StylesState {
+  let state = edited();
+  state = run(state, { type: 'probed', nodeId: 'n1', lost: ['padding-block-start', 'padding-block-end'], winner: '/styles.css' });
+  return run(state, { type: 'applied', changes: [], scope: 'all', result: ok() });
 }
 
 describe('selection', () => {
@@ -88,14 +112,14 @@ describe('selection', () => {
   });
 
   it('clears any previous refusal, confirmation and lost-property state', () => {
-    let state = edited();
+    let state = strengthened();
     state = run(state, { type: 'probed', nodeId: 'n1', lost: ['padding-block-start'], winner: '/s.css' });
     state = run(state, { type: 'confirm' }); // no-op without a pending, so arm it the real way
     state = run(state,
-      { type: 'change', declaration: colour },
-      { type: 'applied', declaration: colour, result: { ok: false, reason: 'needs-confirmation', instances: 4, filesWritten: [] } },
+      { type: 'change', changes: [colour] },
+      { type: 'applied', changes: [colour], scope: 'all', result: { ok: false, reason: 'needs-confirmation', instances: 4, filesWritten: [] } },
       { type: 'confirm' },
-      { type: 'applied', declaration: colour, result: { ok: false, reason: 'unresolvable', filesWritten: [] } },
+      { type: 'applied', changes: [colour], scope: 'all', result: { ok: false, reason: 'unresolvable', filesWritten: [] } },
     );
     expect(state.confirmed).toBe(true);
     expect(state.refusal?.reason).toBe('unresolvable');
@@ -142,11 +166,12 @@ describe('the multi-instance confirmation', () => {
     const state = run(emptyStylesState(), { type: 'select', payload: payload() });
     const { state: armed, commands } = reduceStyles(state, {
       type: 'applied',
-      declaration: padding,
+      changes: [padding],
+      scope: 'all',
       result: { ok: false, reason: 'needs-confirmation', file: '/partials/nav.hbs', instances: 6, filesWritten: [] },
     });
     expect(commands).toEqual([]);
-    expect(armed.pending).toEqual({ declaration: padding, file: '/partials/nav.hbs', instances: 6 });
+    expect(armed.pending).toEqual({ changes: [padding], scope: 'all', file: '/partials/nav.hbs', instances: 6 });
     expect(armed.confirmed).toBe(false);
     expect(armed.refusal).toBeNull();
   });
@@ -155,11 +180,12 @@ describe('the multi-instance confirmation', () => {
     let state = run(emptyStylesState(), { type: 'select', payload: payload() });
     state = run(state, {
       type: 'applied',
-      declaration: padding,
+      changes: [padding],
+      scope: 'all',
       result: { ok: false, reason: 'needs-confirmation', instances: 6, filesWritten: [] },
     });
     const { state: confirmed, commands } = reduceStyles(state, { type: 'confirm' });
-    expect(commands).toEqual([{ kind: 'apply', declaration: padding, confirmedMultiInstance: true }]);
+    expect(commands).toEqual([{ kind: 'apply', changes: [padding], scope: 'all', confirmedMultiInstance: true }]);
     expect(confirmed.pending).toBeNull();
     expect(confirmed.confirmed).toBe(true);
   });
@@ -168,14 +194,15 @@ describe('the multi-instance confirmation', () => {
     // Adjusting padding four steps must not ask four times.
     let state = run(emptyStylesState(), { type: 'select', payload: payload() });
     state = run(state,
-      { type: 'applied', declaration: padding, result: { ok: false, reason: 'needs-confirmation', instances: 6, filesWritten: [] } },
+      { type: 'applied', changes: [padding], scope: 'all', result: { ok: false, reason: 'needs-confirmation', instances: 6, filesWritten: [] } },
       { type: 'confirm' },
-      { type: 'applied', declaration: padding, result: ok({ filesWritten: ['/partials/nav.hbs', OVERRIDES_PATH] }) },
+      { type: 'applied', changes: [padding], scope: 'all', result: ok({ filesWritten: ['/partials/nav.hbs', OVERRIDES_PATH] }) },
     );
-    const { commands } = reduceStyles(state, { type: 'change', declaration: { property: 'padding-block', value: '1.5rem' } });
+    const { commands } = reduceStyles(state, { type: 'change', changes: [{ property: 'padding-block', value: '1.5rem' }] });
     expect(commands).toEqual([{
       kind: 'apply',
-      declaration: { property: 'padding-block', value: '1.5rem' },
+      changes: [{ property: 'padding-block', value: '1.5rem' }],
+      scope: 'all',
       confirmedMultiInstance: true,
     }]);
   });
@@ -185,9 +212,9 @@ describe('the multi-instance confirmation', () => {
     // element — now carrying its marker, and with a `srcAttr` index the <link> insertion shifted.
     let state = run(emptyStylesState(), { type: 'select', payload: payload({ srcAttr: '/index.html:120' }) });
     state = run(state,
-      { type: 'applied', declaration: padding, result: { ok: false, reason: 'needs-confirmation', instances: 6, filesWritten: [] } },
+      { type: 'applied', changes: [padding], scope: 'all', result: { ok: false, reason: 'needs-confirmation', instances: 6, filesWritten: [] } },
       { type: 'confirm' },
-      { type: 'applied', declaration: padding, result: ok({ filesWritten: ['/index.html', OVERRIDES_PATH] }) },
+      { type: 'applied', changes: [padding], scope: 'all', result: ok({ filesWritten: ['/index.html', OVERRIDES_PATH] }) },
       { type: 'frame-ready' },
       { type: 'select', payload: payload({ nodeId: 'n9', srcAttr: '/index.html:167', attributes: { 'data-osw-id': 'm1' } }) },
     );
@@ -200,9 +227,9 @@ describe('the multi-instance confirmation', () => {
     // domPath no longer matches. The marker is authored into source and does.
     let state = run(emptyStylesState(), { type: 'select', payload: payload() });
     state = run(state,
-      { type: 'applied', declaration: padding, result: { ok: false, reason: 'needs-confirmation', instances: 6, filesWritten: [] } },
+      { type: 'applied', changes: [padding], scope: 'all', result: { ok: false, reason: 'needs-confirmation', instances: 6, filesWritten: [] } },
       { type: 'confirm' },
-      { type: 'applied', declaration: padding, result: ok({ filesWritten: ['/index.html', OVERRIDES_PATH] }) },
+      { type: 'applied', changes: [padding], scope: 'all', result: ok({ filesWritten: ['/index.html', OVERRIDES_PATH] }) },
       { type: 'frame-ready' },
       {
         type: 'select',
@@ -223,7 +250,7 @@ describe('the multi-instance confirmation', () => {
     // is what plan 4a re-resolves a selection through after a recompile.
     let state = run(emptyStylesState(), { type: 'select', payload: payload() });
     state = run(state,
-      { type: 'applied', declaration: padding, result: { ok: false, reason: 'needs-confirmation', instances: 6, filesWritten: [] } },
+      { type: 'applied', changes: [padding], scope: 'all', result: { ok: false, reason: 'needs-confirmation', instances: 6, filesWritten: [] } },
       { type: 'confirm' },
     );
     expect(state.markerId).toBeNull();
@@ -234,7 +261,7 @@ describe('the multi-instance confirmation', () => {
   it('is disarmed by changing selection', () => {
     let state = run(emptyStylesState(), { type: 'select', payload: payload() });
     state = run(state,
-      { type: 'applied', declaration: padding, result: { ok: false, reason: 'needs-confirmation', instances: 6, filesWritten: [] } },
+      { type: 'applied', changes: [padding], scope: 'all', result: { ok: false, reason: 'needs-confirmation', instances: 6, filesWritten: [] } },
       { type: 'confirm' },
     );
     expect(state.confirmed).toBe(true);
@@ -243,14 +270,14 @@ describe('the multi-instance confirmation', () => {
 
   it('emits apply without confirmation for an ordinary element', () => {
     const state = run(emptyStylesState(), { type: 'select', payload: payload() });
-    const { commands } = reduceStyles(state, { type: 'change', declaration: padding });
-    expect(commands).toEqual([{ kind: 'apply', declaration: padding, confirmedMultiInstance: false }]);
+    const { commands } = reduceStyles(state, { type: 'change', changes: [padding] });
+    expect(commands).toEqual([{ kind: 'apply', changes: [padding], scope: 'all', confirmedMultiInstance: false }]);
   });
 
   it('writes nothing when there is no element selected', () => {
     // Reachable: a control can be mid-press when the preview reloads and the selection is dropped.
     // An apply with no selection would resolve against whatever the last payload happened to be.
-    const { commands } = reduceStyles(emptyStylesState(), { type: 'change', declaration: padding });
+    const { commands } = reduceStyles(emptyStylesState(), { type: 'change', changes: [padding] });
     expect(commands).toEqual([]);
   });
 
@@ -258,7 +285,8 @@ describe('the multi-instance confirmation', () => {
     let state = run(emptyStylesState(), { type: 'select', payload: payload() });
     state = run(state, {
       type: 'applied',
-      declaration: padding,
+      changes: [padding],
+      scope: 'all',
       result: { ok: false, reason: 'needs-confirmation', instances: 6, filesWritten: [] },
     });
     const { state: cancelled, commands } = reduceStyles(state, { type: 'cancel' });
@@ -268,10 +296,10 @@ describe('the multi-instance confirmation', () => {
   });
 
   it('says how many elements the change reaches', () => {
-    expect(confirmationMessage({ declaration: padding, file: '/partials/nav.hbs', instances: 6 }, t))
-      .toContain('/partials/nav.hbs');
-    expect(confirmationMessage({ declaration: padding, file: '/partials/nav.hbs', instances: 6 }, t))
-      .toContain('6');
+    expect(confirmationMessage({ changes: [padding], scope: 'all', file: '/partials/nav.hbs', instances: 6 }, t))
+      .toBe(t('confirmManyFrom', { count: 6, file: '/partials/nav.hbs' }));
+    expect(confirmationMessage({ changes: [padding], scope: 'all', instances: 6 }, t))
+      .toBe(t('confirmMany', { count: 6, file: '' }));
   });
 });
 
@@ -324,7 +352,8 @@ describe('refusals', () => {
     const state = run(emptyStylesState(), { type: 'select', payload: payload() });
     const { state: refused, commands } = reduceStyles(state, {
       type: 'applied',
-      declaration: padding,
+      changes: [padding],
+      scope: 'all',
       result: { ok: false, reason: 'stale-index', file: '/index.html', filesWritten: [] },
     });
     expect(commands).toEqual([]);
@@ -336,7 +365,8 @@ describe('refusals', () => {
     const state = run(emptyStylesState(), { type: 'select', payload: payload() });
     const { state: refused } = reduceStyles(state, {
       type: 'applied',
-      declaration: padding,
+      changes: [padding],
+      scope: 'all',
       result: { ok: false, reason: 'ambiguous-stylesheet', message: 'boom', markerId: 'm1', filesWritten: ['/index.html'] },
     });
     expect(refused.refusal?.stamped).toBe(true);
@@ -390,14 +420,15 @@ describe('the offered action', () => {
 });
 
 describe('the commit branch', () => {
-  it('emits NO preview and NO probe when the apply wrote source', () => {
-    // A source write is not silent, so a recompile is already coming: the transient would be sent
+  it('emits NO broadcast and NO probe when the apply wrote source', () => {
+    // A source write is not silent, so a recompile is already coming: the file would be swapped
     // into a document about to be replaced, and the probe would answer about a document that does
     // not carry the marker yet — reporting every property lost.
     const state = run(emptyStylesState(), { type: 'select', payload: payload() });
     const { state: after, commands } = reduceStyles(state, {
       type: 'applied',
-      declaration: padding,
+      changes: [padding],
+      scope: 'all',
       result: ok({ filesWritten: ['/index.html', OVERRIDES_PATH] }),
     });
     // The read is not a message into the doomed document, so it is the one command that still goes:
@@ -407,16 +438,18 @@ describe('the commit branch', () => {
     expect(after.committed).toEqual(['padding-block']);
   });
 
-  it('emits preview AND probe when the apply wrote only /overrides.css', () => {
+  it('swaps the file into the frames, reads the element again and probes when the apply wrote only /overrides.css', () => {
     const state = run(emptyStylesState(), { type: 'select', payload: payload() });
     const { state: after, commands } = reduceStyles(state, {
       type: 'applied',
-      declaration: padding,
+      changes: [padding],
+      scope: 'all',
       result: ok({ filesWritten: [OVERRIDES_PATH] }),
     });
-    expect(kinds(commands)).toEqual(['preview', 'probe', 'read-overrides']);
-    expect(commands[0]).toEqual({ kind: 'preview', markerId: 'm1', css: 'padding-block: 1rem;' });
-    expect(commands[1]).toEqual({
+    // In that order: the frame swaps the file in before it answers the query and the probe.
+    expect(kinds(commands)).toEqual(['broadcast', 'query', 'probe', 'read-overrides']);
+    expect(commands[0]).toEqual({ kind: 'broadcast', css: '/* the file as written */' });
+    expect(command(commands, 'probe')).toEqual({
       kind: 'probe',
       nodeId: 'n1',
       markerId: 'm1',
@@ -429,41 +462,40 @@ describe('the commit branch', () => {
     const state = run(emptyStylesState(), { type: 'select', payload: payload() });
     const { commands } = reduceStyles(state, {
       type: 'applied',
-      declaration: padding,
+      changes: [padding],
+      scope: 'all',
       result: ok({ filesWritten: [OVERRIDES_PATH, '/about.html'] }),
     });
     expect(kinds(commands)).toEqual(['read-overrides']);
   });
 
-  it('previews and probes when nothing at all was written — the value was already there', () => {
+  it('probes, and swaps nothing in, when nothing at all was written — the value was already there', () => {
     const state = run(emptyStylesState(), { type: 'select', payload: payload() });
     const { commands } = reduceStyles(state, {
       type: 'applied',
-      declaration: padding,
+      changes: [padding],
+      scope: 'all',
       result: ok({ filesWritten: [] }),
     });
-    expect(kinds(commands)).toEqual(['preview', 'probe', 'read-overrides']);
+    expect(kinds(commands)).toEqual(['probe', 'read-overrides']);
   });
 
-  it('sends the whole accumulated block, not the declaration that just changed', () => {
-    // The frame replaces the transient <style> on every send, so a single declaration would
-    // visually revert the earlier edit — and the control, which renders from computed style, with it.
+  it('broadcasts the whole file as the write left it, so every earlier edit stays on screen', () => {
+    // One rule per send would visually revert the element's earlier edits, and every other element's.
     let state = edited();
-    const { commands } = reduceStyles(state, { type: 'applied', declaration: colour, result: ok() });
-    const preview = commands[0] as Extract<StylesCommand, { kind: 'preview' }>;
-    expect(preview.css).toBe('padding-block: 1rem; color: rgb(1, 2, 3);');
-    state = run(state, { type: 'applied', declaration: colour, result: ok() });
+    const { commands } = reduceStyles(state, { type: 'applied', changes: [colour], scope: 'all', result: ok({ css: '/* both rules */' }) });
+    expect(command(commands, 'broadcast')).toEqual({ kind: 'broadcast', css: '/* both rules */' });
+    state = run(state, { type: 'applied', changes: [colour], scope: 'all', result: ok() });
     expect(state.committed).toEqual(['padding-block', 'color']);
   });
 
   it('probes every property committed so far, not only the newest', () => {
     const state = edited();
-    const { commands } = reduceStyles(state, { type: 'applied', declaration: colour, result: ok() });
-    const probe = commands[1] as Extract<StylesCommand, { kind: 'probe' }>;
-    expect(probe.properties).toEqual(['padding-block-start', 'padding-block-end', 'color']);
+    const { commands } = reduceStyles(state, { type: 'applied', changes: [colour], scope: 'all', result: ok() });
+    expect(command(commands, 'probe').properties).toEqual(['padding-block-start', 'padding-block-end', 'color']);
   });
 
-  it('forgets the transient block on frame-ready, because the file carries it now', () => {
+  it('forgets the values this session wrote on frame-ready, because the file carries them now', () => {
     const state = run(edited(), { type: 'frame-ready' });
     expect(state.declarations).toEqual({});
     // The probe's question list must NOT be forgotten with it, or the first edit's loss is never
@@ -492,8 +524,8 @@ describe('the commit branch', () => {
 
 describe('lost overrides', () => {
   it('records a loss per property, with what beat it', () => {
-    let state = edited();
-    state = run(state, { type: 'applied', declaration: colour, result: ok() });
+    let state = strengthened();
+    state = run(state, { type: 'applied', changes: [colour], scope: 'all', result: ok() });
     state = run(state, {
       type: 'probed',
       nodeId: 'n1',
@@ -508,13 +540,13 @@ describe('lost overrides', () => {
   });
 
   it('records a loss the frame could not attribute, rather than dropping it', () => {
-    let state = edited();
+    let state = strengthened();
     state = run(state, { type: 'probed', nodeId: 'n1', lost: ['padding-block-start'] });
     expect(lossFor(state, 'padding-block')).toEqual({ names: ['padding-block-start'], winner: null });
   });
 
   it('does not blank a loss the probe did not ask about', () => {
-    let state = edited();
+    let state = strengthened();
     state = run(state, { type: 'probed', nodeId: 'n1', lost: ['padding-block-start'], winner: '/a.css' });
     // A probe scoped to colour alone comes back clean. Padding's verdict is not its to overturn.
     state = { ...state, probing: ['color'] };
@@ -523,17 +555,19 @@ describe('lost overrides', () => {
   });
 
   it('clears a loss the same probe re-asked about and did not repeat', () => {
-    let state = edited();
+    let state = strengthened();
     state = run(state, { type: 'probed', nodeId: 'n1', lost: ['padding-block-start'], winner: '/a.css' });
-    state = run(state, { type: 'applied', declaration: padding, result: ok() });
+    expect(lossFor(state, 'padding-block')).not.toBeNull();
+    state = run(state, { type: 'applied', changes: [padding], scope: 'all', result: ok() });
     state = run(state, { type: 'probed', nodeId: 'n1', lost: [] });
     expect(lossFor(state, 'padding-block')).toBeNull();
   });
 
   it('drops the old verdict the moment the property is written again', () => {
-    let state = edited();
+    let state = strengthened();
     state = run(state, { type: 'probed', nodeId: 'n1', lost: ['padding-block-start'], winner: '/a.css' });
-    state = run(state, { type: 'applied', declaration: padding, result: ok() });
+    expect(lossFor(state, 'padding-block')).not.toBeNull();
+    state = run(state, { type: 'applied', changes: [padding], scope: 'all', result: ok() });
     expect(lossFor(state, 'padding-block')).toBeNull();
   });
 
@@ -543,10 +577,148 @@ describe('lost overrides', () => {
   });
 });
 
+describe('a change that loses is made to win', () => {
+  const lostPadding = { type: 'probed', nodeId: 'n1', lost: ['padding-block-start', 'padding-block-end'], winner: '/styles.css' } as const;
+
+  it('asks for the property to be marked important instead of reporting the loss', () => {
+    const { state, commands } = reduceStyles(edited(), lostPadding);
+    expect(commands).toEqual([{ kind: 'strengthen', scope: 'all', properties: ['padding-block'] }]);
+    expect(lossFor(state, 'padding-block')).toBeNull();
+    expect(lostOverrides(state)).toEqual([]);
+  });
+
+  it('probes again once the stronger rule is written, and is quiet when it won', () => {
+    const first = reduceStyles(edited(), lostPadding).state;
+    const written = reduceStyles(first, { type: 'applied', changes: [], scope: 'all', result: ok() });
+    // The frames get the file, and the frame is asked whether the padding wins now.
+    expect(kinds(written.commands)).toEqual(['broadcast', 'query', 'probe', 'read-overrides']);
+    expect(command(written.commands, 'probe').properties).toEqual(['padding-block-start', 'padding-block-end']);
+    // The declaration is the user's still: strengthening is not an edit of its own.
+    expect(written.state.committed).toEqual(['padding-block']);
+
+    const clean = reduceStyles(written.state, { type: 'probed', nodeId: 'n1', lost: [] });
+    expect(clean.commands).toEqual([]);
+    expect(lostOverrides(clean.state)).toEqual([]);
+  });
+
+  it('reports a loss that outlasts it, and does not strengthen twice', () => {
+    const again = reduceStyles(strengthened(), { ...lostPadding, winner: 'inline style' });
+    expect(again.commands).toEqual([]);
+    expect(lossFor(again.state, 'padding-block')).toEqual({ names: ['padding-block-start', 'padding-block-end'], winner: 'inline style' });
+  });
+
+  it('leaves alone a property this session did not write', () => {
+    // Border radius was set in an earlier session, or by nobody: its loss is reported as it is.
+    const { state, commands } = reduceStyles(edited(), { type: 'probed', nodeId: 'n1', lost: ['border-top-left-radius'], winner: '/styles.css' });
+    expect(commands).toEqual([]);
+    expect(lossFor(state, 'border-radius')).not.toBeNull();
+  });
+
+  it('strengthens only what lost, when two properties were written', () => {
+    let state = run(edited(), { type: 'change', changes: [colour] }, { type: 'applied', changes: [colour], scope: 'all', result: ok() });
+    const out = reduceStyles(state, { type: 'probed', nodeId: 'n1', lost: ['color'], winner: '/styles.css' });
+    expect(out.commands).toEqual([{ kind: 'strengthen', scope: 'all', properties: ['color'] }]);
+    state = out.state;
+    expect(state.strengthened).toEqual(['color']);
+  });
+
+  it('starts over for a property that was taken off and set again', () => {
+    let state = strengthened();
+    state = run(state, { type: 'applied', changes: [{ property: 'padding-block', value: null }], scope: 'all', result: ok() });
+    expect(state.strengthened).toEqual([]);
+    state = run(state, { type: 'change', changes: [padding] }, { type: 'applied', changes: [padding], scope: 'all', result: ok() });
+    expect(reduceStyles(state, lostPadding).commands).toEqual([{ kind: 'strengthen', scope: 'all', properties: ['padding-block'] }]);
+  });
+
+  it('forgets what it strengthened with the element and with the width', () => {
+    expect(run(strengthened(), { type: 'select', payload: other }).strengthened).toEqual([]);
+    expect(run(strengthened(), { type: 'scope', scope: 640 }).strengthened).toEqual([]);
+    // The same element coming back after a recompile keeps it: its rule is the same rule.
+    expect(run(strengthened(), { type: 'select', payload: payload() }).strengthened).toEqual(['padding-block']);
+  });
+});
+
+describe('a change from an earlier session that loses', () => {
+  /** An element whose block in the file sets a colour and a margin, selected with nothing edited yet. */
+  function reopened(): StylesState {
+    return run(emptyStylesState(), { type: 'select', payload: payload({ attributes: { 'data-osw-id': 'm1' } }) });
+  }
+  const held = { type: 'overrides', markerId: 'm1', overrides: overridesOf(['color', 'margin']) } as const;
+
+  it('is asked about when the file is read, by the names the file declares', () => {
+    const { commands } = reduceStyles(reopened(), held);
+    expect(commands).toEqual([{ kind: 'probe', nodeId: 'n1', markerId: 'm1', properties: ['color', 'margin'], tag: 'earlier' }]);
+  });
+
+  it('is shown with what beat it, and is not strengthened unasked', () => {
+    let state = run(reopened(), held);
+    const out = reduceStyles(state, { type: 'probed', nodeId: 'n1', lost: ['color'], winner: '/styles.css', written: ['color'], tag: 'earlier' });
+    state = out.state;
+    // Nothing is written: it may have been losing for as long as the site has been published.
+    expect(out.commands).toEqual([]);
+    expect(lostOverrides(state)).toEqual([{ property: 'color', label: 'color', winner: '/styles.css' }]);
+    expect(canMakeApply(state)).toBe(true);
+  });
+
+  it('is made to win when the user asks, and asked about again afterwards', () => {
+    let state = run(reopened(), held, { type: 'probed', nodeId: 'n1', lost: ['color'], winner: '/styles.css', written: ['color'], tag: 'earlier' });
+    const asked = reduceStyles(state, { type: 'make-apply' });
+    expect(asked.commands).toEqual([{ kind: 'strengthen', scope: 'all', properties: ['color'], asked: true }]);
+    expect(lostOverrides(asked.state)).toEqual([]);
+
+    // The write is answered, the file read again, and the frame asked again about what it holds.
+    const written = reduceStyles(asked.state, { type: 'applied', changes: [], scope: 'all', result: ok() });
+    expect(kinds(written.commands)).toContain('read-overrides');
+    const reread = reduceStyles(written.state, held);
+    expect(command(reread.commands, 'probe').tag).toBe('earlier');
+
+    // Still losing after that: shown again, with nothing more to offer but the agent.
+    state = run(reread.state, { type: 'probed', nodeId: 'n1', lost: ['color'], winner: 'inline style', written: ['color'], tag: 'earlier' });
+    expect(lostOverrides(state)).toEqual([{ property: 'color', label: 'color', winner: 'inline style' }]);
+    expect(canMakeApply(state)).toBe(false);
+    expect(reduceStyles(state, { type: 'make-apply' }).commands).toEqual([]);
+  });
+
+  it('leaves this session\'s own writes to the probe that follows them', () => {
+    let state = run(reopened(), { type: 'change', changes: [colour] }, { type: 'applied', changes: [colour], scope: 'all', result: ok() });
+    const { commands } = reduceStyles(state, held);
+    expect(command(commands, 'probe').properties).toEqual(['margin']);
+    // The session's colour loses, is made `!important`, and still loses: its own probe's verdict.
+    const lostColour = { type: 'probed', nodeId: 'n1', lost: ['color'], winner: 'inline style' } as const;
+    state = run(state, lostColour, { type: 'applied', changes: [], scope: 'all', result: ok() }, lostColour, held);
+    expect(lossFor(state, 'color')).toEqual({ names: ['color'], winner: 'inline style' });
+    // A clean answer about the rest does not touch that verdict.
+    state = run(state, { type: 'probed', nodeId: 'n1', lost: [], written: [], tag: 'earlier' });
+    expect(state.earlier).toEqual({});
+    expect(lossFor(state, 'color')).toEqual({ names: ['color'], winner: 'inline style' });
+  });
+
+  it('is reported and made to win by the name the file declares when one side of a shorthand loses', () => {
+    const shorthand = { type: 'overrides', markerId: 'm1', overrides: overridesOf(['padding']) } as const;
+    const state = run(reopened(), shorthand, { type: 'probed', nodeId: 'n1', lost: ['padding-top'], winner: '/styles.css', written: ['padding'], tag: 'earlier' });
+    expect(lostOverrides(state)).toEqual([{ property: 'padding', label: 'padding', winner: '/styles.css' }]);
+    expect(reduceStyles(state, { type: 'make-apply' }).commands).toEqual([{ kind: 'strengthen', scope: 'all', properties: ['padding'], asked: true }]);
+  });
+
+  it('is not asked about at a width its block does not apply at, or with nothing in the file', () => {
+    const wide = run(reopened(), { type: 'scope', scope: 640 }, { type: 'computed', nodeId: 'n1', values: {}, viewportWidth: 1440 });
+    const at640: StylesEvent = { type: 'overrides', markerId: 'm1', overrides: { byScope: new Map([[640, { color: 'x' }]]), text: '', widths: [640] } };
+    expect(reduceStyles(wide, at640).commands).toEqual([]);
+    const narrow = run(reopened(), { type: 'scope', scope: 640 }, { type: 'computed', nodeId: 'n1', values: {}, viewportWidth: 390 });
+    expect(kinds(reduceStyles(narrow, at640).commands)).toEqual(['probe']);
+    expect(reduceStyles(reopened(), { type: 'overrides', markerId: 'm1', overrides: overridesOf([]) }).commands).toEqual([]);
+  });
+
+  it('is forgotten with the element', () => {
+    const state = run(reopened(), held, { type: 'probed', nodeId: 'n1', lost: ['color'], written: ['color'], tag: 'earlier' });
+    expect(run(state, { type: 'select', payload: other }).earlier).toEqual({});
+  });
+});
+
 describe('the one message the panel shows about losses', () => {
   /** Padding lost to one file, border radius lost to another. */
   function twoLosses(): StylesState {
-    let state = edited();
+    let state = strengthened();
     state = run(state, {
       type: 'probed',
       nodeId: 'n1',
@@ -580,7 +752,7 @@ describe('the one message the panel shows about losses', () => {
   });
 
   it('says so plainly when the frame could name no winner', () => {
-    let state = edited();
+    let state = strengthened();
     state = run(state, { type: 'probed', nodeId: 'n1', lost: ['padding-block-start'] });
 
     expect(lossMessage(lostOverrides(state), t)).toContain('cannot name');
@@ -609,17 +781,6 @@ describe('the one message the panel shows about losses', () => {
 
     expect(prompt).toContain('`padding-block`');
     expect(prompt).not.toContain('padding-block:');
-  });
-});
-
-describe('declarationBlock', () => {
-  it('is null when there is nothing to show', () => {
-    expect(declarationBlock({})).toBeNull();
-  });
-
-  it('writes one declaration list', () => {
-    expect(declarationBlock({ color: 'red', 'padding-block': '1rem' }))
-      .toBe('color: red; padding-block: 1rem;');
   });
 });
 
@@ -662,51 +823,53 @@ describe('the root font size', () => {
 });
 
 describe('reset', () => {
-  it('emits a remove command for that property alone', () => {
-    const { commands } = reduceStyles(edited(), { type: 'reset', property: 'padding-block' });
+  it('emits one write that removes those properties, at this width', () => {
+    const { commands } = reduceStyles(run(edited(), { type: 'scope', scope: 640 }), { type: 'reset', properties: ['padding-block', 'color'] });
     expect(commands).toEqual([
-      { kind: 'remove', property: 'padding-block', confirmedMultiInstance: false },
+      { kind: 'apply', changes: [{ property: 'padding-block', value: null }, { property: 'color', value: null }], scope: 640, confirmedMultiInstance: false },
     ]);
   });
 
   it('carries the confirmation the user already gave for this element', () => {
     let state = run(edited(),
-      { type: 'change', declaration: colour },
-      { type: 'applied', declaration: colour, result: { ok: false, reason: 'needs-confirmation', instances: 6, filesWritten: [] } },
+      { type: 'change', changes: [colour] },
+      { type: 'applied', changes: [colour], scope: 'all', result: { ok: false, reason: 'needs-confirmation', instances: 6, filesWritten: [] } },
       { type: 'confirm' },
-      { type: 'applied', declaration: colour, result: ok() },
+      { type: 'applied', changes: [colour], scope: 'all', result: ok() },
     );
-    const { commands } = reduceStyles(state, { type: 'reset', property: 'color' });
+    const { commands } = reduceStyles(state, { type: 'reset', properties: ['color'] });
     expect(commands).toEqual([
-      { kind: 'remove', property: 'color', confirmedMultiInstance: true },
+      { kind: 'apply', changes: [{ property: 'color', value: null }], scope: 'all', confirmedMultiInstance: true },
     ]);
-    state = run(state, { type: 'reset', property: 'color' });
+    state = run(state, { type: 'reset', properties: ['color'] });
     expect(state.busy).toBe(true);
   });
 
   it('emits nothing at all when there is no marker, so no block of ours exists', () => {
     const state = run(emptyStylesState(), { type: 'select', payload: payload() });
-    expect(reduceStyles(state, { type: 'reset', property: 'color' }).commands).toEqual([]);
+    expect(reduceStyles(state, { type: 'reset', properties: ['color'] }).commands).toEqual([]);
   });
 
-  it('rebuilds the document rather than previewing, because a removal cannot be previewed', () => {
-    // The transient <style> can only add rules. The document still has the pre-removal
-    // /overrides.css compiled into it, so a `preview` here would show the block's *other*
-    // declarations changing while the removed one stayed exactly where it was.
+  it('swaps the file in rather than rebuilding, since the whole file shows a removal too', () => {
+    // A copy of the file without the declaration replaces the old one in the frame, so the value
+    // falls back to the stylesheet's at once, with no recompile to cost the toolbar and the scroll.
     const state = edited();
     const { commands } = reduceStyles(state, {
-      type: 'removed',
-      property: 'padding-block',
-      result: { ok: true, markerId: 'm1', filesWritten: [OVERRIDES_PATH] },
+      type: 'applied',
+      changes: [{ property: 'padding-block', value: null }],
+      scope: 'all',
+      result: { ok: true, markerId: 'm1', filesWritten: [OVERRIDES_PATH], css: '/* without it */' },
     });
-    // And the block is re-read, because a removal can take the whole block with it.
-    expect(kinds(commands)).toEqual(['refresh', 'read-overrides']);
+    // And the block is re-read, because a removal can take the whole block with it. Nothing is
+    // probed: the only property this session committed is the one taken off.
+    expect(kinds(commands)).toEqual(['broadcast', 'query', 'read-overrides']);
   });
 
-  it('asks for no rebuild when the file did not change', () => {
+  it('swaps nothing in when the file did not change', () => {
     const { commands } = reduceStyles(edited(), {
-      type: 'removed',
-      property: 'padding-block',
+      type: 'applied',
+      changes: [{ property: 'padding-block', value: null }],
+      scope: 'all',
       result: { ok: true, markerId: 'm1', filesWritten: [] },
     });
     expect(kinds(commands)).toEqual(['read-overrides']);
@@ -717,8 +880,9 @@ describe('reset', () => {
     expect(canReset(state, 'padding-block')).toBe(true);
 
     state = run(state, {
-      type: 'removed',
-      property: 'padding-block',
+      type: 'applied',
+      changes: [{ property: 'padding-block', value: null }],
+      scope: 'all',
       result: { ok: true, markerId: 'm1', filesWritten: [OVERRIDES_PATH] },
     });
 
@@ -730,12 +894,14 @@ describe('reset', () => {
 
   it('holds a removal for confirmation and replays it on confirm', () => {
     const state = run(edited(), {
-      type: 'removed',
-      property: 'padding-block',
+      type: 'applied',
+      changes: [{ property: 'padding-block', value: null }],
+      scope: 'all',
       result: { ok: false, reason: 'needs-confirmation', instances: 6, file: '/partials/nav.hbs', filesWritten: [] },
     });
     expect(state.pending).toEqual({
-      removeProperty: 'padding-block',
+      changes: [{ property: 'padding-block', value: null }],
+      scope: 'all',
       file: '/partials/nav.hbs',
       instances: 6,
     });
@@ -744,15 +910,16 @@ describe('reset', () => {
 
     const { state: next, commands } = reduceStyles(state, { type: 'confirm' });
     expect(commands).toEqual([
-      { kind: 'remove', property: 'padding-block', confirmedMultiInstance: true },
+      { kind: 'apply', changes: [{ property: 'padding-block', value: null }], scope: 'all', confirmedMultiInstance: true },
     ]);
     expect(next.confirmed).toBe(true);
   });
 
   it('renders a refused removal the way a refused write is rendered', () => {
     const state = run(edited(), {
-      type: 'removed',
-      property: 'padding-block',
+      type: 'applied',
+      changes: [{ property: 'padding-block', value: null }],
+      scope: 'all',
       result: { ok: false, reason: 'ambiguous-stylesheet', message: 'nested', filesWritten: [] },
     });
     expect(state.refusal?.reason).toBe('ambiguous-stylesheet');
@@ -790,11 +957,25 @@ describe('canReset', () => {
     // the state in which Reset was missing.
     const state = run(emptyStylesState(),
       { type: 'select', payload: payload({ attributes: { 'data-osw-id': 'm1' } }) },
-      { type: 'overrides', markerId: 'm1', properties: ['color'] },
+      { type: 'overrides', markerId: 'm1', overrides: overridesOf(['color']) },
     );
     expect(state.committed).toEqual([]);
     expect(canReset(state, 'color')).toBe(true);
     expect(canReset(state, 'background-color')).toBe(false);
+  });
+
+  it('matches a custom property the file declares as it is spelled, and any other whatever its case', () => {
+    let state = run(emptyStylesState(),
+      { type: 'select', payload: payload({ attributes: { 'data-osw-id': 'm1' } }) },
+      { type: 'overrides', markerId: 'm1', overrides: overridesOf(['--cardBg', 'color']) },
+    );
+    expect(canReset(state, '--cardBg')).toBe(true);
+    expect(canReset(state, '--cardbg')).toBe(false);
+    expect(canReset(state, 'COLOR')).toBe(true);
+    // Taken off, it is no longer set, before the file is read again.
+    const removal = [{ property: '--cardBg', value: null }];
+    state = run(state, { type: 'reset', properties: ['--cardBg'] }, { type: 'applied', changes: removal, scope: 'all', result: ok() });
+    expect(state.overridden).toEqual(['color']);
   });
 });
 
@@ -818,11 +999,12 @@ describe('reading /overrides.css back', () => {
     // so it has to stop on the file's word alone — and the re-read is a promise away.
     let state = run(emptyStylesState(),
       { type: 'select', payload: payload({ attributes: { 'data-osw-id': 'm1' } }) },
-      { type: 'overrides', markerId: 'm1', properties: ['color', 'padding-block'] },
+      { type: 'overrides', markerId: 'm1', overrides: overridesOf(['color', 'padding-block']) },
     );
     state = run(state, {
-      type: 'removed',
-      property: 'color',
+      type: 'applied',
+      changes: [{ property: 'color', value: null }],
+      scope: 'all',
       result: { ok: true, markerId: 'm1', filesWritten: [OVERRIDES_PATH] },
     });
     expect(canReset(state, 'color')).toBe(false);
@@ -836,7 +1018,7 @@ describe('reading /overrides.css back', () => {
     // element for the old element's overrides.
     const state = run(emptyStylesState(),
       { type: 'select', payload: payload({ attributes: { 'data-osw-id': 'm2' } }) },
-      { type: 'overrides', markerId: 'm1', properties: ['color'] },
+      { type: 'overrides', markerId: 'm1', overrides: overridesOf(['color']) },
     );
     expect(state.overridden).toEqual([]);
     expect(canReset(state, 'color')).toBe(false);
@@ -848,7 +1030,7 @@ describe('reading /overrides.css back', () => {
     // and keeping the list would offer a Reset that removes a declaration from someone else's rule.
     const state = run(emptyStylesState(),
       { type: 'select', payload: payload({ attributes: { 'data-osw-id': 'm1' } }) },
-      { type: 'overrides', markerId: 'm1', properties: ['color'] },
+      { type: 'overrides', markerId: 'm1', overrides: overridesOf(['color']) },
     );
     expect(canReset(state, 'color')).toBe(true);
 
@@ -866,7 +1048,7 @@ describe('reading /overrides.css back', () => {
   it('drops what the file said when the selection moves to another element', () => {
     let state = run(emptyStylesState(),
       { type: 'select', payload: payload({ attributes: { 'data-osw-id': 'm1' } }) },
-      { type: 'overrides', markerId: 'm1', properties: ['color'] },
+      { type: 'overrides', markerId: 'm1', overrides: overridesOf(['color']) },
     );
     state = run(state, { type: 'select', payload: other });
     expect(state.overridden).toEqual([]);
@@ -884,9 +1066,9 @@ describe('message variants', () => {
   });
 
   it('calls a tag rendered once shared, not "all 1", and names its file', () => {
-    expect(confirmationMessage({ declaration: padding, file: '/nav.hbs', instances: 1 }, t))
+    expect(confirmationMessage({ changes: [padding], scope: 'all', file: '/nav.hbs', instances: 1 }, t))
       .toBe(t('confirmSharedFrom', { count: 1, file: '/nav.hbs' }));
-    expect(confirmationMessage({ declaration: padding, file: undefined, instances: 1 } as never, t))
+    expect(confirmationMessage({ changes: [padding], scope: 'all', file: undefined, instances: 1 } as never, t))
       .toBe(t('confirmShared', { count: 1, file: '' }));
   });
 
@@ -894,5 +1076,65 @@ describe('message variants', () => {
     const prompt = refusalAgentPrompt({ reason: 'ambiguous-stylesheet', detail: 'nested in @media', stamped: false } as never);
     expect(prompt).toContain('nested in @media');
     expect(prompt).not.toContain('its blocks are not in the shape');
+  });
+});
+
+describe('width scopes', () => {
+  /** What the file holds for m1: padding at every width, colour up to 640 px. */
+  const file = {
+    byScope: new Map<'all' | number, Record<string, string>>([['all', { 'padding-block': '1rem' }], [640, { color: 'red' }]]),
+    text: '',
+    widths: [640],
+  };
+  const marked = payload({ attributes: { 'data-osw-id': 'm1' } });
+
+  it('writes into the scope it is in, and reads what that scope sets', () => {
+    let state = run(emptyStylesState(), { type: 'select', payload: marked }, { type: 'overrides', markerId: 'm1', overrides: file });
+    expect(state.overridden).toEqual(['padding-block']);
+    state = run(state, { type: 'scope', scope: 640 });
+    expect(state.overridden).toEqual(['color']);
+    expect(canReset(state, 'color')).toBe(true);
+    expect(canReset(state, 'padding-block')).toBe(false);
+    const { commands } = reduceStyles(state, { type: 'change', changes: [padding] });
+    expect(commands).toEqual([{ kind: 'apply', changes: [padding], scope: 640, confirmedMultiInstance: false }]);
+  });
+
+  it('keeps the scope across selections, since it is the frame\'s and not the element\'s', () => {
+    let state = run(emptyStylesState(), { type: 'select', payload: payload() }, { type: 'scope', scope: 640 });
+    state = run(state, { type: 'select', payload: other });
+    expect(state.scope).toBe(640);
+  });
+
+  it('starts the session\'s lists afresh at another width', () => {
+    let state = run(strengthened(), { type: 'probed', nodeId: 'n1', lost: ['padding-block-start'], winner: '/styles.css' });
+    expect(lossFor(state, 'padding-block')).toEqual({ names: ['padding-block-start'], winner: '/styles.css' });
+    state = run(state, { type: 'scope', scope: 640 });
+    expect(state.committed).toEqual([]);
+    expect(state.lost).toEqual({});
+  });
+
+  it('does not count a write that landed in another scope as this one\'s', () => {
+    let state = run(emptyStylesState(), { type: 'select', payload: payload() }, { type: 'scope', scope: 640 });
+    state = run(state, { type: 'applied', changes: [colour], scope: 'all', result: ok() });
+    expect(state.committed).toEqual([]);
+    expect(state.overridden).toEqual([]);
+  });
+
+  it('reads the element and the file again after an undo, and forgets this session\'s writes', () => {
+    const before = edited();
+    expect(before.declarations).toEqual({ 'padding-block': '1rem' });
+    const { state, commands } = reduceStyles(before, { type: 'reread' });
+    expect(kinds(commands)).toEqual(['query', 'read-overrides']);
+    expect(state.committed).toEqual([]);
+    expect(state.declarations).toEqual({});
+  });
+});
+
+describe('requery', () => {
+  it('asks the frame about the element again and changes nothing else', () => {
+    const before = edited();
+    const { state, commands } = reduceStyles(before, { type: 'requery' });
+    expect(kinds(commands)).toEqual(['query']);
+    expect(state).toBe(before);
   });
 });

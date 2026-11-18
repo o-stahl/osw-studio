@@ -12,9 +12,7 @@ vi.mock('@/lib/utils', () => ({
 import { vfs } from '@/lib/vfs';
 import {
   applyStyleOverride,
-  countMarkerOccurrences,
-  readOverriddenProperties,
-  removeStyleOverride,
+  readMarkerOverrides,
   OVERRIDES_PATH,
 } from '../apply-style';
 import { MARKER_ATTR } from '../marker';
@@ -45,6 +43,10 @@ const src = (path: string, content: string, needle: string) =>
 
 const RED = { property: 'color', value: 'red' };
 
+/** What the element declares for every width, as the panel reads it back. */
+const allProps = async (projectId: string, markerId: string) =>
+  Object.keys((await readMarkerOverrides(projectId, markerId)).byScope.get('all') ?? {});
+
 afterEach(() => { vi.restoreAllMocks(); });
 
 const PAGE = '<html><head><title>t</title></head><body><p class="a">hi</p></body></html>';
@@ -57,7 +59,7 @@ describe('applyStyleOverride — first edit', () => {
     const result = await applyStyleOverride(
       projectId,
       { srcAttr: src('/index.html', PAGE, '<p'), tagName: 'p', attributes: {} },
-      { property: 'padding-block', value: '3rem' },
+      [{ property: 'padding-block', value: '3rem' }],
     );
 
     expect(result.ok).toBe(true);
@@ -91,7 +93,7 @@ describe('applyStyleOverride — first edit', () => {
     const result = await applyStyleOverride(
       projectId,
       { srcAttr: src('/templates/nav.hbs', partial, '<nav'), tagName: 'nav', attributes: {} },
-      RED,
+      [RED],
     );
 
     expect(result.ok).toBe(true);
@@ -114,7 +116,7 @@ describe('applyStyleOverride — the second edit on the same element', () => {
     const first = await applyStyleOverride(
       projectId,
       { srcAttr: src('/index.html', PAGE, '<p'), tagName: 'p', attributes: {} },
-      RED,
+      [RED],
     );
     const sourceAfterFirst = await read(projectId, '/index.html');
     const aboutAfterFirst = await read(projectId, '/about.html');
@@ -123,7 +125,7 @@ describe('applyStyleOverride — the second edit on the same element', () => {
     const second = await applyStyleOverride(
       projectId,
       { attributes: { [MARKER_ATTR]: first.markerId! }, tagName: 'p' },
-      { property: 'color', value: 'blue' },
+      [{ property: 'color', value: 'blue' }],
     );
 
     expect(second.ok).toBe(true);
@@ -137,6 +139,38 @@ describe('applyStyleOverride — the second edit on the same element', () => {
     expect(css).not.toContain('color: red;');
   });
 
+  // What the Styles tab and `style` send after a render showed a change losing: the mark, in the
+  // file, with no value of its own and no source write.
+  it('marks the named properties !important, with the changes or alone', async () => {
+    const projectId = await seed({ '/index.html': PAGE });
+    const first = await applyStyleOverride(
+      projectId,
+      { srcAttr: src('/index.html', PAGE, '<p'), tagName: 'p', attributes: {} },
+      [RED, { property: 'margin', value: '0' }],
+    );
+    const source = await read(projectId, '/index.html');
+    const record = vi.fn();
+
+    // By the remembered marker, as the tab has it before the frame recompiles.
+    const marked = await applyStyleOverride(projectId, { tagName: 'p', attributes: {} }, [], {
+      markerId: first.markerId!, strengthen: ['color'], confirmedMultiInstance: true, record,
+    });
+    expect(marked.ok).toBe(true);
+    expect(marked.filesWritten).toEqual([OVERRIDES_PATH]);
+    expect(marked.css).toContain('{\n  color: red !important;\n  margin: 0;\n}');
+    expect(await read(projectId, OVERRIDES_PATH)).toBe(marked.css);
+    expect(await read(projectId, '/index.html')).toBe(source);
+    expect(record).toHaveBeenCalledWith(expect.objectContaining({ path: OVERRIDES_PATH, silent: true }));
+
+    // Asked again, nothing is left to write.
+    const again = await applyStyleOverride(projectId, { tagName: 'p', attributes: {} }, [], { markerId: first.markerId!, strengthen: ['color'], confirmedMultiInstance: true });
+    expect(again.filesWritten).toEqual([]);
+
+    // Together with a change: the new value carries the mark it was given in the same write.
+    const both = await applyStyleOverride(projectId, { tagName: 'p', attributes: { [MARKER_ATTR]: first.markerId! } }, [{ property: 'gap', value: '4px' }], { strengthen: ['gap'] });
+    expect(both.css).toContain('gap: 4px !important;');
+  });
+
   it('reuses the marker already in source when the payload did not carry it', async () => {
     // `gatherAttributes` caps its output, so an attribute-heavy element can arrive without its
     // marker. The slow path must read the existing id back out of source rather than mint a second
@@ -145,20 +179,19 @@ describe('applyStyleOverride — the second edit on the same element', () => {
     const first = await applyStyleOverride(
       projectId,
       { srcAttr: src('/index.html', PAGE, '<p'), tagName: 'p', attributes: {} },
-      RED,
+      [RED],
     );
     const stamped = await read(projectId, '/index.html');
 
     const second = await applyStyleOverride(
       projectId,
       { srcAttr: src('/index.html', stamped, '<p'), tagName: 'p', attributes: {} },
-      { property: 'color', value: 'blue' },
+      [{ property: 'color', value: 'blue' }],
     );
 
     expect(second.markerId).toBe(first.markerId);
     expect(second.filesWritten).toEqual([OVERRIDES_PATH]);
     expect(await read(projectId, '/index.html')).toBe(stamped);
-    expect(second.duplicateCount).toBe(1);
   });
 });
 
@@ -171,7 +204,7 @@ describe('applyStyleOverride — which write is silent', () => {
     const first = await applyStyleOverride(
       projectId,
       { srcAttr: src('/index.html', PAGE, '<p'), tagName: 'p', attributes: {} },
-      RED,
+      [RED],
     );
 
     const optionsFor = (spy: typeof updateSpy, path: string) =>
@@ -189,26 +222,26 @@ describe('applyStyleOverride — which write is silent', () => {
     await applyStyleOverride(
       projectId,
       { attributes: { [MARKER_ATTR]: first.markerId! }, tagName: 'p' },
-      { property: 'color', value: 'blue' },
+      [{ property: 'color', value: 'blue' }],
     );
     // …and so does the update that follows the create.
     expect(optionsFor(updateSpy, OVERRIDES_PATH)).toEqual([{ silent: true }]);
   });
 });
 
-describe('removeStyleOverride', () => {
+describe('applyStyleOverride — removals', () => {
   /** One element with two overrides on it, and the marker they are keyed to. */
   async function seedTwoOverrides(): Promise<{ projectId: string; markerId: string }> {
     const projectId = await seed({ '/index.html': PAGE });
     const first = await applyStyleOverride(
       projectId,
       { srcAttr: src('/index.html', PAGE, '<p'), tagName: 'p', attributes: {} },
-      RED,
+      [RED],
     );
     await applyStyleOverride(
       projectId,
       { attributes: { [MARKER_ATTR]: first.markerId! }, tagName: 'p' },
-      { property: 'padding-block', value: '1rem' },
+      [{ property: 'padding-block', value: '1rem' }],
     );
     return { projectId, markerId: first.markerId! };
   }
@@ -217,11 +250,11 @@ describe('removeStyleOverride', () => {
     const { projectId, markerId } = await seedTwoOverrides();
     const source = await read(projectId, '/index.html');
 
-    const result = await removeStyleOverride(
+    const result = await applyStyleOverride(
       projectId,
       { attributes: { [MARKER_ATTR]: markerId }, tagName: 'p' },
-      markerId,
-      'color',
+      [{ property: 'color', value: null }],
+      { markerId },
     );
 
     expect(result.ok).toBe(true);
@@ -238,8 +271,18 @@ describe('removeStyleOverride', () => {
     const { projectId, markerId } = await seedTwoOverrides();
     const selection = { attributes: { [MARKER_ATTR]: markerId }, tagName: 'p' };
 
-    await removeStyleOverride(projectId, selection, markerId, 'color');
-    await removeStyleOverride(projectId, selection, markerId, 'padding-block');
+    await applyStyleOverride(
+      projectId,
+      selection,
+      [{ property: 'color', value: null }],
+      { markerId },
+    );
+    await applyStyleOverride(
+      projectId,
+      selection,
+      [{ property: 'padding-block', value: null }],
+      { markerId },
+    );
 
     const css = await read(projectId, OVERRIDES_PATH);
     expect(css).not.toContain(markerId);
@@ -250,11 +293,11 @@ describe('removeStyleOverride', () => {
     const { projectId, markerId } = await seedTwoOverrides();
     const updateSpy = vi.spyOn(vfs, 'updateFile');
 
-    await removeStyleOverride(
+    await applyStyleOverride(
       projectId,
       { attributes: { [MARKER_ATTR]: markerId }, tagName: 'p' },
-      markerId,
-      'color',
+      [{ property: 'color', value: null }],
+      { markerId },
     );
 
     const paths = updateSpy.mock.calls.map(call => call[1]);
@@ -262,15 +305,33 @@ describe('removeStyleOverride', () => {
     expect(updateSpy.mock.calls[0][3]).toEqual({ silent: true });
   });
 
+  it('links no page, even one without the link, when the selection resolves in source', async () => {
+    const { projectId, markerId } = await seedTwoOverrides();
+    await vfs.createFile(projectId, '/about.html', OTHER, { silent: true });
+    const stamped = await read(projectId, '/index.html');
+    const updateSpy = vi.spyOn(vfs, 'updateFile');
+
+    const result = await applyStyleOverride(
+      projectId,
+      { srcAttr: src('/index.html', stamped, '<p'), attributes: { [MARKER_ATTR]: markerId }, tagName: 'p' },
+      [{ property: 'color', value: null }],
+      { markerId },
+    );
+
+    expect(result.filesWritten).toEqual([OVERRIDES_PATH]);
+    expect(updateSpy.mock.calls.map(call => call[1])).toEqual([OVERRIDES_PATH]);
+    expect(await read(projectId, '/about.html')).toBe(OTHER);
+  });
+
   it('refuses a one-to-many removal without confirmation, and writes nothing', async () => {
     const { projectId, markerId } = await seedTwoOverrides();
     const before = await read(projectId, OVERRIDES_PATH);
 
-    const result = await removeStyleOverride(
+    const result = await applyStyleOverride(
       projectId,
       { srcAttr: '/templates/nav.hbs:0', instanceCount: 6, tagName: 'p' },
-      markerId,
-      'color',
+      [{ property: 'color', value: null }],
+      { markerId },
     );
 
     expect(result.ok).toBe(false);
@@ -283,12 +344,11 @@ describe('removeStyleOverride', () => {
   it('goes ahead on the same element once the user has confirmed', async () => {
     const { projectId, markerId } = await seedTwoOverrides();
 
-    const result = await removeStyleOverride(
+    const result = await applyStyleOverride(
       projectId,
       { srcAttr: '/templates/nav.hbs:0', instanceCount: 6, tagName: 'p' },
-      markerId,
-      'color',
-      { confirmedMultiInstance: true },
+      [{ property: 'color', value: null }],
+      { markerId, confirmedMultiInstance: true },
     );
 
     expect(result.ok).toBe(true);
@@ -299,12 +359,11 @@ describe('removeStyleOverride', () => {
     const { projectId, markerId } = await seedTwoOverrides();
     const before = await read(projectId, OVERRIDES_PATH);
 
-    const result = await removeStyleOverride(
+    const result = await applyStyleOverride(
       projectId,
       { attributes: { [MARKER_ATTR]: markerId }, tagName: 'p' },
-      markerId,
-      'color',
-      { isGenerating: () => true },
+      [{ property: 'color', value: null }],
+      { markerId, isGenerating: () => true },
     );
 
     expect(result.reason).toBe('generating');
@@ -320,11 +379,11 @@ describe('removeStyleOverride', () => {
     });
     const before = await read(projectId, OVERRIDES_PATH);
 
-    const result = await removeStyleOverride(
+    const result = await applyStyleOverride(
       projectId,
       { attributes: { [MARKER_ATTR]: 'aaaaaaaa' }, tagName: 'p' },
-      'aaaaaaaa',
-      'color',
+      [{ property: 'color', value: null }],
+      { markerId: 'aaaaaaaa' },
     );
 
     expect(result.ok).toBe(false);
@@ -335,11 +394,11 @@ describe('removeStyleOverride', () => {
 
   it('succeeds without writing when there is no override file at all', async () => {
     const projectId = await seed({ '/index.html': PAGE });
-    const result = await removeStyleOverride(
+    const result = await applyStyleOverride(
       projectId,
       { attributes: { [MARKER_ATTR]: 'aaaaaaaa' }, tagName: 'p' },
-      'aaaaaaaa',
-      'color',
+      [{ property: 'color', value: null }],
+      { markerId: 'aaaaaaaa' },
     );
     expect(result.ok).toBe(true);
     expect(result.filesWritten).toEqual([]);
@@ -362,7 +421,7 @@ describe('applyStyleOverride — refusals write nothing', () => {
         instanceCount: 6,
         attributes: {},
       },
-      RED,
+      [RED],
     );
 
     expect(result).toEqual({
@@ -391,7 +450,7 @@ describe('applyStyleOverride — refusals write nothing', () => {
         instanceCount: 6,
         attributes: {},
       },
-      RED,
+      [RED],
       { confirmedMultiInstance: true },
     );
 
@@ -403,7 +462,7 @@ describe('applyStyleOverride — refusals write nothing', () => {
   it('refuses an unresolvable selection', async () => {
     const projectId = await seed({ '/index.html': PAGE });
 
-    const result = await applyStyleOverride(projectId, { tagName: 'p', attributes: {} }, RED);
+    const result = await applyStyleOverride(projectId, { tagName: 'p', attributes: {} }, [RED]);
 
     expect(result).toEqual({ ok: false, reason: 'unresolvable', filesWritten: [] });
     expect(await read(projectId, '/index.html')).toBe(PAGE);
@@ -419,7 +478,7 @@ describe('applyStyleOverride — refusals write nothing', () => {
     const result = await applyStyleOverride(
       projectId,
       { srcAttr: src('/index.html', page, '<div'), tagName: 'p', attributes: {} },
-      RED,
+      [RED],
     );
 
     expect(result).toEqual({
@@ -435,7 +494,7 @@ describe('applyStyleOverride — refusals write nothing', () => {
     const result = await applyStyleOverride(
       projectId,
       { srcAttr: '/gone.html:0', tagName: 'p', attributes: {} },
-      RED,
+      [RED],
     );
 
     expect(result).toEqual({
@@ -450,7 +509,7 @@ describe('applyStyleOverride — refusals write nothing', () => {
     const result = await applyStyleOverride(
       projectId,
       { srcAttr: src('/index.html', PAGE, '<p'), tagName: 'p', attributes: {} },
-      RED,
+      [RED],
       { isGenerating: () => true },
     );
 
@@ -467,13 +526,31 @@ describe('applyStyleOverride — refusals write nothing', () => {
     const result = await applyStyleOverride(
       projectId,
       { attributes: { [MARKER_ATTR]: 'aaaaaaaa' }, tagName: 'p' },
-      RED,
+      [RED],
     );
 
     expect(result.ok).toBe(false);
     expect(result.reason).toBe('ambiguous-stylesheet');
     expect(result.message).toMatch(/comment/i);
     expect(await read(projectId, OVERRIDES_PATH)).toBe(hand);
+  });
+
+  it('leaves a block holding a nested rule byte for byte, for a change and for a mark alone', async () => {
+    const hand = `[${MARKER_ATTR}="aaaaaaaa"][${MARKER_ATTR}] {\n  color: red;\n  &:hover {\n    color: blue;\n  }\n}\n` +
+      '.later { margin: 0; }\n';
+    const projectId = await seed({ '/index.html': PAGE, [OVERRIDES_PATH]: hand });
+    const selection = { attributes: { [MARKER_ATTR]: 'aaaaaaaa' }, tagName: 'p' };
+
+    const changed = await applyStyleOverride(projectId, selection, [{ property: 'padding', value: '4px' }]);
+    // What the Styles tab sends by itself after a render showed the colour losing.
+    const marked = await applyStyleOverride(projectId, selection, [], { markerId: 'aaaaaaaa', strengthen: ['color'], confirmedMultiInstance: true });
+
+    for (const result of [changed, marked]) {
+      expect(result).toMatchObject({ ok: false, reason: 'ambiguous-stylesheet', filesWritten: [] });
+      expect(result.message).toMatch(/nested/);
+    }
+    expect(await read(projectId, OVERRIDES_PATH)).toBe(hand);
+    expect(await read(projectId, '/index.html')).toBe(PAGE);
   });
 });
 
@@ -485,7 +562,7 @@ describe('applyStyleOverride — pages with no head', () => {
     const result = await applyStyleOverride(
       projectId,
       { srcAttr: src('/index.html', PAGE, '<p'), tagName: 'p', attributes: {} },
-      RED,
+      [RED],
     );
 
     expect(result.ok).toBe(true);
@@ -501,7 +578,7 @@ describe('applyStyleOverride — pages with no head', () => {
     const result = await applyStyleOverride(
       projectId,
       { srcAttr: src('/fragment.html', fragment, '<p'), tagName: 'p', attributes: {} },
-      RED,
+      [RED],
     );
 
     expect(result.ok).toBe(true);
@@ -550,104 +627,102 @@ describe('/overrides.css survives the export filters', () => {
   });
 });
 
-describe('countMarkerOccurrences', () => {
-  it('returns 1 for a marker on one element', async () => {
-    const projectId = await seed({
-      '/index.html': `<html><head></head><body><p ${MARKER_ATTR}="aaaaaaaa">hi</p></body></html>`,
-    });
-    expect(await countMarkerOccurrences(projectId, 'aaaaaaaa')).toBe(1);
-    expect(await countMarkerOccurrences(projectId, 'bbbbbbbb')).toBe(0);
-  });
-
-  it('returns 2 when the same marker appears twice in one file', async () => {
-    const projectId = await seed({
-      '/index.html': `<html><head></head><body>` +
-        `<p ${MARKER_ATTR}="aaaaaaaa">a</p><p ${MARKER_ATTR}="aaaaaaaa">b</p></body></html>`,
-    });
-    expect(await countMarkerOccurrences(projectId, 'aaaaaaaa')).toBe(2);
-  });
-
-  it('counts across files', async () => {
-    const projectId = await seed({
-      '/index.html': `<html><head></head><body><p ${MARKER_ATTR}="aaaaaaaa">a</p></body></html>`,
-      '/templates/nav.hbs': `<nav ${MARKER_ATTR}="aaaaaaaa"><a href="/">Home</a></nav>`,
-    });
-    expect(await countMarkerOccurrences(projectId, 'aaaaaaaa')).toBe(2);
-  });
-
-  it('does not count a marker inside a comment or a script', async () => {
-    const projectId = await seed({
-      '/index.html': '<html><head></head><body>' +
-        `<p ${MARKER_ATTR}="aaaaaaaa">a</p>` +
-        `<!-- <p ${MARKER_ATTR}="aaaaaaaa">commented out</p> -->` +
-        `<script>var s = '<p ${MARKER_ATTR}="aaaaaaaa"></p>';</script>` +
-        '</body></html>',
-    });
-    expect(await countMarkerOccurrences(projectId, 'aaaaaaaa')).toBe(1);
-  });
-
-  it('counts elements only — not markup quoted in a script file or the rule in /overrides.css', async () => {
-    const projectId = await seed({
-      '/index.html': `<html><head></head><body><p ${MARKER_ATTR}="aaaaaaaa">a</p></body></html>`,
-      '/app.js': `document.body.innerHTML = '<p ${MARKER_ATTR}="aaaaaaaa"></p>';`,
-      [OVERRIDES_PATH]: `[${MARKER_ATTR}="aaaaaaaa"][${MARKER_ATTR}] { color: red; }\n`,
-    });
-    expect(await countMarkerOccurrences(projectId, 'aaaaaaaa')).toBe(1);
-  });
-});
-
-describe('applyStyleOverride — duplicate markers', () => {
-  it('reports 1 for the element it just stamped', async () => {
+describe('applyStyleOverride — the marker it stamps', () => {
+  it('stamps the id the caller chose for an element that has none', async () => {
+    // The panel picks it before the write so the frames can show the change on the element at once.
     const projectId = await seed({ '/index.html': PAGE });
     const result = await applyStyleOverride(
       projectId,
       { srcAttr: src('/index.html', PAGE, '<p'), tagName: 'p', attributes: {} },
-      RED,
+      [RED],
+      { newMarkerId: 'chosen01' },
     );
-    expect(result.duplicateCount).toBe(1);
+    expect(result.markerId).toBe('chosen01');
+    expect(await read(projectId, '/index.html')).toContain(`${MARKER_ATTR}="chosen01"`);
   });
 
-  it('surfaces the count when the agent has duplicated a marked element', async () => {
-    const projectId = await seed({
-      '/index.html': '<html><head></head><body>' +
-        `<p ${MARKER_ATTR}="aaaaaaaa">a</p><p ${MARKER_ATTR}="aaaaaaaa">b</p></body></html>`,
-    });
-
+  it('keeps the marker already in source over the chosen one', async () => {
+    const page = `<html><head></head><body><p ${MARKER_ATTR}="existing">a</p></body></html>`;
+    const projectId = await seed({ '/index.html': page });
     const result = await applyStyleOverride(
       projectId,
-      { attributes: { [MARKER_ATTR]: 'aaaaaaaa' }, tagName: 'p' },
-      RED,
+      { srcAttr: src('/index.html', page, '<p'), tagName: 'p', attributes: {} },
+      [RED],
+      { newMarkerId: 'chosen01' },
     );
+    expect(result.markerId).toBe('existing');
+  });
 
-    expect(result.ok).toBe(true);
-    expect(result.duplicateCount).toBe(2);
+  it('generates an id when the chosen one could not survive the attribute', async () => {
+    const projectId = await seed({ '/index.html': PAGE });
+    const result = await applyStyleOverride(
+      projectId,
+      { srcAttr: src('/index.html', PAGE, '<p'), tagName: 'p', attributes: {} },
+      [RED],
+      { newMarkerId: 'bad" id' },
+    );
+    expect(result.markerId).toMatch(/^[a-z0-9]{8}$/);
   });
 });
 
-describe('readOverriddenProperties', () => {
+describe('applyStyleOverride — what a write reads', () => {
+  it('sweeps the pages for the link without loading every file in the project', async () => {
+    const projectId = await seed({ '/index.html': PAGE, '/about.html': OTHER, '/img/big.svg': '<svg></svg>' });
+    const first = await applyStyleOverride(
+      projectId,
+      { srcAttr: src('/index.html', PAGE, '<p'), tagName: 'p', attributes: {} },
+      [RED],
+    );
+    const listing = vi.spyOn(vfs, 'listDirectory');
+    // `listFiles` hands back every file with its content, the image's included, without a `readFile` to count.
+    const loadsAll = vi.spyOn(vfs, 'listFiles');
+    const reads = vi.spyOn(vfs, 'readFile');
+
+    await applyStyleOverride(projectId, { attributes: { [MARKER_ATTR]: first.markerId! }, tagName: 'p' }, [{ property: 'color', value: 'blue' }]);
+
+    expect(listing).not.toHaveBeenCalled();
+    expect(loadsAll).not.toHaveBeenCalled();
+    // The stylesheet and the pages; never the image.
+    expect(reads.mock.calls.map(call => call[1]).sort()).toEqual(['/about.html', '/index.html', OVERRIDES_PATH]);
+    expect(await read(projectId, '/about.html')).toContain('/overrides.css');
+  });
+
+  it('leaves a page in a hidden folder unlinked', async () => {
+    const projectId = await seed({ '/index.html': PAGE, '/.drafts/old.html': OTHER });
+    const result = await applyStyleOverride(
+      projectId,
+      { srcAttr: src('/index.html', PAGE, '<p'), tagName: 'p', attributes: {} },
+      [RED],
+    );
+    expect(result.filesWritten).toEqual(['/index.html', OVERRIDES_PATH]);
+    expect(await read(projectId, '/.drafts/old.html')).toBe(OTHER);
+  });
+});
+
+describe('readMarkerOverrides', () => {
   it('names what the element already overrides, so Reset survives a reload', async () => {
     const projectId = await seed({ '/index.html': PAGE });
     const first = await applyStyleOverride(
       projectId,
       { srcAttr: src('/index.html', PAGE, '<p'), tagName: 'p', attributes: {} },
-      RED,
+      [RED],
     );
     await applyStyleOverride(
       projectId,
       { attributes: { [MARKER_ATTR]: first.markerId! }, tagName: 'p' },
-      { property: 'padding-block', value: '1rem' },
+      [{ property: 'padding-block', value: '1rem' }],
     );
 
-    expect(await readOverriddenProperties(projectId, first.markerId!))
+    expect(await allProps(projectId, first.markerId!))
       .toEqual(['color', 'padding-block']);
     // Another element's marker owns none of it.
-    expect(await readOverriddenProperties(projectId, 'bbbbbbbb')).toEqual([]);
+    expect(await allProps(projectId, 'bbbbbbbb')).toEqual([]);
   });
 
   it('answers [] when there is no override file at all', async () => {
     const projectId = await seed({ '/index.html': PAGE });
     expect(await vfs.fileExists(projectId, OVERRIDES_PATH)).toBe(false);
-    expect(await readOverriddenProperties(projectId, 'aaaaaaaa')).toEqual([]);
+    expect(await allProps(projectId, 'aaaaaaaa')).toEqual([]);
   });
 
   it('answers [] rather than throwing on a file the writers would refuse', async () => {
@@ -658,6 +733,83 @@ describe('readOverriddenProperties', () => {
       [OVERRIDES_PATH]:
         '@media (min-width: 40em) {\n  [data-osw-id="aaaaaaaa"][data-osw-id] { color: red; }\n}\n',
     });
-    expect(await readOverriddenProperties(projectId, 'aaaaaaaa')).toEqual([]);
+    expect(await allProps(projectId, 'aaaaaaaa')).toEqual([]);
+  });
+
+  it('answers [] rather than reading a nested rule as a declaration', async () => {
+    const projectId = await seed({
+      '/index.html': PAGE,
+      [OVERRIDES_PATH]: '[data-osw-id="aaaaaaaa"][data-osw-id] {\n  color: red;\n  &:hover {\n    color: blue;\n  }\n}\n',
+    });
+    expect(await allProps(projectId, 'aaaaaaaa')).toEqual([]);
+  });
+});
+
+describe('applyStyleOverride — widths, batches and the journal', () => {
+  const marked = (markerId: string) => ({ attributes: { [MARKER_ATTR]: markerId }, tagName: 'p' });
+
+  it('writes into the width block it is given, and reads it back by width', async () => {
+    const projectId = await seed({ '/index.html': PAGE });
+    const first = await applyStyleOverride(
+      projectId,
+      { srcAttr: src('/index.html', PAGE, '<p'), tagName: 'p', attributes: {} },
+      [RED],
+    );
+    const narrow = await applyStyleOverride(projectId, marked(first.markerId!), [{ property: 'color', value: 'blue' }], { scope: 640 });
+
+    expect(narrow.ok).toBe(true);
+    const read640 = await readMarkerOverrides(projectId, first.markerId!);
+    expect(read640.byScope.get('all')).toEqual({ color: 'red' });
+    expect(read640.byScope.get(640)).toEqual({ color: 'blue' });
+    expect(read640.widths).toEqual([640]);
+    expect(read640.text).toContain('@media (max-width: 640px)');
+  });
+
+  it('sets and removes in one write, and hands back the file as written', async () => {
+    const projectId = await seed({ '/index.html': PAGE });
+    const first = await applyStyleOverride(
+      projectId,
+      { srcAttr: src('/index.html', PAGE, '<p'), tagName: 'p', attributes: {} },
+      [{ property: 'width', value: '320px' }],
+    );
+    const updateSpy = vi.spyOn(vfs, 'updateFile');
+
+    const result = await applyStyleOverride(projectId, marked(first.markerId!), [
+      { property: 'width', value: null },
+      { property: 'flex', value: '1 1 0' },
+    ]);
+
+    expect(updateSpy.mock.calls.map((call) => call[1])).toEqual([OVERRIDES_PATH]);
+    expect(result.css).toBe(await read(projectId, OVERRIDES_PATH));
+    expect(await allProps(projectId, first.markerId!)).toEqual(['flex']);
+  });
+
+  it('removes without stamping an element that has no marker, writing nothing', async () => {
+    const projectId = await seed({ '/index.html': PAGE });
+    const result = await applyStyleOverride(
+      projectId,
+      { srcAttr: src('/index.html', PAGE, '<p'), tagName: 'p', attributes: {} },
+      [{ property: 'color', value: null }],
+    );
+    expect(result).toMatchObject({ ok: true, filesWritten: [] });
+    expect(await read(projectId, '/index.html')).toBe(PAGE);
+    expect(await vfs.fileExists(projectId, OVERRIDES_PATH)).toBe(false);
+  });
+
+  it('tells the recorder every file it wrote, with what was there before', async () => {
+    const projectId = await seed({ '/index.html': PAGE, '/about.html': OTHER });
+    const writes: { path: string; before: string | null; silent: boolean }[] = [];
+    await applyStyleOverride(
+      projectId,
+      { srcAttr: src('/index.html', PAGE, '<p'), tagName: 'p', attributes: {} },
+      [RED],
+      { record: ({ path, before, silent }) => writes.push({ path, before, silent }) },
+    );
+    expect(writes).toEqual([
+      { path: '/index.html', before: PAGE, silent: false },
+      // Created by this write: an undo deletes it rather than leaving an empty file.
+      { path: OVERRIDES_PATH, before: null, silent: true },
+      { path: '/about.html', before: OTHER, silent: false },
+    ]);
   });
 });

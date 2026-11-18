@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SERIALIZE_TREE_JS } from '../element-tree';
 import type { SerializedLevel } from '../element-tree';
+import { CAPTURE_RUNTIME_JS } from '../frame-capture';
+import { TOOLBAR_HOST_ATTR } from '../toolbar-dom';
 
 /**
  * The serializer is a JavaScript source string, because it is interpolated into the preview frame's
@@ -64,10 +66,29 @@ describe('__oswSerializeLevel', () => {
     // elements that are genuinely present at runtime.
     document.body.innerHTML =
       tag('p', '/i.hbs:0', 'real') +
-      '<div style="position:absolute"></div>' +          // the selector overlay
+      '<div data-osw-overlay="1" style="position:absolute"></div>' + // the selector overlay
       '<div data-semantic-indicator="true"></div>' +      // placement indicator
-      '<script>1</script>';
+      '<div data-osw-toolbar=""></div>' +                 // the selection toolbar's host
+      '<script>1</script><style>p{}</style><template><p>t</p></template>';
     expect(serialize(document.body).nodes.map(n => n.tag)).toEqual(['p']);
+  });
+
+  it('lists what the page\'s script built as script rows that do not open', () => {
+    document.body.innerHTML = tag('section', '/i.hbs:0', '<div class="card"><b>built</b></div>');
+    const section = serialize(document.body).nodes[0];
+    expect(section.hasChildren).toBe(true);
+    const [card] = serialize(document.querySelector('section')!).nodes;
+    expect(card).toMatchObject({ tag: 'div', className: 'card', script: true, hasChildren: false });
+    expect(card.file).toBeUndefined();
+  });
+
+  it('says what a leaf reads, and whether it is hidden or locked', () => {
+    document.body.innerHTML =
+      tag('p', '/i.hbs:0', '  Hello\n   there,   a sentence long enough to be cut  ') +
+      '<p data-osw-src="/i.hbs:9" style="display:none" data-osw-lock>x</p>';
+    const [long, hidden] = serialize(document.body).nodes;
+    expect(long.text).toBe('Hello there, a sentence lon\u2026');
+    expect(hidden).toMatchObject({ text: 'x', hidden: true, locked: true });
   });
 
   it('caps a wide level and reports exactly how many were dropped', () => {
@@ -132,5 +153,46 @@ describe('__oswSerializeLevel', () => {
     const root = serialize(document.body).nodes[0];
     const el = document.querySelector(`[data-osw-node="${root.id}"]`)!;
     expect(serialize(el).nodes.map(n => n.tag)).toEqual(['section', 'p']);
+  });
+});
+
+describe('__oswSerializeLevel while a screenshot is painting', () => {
+  type Win = Window & { modernScreenshot?: unknown; __oswCaptureLibs?: unknown };
+  const win = window as Win;
+
+  afterEach(() => {
+    delete win.modernScreenshot;
+    delete win.__oswCaptureLibs;
+    vi.unstubAllGlobals();
+  });
+
+  it('leaves out the sandbox host the capture appends to the body, and does not stamp it', async () => {
+    document.body.innerHTML = tag('main', '/i.hbs:0');
+    let seen: { hosts: number; rows: string[]; stamped: number } | null = null;
+    // The real capture runtime with a stub painter: the tree is read at the moment it paints.
+    win.modernScreenshot = {
+      createContext: async (root: Element, options: object) => ({ root, options }),
+      domToCanvas: async () => {
+        const rows = serialize(document.body).nodes.map(n => n.tag);
+        seen = {
+          hosts: document.querySelectorAll('[data-osw-capture]').length,
+          rows,
+          stamped: document.querySelectorAll('[data-osw-capture][data-osw-node]').length,
+        };
+        return { width: 1, height: 1 };
+      },
+    };
+    vi.stubGlobal('createImageBitmap', async () => ({}));
+
+    await new Promise(resolve => {
+      new Function('msg', 'post', CAPTURE_RUNTIME_JS)({
+        reqId: 1,
+        opts: { captureWidth: 1280, captureHeight: 720, fullPage: false, waitForContent: false, minWaitDelay: 0 },
+        toolbarAttr: TOOLBAR_HOST_ATTR,
+        libBase: '',
+      }, resolve);
+    });
+
+    expect(seen).toEqual({ hosts: 1, rows: ['main'], stamped: 0 });
   });
 });

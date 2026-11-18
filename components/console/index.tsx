@@ -12,6 +12,7 @@ import type { ProjectRuntime } from '@/lib/vfs/types';
 import { getRuntimeConfig } from '@/lib/runtimes/registry';
 import { logger } from '@/lib/utils';
 import { Tip } from '@/components/ui/tooltip';
+import { outputLines } from './output-lines';
 
 interface ConsolePanelProps {
   projectId: string;
@@ -706,20 +707,8 @@ export function ConsolePanel({ projectId, runtime, onClose, bufferedMessages, on
 
     try {
       const result = await vfsShell.execute(projectId, tokens);
-
-      if (result.success) {
-        if (result.stdout) {
-          // Write each line individually to handle EOL properly
-          const lines = result.stdout.split('\n');
-          for (const line of lines) {
-            term.writeln(line);
-          }
-        }
-      } else {
-        if (result.stderr) {
-          term.writeln(`\x1b[31m${result.stderr}\x1b[0m`);
-        }
-      }
+      // A line at a time, so each ends as the terminal expects.
+      for (const line of outputLines(result)) term.writeln(line);
     } catch (err) {
       term.writeln(`\x1b[31m${consoleTextRef.current('error', { error: err instanceof Error ? err.message : consoleTextRef.current('unknownError') })}\x1b[0m`);
     }

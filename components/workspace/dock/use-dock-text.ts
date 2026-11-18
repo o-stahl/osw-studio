@@ -14,7 +14,7 @@ export function useDockText() {
     const refusal = (r: LayoutRefusal): string => {
       if (r.code === 'width') return t('refusal.width', { px: r.px });
       if (r.code === 'height') return t('refusal.height', { panel: titles[r.panel], px: r.px });
-      return t('refusal.inspectorPreview');
+      return t('refusal.inspectorSurface', { panel: titles[r.panel] });
     };
 
     /**

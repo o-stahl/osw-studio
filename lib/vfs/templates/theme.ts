@@ -34,7 +34,7 @@ body {
   background: var(--canvas);
   color: var(--ink);
   font-family: var(--sans);
-  font-size: 1rem;
+  font-size: var(--text-body);
   font-weight: 400;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
@@ -63,24 +63,24 @@ h1, h2, h3, h4 {
 }
 
 h1 {
-  font-size: clamp(2.2rem,5vw,3.1rem);
+  font-size: var(--text-h1);
   letter-spacing: -0.03em;
   line-height: 1.08;
 }
 
 h2 {
-  font-size: clamp(1.3rem,2.4vw,1.7rem);
+  font-size: var(--text-h2);
   letter-spacing: -0.02em;
   line-height: 1.12;
 }
 
 h3 {
-  font-size: 1.0625rem;
+  font-size: var(--text-lg);
   letter-spacing: -0.01em;
 }
 
 h4 {
-  font-size: 0.9375rem;
+  font-size: var(--text-base);
 }
 
 p {
@@ -111,7 +111,7 @@ code, .mono {
 
 .label {
   font-family: var(--font-label);
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   font-weight: var(--label-weight);
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -134,7 +134,7 @@ code, .mono {
 .keyline {
   border: 0;
   border-top: 1px solid var(--line);
-  margin: 1.25rem 0;
+  margin: var(--space-5) 0;
 }
 
 .demo {
@@ -196,7 +196,7 @@ code, .mono {
 }
 
 .btn-sm {
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   padding: 0.4rem 0.85rem;
 }
 
@@ -214,13 +214,13 @@ code, .mono {
 }
 
 .field > span {
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   color: var(--ink-soft);
 }
 
 .field input, .field textarea, .field select {
   font: inherit;
-  font-size: 0.9375rem;
+  font-size: var(--text-base);
   padding: 0.55rem 0.7rem;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-md);
@@ -243,12 +243,12 @@ code, .mono {
 }
 
 .field .hint {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--ink-faint);
 }
 
 .field .err {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--stop);
 }
 
@@ -258,7 +258,7 @@ code, .mono {
 
 .tag {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   padding: 0.18rem 0.55rem;
   border-radius: var(--r-sm);
   background: var(--base);
@@ -286,7 +286,7 @@ code, .mono {
 
 .filter {
   font: inherit;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   padding: 0.28rem 0.7rem;
   cursor: pointer;
   border-radius: var(--r-pill);
@@ -309,12 +309,12 @@ code, .mono {
 
 .notice {
   display: flex;
-  gap: 0.75rem;
+  gap: var(--space-3);
   padding: 0.85rem 1rem;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-md);
   background: var(--base);
-  font-size: 0.875rem;
+  font-size: var(--text-md);
   max-width: var(--measure);
 }
 
@@ -343,7 +343,7 @@ code, .mono {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--space-4);
   padding: 0.8rem 1rem;
   background: var(--raised);
 }
@@ -357,11 +357,11 @@ code, .mono {
 }
 
 .list-item .lead {
-  font-size: 0.9375rem;
+  font-size: var(--text-base);
 }
 
 .list-item .sub {
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   color: var(--ink-soft);
 }
 
@@ -372,7 +372,7 @@ code, .mono {
 table {
   border-collapse: collapse;
   width: 100%;
-  font-size: 0.875rem;
+  font-size: var(--text-md);
   min-width: 30rem;
 }
 
@@ -384,7 +384,7 @@ th, td {
 
 th {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--ink-faint);
@@ -398,12 +398,12 @@ td.num {
 
 pre {
   margin: 0;
-  padding: 1rem;
+  padding: var(--space-4);
   background: var(--sunken);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   overflow-x: auto;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   line-height: 1.6;
 }
 
@@ -411,14 +411,14 @@ pre {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1.5rem;
+  gap: var(--space-6);
   padding: 0.85rem 1.25rem;
   border-bottom: 1px solid var(--line);
   background: var(--canvas);
 }
 
 .brand {
-  font-size: 1.0625rem;
+  font-size: var(--text-lg);
   letter-spacing: -0.015em;
   text-decoration: none;
   color: var(--ink);
@@ -436,7 +436,7 @@ pre {
 }
 
 .site-nav a {
-  font-size: 0.875rem;
+  font-size: var(--text-md);
   color: var(--ink-soft);
   text-decoration: none;
 }
@@ -452,7 +452,7 @@ pre {
 }
 
 .hero .lede {
-  font-size: 1.0625rem;
+  font-size: var(--text-lg);
   color: var(--ink-soft);
   max-width: 44ch;
   margin: 1rem 0 1.75rem;
@@ -468,7 +468,7 @@ pre {
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px,1fr));
-  gap: 1rem;
+  gap: var(--space-4);
 }
 
 .card {
@@ -479,14 +479,14 @@ pre {
 }
 
 .card p {
-  font-size: 0.875rem;
+  font-size: var(--text-md);
   color: var(--ink-soft);
-  margin: 0.5rem 0 0;
+  margin: var(--space-2) 0 0;
 }
 
 .card .from {
   margin-top: 0.9rem;
-  font-size: 0.875rem;
+  font-size: var(--text-md);
   color: var(--ink);
 }
 
@@ -494,7 +494,7 @@ pre {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
-  padding: 1.25rem;
+  padding: var(--space-5);
   background: var(--base);
 }
 
@@ -502,7 +502,7 @@ pre {
   max-width: 82%;
   padding: 0.65rem 0.9rem;
   border-radius: var(--r-lg);
-  font-size: 0.9375rem;
+  font-size: var(--text-base);
 }
 
 .bubble-bot {
@@ -527,7 +527,7 @@ pre {
 .choices {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: var(--space-2);
   padding: 0.9rem 1.25rem;
   border-top: 1px solid var(--line);
   background: var(--canvas);
@@ -536,19 +536,19 @@ pre {
 .board {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px,1fr));
-  gap: 1rem;
+  gap: var(--space-4);
 }
 
 .col-head {
   display: flex;
   align-items: baseline;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 .col-count {
   font-family: var(--mono);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--ink-faint);
 }
 
@@ -561,12 +561,12 @@ pre {
 }
 
 .task .t {
-  font-size: 0.9375rem;
+  font-size: var(--text-base);
 }
 
 .task .m {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   color: var(--ink-faint);
   margin-top: 0.35rem;
   display: block;
@@ -582,14 +582,14 @@ pre {
 }
 
 .read {
-  font-size: 1.0625rem;
+  font-size: var(--text-lg);
   line-height: 1.75;
   max-width: 60ch;
   letter-spacing: 0.003em;
 }
 
 .read h3 {
-  margin: 1.5rem 0 0.5rem;
+  margin: var(--space-6) 0 var(--space-2);
 }
 
 .read ul {
@@ -602,18 +602,18 @@ pre {
 }
 
 .read blockquote {
-  margin: 0 0 1rem;
-  padding-left: 1rem;
+  margin: 0 0 var(--space-4);
+  padding-left: var(--space-4);
   border-left: 2px solid var(--line-strong);
   color: var(--ink-soft);
 }
 
 .read p {
-  margin-bottom: 1rem;
+  margin-bottom: var(--space-4);
 }
 
 .empty {
-  padding: 2.5rem 1.5rem;
+  padding: var(--space-10) var(--space-6);
   text-align: center;
   color: var(--ink-soft);
 }
@@ -626,17 +626,17 @@ pre {
 .empty p {
   max-width: 42ch;
   margin: 0 auto;
-  font-size: 0.9375rem;
+  font-size: var(--text-base);
 }
 
 .site-foot {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem 2rem;
+  gap: var(--space-2) var(--space-8);
   justify-content: space-between;
-  padding: 1.25rem;
+  padding: var(--space-5);
   border-top: 1px solid var(--line);
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   color: var(--ink-faint);
 }
 
@@ -651,14 +651,45 @@ pre {
   }
 }`;
 
+/**
+ * The sizes the component CSS sets type in, as custom properties: a font size in a rule is one of
+ * these names, so the Styles tab can show which, and changing a step changes every rule on it.
+ */
+export const TYPE_SCALE: readonly (readonly [string, string])[] = [
+  ['--text-2xs', '0.6875rem'],
+  ['--text-xs', '0.75rem'],
+  ['--text-sm', '0.8125rem'],
+  ['--text-md', '0.875rem'],
+  ['--text-base', '0.9375rem'],
+  ['--text-body', '1rem'],
+  ['--text-lg', '1.0625rem'],
+  ['--text-h2', 'clamp(1.3rem,2.4vw,1.7rem)'],
+  ['--text-h1', 'clamp(2.2rem,5vw,3.1rem)'],
+];
+
+/**
+ * The spacing steps on the quarter-rem grid. A padding, margin or gap whose lengths are all on the
+ * grid is written with these; one tuned by eye to a value off it (`0.85rem`) keeps its number,
+ * and so does one inside `clamp()`.
+ */
+export const SPACE_SCALE: readonly (readonly [string, string])[] = [
+  ['--space-2', '0.5rem'],
+  ['--space-3', '0.75rem'],
+  ['--space-4', '1rem'],
+  ['--space-5', '1.25rem'],
+  ['--space-6', '1.5rem'],
+  ['--space-8', '2rem'],
+  ['--space-10', '2.5rem'],
+];
+
 export interface TemplateTokens {
   /** The one accent, as an OKLCH hue. This is the main thing that distinguishes templates. */
   hue: number;
-  /** Chroma at the accent. Greens and cyans cannot hold the 0.19 the artifact uses. */
+  /** Chroma at the accent. Greens and cyans cannot hold the default 0.19. */
   chroma?: number;
   /** Lightness of the accent fill. Tuned so white on it stays legible. */
   lightness?: number;
-  /** Corner radius. The artifact tightens this to 6px for the library skin. */
+  /** Corner radius, 13px by default; 6px gives the tighter look of a reference or data template. */
   radius?: number;
   scheme?: 'light' | 'dark';
 }
@@ -724,7 +755,22 @@ export function templateTokens(t: TemplateTokens): string {
     '  --font-label: var(--sans);',
     '  --label-weight: 500;',
     '',
+    ...TYPE_SCALE.map(([name, value]) => `  ${name}: ${value};`),
+    '',
+    ...SPACE_SCALE.map(([name, value]) => `  ${name}: ${value};`),
+    '',
     '  --measure: 66ch;',
+    '}',
+    '',
+    '/* The accent\'s variants, worked out from --accent. Change that one colour and these follow.',
+    '   A browser without relative colours keeps the fixed values above. */',
+    '@supports (color: oklch(from red l c h)) {',
+    '  :root {',
+    `    --accent-hover: oklch(from var(--accent) calc(l ${dark ? '+ 0.06' : '- 0.05'}) c h);`,
+    '    --accent-soft: oklch(from var(--accent) l c h / 0.12);',
+    `    --accent-text: oklch(from var(--accent) calc(l ${dark ? '+ 0.15' : '- 0.07'}) calc(c * 0.92) h);`,
+    `    --accent-quiet: oklch(from var(--accent) ${dark ? 0.62 : 0.48} 0.03 h);`,
+    '  }',
     '}',
   ].join('\n');
 }

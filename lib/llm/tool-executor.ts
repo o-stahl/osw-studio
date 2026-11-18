@@ -16,6 +16,9 @@ import { toolRegistry, ToolExecutionContext } from './tool-registry';
 import { Agent } from './agent';
 import { generalCommandNames, setupOnlyCommandNames } from '@/lib/vfs/shell-commands';
 import type { ApprovalRequest, ApprovalOutcome, PermissionMode, GateDecision } from './permissions';
+import type { ElementMatcher } from '@/lib/direct-edit/targets';
+import type { LineMatcher } from '@/lib/vfs/shell/types';
+import type { RenderJob, RenderResult, ScreenshotImage } from '@/lib/canvas/render-types';
 
 const HARMONY_TOKEN_STRIP_RE = /<\|[^|]*\|>/g;
 
@@ -39,6 +42,16 @@ export interface OswsToolExecutorConfig {
   onSearchRequested?: (args: string[]) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
   /** Server-side generation: pause (awaiting_user) on gated commands instead of prompting. */
   pauseForApproval?: boolean;
+  /** Selector matching where there is no DOM (server runs). */
+  matchElements?: ElementMatcher;
+  /** `rg` and `grep` matching off the thread, with a time limit (server runs). */
+  matchLines?: LineMatcher;
+  /** Renders a page in an open browser tab (server runs). */
+  renderInBrowser?: (job: RenderJob) => Promise<RenderResult>;
+  /** Whether the model reads images, for `screenshot`. */
+  imageInput?: boolean;
+  /** Placeholders the conversation asked to have built; the write guard does not report their going. */
+  expectedPlaceholders?: ReadonlySet<string>;
 }
 
 export class OswsToolExecutor implements ToolExecutor {
@@ -104,6 +117,8 @@ export class OswsToolExecutor implements ToolExecutor {
     // 4. Dispatch to registry with signal/ask/setup detection
     let setupComplete = false;
     let awaitingUser = false;
+    // What a `screenshot` made for the model; the loop attaches it after this call's result.
+    let images: ScreenshotImage[] = [];
 
     const execContext: ToolExecutionContext = {
       agentType: context.agentType,
@@ -124,6 +139,12 @@ export class OswsToolExecutor implements ToolExecutor {
       onBuildRequested: this.config.onBuildRequested,
       onSearchRequested: this.config.onSearchRequested,
       pauseForApproval: this.config.pauseForApproval,
+      matchElements: this.config.matchElements,
+      matchLines: this.config.matchLines,
+      renderInBrowser: this.config.renderInBrowser,
+      imageInput: this.config.imageInput,
+      expectedPlaceholders: this.config.expectedPlaceholders,
+      onImages: (shots) => { images = [...images, ...shots]; },
     };
 
     try {
@@ -144,6 +165,7 @@ export class OswsToolExecutor implements ToolExecutor {
 
       const isError = resultContent.startsWith('Error:');
       const signals = this.extractSignals(toolCall, resultContent, setupComplete, awaitingUser, isError);
+      if (images.length > 0) signals.images = images;
 
       const result: ToolResult = {
         tool_call_id: toolCall.id,
@@ -301,8 +323,8 @@ export class OswsToolExecutor implements ToolExecutor {
     const commandList = agentType === 'setup'
       ? 'brief, spec, ask, propose-create'
       : isServerSide
-        ? 'ls, tree, cat, head, tail, rg, grep, find, mkdir, touch, rm, mv, cp, echo, sed, ss, wc, sort, uniq, tr, curl, sqlite3, preview, build, status'
-        : 'ls, tree, cat, head, tail, rg, grep, find, mkdir, touch, rm, mv, cp, echo, sed, ss, wc, sort, uniq, tr, curl, sqlite3, python, python3, lua, preview, build, status';
+        ? 'ls, tree, cat, head, tail, rg, grep, find, mkdir, touch, rm, mv, cp, echo, sed, ss, style, wc, sort, uniq, tr, curl, inspect, screenshot, sqlite3, preview, build, status'
+        : 'ls, tree, cat, head, tail, rg, grep, find, mkdir, touch, rm, mv, cp, echo, sed, ss, style, wc, sort, uniq, tr, curl, inspect, screenshot, sqlite3, python, python3, lua, preview, build, status';
 
     return `Error: Unknown tool "${toolId}". Available tools: bash.\n\nThe bash tool supports these commands: ${commandList}`;
   }

@@ -21,7 +21,7 @@ import { vfs } from '@/lib/vfs';
 import { checkpointManager, Checkpoint, type CheckpointLabel } from '@/lib/vfs/checkpoint';
 import { saveManager } from '@/lib/vfs/save-manager';
 import { configManager } from '@/lib/config/storage';
-import { getProvider, getModelContextLength } from '@/lib/llm/providers/registry';
+import { getProvider, getModelContextLength, resolveInputModalities } from '@/lib/llm/providers/registry';
 import { boundCompactionLimit, resolveLocalContextLength } from '@/lib/llm/local-context';
 import type { ProviderId } from '@/lib/llm/providers/types';
 import { OSWS_PROVIDER } from '@/lib/inference/allowance';
@@ -56,6 +56,7 @@ import { OswsProviderAdapter, ProviderApiError } from './provider-adapter';
 import { OswsToolExecutor } from './tool-executor';
 import { MultiAgentCoordinator } from './coordinator';
 import type { Message, ProgressReporter, CostTracker, AgentLoopConfig, AgentLoopResult, CompactionConfig } from './core/types';
+import type { SentBlock } from '@/lib/semantic-blocks/types';
 
 // ---------------------------------------------------------------------------
 // Exported types — consumed by 15+ files, must not change shape
@@ -75,8 +76,8 @@ export interface AgentMessage {
     projectContext?: string;
     displayContent?: string | ContentBlock[];
     isCompactSummary?: boolean;
-    focusContext?: { domPath: string; snippet: string };
-    semanticBlocks?: Array<{ name: string; domPath: string; position: string; description: string }>;
+    focusContext?: { domPath: string; snippet: string; width?: number };
+    semanticBlocks?: SentBlock[];
     attachedFiles?: Array<{ name: string }>;
   };
 }
@@ -137,6 +138,8 @@ export interface MultiAgentResult {
   toolCount?: number;
   turnCount?: number;
   apiErrorCount?: number;
+  /** The run's last provider error, for telemetry when it is what ended the run: its category, and the limit it named. */
+  lastApiError?: { category: string; limitSource?: string };
   contextBreakdowns?: ContextBreakdown[];
 }
 
@@ -188,6 +191,8 @@ export class MultiAgentOrchestrator {
    *  via persistedInstance), letting a task-1 write be compared against a task-2
    *  overwrite to detect edits the user made in between. */
   private readVersions = new Map<string, number>();
+  /** Placeholders a message of this conversation asked to have built (`data-osw-block` values). */
+  private askedPlaceholders = new Set<string>();
 
   private stopped = false;
   /** How to stop each loop running now. A stop reaches all of them, whichever execute began it. */
@@ -210,6 +215,7 @@ export class MultiAgentOrchestrator {
   private toolCallCount = 0;
   private turnCount = 0;
   private apiErrorCount = 0;
+  private lastApiError: { category: string; limitSource?: string } | undefined;
   private contextBreakdowns: ContextBreakdown[] = [];
 
   private static readonly COMPACTION_THRESHOLD = 0.60;
@@ -271,13 +277,14 @@ export class MultiAgentOrchestrator {
       audio?: Array<{ data: string; format: 'wav'; transcript?: string }>;
       voiceInput?: ModelRef | 'agent' | 'browser' | null;
       files?: Array<{ name: string; content: string }>;
-      focusContext?: { domPath: string; snippet: string };
-      semanticBlocks?: Array<{ name: string; domPath: string; position: string; description: string }>;
+      focusContext?: { domPath: string; snippet: string; width?: number };
+      semanticBlocks?: SentBlock[];
       displayPrompt?: string;
     }
   ): Promise<MultiAgentResult> {
     logger.info('[MultiAgentOrchestrator] Starting execution', { agent: this.rootAgent.type });
 
+    for (const block of options?.semanticBlocks ?? []) if (block.placementId) this.askedPlaceholders.add(block.placementId);
     this.stopped = false;
     this.abortController = new AbortController();
     this.taskCost = 0;
@@ -286,6 +293,7 @@ export class MultiAgentOrchestrator {
     this.toolCallCount = 0;
     this.turnCount = 0;
     this.apiErrorCount = 0;
+    this.lastApiError = undefined;
 
     // Strip trailing nudge messages from previous execution
     const conversation = this.conversations.get(this.currentConversationId)!;
@@ -474,6 +482,7 @@ export class MultiAgentOrchestrator {
         toolCount: this.toolCallCount,
         turnCount: this.turnCount,
         apiErrorCount: this.apiErrorCount,
+        lastApiError: this.lastApiError,
         contextBreakdowns: this.contextBreakdowns.length > 0 ? this.contextBreakdowns : undefined,
       };
     } catch (error) {
@@ -493,6 +502,7 @@ export class MultiAgentOrchestrator {
         toolCount: this.toolCallCount,
         turnCount: this.turnCount,
         apiErrorCount: this.apiErrorCount,
+        lastApiError: this.lastApiError,
         contextBreakdowns: this.contextBreakdowns.length > 0 ? this.contextBreakdowns : undefined,
       };
     }
@@ -662,6 +672,11 @@ export class MultiAgentOrchestrator {
         onSearchRequested: this.serverContext?.onSearchRequested,
         // Server-side runs pause on gated commands (no UI to prompt); browser runs prompt live.
         pauseForApproval: !!this.serverContext,
+        matchElements: this.serverContext?.matchElements,
+        matchLines: this.serverContext?.matchLines,
+        renderInBrowser: this.serverContext?.renderInBrowser,
+        imageInput: this.modelReadsImages(),
+        expectedPlaceholders: this.askedPlaceholders,
       });
       executor.onAfterExecute = async (toolCall, result, durationMs) => {
         track('tool_call', {
@@ -703,7 +718,7 @@ export class MultiAgentOrchestrator {
         const serverCtxMeta = this.getVFS().getServerContextMetadata();
         return buildSystemPrompt(
           this.chatMode || agentType === 'explore' || agentType === 'plan',
-          serverCtxMeta, this.projectId, agentType as AgentType, true, this.isImageGenAvailable(), this.isWebSearchAvailable(), !!this.serverContext
+          serverCtxMeta, this.projectId, agentType as AgentType, true, this.isImageGenAvailable(), this.isWebSearchAvailable(), !!this.serverContext, this.modelReadsImages()
         );
       },
     });
@@ -719,6 +734,9 @@ export class MultiAgentOrchestrator {
       onProviderError: async (error: Error) => {
         this.apiErrorCount++;
         const apiError = error instanceof ProviderApiError ? error : null;
+        this.lastApiError = apiError
+          ? { category: apiError.errorCategory, ...(apiError.limitSource ? { limitSource: apiError.limitSource } : {}) }
+          : { category: 'unknown' };
         // Whichever way this ends, the model that failed is passed over by the next suggestion, so
         // a stopped card does not offer straight back the model the person just moved away from.
         if (apiError) this.recordStop(apiError);
@@ -739,6 +757,7 @@ export class MultiAgentOrchestrator {
             error_category: apiError.errorCategory,
             status_code: apiError.status,
             ...(apiError.streamErrorType ? { stream_error_type: apiError.streamErrorType } : {}),
+            ...(apiError.limitSource ? { limit_source: apiError.limitSource } : {}),
           });
         } else {
           // Not a provider response (a network failure, say). Report best-effort fields only;
@@ -857,6 +876,13 @@ export class MultiAgentOrchestrator {
     return !!this.assignment && imageModelFor(this.assignment, this.getConfig()) !== null;
   }
 
+  /** Whether the agent model reads images, which `screenshot` needs. Server runs take the browser's word. */
+  private modelReadsImages(): boolean {
+    if (this.serverContext) return !!this.serverContext.imageInputAvailable;
+    const { provider, model } = this.getProviderConfig();
+    return resolveInputModalities(provider, model, this.getConfig().getCachedModels(provider)).includes('image');
+  }
+
   private isWebSearchAvailable(): boolean {
     // Server-side the provider config lives on the client, so trust the flag the client sent
     // (the search itself is delegated back to the browser). Browser runs read local config.
@@ -872,7 +898,7 @@ export class MultiAgentOrchestrator {
     serverCtxMeta: Parameters<typeof buildSystemPrompt>[1],
     modelSupportsTools: boolean,
   ): Promise<string> {
-    const prompt = await buildSystemPrompt(this.chatMode, serverCtxMeta, this.projectId, this.rootAgent.type, modelSupportsTools, this.isImageGenAvailable(), this.isWebSearchAvailable(), !!this.serverContext);
+    const prompt = await buildSystemPrompt(this.chatMode, serverCtxMeta, this.projectId, this.rootAgent.type, modelSupportsTools, this.isImageGenAvailable(), this.isWebSearchAvailable(), !!this.serverContext, this.modelReadsImages());
     return this.rootAgent.type === 'interview'
       ? withInterviewAgenda(prompt, this.interviewTemplateId, this.interviewTemplate)
       : prompt;

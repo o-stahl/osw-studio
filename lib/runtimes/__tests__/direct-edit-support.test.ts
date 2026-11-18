@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { supportsDirectEditing, RUNTIME_CONFIGS } from '../registry';
+import { canvasSupport, supportsDirectEditing, RUNTIME_CONFIGS } from '../registry';
 
 /**
  * Which runtimes the preview's direct-edit surface is offered in.
@@ -39,6 +39,28 @@ describe('supportsDirectEditing', () => {
     for (const config of RUNTIME_CONFIGS) {
       expect(supportsDirectEditing(config.id), config.id)
         .toBe(config.previewMode === 'visual' && !config.bundled);
+    }
+  });
+});
+
+describe('canvasSupport', () => {
+  it('edits where elements come from source files, shows bundled pages, and has nothing for terminals', () => {
+    expect(canvasSupport('static')).toBe('edit');
+    expect(canvasSupport('handlebars')).toBe('edit');
+    for (const runtime of ['react', 'preact', 'svelte', 'vue'] as const) expect(canvasSupport(runtime), runtime).toBe('view');
+    expect(canvasSupport('python')).toBeNull();
+    expect(canvasSupport('lua')).toBeNull();
+  });
+
+  it('is null for a missing or unknown runtime', () => {
+    expect(canvasSupport(undefined)).toBeNull();
+    expect(canvasSupport(null)).toBeNull();
+    expect(canvasSupport('webassembly' as never)).toBeNull();
+  });
+
+  it('edits exactly where direct editing works', () => {
+    for (const config of RUNTIME_CONFIGS) {
+      expect(canvasSupport(config.id) === 'edit', config.id).toBe(supportsDirectEditing(config.id));
     }
   });
 });

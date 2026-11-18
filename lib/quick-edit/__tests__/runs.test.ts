@@ -287,6 +287,13 @@ describe('splitRuns, message by message', () => {
     expect(r.segments[1]).toMatchObject({ notice: { kind: 'correction', text: 'Error: no such file' } });
   });
 
+  it('notes that OSW Studio inference is running low, with when it renews', () => {
+    const r = splitRuns([ask(0), turn(100), at(150, 'allowance_low', { provider: 'osws', resetAt: 1794700800000 }), run(200, 'k1', 'cat /a.html')])[0];
+    expect(r.segments.find((s) => s.kind === 'notice')).toMatchObject({ notice: { kind: 'limit', data: { kind: 'low', provider: 'osws', resetAt: 1794700800000 } } });
+    const untimed = splitRuns([ask(0), turn(100), at(150, 'allowance_low', { provider: 'osws' })])[0];
+    expect(untimed.segments.find((s) => s.kind === 'notice')).toEqual({ kind: 'notice', notice: { kind: 'limit', data: { kind: 'low', provider: 'osws' } } });
+  });
+
   it('notes a retry only while the run is still waiting on it', () => {
     const waiting = splitRuns([ask(0), turn(100), at(150, 'retry', { provider: 'openrouter', status: 429 }), at(160, 'waiting')])[0];
     expect(waiting.segments.at(-1)).toMatchObject({ notice: { kind: 'limit', data: { kind: 'retrying', status: 429 } } });

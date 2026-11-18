@@ -29,6 +29,7 @@ const copy = (layout: WorkspaceLayout): WorkspaceLayout => JSON.parse(JSON.strin
 export const PANEL_GROUP: Record<PanelKey, string> = {
   chat: 'chat',
   preview: 'preview',
+  canvas: 'preview',
   editor: 'editor',
   files: 'files',
   skills: 'files',
@@ -54,6 +55,21 @@ function lastCellWithout(columns: WorkspaceLayout['columns'], tabs: readonly Pan
 /** Most recently in front first. */
 export function bumpRecent(recent: readonly PanelKey[], key: PanelKey): PanelKey[] {
   return [key, ...recent.filter((k) => k !== key)];
+}
+
+/**
+ * Adds a closed panel as a background tab right after `beside`, in `beside`'s cell, leaving the cell's
+ * front tab as it was: a new panel offered to an existing layout without changing what is on
+ * screen. Null when the panel is already open, `beside` isn't, or the cell can't hold both.
+ */
+export function addTabBehind(layout: WorkspaceLayout, key: PanelKey, beside: PanelKey, box: Box): WorkspaceLayout | null {
+  if (findPanel(layout, key)) return null;
+  const at = findPanel(layout, beside);
+  if (!at || tabsConflict([...at.cell.tabs, key])) return null;
+  const next = insertPanel(layout, key, { kind: 'tab', cell: at.cell.id, index: at.index + 1 }, box);
+  if (!next) return null;
+  findCell(next, at.cell.id)!.cell.active = at.cell.active;
+  return next;
 }
 
 /** Brings an open panel to the front of its cell; null when it is already there or not open. */
@@ -259,27 +275,37 @@ export const LAYOUT_PRESETS: readonly LayoutPreset[] = ['columns', 'stacked', 't
 /** Columns of [width, cells of [height, tabs, front tab]]. */
 type Spec = [number, [number, PanelKey[], PanelKey?][]][];
 const PRESET_SPECS: Record<LayoutPreset, Spec> = {
-  columns: [[100 / 3, [[100, ['chat']]]], [100 / 3, [[100, ['preview']]]], [100 / 3, [[100, ['files']]]]],
-  stacked: [[28, [[100, ['chat']]]], [38, [[62, ['preview']], [38, ['console']]]], [34, [[42, ['files']], [58, ['editor']]]]],
-  tabbed: [[30, [[100, ['chat', 'checkpoints', 'debug']]]], [40, [[100, ['preview']]]], [30, [[100, ['editor', 'files', 'skills'], 'editor']]]],
+  columns: [[100 / 3, [[100, ['chat']]]], [100 / 3, [[100, ['canvas', 'preview'], 'canvas']]], [100 / 3, [[100, ['files']]]]],
+  stacked: [[28, [[100, ['chat']]]], [38, [[62, ['canvas', 'preview'], 'canvas'], [38, ['console']]]], [34, [[42, ['files']], [58, ['editor']]]]],
+  tabbed: [[30, [[100, ['chat', 'checkpoints', 'debug']]]], [40, [[100, ['canvas', 'preview'], 'canvas']]], [30, [[100, ['editor', 'files', 'skills'], 'editor']]]],
 };
 
-/** A preset arrangement, with ids numbered past `seq` so none of them names an earlier cell. */
-export function presetLayout(name: LayoutPreset, seq = 0): WorkspaceLayout {
+/** Which panels a layout may hold: all of them, unless the project's runtime can't show one. */
+export type PanelFilter = (key: PanelKey) => boolean;
+const everyPanel: PanelFilter = () => true;
+
+/**
+ * A preset arrangement, with ids numbered past `seq` so none of them names an earlier cell. Panels
+ * `has` refuses are left out, and a cell or column left empty goes with them.
+ */
+export function presetLayout(name: LayoutPreset, seq = 0, has: PanelFilter = everyPanel): WorkspaceLayout {
   const newId = idMaker({ v: 1, columns: [], seq });
-  const columns = PRESET_SPECS[name].map(([size, cells]) => ({
-    id: newId('col'),
-    size,
-    cells: cells.map(([cellSize, tabs, active]) => ({ id: newId('cell'), size: cellSize, tabs: [...tabs], active: active ?? tabs[0] })),
-  }));
+  const columns = PRESET_SPECS[name]
+    .map(([size, cells]) => ({ size, cells: cells.map(([cellSize, tabs, active]) => ({ cellSize, tabs: tabs.filter(has), active })).filter((cell) => cell.tabs.length) }))
+    .filter((col) => col.cells.length)
+    .map(({ size, cells }) => ({
+      id: newId('col'),
+      size,
+      cells: cells.map(({ cellSize, tabs, active }) => ({ id: newId('cell'), size: cellSize, tabs, active: active && tabs.includes(active) ? active : tabs[0] })),
+    }));
   return normalize({ v: 1, columns, seq: newId.seq });
 }
 
 /** The preset a layout is arranged as, whatever its sizes; null for any other arrangement. */
-export function presetOf(layout: WorkspaceLayout): LayoutPreset | null {
+export function presetOf(layout: WorkspaceLayout, has: PanelFilter = everyPanel): LayoutPreset | null {
   const shape = shapeOf(layout);
-  return LAYOUT_PRESETS.find((name) => shapeOf(presetLayout(name)) === shape) ?? null;
+  return LAYOUT_PRESETS.find((name) => shapeOf(presetLayout(name, 0, has)) === shape) ?? null;
 }
 
 /** The layout a workspace starts with, and goes back to on Reset layout. */
-export const defaultLayout = (seq = 0): WorkspaceLayout => presetLayout('columns', seq);
+export const defaultLayout = (seq = 0, has: PanelFilter = everyPanel): WorkspaceLayout => presetLayout('columns', seq, has);

@@ -3,22 +3,25 @@ import type { DebugEvent, GenerationTask } from '../types';
 import { MultiAgentOrchestrator } from '@/lib/llm/multi-agent-orchestrator';
 import type { PendingImage, PendingAudio, PendingFile } from '@/lib/llm/multi-agent-orchestrator';
 import { configManager } from '@/lib/config/storage';
-import { getProvider } from '@/lib/llm/providers/registry';
+import { getProvider, resolveInputModalities } from '@/lib/llm/providers/registry';
 import { toast } from 'sonner';
 import { track, isTelemetryActive } from '@/lib/telemetry';
 import { vfs } from '@/lib/vfs';
 import type { Project, ProjectRuntime } from '@/lib/vfs/types';
-import type { WorkspaceMode } from './project';
+import type { FocusTarget, WorkspaceMode } from './project';
+import type { FocusContextPayload } from '@/lib/preview/types';
+import type { SentBlock } from '@/lib/semantic-blocks/types';
 import { normalizeProjectSettings } from '@/lib/vfs/project-settings';
 import { markMcpActivity, clearMcpActivity } from '@/lib/api/mcp-activity';
 import { debugEventsState } from '@/lib/llm/debug-events-state';
 import { drainRuntimeErrors } from '@/lib/preview/runtime-errors';
 import { logger } from '@/lib/utils';
 import { SSEClient } from '@/lib/server-generate/sse-client';
-import { handleFilesChanged, cancelPendingFileSync } from '@/lib/server-generate/file-sync-handler';
+import { handleFilesChanged, cancelPendingFileSync, whenFilesSynced } from '@/lib/server-generate/file-sync-handler';
 import { handleBuildRequested } from '@/lib/server-generate/build-delegation-handler';
 import { handleSearchRequested } from '@/lib/server-generate/search-delegation-handler';
 import { handleImageRequested } from '@/lib/server-generate/image-delegation-handler';
+import { handleRenderRequested, handleSelectionRequested } from '@/lib/server-generate/render-delegation-handler';
 import { imageModelFor } from '@/lib/llm/image-gen';
 import { playTaskCompleteSound, playTaskCompleteSoundSubtle } from '@/lib/utils/task-complete-sound';
 import { checkpointManager } from '@/lib/vfs/checkpoint';
@@ -380,6 +383,9 @@ function flushSave(projectId: string, events: DebugEvent[]) {
   });
 }
 
+/** The pull an MCP client's last change to each project started, so a render can wait for it. */
+const mcpPulls = new Map<string, Promise<void>>();
+
 function isTabVisible(): boolean {
   return typeof document !== 'undefined' && !document.hidden;
 }
@@ -391,12 +397,25 @@ function deriveScalarFields(tasks: Map<string, GenerationTask>, viewedProjectId:
   };
 }
 
+/**
+ * The picked element as the sent message keeps it: its path, its markup and the width it was picked
+ * at, for the message's context card. The agent's copy is the focus block in the prompt.
+ */
+function sentFocus(focus: FocusContextPayload): { domPath: string; snippet: string; width?: number } {
+  return {
+    domPath: focus.domPath,
+    snippet: focus.outerHTML,
+    ...(focus.viewportWidth ? { width: focus.viewportWidth } : {}),
+  };
+}
+
 interface StartGenerationOptions {
   chatMode?: boolean;
   mode?: WorkspaceMode;
   projectId: string;
-  focusContext?: any;
-  placedBlocks?: any[];
+  focusContext?: FocusContextPayload | null;
+  /** The blocks the message puts to the agent, as it records them (`sentBlocks`). */
+  semanticBlocks?: SentBlock[];
   isTourLockingInput?: boolean;
   displayPrompt?: string;
   templateId?: string;
@@ -495,6 +514,8 @@ type CombinedState = OrchestratorSlice & {
   bumpRefreshTrigger: () => void;
   updateProjectSettings: (settings: { runtime?: ProjectRuntime }) => void;
   appendComposerDraft: (text: string) => void;
+  /** The project slice's selection, which MCP `canvas_selection` reads. */
+  focusContext: FocusTarget | null;
 };
 
 export const createOrchestratorSlice: StateCreator<CombinedState, [], [], OrchestratorSlice> = (set, get) => ({
@@ -932,6 +953,11 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
         executeOptions.voiceInput = assignment.voiceInput;
       }
       if (options?.files?.length) executeOptions.files = options.files.map(f => ({ name: f.name, content: f.content }));
+      // As a server run sends them: the message shows the person's own words and the context card,
+      // not the focus and block text the prompt carries for the model.
+      if (options?.focusContext) executeOptions.focusContext = sentFocus(options.focusContext);
+      if (options?.semanticBlocks?.length) executeOptions.semanticBlocks = options.semanticBlocks;
+      if (options?.displayPrompt) executeOptions.displayPrompt = options.displayPrompt;
 
       const result = await orchestrator.execute(
         trimmedPrompt,
@@ -991,6 +1017,11 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
           duration_ms: Date.now() - taskStartTime, task_id: taskId,
           tool_count: result.toolCount ?? 0, turn_count: result.turnCount ?? 0,
           api_error_count: result.apiErrorCount ?? 0,
+          // What stopped it, so a task refused at a spent limit can be told from one that broke.
+          ...(!userStopped && result.lastApiError ? {
+            error_category: result.lastApiError.category,
+            ...(result.lastApiError.limitSource ? { limit_source: result.lastApiError.limitSource } : {}),
+          } : {}),
         });
 
         if (own) {
@@ -1266,7 +1297,10 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
             // next page load. Losing the race is the normal outcome for one of them, not a fault.
           }
         }
-        await pullAndCheckpointServerFiles(data.projectId, get);
+        const pull = pullAndCheckpointServerFiles(data.projectId, get);
+        // A render asked for after this change waits for it (`render_requested` below).
+        mcpPulls.set(data.projectId, pull.then(() => {}, () => {}));
+        await pull;
         if (get().projectId === data.projectId) {
           get().markDirty();
         }
@@ -1407,6 +1441,21 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
           // An MCP client changed the workspace database. Pull it into this tab so the project
           // does not sit in Server Sync as "server only" or "server has updates".
           handleMcpProjectChanged(data as { projectId: string; projectName: string; created: boolean });
+          return;
+        }
+        if (event === 'render_requested') {
+          // A page for a server run's inspect or screenshot, or for an MCP client: rendered by the
+          // tab that has the project, once the pulls already under way for it have landed.
+          void handleRenderRequested(data as unknown as Parameters<typeof handleRenderRequested>[0], async (pid) => {
+            await Promise.all([whenFilesSynced(pid), mcpPulls.get(pid)]);
+          });
+          return;
+        }
+        if (event === 'selection_requested') {
+          void handleSelectionRequested(data as unknown as Parameters<typeof handleSelectionRequested>[0], () => ({
+            projectId: get().projectId || null,
+            focus: get().focusContext,
+          }));
           return;
         }
         if (event === 'mcp_run_requested') {
@@ -1624,8 +1673,8 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     // Build ui_metadata for the local user message (mirrors what the orchestrator produces)
     const displayPrompt = options?.displayPrompt ?? prompt;
     const uiMeta: Record<string, any> = { displayContent: displayPrompt, awaitingServerEcho: true };
-    if (options?.focusContext) uiMeta.focusContext = { domPath: options.focusContext.domPath, snippet: options.focusContext.outerHTML };
-    if (options?.placedBlocks?.length) uiMeta.semanticBlocks = options.placedBlocks.map((b: any) => ({ name: b.name, domPath: b.domPath, position: b.position, description: b.description }));
+    if (options?.focusContext) uiMeta.focusContext = sentFocus(options.focusContext);
+    if (options?.semanticBlocks?.length) uiMeta.semanticBlocks = options.semanticBlocks;
 
     get().addDebugEvent('conversation_message', {
       message: {
@@ -1710,8 +1759,8 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     if (imageData?.length) executeOptions.images = imageData;
     if (options?.audio?.length) executeOptions.audio = options.audio.map(a => ({ data: a.data, format: a.format }));
     if (options?.files?.length) executeOptions.files = options.files.map(f => ({ name: f.name, content: f.content }));
-    if (options?.focusContext) executeOptions.focusContext = { domPath: options.focusContext.domPath, snippet: options.focusContext.outerHTML };
-    if (options?.placedBlocks?.length) executeOptions.semanticBlocks = options.placedBlocks.map((b: any) => ({ name: b.name, domPath: b.domPath, position: b.position, description: b.description }));
+    if (options?.focusContext) executeOptions.focusContext = sentFocus(options.focusContext);
+    if (options?.semanticBlocks?.length) executeOptions.semanticBlocks = options.semanticBlocks;
     if (options?.displayPrompt) executeOptions.displayPrompt = options.displayPrompt;
 
     // The mode picked in the chat goes with the run, as it does to the browser's orchestrator.
@@ -1784,6 +1833,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
           webSearchAvailable: configManager.isWebSearchConfigured(),
           ...(webSearch ? { webSearch } : {}),
           imageGenAvailable: imageModelFor(assignment) !== null,
+          imageInputAvailable: resolveInputModalities(provider, model, configManager.getCachedModels(provider)).includes('image'),
           mode,
           ...(mode === 'interview' ? { interviewTemplateId: options?.templateId, interviewTemplate } : {}),
           conversationHistory,

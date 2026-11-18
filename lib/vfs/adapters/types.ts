@@ -60,6 +60,8 @@ export interface StorageAdapter {
 
   /** Every blob hash a file row still refers to. The blob sweep removes what this omits. */
   listReferencedBlobHashes?(): Promise<string[]>;
+  /** A project's file paths, without reading the files. Absent: `listFiles` stands in. */
+  listFilePaths?(projectId: string): Promise<string[]>;
 
   // ============================================
   // File Tree

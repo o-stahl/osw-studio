@@ -287,3 +287,29 @@ describe('the colour control', () => {
     expect(prompt).toContain('#00ff00');
   });
 });
+
+describe('discoverFontTokens', () => {
+  it('finds custom properties that are font lists, and names their first family', async () => {
+    const { discoverFontTokens } = await import('../tokens');
+    const tokens = discoverFontTokens([
+      { path: '/styles/main.css', content: ':root { --font-display: "Fraunces", Georgia, serif; --font-body: system-ui; --moss: #2f6f5e; --gap: 1rem; }' },
+    ]);
+    expect(tokens).toEqual([
+      { name: '--font-display', value: '"Fraunces", Georgia, serif', family: 'Fraunces' },
+      { name: '--font-body', value: 'system-ui', family: 'system-ui' },
+    ]);
+  });
+
+  it('names a token as declared, since var() matches custom property names case-sensitively', async () => {
+    const { discoverFontTokens } = await import('../tokens');
+    const tokens = discoverFontTokens([{ path: '/a.css', content: ':root { --fontBody: "Inter", sans-serif; --fontbody: serif; }' }]);
+    expect(tokens.map(t => t.name)).toEqual(['--fontBody', '--fontbody']);
+  });
+});
+
+describe('colour token names', () => {
+  it('are kept as declared, so the var() a swatch writes resolves', () => {
+    const tokens = discoverColorTokens([{ path: '/a.css', content: ':root { --brandInk: #1d1813; }' }]);
+    expect(tokens.map(t => t.name)).toEqual(['--brandInk']);
+  });
+});

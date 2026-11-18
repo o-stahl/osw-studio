@@ -12,6 +12,7 @@ import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import { useWorkspaceStore } from '@/lib/stores/workspace';
 import { shapeOf, type WorkspaceLayout } from '@/lib/workspace-layout';
 import { layoutShortcut, useLayoutCommands, WORKSPACE_FOCUS_ATTR, type LayoutCommands } from '../use-layout-commands';
+import { setEditHistory, type EditHistory } from '@/lib/direct-edit/edit-history';
 
 /**
  * The layout's commands as the menus, the rail and the keys reach them: a change is made without a
@@ -158,5 +159,94 @@ describe('layoutShortcut', () => {
   it('does nothing while the focus is outside the workspace', () => {
     expect(layoutShortcut(key('z', { ctrlKey: true }), el('outside'), false)).toBeNull();
     expect(layoutShortcut(key('Escape'), null, false)).toBeNull();
+  });
+});
+
+describe('Undo and Redo with Inspector edits', () => {
+  let commands: LayoutCommands;
+  let container: HTMLDivElement;
+  let root: Root;
+
+  function Probe() {
+    commands = useLayoutCommands();
+    return null;
+  }
+
+  /** An edit history whose newest entry was made, or undone, at the given times. */
+  function edits(undoAt: number | null, redoAt: number | null) {
+    const history: EditHistory & { calls: string[] } = {
+      calls: [],
+      projectId: 'p1',
+      record: () => {},
+      undoAt: () => undoAt,
+      redoAt: () => redoAt,
+      undo: () => { history.calls.push('undo'); },
+      redo: () => { history.calls.push('redo'); },
+    };
+    setEditHistory(history);
+    return history;
+  }
+
+  beforeEach(() => {
+    (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.useFakeTimers({ now: 1000 });
+    useWorkspaceStore.setState({ layout: start(), layoutHistory: [], layoutFuture: [], maximizedCell: null, lastPlace: {}, recentPanels: [], workspaceBox: null });
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => root.render(withMessages(<Probe />)));
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    localStorage.clear();
+    setEditHistory(null);
+    vi.useRealTimers();
+  });
+
+  it('undoes an edit made after the last layout change, and leaves the layout alone', () => {
+    commands.move({ panel: 'debug' }, { kind: 'tab', cell: 'cell2', index: null });
+    const moved = shape();
+    const history = edits(2000, null);
+    commands.undo();
+    expect(history.calls).toEqual(['undo']);
+    expect(shape()).toBe(moved);
+  });
+
+  it('undoes a layout change made after the last edit', () => {
+    const history = edits(500, null);
+    commands.move({ panel: 'debug' }, { kind: 'tab', cell: 'cell2', index: null });
+    commands.undo();
+    expect(history.calls).toEqual([]);
+    expect(shape()).toBe(shapeOf(start()));
+  });
+
+  it('redoes whichever was undone last', () => {
+    commands.move({ panel: 'debug' }, { kind: 'tab', cell: 'cell2', index: null });
+    commands.undo();
+    // The layout's undo happened at 1000; an edit undone after it is redone first.
+    const history = edits(null, 1500);
+    commands.redo();
+    expect(history.calls).toEqual(['redo']);
+    expect(shape()).toBe(shapeOf(start()));
+    // An edit undone at 500 is older than the layout's undo, so Redo brings the layout change back.
+    const older = edits(null, 500);
+    commands.redo();
+    expect(older.calls).toEqual([]);
+    expect(shape()).not.toBe(shapeOf(start()));
+  });
+
+  it('keeps the Layout menu\'s own Undo and Redo on the layout, however recent an edit is', () => {
+    commands.move({ panel: 'debug' }, { kind: 'tab', cell: 'cell2', index: null });
+    const moved = shape();
+    const history = edits(5000, null);
+    commands.undoLayout();
+    expect(history.calls).toEqual([]);
+    expect(shape()).toBe(shapeOf(start()));
+    const redone = edits(null, 5000);
+    commands.redoLayout();
+    expect(redone.calls).toEqual([]);
+    expect(shape()).toBe(moved);
   });
 });

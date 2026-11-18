@@ -21,22 +21,25 @@ import { STYLE_QUERY_JS, STYLE_PREVIEW_JS, STYLE_LOCATOR_JS, STYLE_PROBE_JS } fr
  */
 const frame = new Function(
   `${STYLE_QUERY_JS}${STYLE_PREVIEW_JS}${STYLE_LOCATOR_JS}${STYLE_PROBE_JS}\nreturn {
-     apply: __oswApplyStylePreview,
+     swap: __oswApplyOverrides,
      probe: __oswProbeStyleLoss
    };`,
 )() as {
-  apply: (markerId: string, css: string | null) => Element | null;
-  probe: (el: Element | null, markerId: string, properties: unknown) => { lost: string[]; winner: string | null };
+  swap: (css: string) => Element | null;
+  probe: (el: Element | null, markerId: string, properties: unknown) => { lost: string[]; winner: string | null; written: string[] };
 };
 
 const SELECTOR = '[data-osw-id="m1"][data-osw-id]';
+
+/** The Inspector's write, as the frame receives it: a whole /overrides.css with this one rule. */
+const apply = (css: string) => frame.swap(`${SELECTOR} { ${css} }`);
 
 function marked(): Element {
   return document.querySelector('[data-osw-id="m1"]')!;
 }
 
 /**
- * A stylesheet that is NOT the transient one — the shape our rule has after a recompile, when
+ * A stylesheet that is NOT the swapped-in one — the shape our rule has after a recompile, when
  * `/overrides.css` carries it. jsdom never loads `<link>`, so a `<style>` stands in; what it stands
  * in for is "a sheet nothing about its element marks as ours", which is the whole point: the
  * ranking recognises our declaration by its marker selector, wherever it happens to live.
@@ -61,7 +64,7 @@ describe('answering when there is nothing to answer about', () => {
   it('reports nothing lost for an element that no longer resolves', () => {
     // The host is waiting on a reply. `lost: []` is the answer; silence is indistinguishable from a
     // frame that has not got round to it.
-    expect(frame.probe(null, 'm1', ['color'])).toEqual({ lost: [], winner: null });
+    expect(frame.probe(null, 'm1', ['color'])).toEqual({ lost: [], winner: null, written: [] });
   });
 
   it('reports nothing lost when no sheet carries the marker at all', () => {
@@ -70,7 +73,7 @@ describe('answering when there is nothing to answer about', () => {
     // the first time a marker is probed before its block has been written.
     pageSheet('.card { color: rgb(7, 7, 7); }');
 
-    expect(frame.probe(marked(), 'm1', ['color'])).toEqual({ lost: [], winner: null });
+    expect(frame.probe(marked(), 'm1', ['color'])).toEqual({ lost: [], winner: null, written: [] });
   });
 
   it('reports nothing lost for a property nothing reachable declares', () => {
@@ -78,24 +81,24 @@ describe('answering when there is nothing to answer about', () => {
     // property. Neither does anything else, so the value comes from the UA default or from an
     // ancestor and there is no declaration to have beaten. "Lost, to something the preview cannot
     // name" is the shape of message the panel exists to stop showing.
-    frame.apply('m1', 'color: rgb(1, 2, 3);');
+    apply('color: rgb(1, 2, 3);');
 
-    expect(frame.probe(marked(), 'm1', ['padding-left'])).toEqual({ lost: [], winner: null });
+    expect(frame.probe(marked(), 'm1', ['padding-left'])).toEqual({ lost: [], winner: null, written: [] });
   });
 
   it('reports nothing lost for an empty or malformed property list', () => {
-    frame.apply('m1', 'color: rgb(1, 2, 3);');
+    apply('color: rgb(1, 2, 3);');
 
-    expect(frame.probe(marked(), 'm1', [])).toEqual({ lost: [], winner: null });
+    expect(frame.probe(marked(), 'm1', [])).toEqual({ lost: [], winner: null, written: [] });
     // `properties` crosses postMessage, so the frame is not the only writer.
-    expect(frame.probe(marked(), 'm1', 'color')).toEqual({ lost: [], winner: null });
-    expect(frame.probe(marked(), 'm1', undefined)).toEqual({ lost: [], winner: null });
+    expect(frame.probe(marked(), 'm1', 'color')).toEqual({ lost: [], winner: null, written: [] });
+    expect(frame.probe(marked(), 'm1', undefined)).toEqual({ lost: [], winner: null, written: [] });
   });
 });
 
 describe('the one loss jsdom gets right', () => {
   it('reports a property beaten by an inline style, and names it', () => {
-    frame.apply('m1', 'color: rgb(1, 2, 3);');
+    apply('color: rgb(1, 2, 3);');
     (marked() as HTMLElement).style.color = 'rgb(3, 3, 3)';
     // The precondition, stated: without it this test also passes against a probe that reports
     // everything lost unconditionally.
@@ -113,10 +116,10 @@ describe('the one loss jsdom gets right', () => {
     // a ranking that left our own declaration out would find no candidate at all and answer "not
     // lost" for the wrong reason, which is a fake pass on the case the panel is built around.
     pageSheet('.card { color: rgb(7, 7, 7); }');
-    frame.apply('m1', 'color: rgb(1, 2, 3);');
+    apply('color: rgb(1, 2, 3);');
     expect(computed('color')).toBe('rgb(1, 2, 3)');
 
-    expect(frame.probe(marked(), 'm1', ['color'])).toEqual({ lost: [], winner: null });
+    expect(frame.probe(marked(), 'm1', ['color'])).toEqual({ lost: [], winner: null, written: [] });
   });
 });
 
@@ -132,14 +135,14 @@ describe('an override that agrees with what the element already had', () => {
     pageSheet(`${SELECTOR} { padding-left: 0px; }`);
     expect(computed('padding-left')).toBe('0px');
 
-    expect(frame.probe(marked(), 'm1', ['padding-left'])).toEqual({ lost: [], winner: null });
+    expect(frame.probe(marked(), 'm1', ['padding-left'])).toEqual({ lost: [], winner: null, written: [] });
   });
 
   it('is still lost when something else is the reason the values agree', () => {
     // The converse, and the reason "the values are equal" is not a shortcut for "not lost": an
     // inline declaration of the very same colour still beats us, and the user's next edit to this
     // property will do nothing.
-    frame.apply('m1', 'color: rgb(3, 3, 3);');
+    apply('color: rgb(3, 3, 3);');
     (marked() as HTMLElement).style.color = 'rgb(3, 3, 3)';
 
     const out = frame.probe(marked(), 'm1', ['color']);
@@ -175,7 +178,7 @@ describe('the properties it answers about', () => {
     // Same expansion `style-query` uses, so `lost` and `values` are keyed alike. The loss is staged
     // as an inline `padding`, this environment's one detectable one.
     (marked() as HTMLElement).setAttribute('style', 'padding: 5px');
-    frame.apply('m1', 'padding: 9px;');
+    apply('padding: 9px;');
     expect(computed('padding-left')).toBe('5px');
 
     const out = frame.probe(marked(), 'm1', ['padding']);
@@ -186,5 +189,15 @@ describe('the properties it answers about', () => {
     // Named as longhands, never as the shorthand the host happened to ask with.
     expect(out.lost).not.toContain('padding');
     expect(out.winner).toBe('inline style');
+    // The name as asked comes back beside them: what a caller that asked with a file's own
+    // declarations acts on.
+    expect(out.written).toEqual(['padding']);
+  });
+
+  it('names, of several asked about, only the ones that lost', () => {
+    (marked() as HTMLElement).setAttribute('style', 'padding: 5px');
+    apply('padding: 9px; color: rgb(1, 2, 3);');
+    const out = frame.probe(marked(), 'm1', ['color', 'padding', 'gap']);
+    expect(out.written).toEqual(['padding']);
   });
 });

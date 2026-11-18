@@ -6,7 +6,10 @@ import { createRoot, type Root } from 'react-dom/client';
 import { StylesContent, type StylesContentHandle, type StylesContentProps } from '..';
 import { COMMIT_DEBOUNCE_MS } from '../commit';
 import { discoverColorTokens } from '../tokens';
+import { scanVariables } from '@/lib/direct-edit/css-variables';
+import type { VariableWrite } from '@/lib/direct-edit/apply-variable';
 import type { FocusContextPayload } from '@/lib/preview/types';
+import { logger } from '@/lib/utils';
 import { createTranslator } from 'next-intl';
 import en from '@/messages/en.json';
 
@@ -80,10 +83,9 @@ function computed(values: Record<string, string>): void {
  * Awaited because Radix opens through a state update: a synchronous `act` returns before the
  * content is portalled, which is indistinguishable from a popover that refused to open.
  */
-async function openColour(label: string): Promise<void> {
-  const trigger = Array.from(container.querySelectorAll<HTMLButtonElement>('[data-osw-color-trigger]'))
-    .find(el => el.getAttribute('aria-label') === `${label} colour`);
-  if (!trigger) throw new Error(`no ${label} colour trigger`);
+async function openColour(row: string): Promise<void> {
+  const trigger = container.querySelector<HTMLButtonElement>(`[data-osw-row="${row}"] [data-osw-color-trigger]`);
+  if (!trigger) throw new Error(`no ${row} colour trigger`);
   // Idempotent. The popover deliberately stays open after a press — picking a colour applies live,
   // so trying several is the normal thing to do — and Radix's trigger is a toggle, which means a
   // second unconditional click would shut it and the next query would find nothing.
@@ -102,8 +104,8 @@ function swatch(colour: string): HTMLButtonElement {
 }
 
 /** Open the row, press it, then let the commit debounce elapse and the apply settle. */
-async function press(label: string, colour: string): Promise<void> {
-  await openColour(label);
+async function press(row: string, colour: string): Promise<void> {
+  await openColour(row);
   act(() => {
     swatch(colour).dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
@@ -117,10 +119,21 @@ function panel(): Element {
   return container.firstElementChild!;
 }
 
+const ts = createTranslator({ locale: 'en', messages: en, namespace: 'styles' });
+
+/** The longest stretch of a message's own words: the part that is the same whatever its placeholders hold. */
+function wordsOf(message: string): string {
+  return message.split('\u0001').reduce((a, b) => (b.trim().length > a.trim().length ? b : a)).trim();
+}
+/** The token note's own words, after the label, token and file it names. */
+const NOTE = wordsOf(ts('tokenSuperseded', { label: '\u0001', token: '\u0001', file: '\u0001' }));
+/** A loss line's own words, between the property and what beat it. */
+const LOSES = wordsOf(ts('lossItem', { property: '\u0001', winner: '\u0001' }));
+
 /** Every leaf carrying the token note's sentence, however many there are. */
 function notes(): Element[] {
   return Array.from(container.querySelectorAll('*'))
-    .filter(el => el.children.length === 0 && (el.textContent || '').includes('Only this element changed'));
+    .filter(el => el.children.length === 0 && (el.textContent || '').includes(NOTE));
 }
 
 beforeEach(() => {
@@ -145,43 +158,43 @@ describe('pressing a colour swatch', () => {
     // The regression. `--accent` is what `background-color` currently resolves to, which used to be
     // the end of it — no write, just an offer to ask the agent.
     computed({ 'background-color': 'rgb(255, 0, 0)' });
-    await press('Background', INK);
+    await press('background-color', INK);
 
     expect(applyStyle).toHaveBeenCalledTimes(1);
-    expect(applyStyle.mock.calls[0][1]).toEqual({ property: 'background-color', value: 'var(--ink)' });
+    expect(applyStyle.mock.calls[0][1]).toEqual([{ property: 'background-color', value: 'var(--ink)' }]);
   });
 
   it('writes the chosen token as var(), not as the literal the swatch shows', async () => {
     // The behaviour the refusal made unreachable: the element is pointed at `--ink` rather than
     // frozen at its current value, so a later change to `--ink` still reaches it.
     computed({ color: 'rgb(9, 9, 9)' });
-    await press('Text', INK);
+    await press('color', INK);
 
-    expect(applyStyle.mock.calls[0][1].value).toBe('var(--ink)');
-    expect(applyStyle.mock.calls[0][1].value).not.toBe(INK);
+    expect(applyStyle.mock.calls[0][1][0].value).toBe('var(--ink)');
+    expect(applyStyle.mock.calls[0][1][0].value).not.toBe(INK);
   });
 
   it('leaves every control live afterwards, so a second press is possible', async () => {
     computed({ 'background-color': 'rgb(255, 0, 0)' });
-    await press('Background', INK);
+    await press('background-color', INK);
 
     // The old refusal was in the panel's `disabled` expression: raising it froze the whole tab until
     // it was dismissed. A note must not.
-    await openColour('Background');
+    await openColour('background-color');
     expect(swatch(ACCENT).disabled).toBe(false);
     // Both surfaces: the panel itself and the portalled popover, which is where the swatches are.
     expect(container.querySelectorAll('button[disabled]')).toHaveLength(0);
     expect(document.querySelectorAll('[data-osw-color-popover] button[disabled]')).toHaveLength(0);
 
-    await press('Background', ACCENT);
+    await press('background-color', ACCENT);
     expect(applyStyle).toHaveBeenCalledTimes(2);
   });
 });
 
 describe('the swatch the element is wearing', () => {
   /** The open popover's swatches, in order, as `[label, pressed]`. */
-  async function swatchesOn(label: string): Promise<Array<[string, string | null]>> {
-    await openColour(label);
+  async function swatchesOn(row: string): Promise<Array<[string, string | null]>> {
+    await openColour(row);
     return Array.from(document.querySelectorAll<HTMLButtonElement>('[data-osw-color-popover] [data-osw-swatch]'))
       .map(el => [el.getAttribute('aria-label') ?? '', el.getAttribute('aria-pressed')]);
   }
@@ -193,7 +206,7 @@ describe('the swatch the element is wearing', () => {
     // or this passes for the wrong reason.
     computed({ color: 'rgb(255, 0, 0)', 'background-color': 'rgba(0, 0, 0, 0)' });
 
-    const pressed = (await swatchesOn('Text')).filter(([, state]) => state === 'true');
+    const pressed = (await swatchesOn('color')).filter(([, state]) => state === 'true');
 
     expect(pressed).toEqual([['--accent', 'true']]);
   });
@@ -201,7 +214,7 @@ describe('the swatch the element is wearing', () => {
   it('marks nothing when the element wears none of them', async () => {
     computed({ color: 'rgb(1, 2, 3)', 'background-color': 'rgba(0, 0, 0, 0)' });
 
-    expect((await swatchesOn('Text')).every(([, state]) => state === 'false')).toBe(true);
+    expect((await swatchesOn('color')).every(([, state]) => state === 'false')).toBe(true);
   });
 
   it('names the token rather than its colour', async () => {
@@ -209,7 +222,7 @@ describe('the swatch the element is wearing', () => {
 
     // Pressing a swatch writes `var(--accent)`, so the name is what the press is about — and with
     // two tokens rendered as coloured squares it is the only thing telling them apart.
-    expect((await swatchesOn('Text')).map(([label]) => label)).toEqual(['--accent', '--ink']);
+    expect((await swatchesOn('color')).map(([label]) => label)).toEqual(['--accent', '--ink']);
   });
 
   it('offers every token the project declares, not the first six', async () => {
@@ -223,17 +236,24 @@ describe('the swatch the element is wearing', () => {
 
     // Capped at six, the last two were unreachable except by typing a literal into the picker — the
     // one route that writes a plain colour instead of a `var()` reference.
-    expect((await swatchesOn('Text')).map(([label]) => label))
+    expect((await swatchesOn('color')).map(([label]) => label))
       .toEqual(['--c1', '--c2', '--c3', '--c4', '--c5', '--c6', '--c7', '--c8']);
   });
 });
 
 describe('the superseded-token note', () => {
+  /** The agent is asked to change the token where it is declared, to the colour that was picked. */
+  function expectTokenEditAsked(prompt: string): void {
+    expect(prompt).toContain('--accent');
+    expect(prompt).toContain('/styles.css');
+    expect(prompt).toContain(INK);
+  }
+
   it('is absent until a press actually supersedes one', async () => {
     computed({ 'background-color': 'rgb(9, 9, 9)' });
     expect(notes()).toHaveLength(0);
 
-    await press('Background', INK);
+    await press('background-color', INK);
     expect(applyStyle).toHaveBeenCalledTimes(1);
     // Nothing was displaced, so there is nothing to volunteer.
     expect(notes()).toHaveLength(0);
@@ -241,7 +261,7 @@ describe('the superseded-token note', () => {
 
   it('names the token it superseded, and its file', async () => {
     computed({ 'background-color': 'rgb(255, 0, 0)' });
-    await press('Background', INK);
+    await press('background-color', INK);
 
     expect(notes()).toHaveLength(1);
     const text = notes()[0].textContent || '';
@@ -257,7 +277,7 @@ describe('the superseded-token note', () => {
 
   it('does not follow the user to another element', async () => {
     computed({ 'background-color': 'rgb(255, 0, 0)' });
-    await press('Background', INK);
+    await press('background-color', INK);
     expect(notes()).toHaveLength(1);
 
     act(() => {
@@ -272,7 +292,7 @@ describe('the superseded-token note', () => {
 
   it('sits at the foot of the panel, outside the scrolling controls', async () => {
     computed({ 'background-color': 'rgb(255, 0, 0)' });
-    await press('Background', INK);
+    await press('background-color', INK);
 
     const foot = panel().lastElementChild!;
     const body = panel().children[panel().children.length - 2];
@@ -284,11 +304,11 @@ describe('the superseded-token note', () => {
 
   it('follows the most recent press rather than accumulating', async () => {
     computed({ 'background-color': 'rgb(255, 0, 0)' });
-    await press('Background', INK);
+    await press('background-color', INK);
     expect(notes()[0].textContent).toContain('--accent');
 
     // The element now reads as `--ink`, so this press displaces that one instead.
-    await press('Background', ACCENT);
+    await press('background-color', ACCENT);
     expect(notes()).toHaveLength(1);
     expect(notes()[0].textContent).toContain('--ink');
     expect(notes()[0].textContent).not.toContain('--accent');
@@ -298,10 +318,10 @@ describe('the superseded-token note', () => {
     // Not the same as never appearing: a note left standing from an earlier press attributes this
     // one to a token it had nothing to do with.
     computed({ 'background-color': 'rgb(255, 0, 0)', color: 'rgb(9, 9, 9)' });
-    await press('Background', INK);
+    await press('background-color', INK);
     expect(notes()).toHaveLength(1);
 
-    await press('Text', INK);
+    await press('color', INK);
     expect(applyStyle).toHaveBeenCalledTimes(2);
     expect(notes()).toHaveLength(0);
   });
@@ -311,25 +331,34 @@ describe('the superseded-token note', () => {
     // belong together at the foot; a note that evicted the loss banner would honour the placement
     // and lose the message.
     computed({ 'background-color': 'rgb(255, 0, 0)' });
-    await press('Background', INK);
-    act(() => {
-      ref.current!.handleStyleProbeResult({
-        type: 'style-probe-result',
-        nodeId: 'n1',
-        lost: ['background-color'],
-        winner: '/styles.css',
-      });
+    await press('background-color', INK);
+    const lost = () => ref.current!.handleStyleProbeResult({
+      type: 'style-probe-result',
+      nodeId: 'n1',
+      lost: ['background-color'],
+      winner: '/styles.css',
     });
+    // The first loss is answered by a write that marks the property important, in the press's own
+    // undo step; the banner is for a loss that outlasts it.
+    await act(async () => { lost(); });
+    expect(applyStyle).toHaveBeenCalledTimes(2);
+    const [, changes, opts] = applyStyle.mock.calls[1];
+    expect(changes).toEqual([]);
+    expect(opts).toMatchObject({ strengthen: ['background-color'], markerId: 'm1', confirmedMultiInstance: true });
+    expect(opts.group).toBe(applyStyle.mock.calls[0][2].group);
+    expect(panel().lastElementChild!.textContent).not.toContain(LOSES);
+    await act(async () => { lost(); });
+    expect(applyStyle).toHaveBeenCalledTimes(2);
 
     const foot = panel().lastElementChild!;
-    expect(foot.textContent).toContain('loses to /styles.css');
-    expect(foot.textContent).toContain('Only this element changed');
+    expect(foot.textContent).toContain(ts('lossItem', { property: 'background-color', winner: '/styles.css' }));
+    expect(foot.textContent).toContain(NOTE);
     expect(foot.contains(notes()[0])).toBe(true);
   });
 
   it('offers the token edit to the agent, and closes on being taken up', async () => {
     computed({ 'background-color': 'rgb(255, 0, 0)' });
-    await press('Background', INK);
+    await press('background-color', INK);
 
     const offer = container.querySelector<HTMLButtonElement>('[data-osw-token-note-agent]')!;
     // It offers the *other* intention, and says which one it is — the escalation is the point.
@@ -346,9 +375,103 @@ describe('the superseded-token note', () => {
     expect(notes()).toHaveLength(0);
   });
 
+  it('changes the token itself where the project\'s variables can be written, and lets the element follow it again', async () => {
+    const onApplyVariable = vi.fn().mockResolvedValue({ ok: true, file: '/styles.css', filesWritten: ['/styles.css'] });
+    const variables = scanVariables('/styles.css', ':root { --accent: #ff0000; --ink: #1d1813; }');
+    act(() => { root.render(withMessages(<StylesContent ref={ref} {...props({ variables, onApplyVariable })} />)); });
+    computed({ 'background-color': 'rgb(255, 0, 0)' });
+    await press('background-color', INK);
+    expect(applyStyle).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-osw-token-note-agent]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, COMMIT_DEBOUNCE_MS + 20)); });
+
+    // The variable is written where it is declared, with the colour that was picked.
+    expect(onApplyVariable).toHaveBeenCalledTimes(1);
+    expect(onApplyVariable.mock.calls[0][0]).toMatchObject({ name: '--accent', file: '/styles.css', selector: ':root' });
+    expect(onApplyVariable.mock.calls[0][1]).toBe(INK);
+    expect(onAskAgent).not.toHaveBeenCalled();
+    // And the element's own colour for the property comes off: the second write removes it.
+    expect(applyStyle).toHaveBeenCalledTimes(2);
+    expect(applyStyle.mock.calls[1][1]).toEqual([{ property: 'background-color', value: null }]);
+    expect(notes()).toHaveLength(0);
+  });
+
+  it('takes the colour off the element it was pressed on, not one selected while the token was being written', async () => {
+    let finish: (write: VariableWrite) => void = () => {};
+    const onApplyVariable = vi.fn((_def: unknown, _value: string, _group?: string) => new Promise<VariableWrite>(resolve => { finish = resolve; }));
+    const variables = scanVariables('/styles.css', ':root { --accent: #ff0000; --ink: #1d1813; }');
+    act(() => { root.render(withMessages(<StylesContent ref={ref} {...props({ variables, onApplyVariable })} />)); });
+    computed({ 'background-color': 'rgb(255, 0, 0)' });
+    await press('background-color', INK);
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-osw-token-note-agent]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    // Another element, one edited before, is selected while the variable is written.
+    const other: FocusContextPayload = { ...selection, domPath: 'html > body > footer', tagName: 'FOOTER', nodeId: 'n2', attributes: { 'data-osw-id': 'm2' } };
+    act(() => { root.render(withMessages(<StylesContent ref={ref} {...props({ selection: other, variables, onApplyVariable })} />)); });
+    await act(async () => { finish({ ok: true, file: '/styles.css', filesWritten: ['/styles.css'] }); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, COMMIT_DEBOUNCE_MS + 20)); });
+
+    // The element the note was about follows the variable again: its own colour comes off, at the
+    // width it was pressed at, in the variable write's undo step.
+    expect(applyStyle.mock.calls.map(call => (call[0] as FocusContextPayload).nodeId)).toEqual(['n1', 'n1']);
+    const [, changes, opts] = applyStyle.mock.calls[1];
+    expect(changes).toEqual([{ property: 'background-color', value: null }]);
+    expect(opts).toMatchObject({ scope: 'all', markerId: 'm1' });
+    expect(opts.group).toBeDefined();
+    expect(opts.group).toBe(onApplyVariable.mock.calls[0][2]);
+    // And nothing is written to the element selected meanwhile.
+    expect(applyStyle.mock.calls.some(call => (call[0] as FocusContextPayload).nodeId === 'n2')).toBe(false);
+  });
+
+  it('hands the token edit to the agent when the write is refused', async () => {
+    const onApplyVariable = vi.fn().mockResolvedValue({ ok: false, reason: 'generating', file: '/styles.css', filesWritten: [] });
+    const variables = scanVariables('/styles.css', ':root { --accent: #ff0000; --ink: #1d1813; }');
+    act(() => { root.render(withMessages(<StylesContent ref={ref} {...props({ variables, onApplyVariable })} />)); });
+    computed({ 'background-color': 'rgb(255, 0, 0)' });
+    await press('background-color', INK);
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-osw-token-note-agent]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onAskAgent).toHaveBeenCalledTimes(1);
+    expectTokenEditAsked(onAskAgent.mock.calls[0][0]);
+    expect(applyStyle).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands the token edit to the agent when the write throws', async () => {
+    const failure = new Error('storage is full');
+    const onApplyVariable = vi.fn().mockRejectedValue(failure);
+    const logged = vi.spyOn(logger, 'error').mockImplementation(() => {});
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const variables = scanVariables('/styles.css', ':root { --accent: #ff0000; --ink: #1d1813; }');
+      act(() => { root.render(withMessages(<StylesContent ref={ref} {...props({ variables, onApplyVariable })} />)); });
+      computed({ 'background-color': 'rgb(255, 0, 0)' });
+      await press('background-color', INK);
+      await act(async () => {
+        container.querySelector<HTMLButtonElement>('[data-osw-token-note-agent]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+      expect(unhandled).toEqual([]);
+      expect(logged).toHaveBeenCalledWith(expect.any(String), failure);
+      expect(onAskAgent).toHaveBeenCalledTimes(1);
+      expectTokenEditAsked(onAskAgent.mock.calls[0][0]);
+      expect(applyStyle).toHaveBeenCalledTimes(1);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+      logged.mockRestore();
+    }
+  });
+
   it('is dismissable without asking anyone anything', async () => {
     computed({ 'background-color': 'rgb(255, 0, 0)' });
-    await press('Background', INK);
+    await press('background-color', INK);
 
     const dismiss = Array.from(container.querySelectorAll('button'))
       .find(el => el.textContent === 'Dismiss')!;
@@ -367,14 +490,14 @@ describe('a press the source refuses or asks about', () => {
   it('shows the refusal in the panel\'s words, naming the file', async () => {
     applyStyle.mockResolvedValue({ ok: false, reason: 'stale-index', file: '/about.html', filesWritten: [] });
     computed({ 'background-color': 'rgb(255, 0, 0)' });
-    await press('Background', INK);
+    await press('background-color', INK);
     expect(container.textContent).toContain(ts('msgStaleFile', { file: '/about.html' }));
   });
 
   it('asks before writing to a tag rendered several times, saying how many and from where', async () => {
     applyStyle.mockResolvedValue({ ok: false, reason: 'needs-confirmation', instances: 3, file: '/partials/nav.hbs', filesWritten: [] });
     computed({ 'background-color': 'rgb(255, 0, 0)' });
-    await press('Background', INK);
+    await press('background-color', INK);
     expect(container.textContent).toContain(ts('confirmManyFrom', { count: 3, file: '/partials/nav.hbs' }));
   });
 });

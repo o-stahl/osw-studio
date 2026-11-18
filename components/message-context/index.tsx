@@ -4,8 +4,8 @@ import React, { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ChevronDown, X, Crosshair, LayoutGrid, Image as ImageIcon, Info, FileText, Mic } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { PlacedBlock } from '@/lib/semantic-blocks/types';
-import { getBlockById } from '@/lib/semantic-blocks/registry';
+import { isSourcePlaced, type PlacedBlock, type SentBlock } from '@/lib/semantic-blocks/types';
+import { useBlockCatalog } from '@/lib/i18n/use-block-catalog';
 import type { PendingImage, PendingFile, PendingAudio } from '@/lib/llm/multi-agent-orchestrator';
 import type { ContentBlock } from '@/lib/llm/types';
 import { Tip } from '@/components/ui/tooltip';
@@ -13,18 +13,19 @@ import { Tip } from '@/components/ui/tooltip';
 interface FocusContextData {
   domPath: string;
   snippet: string;
+  /** The width the element was picked at, shown after its name. */
+  width?: number;
 }
 
-interface SemanticBlockData {
-  name: string;
-  domPath: string;
-  position: string;
-  description: string;
+/** The picked element's last path step, and the width it was picked at: `section.hero @375`. */
+export function focusSummary(focus: FocusContextData): string {
+  const name = focus.domPath.split(' > ').slice(-1)[0];
+  return focus.width ? `${name} @${Math.round(focus.width)}` : name;
 }
 
 interface MessageContextProps {
   focusContext?: FocusContextData | null;
-  semanticBlocks?: (PlacedBlock[] | SemanticBlockData[]);
+  semanticBlocks?: (PlacedBlock[] | SentBlock[]);
   images?: PendingImage[];
   /** For readOnly mode: image content blocks from the stored message */
   imageBlocks?: ContentBlock[];
@@ -50,31 +51,27 @@ interface MessageContextProps {
   readOnly?: boolean;
 }
 
-function isPlacedBlock(b: PlacedBlock | SemanticBlockData): b is PlacedBlock {
-  return 'blockId' in b;
-}
+/** A sent block can carry a `placementId` too; only a placed one has the page it is on. */
+const isPlacedBlock = (b: PlacedBlock | SentBlock): b is PlacedBlock => 'page' in b;
 
-function getBlockName(b: PlacedBlock | SemanticBlockData): string {
-  if (isPlacedBlock(b)) return getBlockById(b.blockId)?.name || b.blockId;
-  return b.name;
-}
-
-function getBlockDescription(b: PlacedBlock | SemanticBlockData): string {
-  if (isPlacedBlock(b)) return getBlockById(b.blockId)?.description || '';
-  return b.description;
-}
-
-function getBlockDomPath(b: PlacedBlock | SemanticBlockData): string {
-  return b.domPath;
-}
-
-function getBlockPosition(b: PlacedBlock | SemanticBlockData): string {
-  return b.position;
-}
-
-function getBlockKey(b: PlacedBlock | SemanticBlockData, i: number): string {
-  if (isPlacedBlock(b)) return b.placementId;
-  return `sb-${i}`;
+/**
+ * What a block's row shows: the palette's name and description in the app's language (the English
+ * a sent message recorded, for one from before it kept the block's id), and where the block went:
+ * the file its placeholder is in, or a position in the preview's page.
+ */
+function blockRow(b: PlacedBlock | SentBlock, i: number, catalog: ReturnType<typeof useBlockCatalog>) {
+  const copy = b.blockId ? catalog[b.blockId] : undefined;
+  if (isPlacedBlock(b)) {
+    return {
+      key: b.placementId,
+      name: copy?.name ?? b.blockId,
+      description: copy?.description ?? '',
+      file: isSourcePlaced(b) ? b.file : undefined,
+      position: isSourcePlaced(b) ? undefined : b.position,
+      domPath: isSourcePlaced(b) ? undefined : b.domPath,
+    };
+  }
+  return { key: `sb-${i}`, name: copy?.name ?? b.name, description: copy?.description ?? b.description, file: b.file, position: b.position, domPath: b.domPath };
 }
 
 /** Collapsible section within the unified context component */
@@ -171,6 +168,7 @@ export function MessageContext({
 }: MessageContextProps) {
   const tt = useTranslations('tooltips');
   const tm = useTranslations('messageContext');
+  const catalog = useBlockCatalog();
   const hasBlocks = semanticBlocks && semanticBlocks.length > 0;
   const hasImages = images && images.length > 0;
   const hasImageBlocks = imageBlocks && imageBlocks.some(b => b.type === 'image_url');
@@ -231,7 +229,7 @@ export function MessageContext({
         <Section
           icon={Crosshair}
           label={tm('focus')}
-          summary={focusContext!.domPath.split(' > ').slice(-1)[0]}
+          summary={focusSummary(focusContext!)}
           onClear={onClearFocus}
           readOnly={readOnly}
         >
@@ -251,30 +249,33 @@ export function MessageContext({
           readOnly={readOnly}
         >
           <div className="space-y-2">
-            {semanticBlocks!.map((block, i) => (
-              <div key={getBlockKey(block, i)} className="group">
-                <div className="flex items-center gap-1 mb-0.5">
-                  <span className="text-[11px] font-medium text-foreground/90">{getBlockName(block)}</span>
-                  {!readOnly && onRemoveBlock && isPlacedBlock(block) && (
-                    <Tip label={tt('removeBlock')}>
-                      <button
-                        onClick={() => onRemoveBlock(block.placementId)}
-                        className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex-shrink-0 text-muted-foreground/50 hover:text-foreground/70"
-                        aria-label={tt('removeBlock')}
-                      >
-                        <X className="h-2.5 w-2.5" />
-                      </button>
-                    </Tip>
+            {semanticBlocks!.map((block, i) => {
+              const row = blockRow(block, i, catalog);
+              return (
+                <div key={row.key} className="group">
+                  <div className="flex items-center gap-1 mb-0.5">
+                    <span className="text-[11px] font-medium text-foreground/90">{row.name}</span>
+                    {!readOnly && onRemoveBlock && isPlacedBlock(block) && (
+                      <Tip label={tt('removeBlock')}>
+                        <button
+                          onClick={() => onRemoveBlock(block.placementId)}
+                          className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex-shrink-0 text-muted-foreground/50 hover:text-foreground/70"
+                          aria-label={tt('removeBlock')}
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </Tip>
+                    )}
+                  </div>
+                  <div className="text-[10px] font-mono text-muted-foreground/60 mb-1">
+                    {row.file ?? `${row.position ?? ''} ${row.domPath ?? ''}`}
+                  </div>
+                  {row.description && (
+                    <SnippetBox>{row.description}</SnippetBox>
                   )}
                 </div>
-                <div className="text-[10px] font-mono text-muted-foreground/60 mb-1">
-                  {getBlockPosition(block)} {getBlockDomPath(block)}
-                </div>
-                {getBlockDescription(block) && (
-                  <SnippetBox>{getBlockDescription(block)}</SnippetBox>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Section>
       )}
@@ -395,7 +396,7 @@ function ReadOnlyContext({
   defaultOpen,
 }: {
   focusContext?: FocusContextData | null;
-  semanticBlocks?: (PlacedBlock[] | SemanticBlockData[]);
+  semanticBlocks?: (PlacedBlock[] | SentBlock[]);
   imageBlocks?: ContentBlock[];
   fileNames?: { name: string }[];
   audioBlocks?: ContentBlock[];
@@ -403,6 +404,7 @@ function ReadOnlyContext({
   defaultOpen?: boolean;
 }) {
   const tm = useTranslations('messageContext');
+  const catalog = useBlockCatalog();
   const [open, setOpen] = useState(defaultOpen ?? false);
   const hasBlocks = semanticBlocks && semanticBlocks.length > 0;
   const hasFocus = !!focusContext;
@@ -430,7 +432,7 @@ function ReadOnlyContext({
               <div className="flex items-center gap-1.5 mb-1">
                 <Crosshair className="h-2.5 w-2.5 text-primary/60" />
                 <span className="font-medium text-foreground/80">{tm('focus')}</span>
-                <span className="font-mono text-muted-foreground/50 truncate">{focusContext!.domPath.split(' > ').slice(-1)[0]}</span>
+                <span className="font-mono text-muted-foreground/50 truncate">{focusSummary(focusContext!)}</span>
               </div>
               {focusContext!.snippet && (
                 <SnippetBox className="max-h-16 text-[9px]">{focusContext!.snippet}</SnippetBox>
@@ -444,17 +446,20 @@ function ReadOnlyContext({
                 <span className="font-medium text-foreground/80">{tm('blocks')}</span>
               </div>
               <div className="space-y-1.5">
-                {semanticBlocks!.map((block, i) => (
-                  <div key={getBlockKey(block, i)}>
-                    <div>
-                      <span className="text-foreground/70 font-medium">{getBlockName(block)}</span>
-                      <span className="text-muted-foreground/50 ml-1">{getBlockPosition(block)} {getBlockDomPath(block).split(' > ').slice(-2).join(' > ')}</span>
+                {semanticBlocks!.map((block, i) => {
+                  const row = blockRow(block, i, catalog);
+                  return (
+                    <div key={row.key}>
+                      <div>
+                        <span className="text-foreground/70 font-medium">{row.name}</span>
+                        <span className="text-muted-foreground/50 ml-1">{row.file ?? `${row.position ?? ''} ${(row.domPath ?? '').split(' > ').slice(-2).join(' > ')}`}</span>
+                      </div>
+                      {row.description && (
+                        <SnippetBox className="max-h-14 text-[9px] mt-0.5">{row.description}</SnippetBox>
+                      )}
                     </div>
-                    {getBlockDescription(block) && (
-                      <SnippetBox className="max-h-14 text-[9px] mt-0.5">{getBlockDescription(block)}</SnippetBox>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

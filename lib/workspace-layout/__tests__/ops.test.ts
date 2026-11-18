@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  activatePanel, checkLayout, closeCell, findPanel, fold, geometry, insertPanel, maximizedView, movePanel, openPanels,
+  activatePanel, addTabBehind, checkLayout, closeCell, defaultLayout, findPanel, fold, geometry, insertPanel, maximizedView, movePanel, openPanels,
   planOpen, presetLayout, presetOf, removePanel, shapeOf, ungroup,
   MIN_COLUMN_PX, type PanelKey, type WorkspaceLayout,
 } from '..';
@@ -216,6 +216,20 @@ describe('presets', () => {
     expect(presetOf(layout([[100, [[100, ['chat']]]]]))).toBeNull();
   });
 
+  it('put Canvas in front of Live Preview in the centre cell', () => {
+    expect(shapeOf(defaultLayout())).toBe('chat>chat|canvas,preview>canvas|files>files');
+    expect(shapeOf(presetLayout('tabbed'))).toBe('chat,checkpoints,debug>chat|canvas,preview>canvas|editor,files,skills>editor');
+  });
+
+  it('leave out what the runtime cannot show, front tab and empty cells included, and are still recognised', () => {
+    const noCanvas = (key: PanelKey) => key !== 'canvas';
+    expect(shapeOf(defaultLayout(0, noCanvas))).toBe('chat>chat|preview>preview|files>files');
+    expect(shapeOf(presetLayout('stacked', 0, noCanvas))).toBe('chat>chat|preview>preview/console>console|files>files/editor>editor');
+    expect(shapeOf(presetLayout('columns', 0, (key) => key !== 'canvas' && key !== 'preview'))).toBe('chat>chat|files>files');
+    expect(presetOf(presetLayout('tabbed', 0, noCanvas), noCanvas)).toBe('tabbed');
+    expect(presetOf(presetLayout('tabbed', 0, noCanvas))).toBeNull();
+  });
+
   it('number their ids past the given counter', () => {
     const L = presetLayout('stacked', 40);
     const ids = L.columns.flatMap((c) => [c.id, ...c.cells.map((x) => x.id)]);
@@ -234,5 +248,21 @@ describe('ids', () => {
     expect(findPanel(again, 'editor')!.cell.id).not.toBe(filesCell);
     const moved = movePanel(again, { panel: 'editor' }, { kind: 'tab', cell: 'cell2', index: null }, BOX)!;
     expect(moved.seq).toBe(again.seq);
+  });
+});
+
+describe('addTabBehind', () => {
+  it('adds a panel right after another in its cell, keeping the cell\'s front tab', () => {
+    const L0 = layout([[30, [[100, ['chat']]]], [40, [[100, ['preview', 'console*']]]], [30, [[100, ['files']]]]]);
+    const L = addTabBehind(L0, 'canvas', 'preview', BOX)!;
+    expect(shapeOf(L)).toBe('chat>chat|preview,canvas,console>console|files>files');
+    expect(L.columns.map((c) => c.size)).toEqual(L0.columns.map((c) => c.size));
+  });
+
+  it('does nothing when the panel is open, the other is not, or the cell would hold the Inspector', () => {
+    expect(addTabBehind(today(), 'chat', 'preview', BOX)).toBeNull();
+    expect(addTabBehind(layout([[100, [[100, ['chat']]]]]), 'canvas', 'preview', BOX)).toBeNull();
+    expect(addTabBehind(layout([[100, [[100, ['files', 'skills']]]]]), 'elements', 'files', BOX)).not.toBeNull();
+    expect(addTabBehind(layout([[100, [[100, ['preview']]]]]), 'elements', 'preview', BOX)).toBeNull();
   });
 });

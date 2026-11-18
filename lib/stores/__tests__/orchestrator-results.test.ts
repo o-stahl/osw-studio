@@ -103,6 +103,29 @@ describe('orchestrator slice — generation results and conversation rebuild', (
     expect(failCalls[0][1]).toMatchObject({ reason: 'api_error', api_error_count: 1 });
   });
 
+  it('says what stopped a failed task: the error category, and the limit when one was named', async () => {
+    mockExecute.mockResolvedValue({
+      success: false, summary: 'Stopped on a provider error', exitReason: 'error_stop', totalCost: 0,
+      toolCount: 0, turnCount: 0, apiErrorCount: 1,
+      lastApiError: { category: 'daily_limit', limitSource: 'osws_trial_sessions' },
+    });
+    await store.getState().startGeneration('build something');
+    const failed = (track as ReturnType<typeof vi.fn>).mock.calls.filter(c => c[0] === 'task_fail');
+    expect(failed[0][1]).toMatchObject({ reason: 'api_error', error_category: 'daily_limit', limit_source: 'osws_trial_sessions' });
+  });
+
+  it('leaves the error out of a task the user stopped, even after an error along the way', async () => {
+    mockExecute.mockResolvedValue({
+      success: false, summary: 'Stopped by user', exitReason: 'stopped', totalCost: 0,
+      toolCount: 2, turnCount: 2, apiErrorCount: 1, lastApiError: { category: 'rate_limited' },
+    });
+    await store.getState().startGeneration('build something');
+    const failed = (track as ReturnType<typeof vi.fn>).mock.calls.filter(c => c[0] === 'task_fail');
+    expect(failed[0][1]).toMatchObject({ reason: 'stopped' });
+    expect(failed[0][1]).not.toHaveProperty('error_category');
+    expect(failed[0][1]).not.toHaveProperty('limit_source');
+  });
+
   it('tracks only the Stop when the user stops while a provider error is being handled', async () => {
     let finish!: (value: unknown) => void;
     mockExecute.mockReturnValue(new Promise((resolve) => { finish = resolve; }));

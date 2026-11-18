@@ -1,4 +1,4 @@
-import { Bug, Code2, Eye, FolderTree, History, ListTree, MessageSquare, Sparkles, Terminal, type LucideIcon } from 'lucide-react';
+import { Bug, Code2, Eye, FolderTree, Frame, History, ListTree, MessageSquare, Sparkles, Terminal, type LucideIcon } from 'lucide-react';
 import type { PanelKey } from '@/lib/workspace-layout';
 
 /** Each panel's icon and colour, as its header and its rail button show them. Titles: `usePanelTitles`. */
@@ -7,6 +7,7 @@ export const PANEL_INFO: Record<PanelKey, { icon: LucideIcon; color: string }> =
   files: { icon: FolderTree, color: 'var(--button-files-active)' },
   editor: { icon: Code2, color: 'var(--button-editor-active)' },
   preview: { icon: Eye, color: 'var(--button-preview-active)' },
+  canvas: { icon: Frame, color: 'var(--button-canvas-active)' },
   elements: { icon: ListTree, color: 'var(--button-elements-active)' },
   skills: { icon: Sparkles, color: 'var(--button-skills-active, #a855f7)' },
   console: { icon: Terminal, color: 'var(--button-terminal-active, #22c55e)' },

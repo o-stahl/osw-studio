@@ -1,5 +1,7 @@
 import { parseSedArgs } from '@/lib/vfs/shell-commands';
 import { normalizePath } from '@/lib/vfs/shell/paths';
+import { pageFileFor } from '@/lib/direct-edit/targets';
+import { OVERRIDES_PATH } from '@/lib/direct-edit/overrides-css';
 
 /**
  * What one agent action was, read off the command it ran.
@@ -151,6 +153,9 @@ function withoutStderrRedirect(command: string): string {
   return command.replace(/\s2>(?:&1|\S+)/g, '').trim();
 }
 
+/** The `:line` or `:line:col` of a position (`/index.html:16:5`), which names an element in the file. */
+const POSITION_SUFFIX = /:\d+(?::\d+)?$/;
+
 export function parseCommand(rawCommand: string): ParsedAction | null {
   const trimmed = rawCommand.trim();
   if (!trimmed) return null;
@@ -216,6 +221,20 @@ export function parseCommand(rawCommand: string): ParsedAction | null {
   // `delegate` is the pre-v1.70.0 spelling of `agent` and is still accepted by the coordinator.
   if (/^(agent|delegate)\s+/.test(cmd)) {
     return action('delegate', args[1] ?? 'agent', cmd);
+  }
+
+  // `style` writes the element's rules into /overrides.css. The element's page or source file comes
+  // second: `style /index.html ".hero"`, `style /templates/nav.hbs:120`. A marker names no file.
+  if (/^style\b/.test(cmd)) {
+    const where = shellWords(cmd).slice(1).find((word) => word.startsWith('/'));
+    const file = where ? (POSITION_SUFFIX.test(where) ? where.replace(POSITION_SUFFIX, '') : pageFileFor(where)) : null;
+    return action('edit', OVERRIDES_PATH, cmd, [OVERRIDES_PATH, file]);
+  }
+  // Both render a page and read it. The page is a route (`/`, `/about`) as often as a file.
+  if (/^(inspect|screenshot)\b/.test(cmd)) {
+    const where = shellWords(cmd).slice(1).find((word) => word.startsWith('/'));
+    const page = where ? pageFileFor(where.replace(POSITION_SUFFIX, '')) : null;
+    return action('read', page ?? args[0], cmd, [page]);
   }
 
   if (/^(search|curl)\s+/.test(cmd)) return action('lookup', args[0], cmd);

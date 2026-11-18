@@ -1227,3 +1227,25 @@ describe('AgentLoop tool calls cut off by a stream error', () => {
     expect(content).not.toContain('Earlier calls');
   });
 });
+
+describe('a command\'s images', () => {
+  it('reach the next request as a user message after the tool results', async () => {
+    const shotCall: ToolCall = { id: 'tc1', type: 'function', function: { name: 'bash', arguments: '{"command":"screenshot / --width 375"}' } };
+    const provider = createMockProvider([{ content: '', toolCalls: [shotCall] }, { content: 'Looks fine.' }]);
+    const image = { mediaType: 'image/jpeg', data: 'AAAA', width: 375, height: 667, region: { x: 0, y: 0, w: 375, h: 667 } };
+    const results = new Map([['tc1', { tool_call_id: 'tc1', content: 'Screenshot of …', success: true, signals: { images: [image] } } as ToolResult]]);
+    const context = { ...createMockContext(), addImages: vi.fn() };
+    await new AgentLoop({ config: defaultConfig({ maxNudges: 0 }), provider, executor: createMockExecutor(results), context, progress: createMockProgress(), cost: createMockCost() }).run('look');
+    expect(context.addImages).toHaveBeenCalledTimes(1);
+    expect(context.addImages).toHaveBeenCalledWith([image], expect.any(String));
+    const order = [vi.mocked(context.addToolResults).mock.invocationCallOrder[0], context.addImages.mock.invocationCallOrder[0]];
+    expect(order[0]).toBeLessThan(order[1]);
+  });
+
+  it('are not asked for when no result carries any', async () => {
+    const call: ToolCall = { id: 'tc1', type: 'function', function: { name: 'bash', arguments: '{"command":"ls /"}' } };
+    const context = { ...createMockContext(), addImages: vi.fn() };
+    await new AgentLoop({ config: defaultConfig({ maxNudges: 0 }), provider: createMockProvider([{ content: '', toolCalls: [call] }, { content: 'done' }]), executor: createMockExecutor(), context, progress: createMockProgress(), cost: createMockCost() }).run('list');
+    expect(context.addImages).not.toHaveBeenCalled();
+  });
+});

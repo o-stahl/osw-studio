@@ -61,6 +61,7 @@ const TEMPLATE_DEFINITIONS: BuiltInTemplateDefinition[] = [
     description: 'Multi-page agency portfolio showcasing modern web development',
     isBuiltIn: true,
     runtime: 'handlebars',
+    opensIn: 'canvas',
     updatedAt: BUILT_IN_EPOCH,
     metadata: {
       author: 'OSW Studio',
@@ -103,6 +104,7 @@ const TEMPLATE_DEFINITIONS: BuiltInTemplateDefinition[] = [
       'One-page site for a local business: what you do, prices, opening hours, where to find you and how to get in touch',
     isBuiltIn: true,
     runtime: 'static',
+    opensIn: 'canvas',
     updatedAt: BUILT_IN_EPOCH,
     metadata: {
       author: 'OSW Studio',
@@ -152,6 +154,7 @@ const TEMPLATE_DEFINITIONS: BuiltInTemplateDefinition[] = [
       'One page about one person: selected work, a short bio, work history and how to reach you',
     isBuiltIn: true,
     runtime: 'static',
+    opensIn: 'canvas',
     updatedAt: BUILT_IN_EPOCH,
     metadata: {
       author: 'OSW Studio',
@@ -199,6 +202,7 @@ const TEMPLATE_DEFINITIONS: BuiltInTemplateDefinition[] = [
     description: 'Professional landing page with a working contact form powered by Resend',
     isBuiltIn: true,
     runtime: 'handlebars',
+    opensIn: 'canvas',
     updatedAt: BUILT_IN_EPOCH,
     hasBackendFeatures: true,
     metadata: {
@@ -242,6 +246,7 @@ const TEMPLATE_DEFINITIONS: BuiltInTemplateDefinition[] = [
       'A knowledge base the assistant writes and keeps current as you add sources, after Andrej Karpathy\u2019s LLM Wiki pattern',
     isBuiltIn: true,
     runtime: 'static',
+    opensIn: 'preview',
     updatedAt: BUILT_IN_EPOCH,
     metadata: {
       author: 'OSW Studio',
@@ -298,6 +303,7 @@ const TEMPLATE_DEFINITIONS: BuiltInTemplateDefinition[] = [
       'A board of what you are working on and what is left, kept up to date by asking the assistant',
     isBuiltIn: true,
     runtime: 'vue',
+    opensIn: 'preview',
     updatedAt: BUILT_IN_EPOCH,
     metadata: {
       author: 'OSW Studio',
@@ -340,6 +346,7 @@ const TEMPLATE_DEFINITIONS: BuiltInTemplateDefinition[] = [
       'A searchable map of your locations with opening hours and contact details, ready to embed in another site',
     isBuiltIn: true,
     runtime: 'static',
+    opensIn: 'preview',
     updatedAt: BUILT_IN_EPOCH,
     metadata: {
       author: 'OSW Studio',
@@ -479,6 +486,7 @@ const TEMPLATE_DEFINITIONS: BuiltInTemplateDefinition[] = [
     description: 'A personal checklist that remembers itself between visits, kept in the browser it was written in',
     isBuiltIn: true,
     runtime: 'react',
+    opensIn: 'preview',
     updatedAt: BUILT_IN_EPOCH,
     metadata: {
       author: 'OSW Studio',
@@ -637,6 +645,7 @@ const TEMPLATE_DEFINITIONS: BuiltInTemplateDefinition[] = [
     description: 'Blog platform with posts, user auth, and moderated comments',
     isBuiltIn: true,
     runtime: 'handlebars',
+    opensIn: 'canvas',
     updatedAt: BUILT_IN_EPOCH,
     hasBackendFeatures: true,
     metadata: {

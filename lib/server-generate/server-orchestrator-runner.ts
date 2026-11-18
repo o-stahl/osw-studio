@@ -3,6 +3,8 @@ import { MultiAgentOrchestrator } from '@/lib/llm/multi-agent-orchestrator';
 import { ServerConfigManager } from './server-config-manager';
 import { serverRunHeaders } from './run-auth';
 import { runWithVFS } from './vfs-context';
+import { cheerioMatcher } from './match-elements';
+import { workerLineMatcher } from '@/lib/sandbox/search-worker';
 import type { SSEEventBus } from './sse-event-bus';
 import type { TaskManager } from './task-manager';
 import type { ServerGenerationParams, ServerOrchestratorContext, ServerTask, StartGenerationRequest, BuildResult, SearchDelegationResult, ImageDelegationResult, ServerWebSearchConfig } from './types';
@@ -164,6 +166,15 @@ async function runTask(task: ServerTask, request: StartGenerationRequest, deps: 
     webSearchAvailable: request.webSearchAvailable,
     onImageRequested: (prompt, opts) => awaitImageResult(taskId, deps, prompt, opts),
     imageGenAvailable: request.imageGenAvailable,
+    matchElements: cheerioMatcher,
+    matchLines: workerLineMatcher(),
+    imageInputAvailable: request.imageInputAvailable,
+    // The tab renders the files it has: what this command wrote so far goes to it first.
+    renderInBrowser: async (job) => {
+      flushDirtyPaths();
+      const { requestRender } = await import('./render-requests');
+      return requestRender(task.sessionId, job);
+    },
   };
 
   const progressCallback = (event: string, data?: unknown) => {

@@ -277,6 +277,7 @@
       "fileExplorer": "Tiedostoselain",
       "codeEditor": "Koodieditori",
       "preview": "Esikatselu",
+      "canvas": "Canvas",
       "inspector": "Inspector",
       "console": "Konsoli",
       "checkpoints": "Checkpointit",
@@ -398,7 +399,7 @@
       "refusal": {
         "width": "Tarvitsee {px} px leveyttä",
         "height": "{panel} tarvitsee {px} px korkeutta",
-        "inspectorPreview": "Inspector tarvitsee näkyvän esikatselun"
+        "inspectorSurface": "Inspector tarvitsee näkyvän paneelin: {panel}"
       },
       "target": {
         "reorder": "Järjestä välilehdet",
@@ -436,6 +437,33 @@
       "afterRun": "Käytettävissä, kun tekoäly on valmis",
       "deploy": "Julkaise palveluun tai vie ZIP-tiedostona",
       "settings": "Sovelluksen ja tämän projektin asetukset"
+    },
+    "editUndoChanged": "{path} on muuttunut muokkauksen jälkeen, joten sitä ei kumottu. Muokkaushistoria tyhjennettiin.",
+    "editRedoChanged": "{path} on muuttunut kumoamisen jälkeen, joten muokkausta ei tehty uudelleen. Muokkaushistoria tyhjennettiin.",
+    "editUndoFailed": "Kumoaminen jäi kesken: tiedostoon {path} ei voitu kirjoittaa. Muokkaushistoria tyhjennettiin.",
+    "editRedoFailed": "Uudelleen tekeminen jäi kesken: tiedostoon {path} ei voitu kirjoittaa. Muokkaushistoria tyhjennettiin.",
+    "structure": {
+      "confirmShared": "{file} on partiaali: jokainen sivu, joka käyttää sitä, muuttuu.",
+      "confirmMany": "Tämä elementti piirretään tässä {count} kertaa, ja jokainen niistä muuttuu.",
+      "confirmAction": "Muuta",
+      "copied": "{count, plural, one {Kopioitiin # määrittely} other {Kopioitiin # määrittelyä}}",
+      "nothingToCopy": "Tällä elementillä ei ole kopioitavia ohituksia.",
+      "refused": {
+        "locked": "Lukittu data-osw-lockilla: sen tyyliä voi muuttaa, mutta sitä ei voi siirtää.",
+        "crossesTemplate": "Se siirtäisi merkintää Handlebars-lohkoon tai siitä pois, joten mitään ei muutettu. Agentti voi tehdä sen.",
+        "intoItself": "Elementtiä ei voi siirtää itsensä sisään.",
+        "notAFrame": "Vain Canvasissa tehdyn kehyksen voi purkaa.",
+        "noPlace": "Siellä ei ole mitään, minkä ohi sen voisi siirtää.",
+        "crossFile": "Se siirtäisi sen toiseen tiedostoon. Elementit pysyvät tiedostossa, johon ne on kirjoitettu.",
+        "unclosed": "Tiedostosta {file} puuttuu sulkeva tagi, joten elementin laajuus ei ole varma.",
+        "stale": "Sivu on muuttunut sen jälkeen, kun se näytettiin. Yritä uudelleen, kun se on latautunut.",
+        "missing": "Tiedostoa {file} ei enää ole.",
+        "generating": "Agentti kirjoittaa. Yritä uudelleen, kun se on valmis.",
+        "unresolvable": "Tämän elementin rakensi sivun skripti, joten muutettavaa lähdekoodia ei ole.",
+        "stylesheet": "Tiedostoa overrides.css ei voitu päivittää turvallisesti: {message}",
+        "writeFailed": "Muutosta ei voitu tallentaa: {message}"
+      },
+      "blockNoPlace": "Toisten tiedostojen elementtien välissä: pudota lohko tämän sivun elementin viereen"
     }
   },
   "skills": {
@@ -1481,6 +1509,83 @@
       "desktop": "Työpöydän leveys (enintään 1440 px)"
     }
   },
+  "canvas": {
+    "unavailable": "Canvas tarvitsee projektin, jossa on HTML-sivuja",
+    "unavailableHint": "{runtime}-projektit ajetaan konsolissa, joten asetettavia sivuja ei ole.",
+    "tools": {
+      "select": "Valitse (V)",
+      "usePages": "Käytä sivuja (P): linkit, valikot ja lomakkeet toimivat osoittimella",
+      "frame": "Kehys (F)",
+      "text": "Teksti (T)",
+      "image": "Kuva (I)",
+      "button": "Painike (B)",
+      "divider": "Erotin (D)",
+      "blocks": "Semanttiset lohkot: vedä osio sivulle, niin tekoäly rakentaa sen",
+      "label": "Canvasin työkalut"
+    },
+    "page": "Siirry sivulle",
+    "widths": {
+      "phone": "Puhelimen leveys (375 px)",
+      "tablet": "Tabletin leveys (768 px)",
+      "desktop": "Työpöydän leveys (1440 px)"
+    },
+    "zoomIn": "Lähennä",
+    "zoomOut": "Loitonna",
+    "fit": "Sovita sivu",
+    "zoom": "Zoomaus",
+    "compiling": "Käännetään…",
+    "loading": "Ladataan",
+    "noPages": "Ei vielä sivuja",
+    "noPagesHint": "Canvas asettaa projektin HTML-sivut esiin sitä mukaa kuin niitä lisätään.",
+    "compileFailed": "Projektin kääntäminen ei onnistunut",
+    "viewOnly": "{runtime}-sivut piirtää niiden paketti, joten niiden elementtejä ei voi valita täällä.",
+    "drawnByScript": "Suurin osa näiden sivujen sisällöstä piirretään skripteillä, joten täällä on vähän käsin valittavaa tai muotoiltavaa.",
+    "openLivePreview": "Avaa Live-esikatselu",
+    "toolbar": {
+      "style": "Tyyli",
+      "editText": "Muokkaa tekstiä",
+      "replaceImage": "Vaihda kuva",
+      "include": "Lisää seuraavaan viestiin",
+      "dismiss": "Sulje"
+    },
+    "insert": {
+      "textPlaceholder": "Uusi teksti",
+      "buttonLabel": "Painike",
+      "kind": {
+        "frame": "Kehys",
+        "text": "Teksti",
+        "image": "Kuva",
+        "button": "Painike",
+        "divider": "Erotin"
+      },
+      "into": "{kind} → {parent}",
+      "locked": "Lukittu: {parent}",
+      "noPlace": "Toisten tiedostojen elementtien välissä: pudota se tämän sivun elementin viereen"
+    },
+    "menu": {
+      "lockedNote": "Lukittu data-osw-lockilla: vain tyyliä voi muuttaa",
+      "editText": "Muokkaa tekstiä",
+      "doubleClick": "Kaksoisnapsautus",
+      "selectParent": "Valitse ylempi elementti",
+      "selectChild": "Valitse ensimmäinen alielementti",
+      "moveUp": "Siirrä ylös",
+      "moveDown": "Siirrä alas",
+      "wrap": "Kääri kehykseen",
+      "unwrap": "Pura kehys",
+      "duplicate": "Monista",
+      "copyStyle": "Kopioi tyyli",
+      "pasteStyle": "Liitä tyyli",
+      "clearAll": "Tyhjennä ohitukset kaikilla leveyksillä",
+      "clearUpTo": "Tyhjennä ohitukset ≤ {width}",
+      "show": "Näytä",
+      "hideAll": "Piilota kaikilla leveyksillä",
+      "hideUpTo": "Piilota ≤ {width}",
+      "include": "Lisää seuraavaan viestiin",
+      "delete": "Poista"
+    },
+    "size": "{width} × {height}",
+    "agentWriting": "Agentti kirjoittaa"
+  },
   "editor": {
     "noFilesOpen": "Ei avoimia tiedostoja",
     "selectFile": "Valitse muokattava tiedosto selaimesta",
@@ -1785,7 +1890,16 @@
     "expand": "Laajenna {tag}",
     "sharedSource": "Tätä lähdettä käyttää {count} piirrettyä elementtiä — muokkaus vaikuttaa niihin kaikkiin.",
     "moreNotShown": "{count, plural, one {# elementti lisää ei näytetä} other {# elementtiä lisää ei näytetä}}",
-    "sourceOffset": "{file} (siirtymä {offset})"
+    "sourceOffset": "{file} (siirtymä {offset})",
+    "structure": "Rakenne",
+    "dragHint": "Järjestä rivejä vetämällä. Napsauta riviä tai Canvasin elementtiä hiiren oikealla, niin saat kaikki toiminnot.",
+    "script": "skripti",
+    "scriptTip": "Sivun skripti rakensi tämän latautuessaan; ei lähdekoodissa",
+    "scriptClick": "Sivun skripti rakensi tämän: muuta sen tyyliä luokan kautta tyylitiedostossa.",
+    "hidden": "piilotettu",
+    "hiddenTip": "display: none tällä leveydellä",
+    "lock": "lukko",
+    "lockTip": "data-osw-lock: muuta tyyliä, älä rakennetta"
   },
   "telemetry": {
     "title": "Anonyymi käyttötilasto",
@@ -1890,6 +2004,7 @@
       "cp": "kopioi",
       "rm": "poista",
       "ss": "haku ja korvaus",
+      "style": "elementin ohitukset",
       "ask": "kysy käyttäjältä",
       "search": "verkko"
     },
@@ -2649,6 +2764,12 @@
     "promptUpdateFailed": ".PROMPT.md:n päivitys ei onnistunut",
     "runtimeUpdateFailed": "Runtimen päivitys ei onnistunut",
     "entryPointUpdateFailed": "Aloituspisteen päivitys ei onnistunut",
+    "opensIn": "Avautuu näkymään",
+    "opensInLast": "Kuten workspace jäi",
+    "opensInCanvas": "Canvas",
+    "opensInPreview": "Live-esikatselu",
+    "opensInHelp": "Kumpi näistä tulee eteen, kun projekti avataan, jos ne ovat samassa välilehtiryhmässä. Canvas sopii sivustolle, jonka sivut on kirjoitettu HTML:nä; Live-esikatselu sopii pelille tai sovellukselle, joka piirtää itsensä.",
+    "opensInUpdateFailed": "Projektin avausnäkymää ei voitu vaihtaa",
     "previewEntryPoint": "Esikatselun aloituspiste",
     "chatSuggestions": "Chat-ehdotukset",
     "buttonText": "Painikkeen teksti",
@@ -3612,7 +3733,10 @@
       "Type": "Typografia",
       "Colour": "Väri",
       "Border": "Reunus",
-      "Layout": "Asettelu"
+      "Layout": "Asettelu",
+      "Size": "Koko",
+      "Position": "Sijainti",
+      "Effects": "Tehosteet"
     },
     "labels": {
       "padding-block": "Sisäreunus, pysty",
@@ -3627,7 +3751,33 @@
       "border-style": "Tyyli",
       "border-width": "Paksuus",
       "border-radius": "Kulman pyöristys",
-      "display": "Näyttö"
+      "display": "Näyttö",
+      "aspect-ratio": "Kuvasuhde",
+      "object-fit": "Sovitus",
+      "max-width": "Enimmäisleveys",
+      "min-width": "Vähimmäisleveys",
+      "max-height": "Enimmäiskorkeus",
+      "min-height": "Vähimmäiskorkeus",
+      "position": "Sijainti",
+      "rotate": "Kierto",
+      "letter-spacing": "Merkkiväli",
+      "font-weight": "Paino",
+      "font-style": "Kursiivi",
+      "text-decoration-line": "Koristelu",
+      "text-transform": "Kirjainkoko",
+      "text-wrap": "Rivitys",
+      "border-color": "Väri",
+      "flex-direction": "Suunta",
+      "flex-wrap": "Rivitys",
+      "gap": "Väli",
+      "grid-template-columns": "Sarakkeet",
+      "column-gap": "Sarakeväli",
+      "row-gap": "Riviväli",
+      "overflow": "Ylivuoto",
+      "opacity": "Peittävyys",
+      "mix-blend-mode": "Sekoitus",
+      "width": "L",
+      "height": "K"
     },
     "sides": {
       "top": "Ylä",
@@ -3643,7 +3793,59 @@
     "borderStyle": {
       "none": "Ei mitään",
       "solid": "Yhtenäinen",
-      "dashed": "Katkoviiva"
+      "dashed": "Katkoviiva",
+      "dotted": "Pisteviiva"
+    },
+    "options": {
+      "weight": {
+        "100": "Ohut",
+        "200": "Erittäin kevyt",
+        "300": "Kevyt",
+        "400": "Normaali",
+        "500": "Keskipaksu",
+        "600": "Puolilihava",
+        "700": "Lihava",
+        "800": "Erittäin lihava",
+        "900": "Musta"
+      },
+      "decoration": {
+        "none": "Ei mitään",
+        "underline": "Alleviivaus",
+        "line-through": "Yliviivaus"
+      },
+      "case": {
+        "none": "Kuten kirjoitettu",
+        "uppercase": "Isot kirjaimet",
+        "lowercase": "Pienet kirjaimet",
+        "capitalize": "Sanat isolla alkukirjaimella"
+      },
+      "wrap": {
+        "wrap": "Tavallinen",
+        "balance": "Tasapainotettu",
+        "pretty": "Viimeistelty",
+        "nowrap": "Ei rivitystä"
+      },
+      "direction": {
+        "row": "Rivi",
+        "column": "Sarake"
+      },
+      "flexWrap": {
+        "nowrap": "Ei rivitystä",
+        "wrap": "Rivitä"
+      },
+      "overflow": {
+        "visible": "Näkyvä",
+        "hidden": "Leikkaa",
+        "auto": "Vieritä"
+      },
+      "fit": {
+        "fill": "Täytä",
+        "contain": "Sovita",
+        "cover": "Peitä",
+        "none": "Ei mitään"
+      },
+      "justify": "Tasaa",
+      "auto": "Automaattinen"
     }
   },
   "syncStatus": {
@@ -3670,6 +3872,33 @@
     "cancelSelectionLong": "Peruuta elementin valinta",
     "cancelSelection": "Peruuta valinta",
     "reading": "Luetaan mitä tässä sanotaan…",
+    "variables": {
+      "title": "Muuttujat",
+      "hint": "Tämän projektin CSS:n määrittelemät muuttujat. Muutos kirjoitetaan tyylitiedostoon ja näkyy kaikkialla, missä muuttujaa käytetään.",
+      "groups": {
+        "color": "Värit",
+        "length": "Koot ja luvut",
+        "font": "Fontit",
+        "shadow": "Varjot",
+        "other": "Muut"
+      },
+      "uses": "{count, plural, one {käytössä # kohdassa} other {käytössä # kohdassa}}",
+      "notUsed": "ei käytössä CSS:ssä",
+      "valueOf": "Muuttujan {name} arvo",
+      "pick": "Valitse väri muuttujalle {name}",
+      "decrease": "Pienennä muuttujaa {name}",
+      "increase": "Suurenna muuttujaa {name}",
+      "edit": "Muokkaa muuttujaa {name}",
+      "editHint": "Tämä arvo tulee muuttujasta {name}. Muuttujan muuttaminen muuttaa jokaisen kohdan, jossa sitä käytetään.",
+      "reason": {
+        "generating": "Ei muutettu: agentti työskentelee. Yritä uudelleen, kun se on valmis.",
+        "missing-file": "Ei muutettu: tiedostoa {file} ei enää ole.",
+        "gone": "Ei muutettu: {file} ei enää määrittele tätä muuttujaa siinä kohdassa.",
+        "unsafe": "Ei muutettu: arvoa ei voi kirjoittaa CSS:nä.",
+        "failed": "Ei muutettu: tiedostoa {file} ei voitu kirjoittaa."
+      }
+    },
+    "makeApply": "Ota käyttöön",
     "askAgent": "Kysy agentilta",
     "overrideNotInForce": "Tämä ohitus ei ole voimassa — katso huomautus paneelin alalaidassa.",
     "changeTokenInstead": "Muuta sen sijaan tokenia",
@@ -3730,7 +3959,87 @@
       "typeValue": "Kirjoita arvo napsauttamalla",
       "pickColour": "Valitse mikä tahansa väri",
       "resetColour": "Poista elementin oma väri, jolloin se noudattaa taas tyylitiedostoa",
-      "askAgent": "Kirjoittaa pyynnön chattiin valmiiksi lähetettäväksi"
+      "changeVariable": "Kirjoittaa tämän värin muuttujaan ja poistaa elementin oman värin, jotta se seuraa taas muuttujaa",
+      "makeApply": "Merkitsee nämä arvot !important-merkinnällä, jotta ne voittavat projektin säännön",
+      "askAgent": "Kirjoittaa pyynnön chattiin valmiiksi lähetettäväksi",
+      "eyedropper": "Poimi väri mistä tahansa näytöltä",
+      "setDotAll": "Asetettu overrides.css-tiedostoon kaikille leveyksille. Napsauta palataksesi tyylitiedoston arvoon.",
+      "setDotUpTo": "Asetettu overrides.css-tiedostoon enintään {width} px:n leveyksille. Napsauta palataksesi tyylitiedoston arvoon."
+    },
+    "resetRow": "Palauta {label}",
+    "eyedropper": "Poimi näytöltä",
+    "padCell": "Pääakseli {justify}, poikkiakseli {align}",
+    "alignment": "Kohdistus",
+    "font": "Fontti",
+    "fontInherited": "Tyylitiedostojen mukaan",
+    "align": "Kohdistus",
+    "spaceBetween": "Väli tasaisesti",
+    "stretch": "Venytä",
+    "inline": "Rivinsisäinen",
+    "scope": {
+      "heading": "Koskee",
+      "width": "Leveys",
+      "all": "Kaikki leveydet",
+      "upTo": "≤ {width}",
+      "hintAll": "Muokataan {width} px:n leveydellä. Säännöt koskevat kaikkia leveyksiä; lohkot {narrower} voittavat silti niiden alapuolella.",
+      "hintBlock": "Muokataan {width} px:n leveydellä. Säännöt menevät lohkoon @media (max-width: {scope}px); leveämmät kehykset pitävät omansa.",
+      "hintElsewhere": "Säännöt menevät lohkoon @media (max-width: {scope}px), jota tämä {width} px:n kehys ei näytä."
+    },
+    "header": {
+      "width": "Sen kehyksen leveys, josta elementti valittiin",
+      "marker": "Sen data-osw-id, johon overrides.css liittää sen säännöt",
+      "show": "Näytä se taas",
+      "hideShort": "Piilota",
+      "showShort": "Näytä",
+      "hideAll": "Piilota se kaikilla leveyksillä",
+      "hideUpTo": "Piilota se enintään {width} px:n leveyksillä"
+    },
+    "size": {
+      "width": "Leveys",
+      "height": "Korkeus",
+      "auto": "Automaattinen",
+      "hug": "Sisällön mukaan",
+      "fill": "Täytä",
+      "fixed": "Kiinteä",
+      "hintFillFlex": "Täytä kirjoittaa flex: 1 1 0, koska yläelementti on flex-rivi.",
+      "hintFill": "Täytä kirjoittaa width: 100%.",
+      "hintHug": "Sisällön mukaan kirjoittaa width: fit-content.",
+      "hintFixed": "Kiinteä: {value}, lähde {file}.",
+      "hintCustom": "Säilytetään sellaisenaan: {value}, lähde {file}.",
+      "hintAuto": "Leveyttä ei ole määritetty; asettelu ratkaisee (nyt {px} px)."
+    },
+    "effects": {
+      "shadow": "Varjo",
+      "blur": "Sumennus",
+      "backdrop": "Taustan sumennus",
+      "gradient": "Liukuväri",
+      "angle": "Kulma",
+      "from": "Alku",
+      "to": "Loppu",
+      "blurRadius": "Sumennus",
+      "spread": "Levitys",
+      "colour": "Väri",
+      "radius": "Säde",
+      "removeShadow": "Poista varjo",
+      "removeBlur": "Poista sumennus",
+      "removeBackdrop": "Poista taustan sumennus",
+      "removeGradient": "Poista liukuväri"
+    },
+    "css": {
+      "heading": "CSS",
+      "copy": "Kopioi CSS",
+      "copied": "Kopioitu",
+      "open": "Avaa overrides.css",
+      "none": "Tällä elementillä ei vielä ole ohituksia. Jokainen säädin kirjoittaa CSS:ää overrides.css-tiedostoon, muokattavan leveyden lohkoon.",
+      "clearAll": "Tyhjennä kaikki leveydet",
+      "clearUpTo": "Tyhjennä ≤ {width}",
+      "wholeFile": "Koko overrides.css",
+      "foldIn": "Siirrä tyylitiedostoihin",
+      "foldInTip": "Pyytää agenttia siirtämään kaikki ohitukset projektin omiin tyylitiedostoihin ja tyhjentämään overrides.css:n",
+      "sweep": "Poista käyttämättömät",
+      "sweepTip": "Poistaa niiden elementtien säännöt, joita ei enää ole missään tiedostossa",
+      "swept": "Poistettiin ohitukset {count} elementiltä, joita ei enää ole",
+      "sweptNone": "Jokainen ohitus kuuluu elementille, joka on yhä olemassa"
     }
   },
   "about": {
@@ -4205,6 +4514,9 @@
     "allowanceMonthBody": "Se uusiutuu {when}. Yhdistä oma palveluntarjoajasi jatkaaksesi.",
     "titleAllowanceCheck": "Tarkistus ennen OSW Studio -inferenssiä ei mennyt läpi.",
     "allowanceCheckBody": "Yritä hetken päästä uudelleen tai yhdistä oma palveluntarjoajasi.",
+    "allowanceLow": "OSW Studion ilmainen inferenssi on tältä päivältä lähes käytetty, joten tämä tehtävä voi pysähtyä kesken. Se uusiutuu {when}; voit jatkaa silloin tai toisella mallilla.",
+    "limitRenewed": "Raja on sittemmin nollautunut, joten tätä voi jatkaa samalla mallilla.",
+    "allowanceLowNoTime": "OSW Studion ilmainen inferenssi on tältä päivältä lähes käytetty, joten tämä tehtävä voi pysähtyä kesken. Voit jatkaa huomenna tai toisella mallilla.",
     "tips": {
       "billing": "Avaa HuggingFacen laskutuksen uudessa välilehdessä",
       "continue": "Jatka ajoa siitä, mihin se jäi",

@@ -83,6 +83,11 @@ export class SSEEventBus {
     return set !== undefined && set.size > 0;
   }
 
+  /** How many clients are attached for this account: how many answers a question to all of them can get. */
+  listenerCount(sessionId: string): number {
+    return this.listeners.get(sessionId)?.size ?? 0;
+  }
+
   removeListener(sessionId: string, listener: SSEListener): void {
     this.listeners.get(sessionId)?.delete(listener);
   }

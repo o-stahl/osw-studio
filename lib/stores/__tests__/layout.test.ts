@@ -296,7 +296,7 @@ describe('layout slice', () => {
   it('applies a preset and puts the old layout back on undo', () => {
     store.setState({ layout: columnsOf('chat', 'preview', 'files') });
     store.getState().applyLayoutPreset('tabbed');
-    expect(shapeOf(store.getState().layout)).toBe('chat,checkpoints,debug>chat|preview>preview|editor,files,skills>editor');
+    expect(shapeOf(store.getState().layout)).toBe('chat,checkpoints,debug>chat|canvas,preview>canvas|editor,files,skills>editor');
     store.getState().undoLayout();
     expect(shapeOf(store.getState().layout)).toBe('chat>chat|preview>preview|files>files');
   });
@@ -399,18 +399,20 @@ describe('layout slice', () => {
 
   it('initLayout builds the layout from a stored order and open panels when there is no saved layout', () => {
     // An existing user's stored order was written before the Elements panel existed. The stored
-    // sequence must survive, and opening the panel it predates must still work.
+    // sequence must survive, and opening the panel it predates must still work. Canvas, which it
+    // predates too, joins once as a tab behind the preview.
     mockLocalStorage['osw-workspace-panel-order'] = JSON.stringify(['preview', 'chat', 'files', 'editor', 'skills', 'console', 'checkpoints', 'debug']);
     mockLocalStorage['osw-workspace-panels'] = JSON.stringify({ chat: true, files: false, editor: true, preview: true });
     store.getState().initLayout();
-    expect(visiblePanelKeys(store.getState())).toEqual(['preview', 'chat', 'editor']);
+    expect(visiblePanelKeys(store.getState())).toEqual(['preview', 'canvas', 'chat', 'editor']);
+    expect(panelOnScreen(store.getState(), 'preview')).toBe(true);
     expect(store.getState().showFiles).toBe(false);
     expect(store.getState().showEditor).toBe(true);
   });
 
   it('drops unknown keys from a stored order', () => {
     mockLocalStorage['osw-workspace-panel-order'] = JSON.stringify(['chat', 'ghost-panel', 'files']);
-    store.getState().initLayout();
+    store.getState().initLayout({ canvas: false });
     expect(visiblePanelKeys(store.getState())).toEqual(['chat', 'files', 'preview']);
   });
 
@@ -429,7 +431,114 @@ describe('layout slice', () => {
 
   it('falls back to the old keys when the saved layout is not one', () => {
     mockLocalStorage['osw-workspace-layout'] = JSON.stringify({ v: 1, columns: [{ id: 'a', size: 100, cells: [{ id: 'b', size: 100, tabs: ['ghost'], active: 'ghost' }] }] });
-    expect(visiblePanelKeys(createLayoutStore().getState())).toEqual(['chat', 'preview', 'files']);
+    mockLocalStorage['osw-workspace-panel-order'] = JSON.stringify(['files', 'chat', 'preview']);
+    expect(visiblePanelKeys(createLayoutStore().getState())).toEqual(['files', 'chat', 'preview']);
+  });
+
+  it('starts a new workspace with the default layout, when there is neither a saved layout nor old keys', () => {
+    mockLocalStorage['osw-workspace-layout'] = JSON.stringify({ v: 1, columns: [{ id: 'a', size: 100, cells: [{ id: 'b', size: 100, tabs: ['ghost'], active: 'ghost' }] }] });
+    expect(shapeOf(createLayoutStore().getState().layout)).toBe('chat>chat|canvas,preview>canvas|files>files');
+  });
+
+  describe('Canvas', () => {
+    const saved = () => columnsOf('chat', 'preview', 'files');
+
+    it('joins a layout saved before it existed once, as a tab behind Live Preview', () => {
+      mockLocalStorage['osw-workspace-layout'] = JSON.stringify(saved());
+      store.getState().initLayout({ canvas: true });
+      expect(shapeOf(store.getState().layout)).toBe('chat>chat|preview,canvas>preview|files>files');
+      expect(shapeOf(savedLayout())).toBe('chat>chat|preview,canvas>preview|files>files');
+      expect(store.getState().showCanvas).toBe(true);
+
+      store.getState().closePanel('canvas');
+      store.getState().initLayout({ canvas: true });
+      expect(store.getState().showCanvas).toBe(false);
+    });
+
+    // `Project.settings.opensIn`: a site's project opens on Canvas, a game's on Live Preview.
+    it('brings the project\'s own surface forward for the visit, and leaves the saved layout as it was', () => {
+      mockLocalStorage['osw-workspace-layout'] = JSON.stringify(columnsOf('chat', 'preview', 'files'));
+      store.getState().initLayout({ canvas: true });
+      expect(shapeOf(store.getState().layout)).toBe('chat>chat|preview,canvas>preview|files>files');
+
+      store.getState().initLayout({ canvas: true, front: 'canvas' });
+      expect(shapeOf(store.getState().layout)).toBe('chat>chat|preview,canvas>canvas|files>files');
+      // The next project, with no preference, opens as the person left the tabs.
+      expect(shapeOf(savedLayout())).toBe('chat>chat|preview,canvas>preview|files>files');
+      store.getState().initLayout({ canvas: true });
+      expect(shapeOf(store.getState().layout)).toBe('chat>chat|preview,canvas>preview|files>files');
+    });
+
+    it('brings Live Preview forward for a project that asks for it, over a layout with Canvas in front', () => {
+      store.getState().initLayout({ canvas: true, front: 'preview' });
+      expect(shapeOf(store.getState().layout)).toBe('chat>chat|canvas,preview>preview|files>files');
+    });
+
+    it('leaves the tabs alone where the two are not in one group', () => {
+      // Live Preview behind the Console in a group of their own, Canvas in another.
+      const L = columnsOf('chat', 'canvas', 'console');
+      L.columns[2].cells[0] = { id: 'cell3', size: 100, tabs: ['console', 'preview'], active: 'console' };
+      mockLocalStorage['osw-workspace-layout'] = JSON.stringify(L);
+      store.getState().initLayout({ canvas: true });
+      const apart = shapeOf(store.getState().layout);
+      expect(apart).toContain('console,preview>console');
+      store.getState().initLayout({ canvas: true, front: 'preview' });
+      expect(shapeOf(store.getState().layout)).toBe(apart);
+    });
+
+    it('never brings Canvas forward for a runtime that has no Canvas', () => {
+      store.getState().initLayout({ canvas: true, front: 'preview' });
+      store.getState().initLayout({ canvas: false });
+      const without = shapeOf(store.getState().layout);
+      store.getState().initLayout({ canvas: false, front: 'canvas' });
+      expect(shapeOf(store.getState().layout)).toBe(without);
+      expect(without).not.toMatch(/>canvas\b/);
+    });
+
+    it('opens a runtime that has no Canvas on Live Preview, over a saved layout with Canvas in front', () => {
+      // A new workspace's layout, saved by any change: Canvas in front of Live Preview.
+      store.getState().initLayout({ canvas: true });
+      store.getState().togglePanel('editor');
+      store.getState().togglePanel('editor');
+      expect(shapeOf(savedLayout())).toBe('chat>chat|canvas,preview>canvas|files>files');
+
+      store.getState().initLayout({ canvas: false });
+      expect(panelOnScreen(store.getState(), 'preview')).toBe(true);
+      expect(panelOnScreen(store.getState(), 'canvas')).toBe(false);
+      // For the visit: the next project that has Canvas opens as the person left the tabs.
+      expect(shapeOf(savedLayout())).toBe('chat>chat|canvas,preview>canvas|files>files');
+    });
+
+    it('waits for a project that can show it', () => {
+      mockLocalStorage['osw-workspace-layout'] = JSON.stringify(saved());
+      store.getState().initLayout({ canvas: false });
+      expect(store.getState().showCanvas).toBe(false);
+      expect(store.getState().canvasAvailable).toBe(false);
+      store.getState().initLayout({ canvas: true });
+      expect(shapeOf(store.getState().layout)).toBe('chat>chat|preview,canvas>preview|files>files');
+    });
+
+    it('is left out of a new workspace, the presets and Reset layout where the runtime cannot show it', () => {
+      store.getState().initLayout({ canvas: false });
+      expect(shapeOf(store.getState().layout)).toBe('chat>chat|preview>preview|files>files');
+      store.getState().applyLayoutPreset('stacked');
+      expect(openPanels(store.getState().layout)).not.toContain('canvas');
+      store.getState().resetPanelLayout();
+      expect(shapeOf(store.getState().layout)).toBe('chat>chat|preview>preview|files>files');
+      store.getState().setCanvasAvailable(true);
+      store.getState().resetPanelLayout();
+      expect(shapeOf(store.getState().layout)).toBe('chat>chat|canvas,preview>canvas|files>files');
+    });
+
+    it('opens from the rail beside Live Preview, and never into a group with the Inspector', () => {
+      store.getState().initLayout({ canvas: false });
+      store.getState().setCanvasAvailable(true);
+      store.getState().togglePanel('canvas');
+      expect(findPanel(store.getState().layout, 'canvas')!.cell.tabs).toEqual(['preview', 'canvas']);
+      store.setState({ layout: columnsOf('chat', 'files', 'elements') });
+      store.getState().togglePanel('canvas');
+      expect(findPanel(store.getState().layout, 'canvas')!.cell.tabs).not.toContain('elements');
+    });
   });
 
   describe('elements panel registration', () => {
@@ -455,13 +564,14 @@ describe('layout slice', () => {
     });
 
     it('opening it joins the File Explorer and closes nothing', () => {
-      // Defaults are chat + preview + files, three columns already: the Inspector's group is the
-      // File Explorer's, so it opens as a tab there and the preview it reads stays where it is.
+      // Defaults are chat, Canvas and Live Preview, files: three columns already. The Inspector's
+      // group is the File Explorer's, so it opens as a tab there and the surfaces it reads stay put.
       store.getState().togglePanel('elements');
 
       expect(findPanel(store.getState().layout, 'elements')!.cell.tabs).toEqual(['files', 'elements']);
       expect(store.getState().showPreview).toBe(true);
-      expect(visiblePanelKeys(store.getState())).toHaveLength(4);
+      expect(store.getState().showCanvas).toBe(true);
+      expect(visiblePanelKeys(store.getState())).toHaveLength(5);
     });
 
     it('never opens into a tab group with the preview', () => {
@@ -649,10 +759,10 @@ describe('layout slice', () => {
 });
 
 /**
- * Where the three panels a fresh workspace opens with sit, and where a fourth goes.
+ * Where the panels a fresh workspace opens with sit, and where another goes.
  *
- * Chat and preview lead, and a fourth panel joins the rightmost cell as a tab, so none of the three
- * closes to make room for it.
+ * Chat leads, Canvas and Live Preview share the centre cell, and another panel joins the rightmost
+ * cell as a tab, so none of them closes to make room for it.
  */
 describe('the panels a fresh workspace opens with', () => {
   let store: ReturnType<typeof createLayoutStore>;
@@ -662,22 +772,23 @@ describe('the panels a fresh workspace opens with', () => {
     store = createLayoutStore();
   });
 
-  it('are chat, preview and files, in that order', () => {
+  it('are chat, Canvas in front of Live Preview, and files, in that order', () => {
     // Asserted through visiblePanelKeys rather than the raw order, because that is what the
     // workspace renders from: the order also carries panels that start closed.
-    expect(visiblePanelKeys(store.getState())).toEqual(['chat', 'preview', 'files']);
+    expect(visiblePanelKeys(store.getState())).toEqual(['chat', 'canvas', 'preview', 'files']);
+    expect(panelOnScreen(store.getState(), 'canvas')).toBe(true);
   });
 
-  it('puts a fourth beside files, not over the preview', () => {
+  it('puts another beside files, not over the surfaces', () => {
     store.getState().togglePanel('checkpoints');
-    expect(shapeOf(store.getState().layout)).toBe('chat>chat|preview>preview|files,checkpoints>checkpoints');
+    expect(shapeOf(store.getState().layout)).toBe('chat>chat|canvas,preview>canvas|files,checkpoints>checkpoints');
   });
 
   it('leaves a saved order alone, so an existing arrangement is not rearranged', () => {
     mockLocalStorage['osw-workspace-panel-order'] = JSON.stringify(
       ['chat', 'files', 'editor', 'skills', 'console', 'preview', 'elements', 'checkpoints', 'debug'],
     );
-    store.getState().initLayout();
+    store.getState().initLayout({ canvas: false });
 
     expect(visiblePanelKeys(store.getState())).toEqual(['chat', 'files', 'preview']);
   });

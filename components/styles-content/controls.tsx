@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { ChevronDown, Minus, Plus, RotateCcw } from 'lucide-react';
+import { ChevronDown, Minus, Pipette, Plus, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Switch } from '@/components/ui/switch';
 import { Tip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import {
@@ -14,6 +15,7 @@ import {
   type SegmentedEntry,
   type SegmentedOption,
   type StepperEntry,
+  type StyleKeyword,
   type StyleProperty,
   type StyleUnit,
 } from './properties';
@@ -161,7 +163,7 @@ export function formatComputed(
   ctx: UnitContext = unknownUnitContext,
   unit?: StyleUnit,
 ): string | null {
-  if (entry.control === 'swatch' || entry.kind === 'keyword') return readValue(entry, values);
+  if (entry.control !== 'stepper') return readValue(entry, values);
   const n = toUnitNumber(entry, values, ctx, unit);
   return n === null ? null : writeValue(n, unit ?? entry.unit);
 }
@@ -230,6 +232,21 @@ export function stepValue(
   return writeValue((rung * perLadder) / perTarget, target);
 }
 
+/** The ladder's bottom rung in `unit`, where a drag on the label stops. `null` when it cannot be converted. */
+export function ladderFloor(
+  entry: StepperEntry,
+  values: Record<string, string>,
+  ctx: UnitContext,
+  unit: StyleUnit,
+): number | null {
+  const first = entry.ladder[0];
+  if (unit === entry.unit || first === 0) return first;
+  const perLadder = pxPerUnit(entry, values, ctx);
+  const perTarget = pxPerUnit(entry, values, ctx, unit);
+  if (perLadder === null || perTarget === null || perTarget === 0) return null;
+  return (first * perLadder) / perTarget;
+}
+
 /** Is the value already at the end of the ladder in this direction? Disables the button. */
 export function atLadderEnd(
   entry: StepperEntry,
@@ -245,10 +262,78 @@ export function atLadderEnd(
 
 const ROW = 'flex items-center justify-between gap-2 py-1';
 const LABEL = 'text-xs text-muted-foreground truncate';
+/** A label and the dot before it, side by side, shrinking before the control does. */
+const LABEL_BOX = 'flex items-center gap-1 min-w-0';
 
-/** What a control shows when the frame has no single value for it. */
-function placeholder(mixed: boolean, mixedLabel: string): string {
-  return mixed ? mixedLabel : '—';
+/** Pixels of pointer travel per step when a label is dragged. */
+export const SCRUB_PX = 2;
+
+export interface SetDotProps {
+  /** The row's label, for the button's name. */
+  label: string;
+  /** What its tooltip says: which width's block sets it, and that a press resets it. */
+  tip: string;
+  disabled?: boolean;
+  /** Take the row's properties out of this width's block. */
+  onReset: () => void;
+}
+
+/**
+ * The dot before a row's label: this width's block in `/overrides.css` sets the row's property.
+ * Pressing it removes those declarations, so the value falls back to the stylesheet's.
+ */
+export function SetDot({ label, tip, disabled, onReset }: SetDotProps) {
+  const t = useTranslations('styles');
+  return (
+    <Tip label={tip} side="left">
+      <button
+        type="button"
+        data-osw-set-dot
+        aria-label={t('resetRow', { label })}
+        disabled={disabled}
+        onClick={onReset}
+        className="h-4 w-3 shrink-0 flex items-center justify-center rounded-sm hover:bg-accent disabled:opacity-40 disabled:pointer-events-none"
+      >
+        <span className="size-1.5 rounded-full bg-primary" />
+      </button>
+    </Tip>
+  );
+}
+
+/**
+ * A press-and-drag on a label, as steps: `onStep(n)` with the steps from where the drag started
+ * (Shift for tens), `onStart` once the pointer has moved, `onEnd` when it lets go or the browser
+ * cancels the pointer. A drag swallows the click that would otherwise follow it.
+ */
+function useScrub(opts: { onStart?: () => void; onStep?: (steps: number) => void; onEnd?: () => void; disabled?: boolean }) {
+  const ref = useRef(opts);
+  ref.current = opts;
+  const dragged = useRef(false);
+  const onPointerDown = (event: React.PointerEvent) => {
+    if (!ref.current.onStep || ref.current.disabled || event.button !== 0) return;
+    const x0 = event.clientX;
+    let moved = false;
+    let last = 0;
+    const move = (e: PointerEvent) => {
+      const steps = Math.trunc((e.clientX - x0) / SCRUB_PX) * (e.shiftKey ? 10 : 1);
+      if (!moved && steps === 0) return;
+      if (!moved) { moved = true; ref.current.onStart?.(); }
+      if (steps !== last) { last = steps; ref.current.onStep?.(steps); }
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      if (!moved) return;
+      dragged.current = true;
+      setTimeout(() => { dragged.current = false; }, 0);
+      ref.current.onEnd?.();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+  return { onPointerDown, dragged };
 }
 
 const GROUP = 'flex items-center shrink-0 overflow-hidden rounded-[2rem] border bg-background';
@@ -256,9 +341,13 @@ const GROUP = 'flex items-center shrink-0 overflow-hidden rounded-[2rem] border 
 /** `min-w-0` is load-bearing: without it flex items overflow and misalign. */
 const SEGMENT = 'h-6 rounded-none border-l first:border-l-0 min-w-0 shrink-0';
 const SEGMENT_BUTTON = `${SEGMENT} px-1.5`;
+/** Marks a keyword among the unit menu's values, which are otherwise units (`''` is one). */
+const KEYWORD_PREFIX = 'keyword:';
+
 /** Fixed widths so columns align across rows. */
 const VALUE_WIDTH = 'w-14';
-const UNIT_WIDTH = 'w-12';
+/** Room for a keyword (`none`, `auto`) beside the chevron as well as a unit. */
+const UNIT_WIDTH = 'w-[3.25rem]';
 
 export interface StepperProps {
   label: string;
@@ -279,12 +368,23 @@ export interface StepperProps {
    */
   onValue: (text: string) => void;
   onUnit: (unit: StyleUnit) => void;
+  /** Keywords offered after the units (`auto`, `none`); picking one calls {@link onKeyword}. */
+  keywords?: readonly StyleKeyword[];
+  /** The keyword the value is now, shown in the unit menu; `null` when it is a number. */
+  keyword?: StyleKeyword | null;
+  onKeyword?: (keyword: StyleKeyword) => void;
   /** This value has sides or corners that can be opened up. See `StepperEntry.parts`. */
   expandable?: boolean;
   expanded?: boolean;
   onToggleExpand?: () => void;
   /** Rendered as one of those sides, rather than as the value itself. Indented, and never a toggle. */
   isPart?: boolean;
+  /** The set dot, when this width's block sets the property. */
+  dot?: React.ReactNode;
+  /** Dragging the label: started, moved `steps` from the start, ended. Absent, the label does not drag. */
+  onScrubStart?: () => void;
+  onScrub?: (steps: number) => void;
+  onScrubEnd?: () => void;
 }
 
 /** The value is a button until clicked, then an input. Prevents style-computed replies from overwriting mid-edit. */
@@ -300,22 +400,43 @@ export function Stepper({
   onStep,
   onValue,
   onUnit,
+  keywords,
+  keyword,
+  onKeyword,
   expandable,
   expanded,
   onToggleExpand,
   isPart,
+  dot,
+  onScrubStart,
+  onScrub,
+  onScrubEnd,
 }: StepperProps) {
   const t = useTranslations('styles');
   const [draft, setDraft] = useState<string | null>(null);
+  /** What the field opened on: left as that, it writes nothing. */
+  const opened = useRef('');
+  const scrub = useScrub({ onStart: onScrubStart, onStep: onScrub, onEnd: onScrubEnd, disabled });
+  const scrubProps = onScrub && !disabled
+    // `touch-action: none` so a touch drag scrubs rather than scrolling the panel.
+    ? { onPointerDown: scrub.onPointerDown, 'data-osw-scrub': '', style: { cursor: 'ew-resize' as const, touchAction: 'none' as const } }
+    : {};
 
+  const open = () => {
+    opened.current = value ?? '';
+    setDraft(opened.current);
+  };
   const commit = () => {
     if (draft === null) return;
     setDraft(null);
+    if (draft.trim() === opened.current.trim()) return;
     onValue(draft);
   };
 
   return (
     <div className={ROW}>
+      <span className={cn(LABEL_BOX, isPart && 'pl-4')}>
+      {dot}
       {expandable ? (
         <Tip label={expanded ? t('tips.hideSides') : t('tips.showSides')} side="left">
           <button
@@ -323,16 +444,18 @@ export function Stepper({
             data-osw-stepper-expand
             aria-expanded={Boolean(expanded)}
             aria-label={t('sidesOf', { label })}
-            onClick={onToggleExpand}
+            onClick={() => { if (!scrub.dragged.current) onToggleExpand?.(); }}
             className={cn(LABEL, 'flex items-center gap-1 text-left hover:text-foreground cursor-pointer')}
+            {...scrubProps}
           >
             <ChevronDown className={cn('size-3 shrink-0 transition-transform', !expanded && '-rotate-90')} />
             {label}
           </button>
         </Tip>
       ) : (
-        <span className={cn(LABEL, isPart && 'pl-4')}>{label}</span>
+        <span className={cn(LABEL, 'select-none')} {...scrubProps}>{label}</span>
       )}
+      </span>
       <div className={GROUP}>
         {/* No tooltip while a step is off: the span a disabled button needs would break the group's
             segment borders, and an end of the ladder needs no explaining. */}
@@ -361,7 +484,7 @@ export function Stepper({
             disabled={disabled}
             // The value the field opens on is what is on screen, so clicking and typing over it
             // starts from what the element actually is rather than from an empty box.
-            onClick={() => setDraft(value ?? '')}
+            onClick={open}
             className={cn(
               VALUE_WIDTH,
               // Right-aligned, and `truncate` so a value with more to say than the box has room for
@@ -371,7 +494,7 @@ export function Stepper({
               SEGMENT,
             )}
           >
-            {value ?? placeholder(Boolean(mixed), t('mixed'))}
+            {value ?? (mixed ? t('mixed') : '—')}
           </button>
           </Tip>
         ) : (
@@ -410,14 +533,21 @@ export function Stepper({
             data-osw-stepper-unit
             aria-label={t('unitOf', { label })}
             disabled={disabled}
-            value={unit}
-            onChange={event => onUnit(event.target.value as StyleUnit)}
+            value={keyword ? `${KEYWORD_PREFIX}${keyword}` : unit}
+            onChange={(event) => {
+              const picked = event.target.value;
+              if (picked.startsWith(KEYWORD_PREFIX)) onKeyword?.(picked.slice(KEYWORD_PREFIX.length) as StyleKeyword);
+              else onUnit(picked as StyleUnit);
+            }}
             // `min-w-0` for the reason SEGMENT gives: a `<select>`'s intrinsic width is its widest
             // option, and `w-full` alone does not stop it claiming that much.
             className="appearance-none bg-transparent text-xs pl-1.5 pr-4 h-full w-full min-w-0 outline-none cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
           >
             {units.map(option => (
               <option key={option || 'unitless'} value={option}>{UNIT_LABELS[option]}</option>
+            ))}
+            {keywords?.map(option => (
+              <option key={option} value={`${KEYWORD_PREFIX}${option}`}>{option}</option>
             ))}
           </select>
           <ChevronDown className="size-3 absolute right-0.5 pointer-events-none opacity-60" />
@@ -449,18 +579,24 @@ export interface SegmentedControlProps {
   active: string | null;
   disabled?: boolean;
   onSelect: (value: string) => void;
+  /** The set dot, when this width's block sets the property. */
+  dot?: React.ReactNode;
+  /** A word per option for its tooltip, where the label alone is a symbol (`Aa`). */
+  tips?: Readonly<Record<string, string>>;
 }
 
-export function SegmentedControl({ label, options, active, disabled, onSelect }: SegmentedControlProps) {
+export function SegmentedControl({ label, options, active, disabled, onSelect, dot, tips }: SegmentedControlProps) {
   return (
     <div className={ROW}>
-      <span className={LABEL}>{label}</span>
+      <span className={LABEL_BOX}>{dot}<span className={LABEL}>{label}</span></span>
       <div className="flex items-center rounded-md border overflow-hidden shrink-0">
         {options.map(option => (
           <button
             key={option.value}
             type="button"
             aria-pressed={active === option.value}
+            aria-label={tips?.[option.value]}
+            title={tips?.[option.value]}
             disabled={disabled}
             onClick={() => onSelect(option.value)}
             className={cn(
@@ -515,7 +651,16 @@ export interface SwatchRowProps {
    * do nothing. See `canReset` in `./state.ts` for when that is known.
    */
   onReset?: () => void;
+  /** The set dot, when this width's block sets the property. */
+  dot?: React.ReactNode;
 }
+
+/** The browser's screen colour picker, where it has one (Chromium). */
+interface EyeDropperApi { open(): Promise<{ sRGBHex: string }> }
+const eyeDropper = (): (new () => EyeDropperApi) | null =>
+  typeof window !== 'undefined' && 'EyeDropper' in window
+    ? (window as unknown as { EyeDropper: new () => EyeDropperApi }).EyeDropper
+    : null;
 
 export function SwatchRow({
   label,
@@ -525,14 +670,16 @@ export function SwatchRow({
   disabled,
   onSelect,
   onReset,
+  dot,
 }: SwatchRowProps) {
   const t = useTranslations('styles');
   const tc = useTranslations('common');
   const current = swatches.find(swatch => swatch.value === selected) ?? null;
+  const Dropper = eyeDropper();
 
   return (
     <div className={ROW}>
-      <span className={cn(LABEL, 'shrink-0')}>{label}</span>
+      <span className={cn(LABEL_BOX, 'shrink-0')}>{dot}<span className={LABEL}>{label}</span></span>
       <Popover>
         <PopoverTrigger asChild>
           <Tip label={current?.name ? `${current.name} — ${current.value}` : (pickerValue ?? t('noSingleColour'))} align="end">
@@ -601,6 +748,25 @@ export function SwatchRow({
             <span className="font-mono text-[11px] text-muted-foreground">
               {pickerValue ?? '—'}
             </span>
+            {Dropper ? (
+              <Tip label={t('tips.eyedropper')}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  data-osw-eyedropper
+                  aria-label={t('eyedropper')}
+                  disabled={disabled}
+                  className="ml-auto h-6 w-6"
+                  onClick={() => {
+                    // A cancelled pick rejects; that is the person changing their mind, not an error.
+                    new Dropper().open().then(result => onSelect(result.sRGBHex)).catch(() => {});
+                  }}
+                >
+                  <Pipette className="size-3" />
+                </Button>
+              </Tip>
+            ) : null}
           </div>
           <p className="mt-1.5 text-[11px] text-muted-foreground">
             {t('pinsColour')}
@@ -626,6 +792,123 @@ export function SwatchRow({
           ) : null}
         </PopoverContent>
       </Popover>
+    </div>
+  );
+}
+
+export interface SelectRowProps {
+  label: string;
+  options: readonly SegmentedOption[];
+  /** The option in force, or `null` when the value is none of them (shown as itself). */
+  value: string | null;
+  /** What to show when `value` is null: the value as it is, so a select never claims another one. */
+  current?: string | null;
+  disabled?: boolean;
+  onSelect: (value: string) => void;
+  dot?: React.ReactNode;
+}
+
+/** A choice from a list, in the stepper's pill: a native select, as the unit picker is. */
+export function SelectRow({ label, options, value, current, disabled, onSelect, dot }: SelectRowProps) {
+  const unknown = value === null ? (current ?? '') : null;
+  return (
+    <div className={ROW}>
+      <span className={LABEL_BOX}>{dot}<span className={LABEL}>{label}</span></span>
+      <div className="relative flex items-center h-6 w-40 rounded-[2rem] border bg-background min-w-0 shrink-0">
+        <select
+          data-osw-select
+          aria-label={label}
+          disabled={disabled}
+          value={value ?? `__current:${unknown}`}
+          onChange={event => onSelect(event.target.value)}
+          className="appearance-none bg-transparent text-xs pl-2 pr-6 h-full w-full min-w-0 outline-none cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
+        >
+          {value === null ? <option value={`__current:${unknown}`} disabled>{unknown || '—'}</option> : null}
+          {options.map(option => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <ChevronDown className="size-3 absolute right-2 pointer-events-none text-muted-foreground" />
+      </div>
+    </div>
+  );
+}
+
+export interface SwitchRowProps {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+  dot?: React.ReactNode;
+}
+
+/** A property with two values, as the studio's Switch. */
+export function SwitchRow({ label, checked, disabled, onChange, dot }: SwitchRowProps) {
+  return (
+    <div className={ROW}>
+      <span className={LABEL_BOX}>{dot}<span className={LABEL}>{label}</span></span>
+      <Switch aria-label={label} checked={checked} disabled={disabled} onCheckedChange={onChange} />
+    </div>
+  );
+}
+
+/** `flex-start`, `center`, `flex-end`: the three places on each axis the pad offers. */
+const PAD_PLACES = ['flex-start', 'center', 'flex-end'] as const;
+
+/** A computed alignment as one of the pad's places, or `null` for anything else. */
+function padPlace(value: string | null | undefined): (typeof PAD_PLACES)[number] | null {
+  const v = (value ?? '').trim();
+  if (v === 'normal' || v === 'start' || v === 'left' || v === 'flex-start' || v === 'self-start') return 'flex-start';
+  if (v === 'end' || v === 'right' || v === 'flex-end' || v === 'self-end') return 'flex-end';
+  if (v === 'center') return 'center';
+  return null;
+}
+
+export interface AlignPadProps {
+  /** The main axis runs across (a row) rather than down. */
+  row: boolean;
+  justify: string | null;
+  align: string | null;
+  /** `justify-content: space-between` is on: every column of the main axis lights. */
+  between: boolean;
+  /** `align-items: stretch` is on: nothing lights on the cross axis. */
+  stretch: boolean;
+  disabled?: boolean;
+  /** A cell: where on the main axis and on the cross axis. */
+  onPick: (main: (typeof PAD_PLACES)[number], cross: (typeof PAD_PLACES)[number]) => void;
+}
+
+/** Nine positions for a flex container's children: main axis across, cross axis down (swapped for a column). */
+export function AlignPad({ row, justify, align, between, stretch, disabled, onPick }: AlignPadProps) {
+  const t = useTranslations('styles');
+  const main = padPlace(justify);
+  const cross = padPlace(align);
+  const cells = [];
+  for (let y = 0; y < 3; y++) {
+    for (let x = 0; x < 3; x++) {
+      const m = PAD_PLACES[row ? x : y];
+      const c = PAD_PLACES[row ? y : x];
+      const on = (between || m === main) && !stretch && c === cross;
+      cells.push(
+        <button
+          key={`${x},${y}`}
+          type="button"
+          data-osw-pad={`${x},${y}`}
+          aria-pressed={on}
+          aria-label={t('padCell', { justify: m, align: c })}
+          title={`justify-content: ${m} · align-items: ${c}`}
+          disabled={disabled}
+          onClick={() => onPick(m, c)}
+          className={cn('h-5 w-5 rounded-sm flex items-center justify-center disabled:opacity-40', on ? 'bg-primary/15' : 'hover:bg-accent')}
+        >
+          <span className={cn('block rounded-full', on ? cn(row ? 'h-1.5 w-3' : 'h-3 w-1.5', 'bg-primary') : 'size-1.5 bg-muted-foreground/40')} />
+        </button>,
+      );
+    }
+  }
+  return (
+    <div role="group" aria-label={t('alignment')} className="grid grid-cols-3 gap-0.5 rounded-md border bg-background p-0.5 shrink-0">
+      {cells}
     </div>
   );
 }

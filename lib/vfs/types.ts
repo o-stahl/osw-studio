@@ -11,6 +11,12 @@ export interface Project {
     defaultTemplate?: string;
     globalStyles?: string;
     previewEntryPoint?: string;  // defaults to '/index.html' when absent
+    /**
+     * The surface the project opens on, where the workspace has Canvas and Live Preview as tabs of
+     * one group: Canvas for a site whose pages are written as HTML, Live Preview for a game or an app
+     * that draws itself. Seeded by the template; absent, the tabs stay as the layout was left.
+     */
+    opensIn?: 'canvas' | 'preview';
     databaseSchema?: string;     // project database DDL; see lib/vfs/project-schema.ts
     /** Seeded from the template that made the project, then owned and edited by the project. */
     promptSuggestions?: PromptSuggestion[];

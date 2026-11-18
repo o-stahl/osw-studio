@@ -34,6 +34,8 @@ export interface ApiErrorBody {
   retryAfterMs?: number;
   /** When the exhausted allowance renews, as epoch milliseconds, when the provider says. */
   resetAt?: number;
+  /** Which of the provider's limits refused the request, as an id (`limitSourceOf`). */
+  limitSource?: string;
 }
 
 interface ProviderErrorInput {
@@ -50,6 +52,22 @@ export interface ProviderErrorClass {
   code?: ApiErrorCode;
   retryAfterMs?: number;
   resetAt?: number;
+  limitSource?: string;
+}
+
+/** The demo has no trial session left for the visitor's network today (lib/inference/trial/caps.ts). */
+export const TRIAL_SESSIONS_LIMIT_SOURCE = 'osws_trial_sessions';
+/** OpenRouter's count of free-model requests a day, which it names only in its message. */
+const OPENROUTER_FREE_DAILY_LIMIT_SOURCE = 'openrouter_free_daily';
+
+/**
+ * Which limit a refusal names, for telemetry: the provider's `metadata.limit_source` when it is an
+ * id (OSW Studio inference's `osws_…`, OpenRouter's `upstream_provider_shared_pool`), never free text.
+ */
+export function limitSourceOf(metadata: Record<string, unknown> | undefined, message = ''): string | undefined {
+  const source = metadata?.limit_source;
+  if (typeof source === 'string' && /^[a-z0-9_]{1,48}$/.test(source)) return source;
+  return message.toLowerCase().includes('free-models-per-day') ? OPENROUTER_FREE_DAILY_LIMIT_SOURCE : undefined;
 }
 
 const CREDIT_WORDS = ['credit', 'quota', 'billing', 'insufficient', 'balance', 'payment required'];
@@ -84,10 +102,12 @@ export function classifyProviderError(input: ProviderErrorInput): ProviderErrorC
   const lower = input.message.toLowerCase();
   const retryAfterMs = parseRetryAfter(input.headers?.get('retry-after'));
   const resetAt = parseResetHeader(input.headers?.get('x-ratelimit-reset'));
+  const limitSource = limitSourceOf(input.metadata, input.message);
   const withTiming = (code: ApiErrorCode): ProviderErrorClass => ({
     code,
     ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
     ...(resetAt !== undefined ? { resetAt } : {}),
+    ...(limitSource ? { limitSource } : {}),
   });
 
   if (status === 401) return { code: 'auth' };

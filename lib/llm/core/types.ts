@@ -91,6 +91,11 @@ export interface ContextManager {
   addUserMessage(content: string | ContentBlock[]): void;
   addAssistantTurn(response: ParsedResponse): void;
   addToolResults(results: ToolResult[]): void;
+  /**
+   * Images a command made for the model (`screenshot`), after the tool results. For this run only:
+   * not added to the conversation, and only the newest stay attached.
+   */
+  addImages?(images: { mediaType: string; data: string }[], caption: string): void;
   importMessages(messages: Message[]): void;
   needsCompaction(tokenCount: number): boolean;
   compact(provider: ProviderAdapter, opts?: { freshSystemPrompt?: string; projectContext?: string; signal?: AbortSignal }): Promise<UsageInfo | undefined>;

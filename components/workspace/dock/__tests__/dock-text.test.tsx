@@ -19,6 +19,7 @@ const t = createTranslator({ locale: 'en', messages: en });
 const titles = {
   chat: t('common.terms.chat'),
   preview: t('preview.livePreview'),
+  canvas: t('workspace.tabs.canvas'),
   files: t('workspace.tabs.fileExplorer'),
   skills: t('common.terms.skills'),
 };
@@ -55,7 +56,8 @@ describe('useDockText', () => {
   it('words each refusal, with the panel that is too short', () => {
     expect(text.refusal({ code: 'width', px: 240 })).toBe(t('workspace.layout.refusal.width', { px: 240 }));
     expect(text.refusal({ code: 'height', panel: 'chat', px: 420 })).toBe(t('workspace.layout.refusal.height', { panel: titles.chat, px: 420 }));
-    expect(text.refusal({ code: 'inspector-preview' })).toBe(t('workspace.layout.refusal.inspectorPreview'));
+    expect(text.refusal({ code: 'inspector-surface', panel: 'preview' })).toBe(t('workspace.layout.refusal.inspectorSurface', { panel: titles.preview }));
+    expect(text.refusal({ code: 'inspector-surface', panel: 'canvas' })).toBe(t('workspace.layout.refusal.inspectorSurface', { panel: titles.canvas }));
   });
 
   it('calls a tab drop on another cell a tab in it, and one on its own strip a reorder', () => {

@@ -16,6 +16,7 @@ export function usePanelTitles(): Record<PanelKey, string> {
     files: t('workspace.tabs.fileExplorer'),
     editor: t('workspace.tabs.codeEditor'),
     preview: t('preview.livePreview'),
+    canvas: t('workspace.tabs.canvas'),
     elements: t('workspace.tabs.inspector'),
     skills: t('common.terms.skills'),
     console: t('workspace.tabs.console'),

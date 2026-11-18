@@ -42,6 +42,24 @@ export interface StyleDeclaration {
   value: string;
 }
 
+/** One change to an element's override block: a declaration to set, or with `value: null`, to remove. */
+export interface StyleChange {
+  property: string;
+  value: string | null;
+}
+
+/** One file a direct edit wrote, as the edit journal keeps it. `before: null`: the write created it. */
+export interface RecordedWrite {
+  path: string;
+  before: string | null;
+  after: string;
+  /** Written without a change event, as `/overrides.css` is; an undo writes it back the same way. */
+  silent: boolean;
+}
+
+/** Told about every file a direct edit writes, after it is written. */
+export type WriteRecorder = (write: RecordedWrite) => void;
+
 /** Every refusal is reported rather than thrown; all are ordinary UI states. */
 export interface ApplyResult {
   ok: boolean;
@@ -50,7 +68,9 @@ export interface ApplyResult {
    */
   reason?: 'unresolvable' | 'generating' | 'needs-confirmation' | 'stale-index'
          | 'missing-file' | 'ambiguous-stylesheet' | 'no-src' | 'expression-src'
-         | 'has-children' | 'has-expression' | 'unclosed' | 'void-element';
+         | 'has-children' | 'has-expression' | 'unclosed' | 'void-element'
+         // Structural edits (`apply-structure.ts`).
+         | 'locked' | 'crosses-template' | 'into-itself' | 'not-a-frame' | 'no-place' | 'cross-file';
   /** The marker the override is keyed to. Present whenever one was read or stamped. */
   markerId?: string;
   /** Every path actually written, in write order. Empty on every refusal. */
@@ -61,11 +81,8 @@ export interface ApplyResult {
   instances?: number;
   /** Pages that carry no `</head>`, so the stylesheet link could not be added to them. */
   skippedPages?: string[];
-  /**
-   * How many elements in the project carry this marker. Above 1 the override is mis-targeted
-   * rather than merely inert — the agent has duplicated a marked element. See Task 5.
-   */
-  duplicateCount?: number;
   /** The refusal's detail, where there is one worth showing — currently the thrown CSS message. */
   message?: string;
+  /** `/overrides.css` as the write left it, for the frames to swap in. Set by style writes that read it. */
+  css?: string;
 }

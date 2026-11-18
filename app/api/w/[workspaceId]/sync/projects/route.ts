@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWorkspaceContext } from '@/lib/api/workspace-context';
 import { Project } from '@/lib/vfs/types';
-import { getWorkspaceById } from '@/lib/auth/system-database';
+import { projectLimitRefusal } from '@/lib/api/project-quota';
 import { logger } from '@/lib/utils';
 
 export async function GET(
@@ -59,16 +59,8 @@ export async function POST(
     const existing = await adapter.getProject(project.id);
 
     if (!existing) {
-      const workspace = getWorkspaceById(workspaceId);
-      if (workspace) {
-        const projects = await adapter.listProjects();
-        if (projects.length >= workspace.max_projects) {
-          return NextResponse.json(
-            { error: `Project limit reached (${workspace.max_projects}).` },
-            { status: 403 }
-          );
-        }
-      }
+      const refusal = await projectLimitRefusal(adapter, workspaceId);
+      if (refusal) return NextResponse.json({ error: refusal }, { status: 403 });
     }
 
     const base = typeof baseRevision === 'number' ? baseRevision : 0;

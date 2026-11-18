@@ -13,6 +13,7 @@ import { serializeFilesForResponse, deserializeFilesFromRequest } from '@/lib/vf
 import { logger } from '@/lib/utils';
 import { isSafeVirtualPath } from '@/lib/vfs/path-safety';
 import { forgetWorkspaceStorage } from '@/lib/api/storage-quota';
+import { projectLimitRefusal } from '@/lib/api/project-quota';
 
 interface PushRequestBody {
   project: Project;
@@ -42,7 +43,7 @@ export async function POST(
   { params }: { params: Promise<{ workspaceId: string; id: string }> }
 ) {
   try {
-    const { adapter } = await getWorkspaceContext(params);
+    const { adapter, workspaceId } = await getWorkspaceContext(params);
     const { id } = await params;
     const body: PushRequestBody = await request.json();
     const {
@@ -70,6 +71,12 @@ export async function POST(
         { error: 'Invalid request: file paths must be absolute and contain no "." or ".." segments' },
         { status: 400 }
       );
+    }
+
+    // The first batch of a push creates the project, so that is where it counts against the limit.
+    if (!(await adapter.getProject(id))) {
+      const refusal = await projectLimitRefusal(adapter, workspaceId);
+      if (refusal) return NextResponse.json({ error: refusal }, { status: 403 });
     }
 
     const now = new Date();

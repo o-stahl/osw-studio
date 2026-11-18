@@ -1,4 +1,5 @@
 import type { TreeNode } from './types';
+import { TOOLBAR_HOST_ATTR } from './toolbar-dom';
 
 /**
  * One expanded level of the Elements tree, as the serializer returns it.
@@ -15,16 +16,16 @@ export interface SerializedLevel {
  * The Elements tree serializer, as JavaScript source for injection into the preview iframe.
  *
  * The host cannot read the frame's `contentDocument`, so the tree has to be built inside the frame
- * and posted up. That means this cannot be an imported module — it is interpolated into the script
- * template literals in `components/preview/multipage-preview.tsx`. It is authored here, as a
- * constant, for the reason `STRIP_PROVENANCE_JS` and `STRIP_NODE_ID_JS` are: the emitted text is the
- * only thing that runs, and the tests can execute *this* string.
+ * and posted up. That means this cannot be an imported module: it is interpolated into the script
+ * template literal of `generateNavigationScript` in `lib/preview/navigation-script.ts`. It is
+ * authored here, as a constant, for the reason `STRIP_PROVENANCE_JS` and `STRIP_NODE_ID_JS` are: the
+ * emitted text is the only thing that runs, and the tests can execute *this* string.
  *
  * **No regex literals.** Anything hand-written inside those template literals loses one level of
- * escaping before it is emitted — `\s` becomes a literal `s`, a live bug at
- * `multipage-preview.tsx:370`. An interpolated constant is inserted verbatim and would be safe, but
- * this file avoids regexes entirely so the hazard cannot be reintroduced by the next edit: source
- * values are split with `lastIndexOf`/`slice` and compared as strings.
+ * escaping before it is emitted: `\s` becomes a literal `s`. An interpolated constant is inserted
+ * verbatim and would be safe, but this file avoids regexes entirely so the hazard cannot be
+ * reintroduced by the next edit: source values are split with `lastIndexOf`/`slice` and compared as
+ * strings.
  *
  * ## Addressing
  *
@@ -40,15 +41,16 @@ export interface SerializedLevel {
  *
  * ## What is in the tree
  *
- * Only elements carrying `data-osw-src`. `injectProvenance` tags every authored element and never
- * tags `script` or `style`, so this one rule excludes the selector overlay, the placement indicator
- * and its placeholders, the two scripts before `</body>`, and the head-injected bridge and blob-map
- * scripts — without the serializer having to recognise each piece of furniture individually.
+ * Elements carrying `data-osw-src`, and the elements the page's scripts built, as `script` rows
+ * with no caret (only a `tree-path` reveal of an element inside one opens it): they have no source
+ * to edit, but a tree that left them out hid most of a page
+ * whose content is built in the browser. Skipped: `script`, `style` and the other non-visual tags,
+ * and the preview's furniture (the selector overlay, the toolbar host, the placement indicator and
+ * its placeholders, the screenshot's sandbox host), named by their attributes. Bundled runtimes (react, preact, svelte, vue) emit
+ * no provenance at all, so their whole tree is script rows; that is the panel's business to report.
  *
- * The tradeoff, stated rather than hidden: legitimately JS-built elements are absent from the tree
- * too. They have no source to annotate and no source to edit, so a row for them would be a row the
- * rest of the feature cannot act on. Bundled runtimes (react, preact, svelte, vue) emit no
- * provenance at all, so their tree is empty; that is the panel's business to report.
+ * Each row also says what a leaf element's text is (`text`), whether it is `display: none` at this
+ * width (`hidden`) and whether it carries `data-osw-lock` (`locked`).
  *
  * ## Cost
  *
@@ -75,13 +77,43 @@ function __oswNodeId(el) {
   return id;
 }
 
+var __oswTreeSkipTags = ['script', 'style', 'link', 'meta', 'noscript', 'template', 'base', 'title'];
+
+// Preview furniture, which no page authored. data-osw-capture is the screenshot's sandbox host
+// (frame-capture.ts), in the body while a capture paints.
+function __oswTreeFurniture(el) {
+  return el.hasAttribute('data-osw-overlay') || el.hasAttribute('${TOOLBAR_HOST_ATTR}') ||
+    el.hasAttribute('data-semantic-indicator') || el.hasAttribute('data-semantic-placeholder') ||
+    el.hasAttribute('data-placement-id') || el.hasAttribute('data-osw-capture');
+}
+
+// Whether a child gets a row: authored, or built by the page and not furniture.
+function __oswTreeRow(el) {
+  if (el.getAttribute('data-osw-src') !== null) return true;
+  return __oswTreeSkipTags.indexOf(el.tagName.toLowerCase()) === -1 && !__oswTreeFurniture(el);
+}
+
 // The same skip rule as the level walk, so a caret never opens an empty level.
 function __oswHasTreeChildren(el) {
   var kids = el.children;
   for (var i = 0; i < kids.length; i++) {
-    if (kids[i].getAttribute('data-osw-src') !== null) return true;
+    if (__oswTreeRow(kids[i])) return true;
   }
   return false;
+}
+
+// A leaf's words, whitespace collapsed, cut at 28 characters.
+function __oswTreeText(el) {
+  if (el.children.length || el.tagName === 'IMG') return '';
+  var raw = el.textContent || '', out = '', space = false;
+  for (var i = 0; i < raw.length; i++) {
+    var c = raw.charAt(i);
+    var blank = c === ' ' || c === '\\n' || c === '\\t' || c === '\\r' || c === '\\f';
+    if (blank) { space = out.length > 0; continue; }
+    if (space) { out += ' '; space = false; }
+    out += c;
+  }
+  return out.length > 28 ? out.slice(0, 27) + '\\u2026' : out;
 }
 
 function __oswSourceCounts(doc) {
@@ -103,19 +135,30 @@ function __oswSerializeLevel(root) {
   var kids = root.children;
   for (var i = 0; i < kids.length; i++) {
     var el = kids[i];
-    var src = el.getAttribute('data-osw-src');
-    if (src === null) continue;
+    if (!__oswTreeRow(el)) continue;
     if (nodes.length >= __oswMaxLevelNodes) { truncated++; continue; }
+    var src = el.getAttribute('data-osw-src');
     var node = {
       id: __oswNodeId(el),
       tag: el.tagName.toLowerCase(),
-      instances: counts.get(src) || 1,
-      hasChildren: __oswHasTreeChildren(el)
+      instances: src === null ? 1 : counts.get(src) || 1,
+      hasChildren: src !== null && __oswHasTreeChildren(el)
     };
     var cls = el.getAttribute('class');
     if (cls) {
       cls = cls.trim();
       if (cls) node.className = cls;
+    }
+    var text = __oswTreeText(el);
+    if (text) node.text = text;
+    var view = el.ownerDocument.defaultView;
+    if (view && view.getComputedStyle(el).display === 'none') node.hidden = true;
+    if (el.hasAttribute('data-osw-lock')) node.locked = true;
+    if (el.hasAttribute('data-osw-frame')) node.frame = true;
+    if (src === null) {
+      node.script = true;
+      nodes.push(node);
+      continue;
     }
     // Split on the LAST colon: the path part may contain one, so indexOf would cut a path in half.
     var cut = src.lastIndexOf(':');

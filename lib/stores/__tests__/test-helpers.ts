@@ -61,6 +61,7 @@ export function setupOrchestratorMocks() {
   vi.mock('@/lib/llm/providers/registry', () => ({
     getProvider: vi.fn(() => ({ name: 'OpenAI', apiKeyRequired: true, isLocal: false, usesOAuth: false })),
     modelSupportsVision: () => false,
+    resolveInputModalities: () => ['text'],
   }));
   vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
   vi.mock('@/lib/telemetry', () => ({ track: vi.fn(), isTelemetryActive: vi.fn(() => true) }));
@@ -85,6 +86,7 @@ export function setupOrchestratorMocks() {
   vi.mock('@/lib/server-generate/file-sync-handler', () => ({
     handleFilesChanged: vi.fn().mockResolvedValue(undefined),
     cancelPendingFileSync: vi.fn(),
+    whenFilesSynced: vi.fn(() => Promise.resolve()),
   }));
   vi.mock('@/lib/server-generate/build-delegation-handler', () => ({
     handleBuildRequested: vi.fn().mockResolvedValue(undefined),

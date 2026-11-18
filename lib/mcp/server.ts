@@ -21,12 +21,16 @@ import type { Deployment, EdgeFunction, ScheduledFunction, Secret, ServerFunctio
  */
 const BASH_DESCRIPTION = `Run a command against a project's files, exactly as the OSW Studio agent does.
 
-Commands: cat, head, tail, ls, tree, grep, rg, find, wc, sort, uniq, tr, echo, mkdir, rmdir, touch, mv, cp, rm, sed, ss, curl, runtime.
+Commands: cat, head, tail, ls, tree, grep, rg, find, wc, sort, uniq, tr, echo, mkdir, rmdir, touch, mv, cp, rm, sed, ss, style, curl, inspect, runtime.
 Pipes, redirects (> file, >> file), heredocs (<< 'EOF'), chaining (&&, ||, ;) and brace expansion are supported.
 
 curl localhost/ renders a page through the project's compiler, which is how to check output without publishing.
 
-Not available here: build, python, python3 and lua need the browser runtime, and sqlite3 needs a deployment selected in the app. Use deployments_sql for a deployment's database. status is the in-app agent's task-completion command and does nothing for an outside client.
+Pages can be read as a browser lays them out (the command has --help):
+- inspect /index.html [element] [--width N] gives the page's elements with their positions in source, and for one element its CSS values and the rule that sets each. It needs an OSW Studio tab open for this account.
+- An element is a page and a selector (/index.html ".hero h1"), a position (/index.html:16, the element whose tag starts on line 16), or a marker (@h7x2m4qp, the value of the element's data-osw-id attribute).
+
+Not available here: build, python, python3 and lua need the browser runtime, and sqlite3 needs a deployment selected in the app. Use deployments_sql for a deployment's database. screenshot is preview_screenshot here. status is the in-app agent's task-completion command and does nothing for an outside client.
 
 Read a file: cat /index.html
 Create a file: cat > /about.html << 'EOF'\ncontent\nEOF
@@ -63,6 +67,19 @@ const SERVER_INSTRUCTIONS = [
 ].join('\n');
 
 
+const PREVIEW_SCREENSHOT_DESCRIPTION = [
+  'See a page of a project as a visitor would: rendered by an OSW Studio tab open for this account, with its scripts run',
+  'and scroll-triggered content shown. The first screen by default, the whole page with full (as several images, top to bottom),',
+  'or one element with element: a CSS selector, a position as inspect prints it (/index.html:16:5), or a marker (@h7x2m4qp). Needs projects:read.',
+].join(' ');
+
+const CANVAS_SELECTION_DESCRIPTION = [
+  'What the user has selected in OSW Studio: the element picked on Canvas or in Live Preview in an open tab, newest first.',
+  'Gives the project, the page and the width it was picked at, its HTML, and its position in source (source, as /index.html:16:5)',
+  'and marker, either of which inspect and preview_screenshot take as the element, and (restyle) the bash command that changes how only that element looks.',
+  'Null when nothing is selected. Needs projects:read.',
+].join(' ');
+
 /** A base64 body decodes to at most this per call, whatever the type's own limit allows. */
 const MAX_WRITE_BYTES = 10 * 1024 * 1024;
 
@@ -92,6 +109,7 @@ const FILES_WRITE_DESCRIPTION = [
   'which `bash` cannot do because every way it writes stores text.',
   'For a file on your disk, use files_upload_url instead: base64 here has to be written out by you, which is slow and costly beyond a few KB.',
   `Up to ${MAX_WRITE_BYTES / 1024 / 1024}MB per call, and the project's own per-type limit still applies.`,
+  'A note in the answer says what the write did to things the user set by hand on that page, when it did anything.',
   'Needs projects:write.',
 ].join(' ');
 
@@ -178,6 +196,12 @@ function summarise(event: string, data: Record<string, unknown>): unknown {
   return rest;
 }
 
+/** What a tool answers: text, and images for the one tool that shows a page. */
+type ToolAnswer = {
+  isError?: boolean;
+  content: ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string })[];
+};
+
 function text(value: unknown) {
   return { content: [{ type: 'text' as const, text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }] };
 }
@@ -210,6 +234,31 @@ function notifyDeployment(
       clientLabel: principal.clientLabel,
     });
   }).catch(() => { /* a notice is not worth failing the call it describes */ });
+}
+
+/** The adapter calls that change a project's files, folders or settings. */
+const PROJECT_WRITES: ReadonlySet<string> = new Set([
+  'createFile', 'updateFile', 'deleteFile', 'deleteProjectFiles',
+  'createTreeNode', 'updateTreeNode', 'deleteTreeNode', 'updateProject',
+]);
+
+/** The adapter, counting the calls it takes that change a project. */
+function countingWrites<T extends object>(adapter: T): { adapter: T; writes: () => number } {
+  let count = 0;
+  const counted = new Proxy(adapter, {
+    get(target, key) {
+      const value: unknown = Reflect.get(target, key, target);
+      if (typeof value !== 'function') return value;
+      if (typeof key === 'string' && PROJECT_WRITES.has(key)) {
+        return (...args: unknown[]) => {
+          count++;
+          return value.apply(target, args);
+        };
+      }
+      return value.bind(target);
+    },
+  });
+  return { adapter: counted, writes: () => count };
 }
 
 async function notifyProject(principal: McpPrincipal, projectId: string) {
@@ -259,7 +308,7 @@ export function createOswMcpServer(principal: McpPrincipal, instance?: { origin?
     name: string,
     description: string,
     shape: T,
-    run: (args: z.output<z.ZodObject<T>>) => Promise<ReturnType<typeof text>>,
+    run: (args: z.output<z.ZodObject<T>>) => Promise<ToolAnswer>,
   ) {
     const schema = z.object(shape);
     server.registerTool(name, { description, inputSchema: schema }, async (args) => {
@@ -339,6 +388,11 @@ export function createOswMcpServer(principal: McpPrincipal, instance?: { origin?
       return refused(`No template "${template}". Available: ${available}`);
     }
 
+    // The workspace's project limit, as the sync routes apply it to a project pushed from a browser.
+    const { projectLimitRefusal } = await import('@/lib/api/project-quota');
+    const refusal = await projectLimitRefusal(adapter, workspaceId);
+    if (refusal) return refused(refusal);
+
     const { VirtualFileSystem } = await import('@/lib/vfs');
     const { runWithVFS } = await import('@/lib/server-generate/vfs-context');
     const { createProjectFromTemplate } = await import('@/lib/vfs/templates/utils');
@@ -352,7 +406,7 @@ export function createOswMcpServer(principal: McpPrincipal, instance?: { origin?
       const created = await projectVfs.createProject(name, description);
       // The runtime comes from the template, not from the caller: a Handlebars template in a
       // project marked `static` renders its braces as text.
-      created.settings = { ...created.settings, runtime: definition.runtime };
+      created.settings = { ...created.settings, runtime: definition.runtime, ...(definition.opensIn ? { opensIn: definition.opensIn } : {}) };
       await projectVfs.updateProject(created);
       await createProjectFromTemplate(projectVfs, created.id, await definition.loadProjectTemplate());
       return created;
@@ -387,9 +441,23 @@ export function createOswMcpServer(principal: McpPrincipal, instance?: { origin?
     const { VirtualFileSystem } = await import('@/lib/vfs');
     const { runWithVFS } = await import('@/lib/server-generate/vfs-context');
     const { toolRegistry } = await import('@/lib/llm/tool-registry');
+    const { cheerioMatcher } = await import('@/lib/server-generate/match-elements');
+    const { workerLineMatcher } = await import('@/lib/sandbox/search-worker');
+    const { requestRender } = await import('@/lib/server-generate/render-requests');
 
-    const projectVfs = new VirtualFileSystem(adapter);
+    const counted = countingWrites(adapter);
+    const projectVfs = new VirtualFileSystem(counted.adapter);
     await projectVfs.init();
+
+    // Each notice makes every open tab pull the whole project and checkpoint it, so one goes out
+    // only when something was written since the last.
+    let told = 0;
+    const tell = async () => {
+      const written = counted.writes();
+      if (written === told) return;
+      told = written;
+      await notifyProject(principal, projectId);
+    };
 
     // runWithVFS is how server-mode generation points the shell at a workspace database. The
     // shell resolves its file system through getActiveVFS, so the same command set runs here.
@@ -401,17 +469,18 @@ export function createOswMcpServer(principal: McpPrincipal, instance?: { origin?
         isReadOnly: !principal.scopes.includes('projects:write'),
         // No interactive UI to prompt with, so gated commands run rather than block.
         permissionMode: 'auto',
+        matchElements: cheerioMatcher,
+        matchLines: workerLineMatcher(),
+        // `inspect` is rendered by an open tab, which renders the files it has: a write earlier in
+        // the same command line goes to it first.
+        renderInBrowser: async (job) => {
+          await tell();
+          return requestRender(principal.userId, job);
+        },
       },
     ));
 
-    if (writes) {
-      const project = await adapter.getProject(projectId);
-      const { notifyProjectChanged } = await import('./notify');
-      notifyProjectChanged({
-        userId: principal.userId, projectId, projectName: project?.name ?? projectId,
-        created: false, clientLabel: principal.clientLabel,
-      });
-    }
+    await tell();
     return text(withBinaryHints(output));
   });
 
@@ -434,7 +503,17 @@ export function createOswMcpServer(principal: McpPrincipal, instance?: { origin?
       if (decoded.byteLength > MAX_WRITE_BYTES) {
         return refused(`That decodes to ${Math.round(decoded.byteLength / 1024 / 1024)}MB. This tool takes up to ${MAX_WRITE_BYTES / 1024 / 1024}MB per call.`);
       }
-      body = decoded;
+      // Text is stored as text, as the upload URL route stores it, so a page sent as base64 meets
+      // the same write guard as one sent as text.
+      if (isTextExtension(path)) {
+        try {
+          body = new TextDecoder('utf-8', { fatal: true }).decode(decoded);
+        } catch {
+          return refused(`${path} has a text extension, but the content is not UTF-8 text.`);
+        }
+      } else {
+        body = decoded;
+      }
     } else {
       // A binary format written as text is stored verbatim and comes out corrupt when published, so
       // it is refused here rather than at read time.
@@ -610,6 +689,65 @@ export function createOswMcpServer(principal: McpPrincipal, instance?: { origin?
     task.orchestrator?.stop();
     await taskManager.completeTask(taskId, 'cancelled');
     return text({ taskId, status: 'cancelled' });
+  });
+
+  // --- pages ---------------------------------------------------------------
+
+  tool('preview_screenshot', PREVIEW_SCREENSHOT_DESCRIPTION, {
+    workspaceId: ws, projectId: project,
+    page: z.string().default('/').describe("The page, as a path: '/', '/about', '/blog/post.html'"),
+    width: num.int().min(240).max(3840).default(1440).describe('Layout width in px: 375 phone, 768 tablet, 1440 desktop'),
+    element: z.string().optional().describe('Show one element: a CSS selector, a position (/index.html:16:5), or a marker (@h7x2m4qp)'),
+    full: z.boolean().default(false).describe('The whole page, in several images, rather than the first screen'),
+  }, async ({ workspaceId, projectId, page, width, element, full }) => {
+    const adapter = await workspace(workspaceId, 'projects:read');
+    if (!(await adapter.getProject(projectId))) return refused(`No project ${projectId} in this workspace.`);
+    if (full && element) return refused('full shows the page; leave it out to show one element.');
+    const { requestRender } = await import('@/lib/server-generate/render-requests');
+    let target = element;
+    if (element) {
+      // A position is the agent's spelling; the tab finds the element by the offset the compile stamps.
+      const { VirtualFileSystem } = await import('@/lib/vfs');
+      const { frameTarget } = await import('@/lib/direct-edit/targets');
+      const projectVfs = new VirtualFileSystem(adapter);
+      await projectVfs.init();
+      const resolved = await frameTarget(projectVfs, projectId, element);
+      if (!resolved.ok) return refused(`Could not show ${element}: ${resolved.error}.`);
+      target = resolved.target;
+    }
+    const result = await requestRender(principal.userId, {
+      kind: 'screenshot', projectId, page: page.startsWith('/') ? page : `/${page}`, width, target, full,
+    });
+    if (!result.ok) return refused(`Could not show ${page}: ${target && element && target !== element ? result.error.split(target).join(element) : result.error}.`);
+    if (result.kind !== 'screenshot') return refused('The tab answered with something other than a screenshot.');
+    const summary = {
+      page, width: result.width, firstScreenHeight: result.height, pageHeight: result.pageHeight,
+      ...(element ? { element, matches: result.matches } : {}),
+      images: result.images.map((image) => image.region),
+      ...(result.cut ? { cut: 'The page is longer than the images show; ask for an element further down.' } : {}),
+    };
+    return {
+      content: [
+        { type: 'text' as const, text: JSON.stringify(summary, null, 2) },
+        ...result.images.map((image) => ({ type: 'image' as const, data: image.data, mimeType: image.mediaType })),
+      ],
+    };
+  });
+
+  tool('canvas_selection', CANVAS_SELECTION_DESCRIPTION, {
+    workspaceId: ws,
+    projectId: project.optional().describe('Only a selection in this project'),
+  }, async ({ workspaceId, projectId }) => {
+    const adapter = await workspace(workspaceId, 'projects:read');
+    if (projectId && !(await adapter.getProject(projectId))) return refused(`No project ${projectId} in this workspace.`);
+    const { requestSelection } = await import('@/lib/server-generate/render-requests');
+    const answer = await requestSelection(principal.userId, projectId ?? null, async (id) => Boolean(await adapter.getProject(id)));
+    if (answer && 'error' in answer) return refused(`${answer.error}.`);
+    if (!answer) return text({ selection: null, note: 'Nothing is selected in an open OSW Studio tab.' });
+    // Where an outside agent learns of `style`: for the element the user picked, as the in-app agent does.
+    const element = answer.marker ? `@${answer.marker}` : answer.source;
+    const { styleHint } = await import('@/lib/direct-edit/style-hint');
+    return text({ selection: element ? { ...answer, restyle: styleHint(element, answer.width) } : answer });
   });
 
   // --- deployments ---------------------------------------------------------

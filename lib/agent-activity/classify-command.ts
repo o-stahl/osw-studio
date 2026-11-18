@@ -39,6 +39,7 @@ export function classifyCommand(cmd: string | string[] | undefined): CommandCate
   // What parseCommand made of it, which reads the in-place flag as the shell's sed does.
   if (/^sed\s/.test(s) && (kind === 'edit' || kind === 'write')) return 'write';
   if (/^ss\b/.test(s)) return 'write';
+  if (/^style\b/.test(s)) return 'write';
   if (/^(mkdir|touch|rm|mv|cp)\b/.test(s)) return 'write';
   // An absolute-path redirect is a write even where the verb reads. `2>` and `&>` are plumbing, not
   // content, which is what the lookbehind keeps out.

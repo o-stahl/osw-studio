@@ -8,6 +8,8 @@ export interface WrittenFile {
   mimeType: string;
   size: number;
   created: boolean;
+  /** What the write did to the user's hand edits on the page, when it did anything (the write guard). */
+  note?: string;
 }
 
 /**
@@ -26,11 +28,16 @@ export async function writeProjectFile(
   const projectVfs = new VirtualFileSystem(adapter);
   await projectVfs.init();
 
+  const { beginWriteGuard } = await import('@/lib/direct-edit/write-guard');
+  const { isMarkupFile } = await import('@/lib/direct-edit/targets');
+  const guard = typeof body === 'string' && isMarkupFile(path) ? await beginWriteGuard(projectVfs, projectId) : null;
+
   // `createFile` refuses a path that exists, so the existing file decides which call to make.
   const existing = await adapter.getFile(projectId, path);
   const written = existing
     ? await projectVfs.updateFile(projectId, path, body)
     : await projectVfs.createFile(projectId, path, body);
+  const note = guard ? await guard.finish() : '';
 
   const project = await adapter.getProject(projectId);
   const { notifyProjectChanged } = await import('./notify');
@@ -45,5 +52,6 @@ export async function writeProjectFile(
     mimeType: written.mimeType,
     size: written.size,
     created: !existing,
+    ...(note ? { note } : {}),
   };
 }

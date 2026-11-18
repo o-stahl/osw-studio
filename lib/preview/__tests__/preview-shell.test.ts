@@ -68,6 +68,7 @@ beforeEach(() => {
 afterEach(() => {
   for (const [type, fn] of listeners) window.removeEventListener(type, fn);
   delete (window as unknown as { __oswStorageSeed?: unknown }).__oswStorageSeed;
+  delete (window as unknown as { __oswShellUrls?: unknown }).__oswShellUrls;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -127,6 +128,16 @@ describe('previewShellHtml', () => {
 
     expect(minted).toHaveLength(2);
     expect(written).toEqual([`<link href="${minted[0].url}"><link href="${minted[1].url}">`]);
+  });
+
+  it("leaves the map from the host's URLs to its own on the window, for a copy of the page to map back", async () => {
+    runShell(5);
+    const img = new Blob(['png'], { type: 'image/png' });
+    deliver({ type: SHELL_CONTENT, loadId: 5, prefix: blobUrlPrefix(ORIGIN), html: `<img src="${host(1)}">`, assets: [{ url: host(1), blob: img, text: false }] });
+    await settle();
+
+    const urls = (window as unknown as { __oswShellUrls?: Record<string, string> }).__oswShellUrls;
+    expect(urls).toEqual({ [host(1)]: minted.find(m => m.type === 'image/png')!.url });
   });
 
   it("hands the page the project's storage before writing it", async () => {

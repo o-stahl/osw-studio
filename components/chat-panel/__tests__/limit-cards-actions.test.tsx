@@ -24,7 +24,7 @@ vi.mock('@/lib/llm/suggestions/suggest', () => ({ modelForProvider: (p: Provider
 
 import { StoppedCard, LimitNotice } from '../limit-cards';
 import { configManager } from '@/lib/config/storage';
-import { getDefaultModel } from '@/lib/llm/providers/registry';
+import { getDefaultModel, getProvider } from '@/lib/llm/providers/registry';
 
 const limits = createTranslator({ locale: 'en', messages: en, namespace: 'limits' });
 
@@ -141,10 +141,59 @@ describe('StoppedCard — what it offers', () => {
 });
 
 describe('StoppedCard — lines from the event', () => {
+  /** The card's own Continue, on the model it stopped on. */
+  const continueButton = () => [...container.querySelectorAll('button')].find((b) => b.textContent === limits('continue'));
+  /** The card's sentence: its title, the lines from the event, and where the task stopped. */
+  const sentence = () => container.querySelector('p')?.textContent;
+  const said = (...lines: string[]) =>
+    [limits('titleDaily', { provider: getProvider('osws').name }), ...lines, limits('stoppedHere')].join(' ');
+
+  it('offers Continue on the same model once a spent limit has reset, and says it has', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-17T12:00:00Z'));
+    try {
+      working('osws', 'osws/agent');
+      const onContinue = vi.fn();
+      const stop = { errorCategory: 'daily_limit', provider: 'osws', model: 'osws/agent', canRetrySame: false };
+      render(<StoppedCard live onContinue={onContinue} data={{ ...stop, resetAt: Date.now() + 3600_000 }} />);
+      expect(continueButton()).toBeUndefined();
+      expect(sentence()).toBe(said(limits('dailyReset', { when: 'in 1 hour' })));
+
+      render(<StoppedCard live onContinue={onContinue} data={{ ...stop, resetAt: Date.now() - 60_000 }} />);
+      expect(sentence()).toBe(said(limits('limitRenewed')));
+      act(() => continueButton()!.click());
+      expect(onContinue).toHaveBeenCalledWith();
+
+      // The month's cap renews the same way; a limit that gives no time never does.
+      render(<StoppedCard live onContinue={onContinue} data={{ ...stop, errorCategory: 'credit_exhausted', resetAt: Date.now() - 1 }} />);
+      expect(continueButton()).toBeDefined();
+      render(<StoppedCard live onContinue={onContinue} data={stop} />);
+      expect(continueButton()).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('turns to Continue while it is on screen, at the moment the limit resets', () => {
+    vi.useFakeTimers();
+    try {
+      working('osws', 'osws/agent');
+      render(<StoppedCard live onContinue={vi.fn()} data={{ errorCategory: 'daily_limit', provider: 'osws', model: 'osws/agent', resetAt: Date.now() + 5 * 60_000 }} />);
+      expect(continueButton()).toBeUndefined();
+      act(() => { vi.advanceTimersByTime(5 * 60_000 - 1000); });
+      expect(continueButton()).toBeUndefined();
+      act(() => { vi.advanceTimersByTime(1000); });
+      expect(continueButton()).toBeDefined();
+      expect(container.textContent).toContain(limits('limitRenewed'));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('words the reset from the event when there is no live count', () => {
     working('openrouter', 'm');
     render(<StoppedCard live onContinue={() => {}} data={{ errorCategory: 'daily_limit', provider: 'openrouter', model: 'm', resetAt: Date.now() + 2 * 3600_000 }} />);
-    expect(container.textContent).toContain('They reset in 2 hours.');
+    expect(container.textContent).toContain(limits('dailyReset', { when: 'in 2 hours' }));
   });
 
   it('shows the balance left when the provider gave one', () => {

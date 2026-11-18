@@ -69,8 +69,17 @@ export function openPanels(layout: WorkspaceLayout): PanelKey[] {
   return layout.columns.flatMap((col) => col.cells.flatMap((cell) => cell.tabs));
 }
 
-/** The Inspector picks elements in a visible preview, so the two may stack but never share a tab group. */
-export const tabsConflict = (tabs: readonly PanelKey[]): boolean => tabs.includes('elements') && tabs.includes('preview');
+/**
+ * The surface the Inspector would share a tab group with, or null. It picks elements in a visible Live
+ * Preview or Canvas, so it may stack beside either but never be a tab behind one.
+ */
+function surfaceConflict(tabs: readonly PanelKey[]): 'preview' | 'canvas' | null {
+  if (!tabs.includes('elements')) return null;
+  if (tabs.includes('preview')) return 'preview';
+  return tabs.includes('canvas') ? 'canvas' : null;
+}
+
+export const tabsConflict = (tabs: readonly PanelKey[]): boolean => surfaceConflict(tabs) !== null;
 
 /** A cell is as short as its tallest-needing panel allows. */
 export const minHeight = (cell: LayoutCell): number => Math.max(...cell.tabs.map((key) => MIN_HEIGHT_PX[key]));
@@ -333,7 +342,8 @@ export function geometry(layout: WorkspaceLayout, box: Box): { columns: Map<stri
 export function checkLayout(layout: WorkspaceLayout, box: Box): LayoutRefusal | null {
   for (const col of layout.columns) {
     for (const cell of col.cells) {
-      if (tabsConflict(cell.tabs)) return { code: 'inspector-preview' };
+      const surface = surfaceConflict(cell.tabs);
+      if (surface) return { code: 'inspector-surface', panel: surface };
     }
   }
   const g = geometry(layout, box);
@@ -351,8 +361,10 @@ export function checkLayout(layout: WorkspaceLayout, box: Box): LayoutRefusal | 
 }
 
 /**
- * A stored layout, checked: known panels, each at most once, ids unique, sizes positive. Null when
- * it isn't a layout; the active tab is repaired and sizes are scaled to 100.
+ * A stored layout, checked: each panel at most once, ids unique, sizes positive. A panel this version
+ * does not know (one a newer version saved) is left out, and a cell or column that leaves empty goes
+ * as it would on closing. Null when it isn't a layout, or when nothing of one is left; the active tab
+ * is repaired and sizes are scaled to 100.
  */
 export function validateLayout(raw: unknown): WorkspaceLayout | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -362,6 +374,7 @@ export function validateLayout(raw: unknown): WorkspaceLayout | null {
   const seenIds = new Set<string>();
   const ok = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0;
   const columns: LayoutColumn[] = [];
+  let unknown = false;
   for (const col of value.columns as unknown[]) {
     const c = col as { id?: unknown; size?: unknown; cells?: unknown };
     if (!c || typeof c.id !== 'string' || seenIds.has(c.id) || !ok(c.size) || !Array.isArray(c.cells) || !c.cells.length) return null;
@@ -373,7 +386,12 @@ export function validateLayout(raw: unknown): WorkspaceLayout | null {
       seenIds.add(x.id);
       const tabs: PanelKey[] = [];
       for (const key of x.tabs) {
-        if (!isPanelKey(key) || seenPanels.has(key)) return null;
+        if (typeof key !== 'string') return null;
+        if (!isPanelKey(key)) {
+          unknown = true;
+          continue;
+        }
+        if (seenPanels.has(key)) return null;
         seenPanels.add(key);
         tabs.push(key);
       }
@@ -382,5 +400,17 @@ export function validateLayout(raw: unknown): WorkspaceLayout | null {
     columns.push({ id: c.id, size: c.size, cells });
   }
   const seq = typeof value.seq === 'number' && Number.isInteger(value.seq) && value.seq > 0 ? value.seq : undefined;
-  return normalize(seq ? { v: 1, columns, seq } : { v: 1, columns });
+  const layout: WorkspaceLayout = seq ? { v: 1, columns, seq } : { v: 1, columns };
+  if (unknown) {
+    // Counted while the emptied cells are still there, so their ids are never handed out again.
+    const highest = idMaker(layout).seq;
+    if (highest) layout.seq = highest;
+    for (const col of [...layout.columns]) {
+      for (let i = col.cells.length - 1; i >= 0; i--) {
+        if (!col.cells[i].tabs.length) removeCell(layout, col, i, false);
+      }
+    }
+    if (!layout.columns.length) return null;
+  }
+  return normalize(layout);
 }

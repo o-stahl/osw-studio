@@ -3,7 +3,7 @@
  * as tabs. The layout before docking is the case of one panel per cell and one cell per column.
  */
 
-export const PANEL_KEYS = ['chat', 'files', 'editor', 'preview', 'elements', 'skills', 'console', 'checkpoints', 'debug'] as const;
+export const PANEL_KEYS = ['chat', 'files', 'editor', 'preview', 'canvas', 'elements', 'skills', 'console', 'checkpoints', 'debug'] as const;
 export type PanelKey = (typeof PANEL_KEYS)[number];
 
 export interface LayoutCell {
@@ -57,7 +57,8 @@ export interface Box {
 export type LayoutRefusal =
   | { code: 'width'; px: number }
   | { code: 'height'; panel: PanelKey; px: number }
-  | { code: 'inspector-preview' };
+  /** The Inspector beside a surface it picks elements in, in one tab group. */
+  | { code: 'inspector-surface'; panel: 'preview' | 'canvas' };
 
 /** The space a resize handle takes between two columns or cells: `w-2` plus `mx-1` either side. */
 export const HANDLE_PX = 16;
@@ -74,6 +75,7 @@ export const MIN_HEIGHT_PX: Record<PanelKey, number> = {
   files: 140,
   editor: 160,
   preview: 200,
+  canvas: 240,
   elements: 160,
   skills: 140,
   console: 120,

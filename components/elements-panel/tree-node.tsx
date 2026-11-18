@@ -55,9 +55,15 @@ export interface ElementsTreeRowProps {
   depth: number;
   expanded: boolean;
   selected: boolean;
+  /** Lit by a hover on Canvas. */
+  lit?: boolean;
+  /** Where a dragged row would land on this one, drawn as a line or a box. */
+  dropAt?: 'before' | 'after' | 'in' | null;
   onToggle: (nodeId: string) => void;
   onSelect: (nodeId: string) => void;
   onHover: (nodeId: string) => void;
+  onContextMenu?: (nodeId: string, at: { x: number; y: number }) => void;
+  onPointerDown?: (nodeId: string, event: React.PointerEvent) => void;
 }
 
 /**
@@ -70,22 +76,33 @@ export function ElementsTreeRow({
   depth,
   expanded,
   selected,
+  lit = false,
+  dropAt = null,
   onToggle,
   onSelect,
   onHover,
+  onContextMenu,
+  onPointerDown,
 }: ElementsTreeRowProps) {
   const t = useTranslations('elementsPanel');
   const classFragment = formatClassName(node.className);
+  const dropShadow = dropAt === 'in' ? 'inset 0 0 0 1px rgb(99 102 241)'
+    : dropAt === 'before' ? 'inset 0 2px 0 rgb(99 102 241)'
+    : dropAt === 'after' ? 'inset 0 -2px 0 rgb(99 102 241)' : undefined;
 
   return (
     <div
       className={cn(
         'flex items-center gap-1.5 pr-2 py-1 rounded-md cursor-pointer transition-colors',
-        selected ? 'bg-accent text-accent-foreground' : 'hover:bg-accent hover:text-accent-foreground'
+        selected ? 'bg-accent text-accent-foreground' : lit ? 'bg-accent' : 'hover:bg-accent hover:text-accent-foreground',
+        node.script && 'opacity-60',
       )}
-      style={{ paddingLeft: `${depth * 12 + 4}px` }}
+      style={{ paddingLeft: `${depth * 12 + 4}px`, boxShadow: dropShadow }}
+      data-osw-tree-row={node.id}
       onMouseEnter={() => onHover(node.id)}
       onClick={() => onSelect(node.id)}
+      onContextMenu={onContextMenu ? (e) => { e.preventDefault(); onContextMenu(node.id, { x: e.clientX, y: e.clientY }); } : undefined}
+      onPointerDown={onPointerDown ? (e) => onPointerDown(node.id, e) : undefined}
     >
       {node.hasChildren ? (
         <Tip label={expanded ? t('collapse', { tag: node.tag }) : t('expand', { tag: node.tag })} side="left">
@@ -106,10 +123,21 @@ export function ElementsTreeRow({
         <span className="h-4 w-4 shrink-0" />
       )}
 
-      <span className="text-xs font-mono truncate">
+      <span className={cn('text-xs font-mono truncate shrink-0 max-w-[60%]', node.hidden && 'opacity-50')}>
         <span className="text-foreground">{node.tag}</span>
         {classFragment && <span className="text-muted-foreground">{classFragment}</span>}
       </span>
+      {node.text && <span className="text-xs text-muted-foreground truncate min-w-0">{node.text}</span>}
+      {node.hidden && (
+        <Tip label={t('hiddenTip')}>
+          <span className="rounded-sm bg-muted px-1 text-[10px] text-muted-foreground shrink-0">{t('hidden')}</span>
+        </Tip>
+      )}
+      {node.locked && (
+        <Tip label={t('lockTip')}>
+          <span className="text-[10px] text-amber-600 dark:text-amber-400 shrink-0">{t('lock')}</span>
+        </Tip>
+      )}
 
       <span className="flex-1" />
 
@@ -126,6 +154,11 @@ export function ElementsTreeRow({
           <span className="text-[10px] text-muted-foreground shrink-0 max-w-[40%] truncate">
             {basename(node.file)}
           </span>
+        </Tip>
+      )}
+      {node.script && (
+        <Tip label={t('scriptTip')} align="end">
+          <span className="text-[10px] italic text-muted-foreground shrink-0">{t('script')}</span>
         </Tip>
       )}
     </div>

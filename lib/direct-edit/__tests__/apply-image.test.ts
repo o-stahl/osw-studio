@@ -55,6 +55,23 @@ describe('applyImageSrc', () => {
       .toBe('<html><head></head><body><img src="/images/new.png" alt="A cat"></body></html>');
   });
 
+  it('tells the recorder what the page held before and after, for undo', async () => {
+    const projectId = await seed({ '/index.html': PAGE });
+    const writes: unknown[] = [];
+    await applyImageSrc(
+      projectId,
+      { srcAttr: src('/index.html', PAGE, '<img'), tagName: 'img', attributes: { src: '/old.png' } },
+      '/images/new.png',
+      { record: (write) => writes.push(write) },
+    );
+    expect(writes).toEqual([{
+      path: '/index.html',
+      before: PAGE,
+      after: '<html><head></head><body><img src="/images/new.png" alt="A cat"></body></html>',
+      silent: false,
+    }]);
+  });
+
   it('writes into the partial the image came from, not the page that includes it', async () => {
     const partial = '<header><img src="/logo.png"></header>';
     const projectId = await seed({

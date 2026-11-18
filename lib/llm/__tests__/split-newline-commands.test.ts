@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { splitNewlineCommands } from '../tool-registry';
+import { splitHeredoc } from '../bash-command';
 
 describe('splitNewlineCommands', () => {
   it('returns single command for simple input', () => {
@@ -149,5 +150,16 @@ echo hello`;
 echo world`;
     const result = splitNewlineCommands(cmd);
     expect(result).toEqual(['echo hello', 'echo world']);
+  });
+});
+
+describe('splitHeredoc', () => {
+  it('takes a heredoc apart into the command around the << and the body', () => {
+    expect(splitHeredoc("cat > /a.txt << 'EOF'\nl1\nl2\nEOF")).toEqual({ command: 'cat > /a.txt', stdin: 'l1\nl2' });
+  });
+
+  it('takes the body as everything after the first line when the closing delimiter never came', () => {
+    expect(splitHeredoc("cat > /a.txt << 'EOF'\nl1\nl2")).toEqual({ command: 'cat > /a.txt', stdin: 'l1\nl2' });
+    expect(splitHeredoc("cat << 'EOF' > /a.txt\nl1")).toEqual({ command: 'cat > /a.txt', stdin: 'l1' });
   });
 });

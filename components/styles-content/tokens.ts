@@ -213,11 +213,43 @@ export function discoverColorTokens(sources: readonly CssSource[]): ColorToken[]
     CUSTOM_PROPERTY_RE.lastIndex = 0;
     let match: RegExpExecArray | null;
     while ((match = CUSTOM_PROPERTY_RE.exec(source.content)) !== null) {
-      const name = match[1].toLowerCase();
+      const name = match[1];
       const value = match[2].trim();
       const rgba = parseColor(value);
       if (!rgba) continue;
       found.set(name, { name, value, file: source.path, rgba });
+    }
+  }
+  return Array.from(found.values());
+}
+
+export interface FontToken {
+  /** Including the leading dashes, as `var()` takes it. */
+  name: string;
+  /** The font list, as declared. */
+  value: string;
+  /** The first family in it, unquoted, for the Font menu. */
+  family: string;
+}
+
+/** A value that is a font list: it ends in, or names, a generic family. */
+const FONT_LIST_RE = /(^|,)\s*(serif|sans-serif|monospace|system-ui|ui-sans-serif|ui-serif|ui-monospace|cursive|fantasy)\s*$/i;
+
+/**
+ * The font tokens a project declares: custom properties whose value is a font list. The Font menu
+ * offers these and writes `var(--name)`, so a pick only ever names a font the project already loads.
+ */
+export function discoverFontTokens(sources: readonly CssSource[]): FontToken[] {
+  const found = new Map<string, FontToken>();
+  for (const source of sources) {
+    CUSTOM_PROPERTY_RE.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = CUSTOM_PROPERTY_RE.exec(source.content)) !== null) {
+      const name = match[1];
+      const value = match[2].trim();
+      if (!FONT_LIST_RE.test(value)) continue;
+      const family = value.split(',')[0].trim().replace(/^["']|["']$/g, '');
+      found.set(name, { name, value, family });
     }
   }
   return Array.from(found.values());

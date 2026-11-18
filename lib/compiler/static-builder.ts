@@ -13,6 +13,7 @@ import { VirtualFile, FileTreeNode, Deployment, ProjectRuntime, PublishSettings 
 import { logger } from '@/lib/utils';
 import { processHtml } from '@/lib/publishing/html-processor';
 import { stripPreviewScripts } from '@/lib/preview/strip-preview-scripts';
+import { withoutPlaceholders } from '@/lib/semantic-blocks/placeholder';
 import { collectBlobs, linkBlob, putBlob } from '@/lib/vfs/adapters/blob-store';
 import { resolveWithin } from '@/lib/vfs/path-safety';
 import { generateSitemap, generateRobotsTxt } from '@/lib/publishing/seo-generator';
@@ -212,8 +213,9 @@ async function prepareBuild(
         let content = replaceAssetPathsWithPrefix(file.content, blobUrlToPath, target.pathPrefix);
 
         if (file.path.endsWith('.html')) {
-          // Remove preview instrumentation scripts from HTML files
-          content = stripPreviewScripts(content);
+          // Remove preview instrumentation scripts from HTML files, and the placeholders of blocks
+          // nobody has built yet: they are requests to the agent, not content.
+          content = withoutPlaceholders(stripPreviewScripts(content));
 
           // Apply deployment settings to HTML files
           content = processHtml(content, {

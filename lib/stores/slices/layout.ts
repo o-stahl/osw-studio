@@ -1,6 +1,7 @@
 import { StateCreator } from 'zustand';
 import {
   activatePanel as activateInLayout,
+  addTabBehind,
   bumpRecent,
   checkLayout,
   closeCell,
@@ -19,6 +20,7 @@ import {
   ungroup,
   validateLayout,
   type Box,
+  type PanelFilter,
   type DragSource,
   type DropTarget,
   type LastPlace,
@@ -31,6 +33,8 @@ type MobilePanelType = 'chat' | 'files' | 'editor' | 'preview' | 'elements' | 'c
 
 const LAYOUT_KEY = 'osw-workspace-layout';
 const HINT_KEY = 'osw-workspace-layout-hint';
+/** Set once Canvas has been offered: added to a layout saved before it existed, or there from the start. */
+const CANVAS_OFFERED_KEY = 'osw-workspace-canvas-offered';
 
 /** Used until the workspace reports the size of its panel area. */
 const FALLBACK_BOX: Box = { w: 1200, h: 700 };
@@ -45,6 +49,11 @@ interface LayoutSnapshot {
   layout: WorkspaceLayout;
   lastPlace: LastPlaces;
   recentPanels: PanelKey[];
+  /**
+   * When it was taken: in the history, when the change after it was made; in the future, when it was
+   * undone. One key undoes whichever of the layout and the Inspector's edits changed last.
+   */
+  at: number;
 }
 
 /**
@@ -62,6 +71,7 @@ export interface LayoutSlice {
   showFiles: boolean;
   showEditor: boolean;
   showPreview: boolean;
+  showCanvas: boolean;
   showCheckpoints: boolean;
   showConsole: boolean;
   showSkillsPanel: boolean;
@@ -84,6 +94,11 @@ export interface LayoutSlice {
   recentPanels: PanelKey[];
   /** The cell filling the workspace, or null. A view: never saved. */
   maximizedCell: string | null;
+  /**
+   * The open project's runtime can show Canvas. Presets and Reset layout leave Canvas out where it
+   * can't, and the rail's button is disabled. Set by `initLayout` and `setCanvasAvailable`.
+   */
+  canvasAvailable: boolean;
   /** The layouts Undo goes back to, oldest first. This session only. */
   layoutHistory: LayoutSnapshot[];
   /** The layouts Redo brings back, the next one last. Filled by Undo, emptied by any other change. */
@@ -153,6 +168,7 @@ export interface LayoutSlice {
   /** A column's cell heights in percent, as its panel group reports them after a resize; `step` as above. */
   setCellSizes: (columnId: string, sizes: number[], step?: string) => void;
   setWorkspaceBox: (box: Box) => void;
+  setCanvasAvailable: (available: boolean) => void;
   setPanelHint: (hint: PanelHint | null) => void;
   dismissLayoutHint: () => void;
   setActiveMobilePanel: (panel: MobilePanelType) => void;
@@ -164,15 +180,25 @@ export interface LayoutSlice {
   setMobileOverflowOpen: (v: boolean) => void;
   setFocusToolArmed: (armed: boolean) => void;
   setFocusToolHinted: (hinted: boolean) => void;
-  initLayout: () => void;
+  /**
+   * Loads the saved layout for a project being opened. `canvas` says whether its runtime can show
+   * Canvas: the first time it can, a layout saved before Canvas existed gets it as a background tab
+   * behind Live Preview, so nothing on screen changes on its own. `front` is the surface the project
+   * opens on (`Project.settings.opensIn`): it comes forward for this visit where the two share a
+   * group, and the saved layout is left as it was.
+   */
+  initLayout: (opts?: { canvas?: boolean; front?: 'canvas' | 'preview' }) => void;
   resetLayout: () => void;
 }
 
 export const PANEL_MAP: Record<string, keyof LayoutSlice> = {
   chat: 'showChat', files: 'showFiles', editor: 'showEditor', console: 'showConsole',
-  preview: 'showPreview', elements: 'showElements', checkpoints: 'showCheckpoints',
+  preview: 'showPreview', canvas: 'showCanvas', elements: 'showElements', checkpoints: 'showCheckpoints',
   debug: 'showDebugPanel', skills: 'showSkillsPanel',
 };
+
+/** The panels a layout may hold for a runtime that can, or can't, show Canvas. */
+export const panelFilter = (canvas: boolean): PanelFilter => (key) => canvas || key !== 'canvas';
 
 /** The open panels, left to right. */
 export function visiblePanelKeys(state: Pick<LayoutSlice, 'layout'>): string[] {
@@ -239,19 +265,20 @@ interface Stored {
 }
 
 /**
- * The saved layout with the closed panels' places and the recent order, or, for a workspace saved
- * before there was one, a layout built from the panel order, the open panels and the column widths
- * react-resizable-panels kept. The old keys are only read, never removed.
+ * The saved layout with the closed panels' places and the recent order; for a workspace saved before
+ * there was one, a layout built from the panel order, the open panels and the column widths
+ * react-resizable-panels kept (the old keys are only read, never removed); for a new workspace, the
+ * default layout, without the panels `has` refuses.
  */
-function load(): Stored {
+function load(has: PanelFilter): Stored & { fresh: boolean } {
   const raw = readJson(LAYOUT_KEY) as { last?: unknown; recent?: unknown } | null;
   const layout = validateLayout(raw);
-  if (layout) return { layout, lastPlace: validLastPlaces(raw?.last), recentPanels: validRecent(raw?.recent) };
-  return {
-    layout: layoutFromLegacy(readJson('osw-workspace-panel-order'), readJson('osw-workspace-panels'), readJson('react-resizable-panels:workspace-slots')),
-    lastPlace: {},
-    recentPanels: [],
-  };
+  if (layout) return { layout, lastPlace: validLastPlaces(raw?.last), recentPanels: validRecent(raw?.recent), fresh: false };
+  const order = readJson('osw-workspace-panel-order');
+  const open = readJson('osw-workspace-panels');
+  const slots = readJson('react-resizable-panels:workspace-slots');
+  if (order === null && open === null && slots === null) return { layout: defaultLayout(0, has), lastPlace: {}, recentPanels: [], fresh: true };
+  return { layout: layoutFromLegacy(order, open, slots), lastPlace: {}, recentPanels: [], fresh: false };
 }
 
 function persist({ layout, lastPlace, recentPanels }: Stored) {
@@ -270,13 +297,24 @@ function persistSoon(stored: Stored) {
   }, 150);
 }
 
-const readHintDone = () => {
-  try { return localStorage.getItem(HINT_KEY) === '1'; } catch { return false; }
+const readFlag = (key: string) => {
+  try { return localStorage.getItem(key) === '1'; } catch { return false; }
+};
+const writeFlag = (key: string) => {
+  try { localStorage.setItem(key, '1'); } catch {}
 };
 
 /** What Undo or Redo puts back: the layout with the closed panels' places and the recent order. */
 const snapshotOf = (s: Pick<LayoutSlice, 'layout' | 'lastPlace' | 'recentPanels'>): LayoutSnapshot =>
-  ({ layout: s.layout, lastPlace: s.lastPlace, recentPanels: s.recentPanels });
+  ({ layout: s.layout, lastPlace: s.lastPlace, recentPanels: s.recentPanels, at: Date.now() });
+
+/** When the change Undo would take back was made, or `null` with nothing to undo. */
+export const layoutUndoAt = (s: Pick<LayoutSlice, 'layoutHistory'>): number | null =>
+  s.layoutHistory[s.layoutHistory.length - 1]?.at ?? null;
+
+/** When the change Redo would bring back was undone, or `null` with nothing to redo. */
+export const layoutRedoAt = (s: Pick<LayoutSlice, 'layoutFuture'>): number | null =>
+  s.layoutFuture[s.layoutFuture.length - 1]?.at ?? null;
 
 const changed = (sizes: number[], items: { size: number }[]) =>
   sizes.length === items.length && sizes.some((size, i) => Math.abs(size - items[i].size) > 0.05);
@@ -291,7 +329,7 @@ interface CommitOptions {
 }
 
 export const createLayoutSlice: StateCreator<LayoutSlice> = (set, get) => {
-  const initial = load();
+  const initial = load(panelFilter(true));
   const box = () => get().workspaceBox ?? FALLBACK_BOX;
 
   /** The resize step whose first change is the last one on the Undo stack; any other change ends it. */
@@ -374,17 +412,18 @@ export const createLayoutSlice: StateCreator<LayoutSlice> = (set, get) => {
   };
 
   return {
-    ...(flagsFor(initial.layout) as Pick<LayoutSlice, 'showChat' | 'showFiles' | 'showEditor' | 'showPreview' | 'showCheckpoints' | 'showConsole' | 'showSkillsPanel' | 'showDebugPanel' | 'showElements'>),
+    ...(flagsFor(initial.layout) as Pick<LayoutSlice, 'showChat' | 'showFiles' | 'showEditor' | 'showPreview' | 'showCanvas' | 'showCheckpoints' | 'showConsole' | 'showSkillsPanel' | 'showDebugPanel' | 'showElements'>),
     layout: initial.layout,
     layoutEpoch: 0,
     lastPlace: initial.lastPlace,
     recentPanels: initial.recentPanels,
     maximizedCell: null,
+    canvasAvailable: true,
     layoutHistory: [],
     layoutFuture: [],
     workspaceBox: null,
     panelHint: null,
-    layoutHintDone: readHintDone(),
+    layoutHintDone: readFlag(HINT_KEY),
     showProjectSettingsModal: false,
     projectSettingsSection: null,
     fullscreenPreview: false,
@@ -441,11 +480,13 @@ export const createLayoutSlice: StateCreator<LayoutSlice> = (set, get) => {
     },
 
     applyLayoutPreset: (name) => {
-      commit(presetLayout(name, get().layout.seq ?? 0), { undoable: true });
+      const s = get();
+      commit(presetLayout(name, s.layout.seq ?? 0, panelFilter(s.canvasAvailable)), { undoable: true });
     },
 
     resetPanelLayout: () => {
-      commit(defaultLayout(get().layout.seq ?? 0), { undoable: true, lastPlace: {}, recentPanels: [] });
+      const s = get();
+      commit(defaultLayout(s.layout.seq ?? 0, panelFilter(s.canvasAvailable)), { undoable: true, lastPlace: {}, recentPanels: [] });
     },
 
     ungroupCell: (cellId) => {
@@ -501,6 +542,10 @@ export const createLayoutSlice: StateCreator<LayoutSlice> = (set, get) => {
       set({ workspaceBox: next });
     },
 
+    setCanvasAvailable: (available) => {
+      if (get().canvasAvailable !== available) set({ canvasAvailable: available });
+    },
+
     setPanelHint: (hint) => {
       const current = get().panelHint;
       if (current === hint || (current && hint && current.kind === hint.kind && current.panel === hint.panel)) return;
@@ -510,7 +555,7 @@ export const createLayoutSlice: StateCreator<LayoutSlice> = (set, get) => {
     dismissLayoutHint: () => {
       if (get().layoutHintDone) return;
       set({ layoutHintDone: true });
-      try { localStorage.setItem(HINT_KEY, '1'); } catch {}
+      writeFlag(HINT_KEY);
     },
 
     setActiveMobilePanel: (panel) => set({ activeMobilePanel: panel, mobileOverflowOpen: false }),
@@ -525,9 +570,29 @@ export const createLayoutSlice: StateCreator<LayoutSlice> = (set, get) => {
     setFocusToolArmed: (armed) => set({ focusToolArmed: armed }),
     setFocusToolHinted: (hinted) => set({ focusToolHinted: hinted }),
 
-    initLayout: () => {
-      const next = load();
+    initLayout: (opts = {}) => {
+      const canvas = opts.canvas ?? get().canvasAvailable;
+      const next = load(panelFilter(canvas));
+      if (canvas && !readFlag(CANVAS_OFFERED_KEY)) {
+        writeFlag(CANVAS_OFFERED_KEY);
+        const offered = next.fresh ? null : addTabBehind(next.layout, 'canvas', 'preview', box());
+        if (offered) {
+          next.layout = offered;
+          persist(next);
+        }
+      }
+      // The project's own surface (`Project.settings.opensIn`) comes forward where Canvas and Live
+      // Preview are tabs of one group. For this visit only: the saved layout is the person's, and
+      // the next project without a preference opens as they left it. A runtime without Canvas opens
+      // on Live Preview, not on Canvas's note that it is unavailable.
+      const front = canvas ? opts.front : 'preview';
+      if (front) {
+        const at = findPanel(next.layout, front);
+        const other = front === 'canvas' ? 'preview' : 'canvas';
+        if (at && at.cell.tabs.includes(other)) next.layout = activateInLayout(next.layout, front) ?? next.layout;
+      }
       set({
+        canvasAvailable: canvas,
         layout: next.layout,
         layoutEpoch: get().layoutEpoch + 1,
         ...flagsFor(next.layout),
@@ -536,7 +601,7 @@ export const createLayoutSlice: StateCreator<LayoutSlice> = (set, get) => {
         layoutHistory: [],
         layoutFuture: [],
         maximizedCell: null,
-        layoutHintDone: readHintDone(),
+        layoutHintDone: readFlag(HINT_KEY),
       } as Partial<LayoutSlice>);
       resizeStep = null;
     },

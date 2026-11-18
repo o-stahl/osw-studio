@@ -77,16 +77,57 @@ function searchCommandDoc(modelSupportsTools: boolean): string {
 Optional flags: -n <count> (default 5), --markdown (include extracted page content per result). Returns numbered results (title, URL, snippet). To read a result in full, use: curl --markdown <url>.`;
 }
 
-export async function buildSystemPrompt(chatMode?: boolean, serverContext?: ServerContextMetadata | null, projectId?: string, agentType?: AgentType, modelSupportsTools = true, imageGenAvailable = false, webSearchAvailable = false, isServerSideGeneration = false): Promise<string> {
+export async function buildSystemPrompt(chatMode?: boolean, serverContext?: ServerContextMetadata | null, projectId?: string, agentType?: AgentType, modelSupportsTools = true, imageGenAvailable = false, webSearchAvailable = false, isServerSideGeneration = false, canSeeImages = false): Promise<string> {
   if (agentType === 'setup') return SETUP_SYSTEM_PROMPT;
   if (agentType === 'interview') return INTERVIEW_SYSTEM_PROMPT;
-  if (agentType === 'explore') return buildExplorePrompt(serverContext, projectId);
-  if (agentType === 'plan') return buildPlanPrompt(serverContext, projectId);
-  if (agentType === 'task') return buildTaskAgentPrompt(serverContext, projectId);
+  const pages = await pageFacts(projectId, canSeeImages);
+  if (agentType === 'explore') return buildExplorePrompt(serverContext, projectId, pages);
+  if (agentType === 'plan') return buildPlanPrompt(serverContext, projectId, pages);
+  if (agentType === 'task') return buildTaskAgentPrompt(serverContext, projectId, pages);
   if (chatMode) {
-    return buildChatModePrompt(serverContext, projectId, modelSupportsTools);
+    return buildChatModePrompt(serverContext, projectId, modelSupportsTools, pages);
   }
-  return await buildCodeModePrompt(serverContext, projectId, modelSupportsTools, imageGenAvailable, webSearchAvailable, isServerSideGeneration);
+  return await buildCodeModePrompt(serverContext, projectId, modelSupportsTools, imageGenAvailable, webSearchAvailable, isServerSideGeneration, pages);
+}
+
+/**
+ * What the project's pages allow the agent to read: rendering them (`inspect`, `screenshot`).
+ *
+ * Nothing here is about the Inspector or Canvas. What a user's hand edits leave in a project is not
+ * taught in the prompt: `/overrides.css` says what it is in its own header, a selected element's
+ * message says how to change that element (`focusContextBlock`), and a write that drops a hand edit
+ * is answered by the write guard (`lib/direct-edit/write-guard.ts`).
+ */
+interface PageFacts {
+  /** The runtime renders pages, so `inspect` and `screenshot` have something to show. */
+  renders: boolean;
+  /** The model reads images, so `screenshot` is worth offering. */
+  canSeeImages: boolean;
+}
+
+async function pageFacts(projectId: string | undefined, canSeeImages: boolean): Promise<PageFacts> {
+  if (!projectId) return { renders: false, canSeeImages };
+  try {
+    const { getActiveVFS } = await import('@/lib/vfs');
+    const { canvasSupport } = await import('@/lib/runtimes/registry');
+    const { resolveRuntime } = await import('@/lib/vfs/project-settings');
+    const runtime = resolveRuntime((await getActiveVFS().getProject(projectId))?.settings);
+    return { renders: canvasSupport(runtime) !== null, canSeeImages };
+  } catch {
+    return { renders: false, canSeeImages };
+  }
+}
+
+/** Reading the rendered page, for every mode: `inspect`, and `screenshot` when the model reads images. */
+function pageReadingLines(pages: PageFacts): string {
+  if (!pages.renders) return '';
+  let lines = `
+- Read a rendered page: inspect /index.html [element] [--width N] — the page as a browser lays it out: each element with its position in source (/index.html:16:5) and its size. With an element, in quotes, its CSS values and the rule that sets each: inspect /index.html ".hero h1" --width 375`;
+  if (pages.canSeeImages) {
+    lines += `
+- Look at a page: screenshot /index.html [element] [--width N] [--full] — an image of the first screen, of the whole page (--full) or of one element. Use it to check how your work looks.`;
+  }
+  return lines;
 }
 
 /** How the model calls the shell: function calling, or bash code blocks for a model without tools. */
@@ -109,7 +150,7 @@ Do NOT write multiple commands in one block — use separate blocks for each com
 }
 
 /** How to read the project, and the shell commands that read it. Every mode has these. */
-function readCommandsSection(hasServerContext: boolean): string {
+function readCommandsSection(hasServerContext: boolean, pages: PageFacts): string {
   let section = `
 
 Prefer targeted reads over cat to save tokens:
@@ -129,7 +170,7 @@ Shell commands:
 - Count: wc [-l] [-w] [-c] file
 - Preview: curl localhost/[path] (view compiled HTML output)
 - Fetch web: curl <url> (fetch an external page), curl --markdown <url> (readable text). Needs web access permission.
-- Search web: search "query" (only when a search provider is configured).`;
+- Search web: search "query" (only when a search provider is configured).${pageReadingLines(pages)}`;
 
   if (hasServerContext) {
     section += `
@@ -147,7 +188,7 @@ grep supports -A/-B/-C context flags. Use rg for the best search experience.`;
  * Chat mode's opening. It talks about the project rather than working on it, so it gets none of the
  * code agent's task rules: bias toward action, build and status after writing, four lines at most.
  */
-function buildChatPreamble(hasServerContext: boolean, modelSupportsTools = true): string {
+function buildChatPreamble(hasServerContext: boolean, modelSupportsTools: boolean, pages: PageFacts): string {
   let prompt = `You are a collaborator in OSW Studio, talking with the user about their web project. In Chat mode you can read the project but not change it.
 
 How to talk with the user:
@@ -164,7 +205,7 @@ Your reply ends your turn, and the user's next message carries the conversation 
 You cannot change files, the site's data or its settings here. When the user wants a change, say what you would change and where, and suggest switching to Code mode to make it.
 `;
   prompt += toolCallingNote(modelSupportsTools);
-  prompt += readCommandsSection(hasServerContext);
+  prompt += readCommandsSection(hasServerContext, pages);
   prompt += `
 - Offer a choice: ask [--prompt "Question"] "Option A" "Option B" — tappable options when the answer is one of a few; the pick becomes the user's next message.`;
   prompt += GREP_NOTE;
@@ -175,7 +216,7 @@ You cannot change files, the site's data or its settings here. When the user wan
  * Preamble for the code agent and its sub-agents.
  * Contains: role, tool calling, file reading preferences, command list.
  */
-function buildSharedPreamble(isReadOnly: boolean, hasServerContext: boolean, modelSupportsTools = true): string {
+function buildSharedPreamble(isReadOnly: boolean, hasServerContext: boolean, modelSupportsTools: boolean, pages: PageFacts): string {
   let prompt = `You are an expert coding assistant helping users build web projects in a sandboxed virtual file system.
 
 Be concise — answer in fewer than 4 lines of prose unless asked for detail.
@@ -187,7 +228,7 @@ You are allowed ONE self-correction per problem. If you reconsider and reach the
 `;
 
   prompt += toolCallingNote(modelSupportsTools);
-  prompt += readCommandsSection(hasServerContext);
+  prompt += readCommandsSection(hasServerContext, pages);
 
   if (!isReadOnly) {
     prompt += `
@@ -344,10 +385,10 @@ async function buildDynamicContent(
   return content;
 }
 
-async function buildExplorePrompt(serverContext?: ServerContextMetadata | null, projectId?: string): Promise<string> {
+async function buildExplorePrompt(serverContext: ServerContextMetadata | null | undefined, projectId: string | undefined, pages: PageFacts): Promise<string> {
   let prompt = `You are exploring a codebase to answer a question or find specific information.
 
-${buildSharedPreamble(true, !!serverContext)}
+${buildSharedPreamble(true, !!serverContext, true, pages)}
 
 Search broadly first (rg, find, tree), then read specifically (head, tail, cat).
 Return a clear, factual summary of what you found.
@@ -357,10 +398,10 @@ Do not speculate about code you haven't read.`;
   return prompt;
 }
 
-async function buildPlanPrompt(serverContext?: ServerContextMetadata | null, projectId?: string): Promise<string> {
+async function buildPlanPrompt(serverContext: ServerContextMetadata | null | undefined, projectId: string | undefined, pages: PageFacts): Promise<string> {
   let prompt = `You are analyzing a codebase to design an implementation approach.
 
-${buildSharedPreamble(true, !!serverContext)}
+${buildSharedPreamble(true, !!serverContext, true, pages)}
 
 Read relevant files to understand current architecture and patterns.
 Return a structured analysis:
@@ -386,8 +427,8 @@ To replace a whole function, element, or CSS rule — give the full replacement 
 For creating new files or complete rewrites only: cat > /file << 'EOF'
 For single-line regex substitution: sed -i 's/old/new/' /file`;
 
-async function buildTaskAgentPrompt(serverContext?: ServerContextMetadata | null, projectId?: string): Promise<string> {
-  let prompt = buildSharedPreamble(false, !!serverContext);
+async function buildTaskAgentPrompt(serverContext: ServerContextMetadata | null | undefined, projectId: string | undefined, pages: PageFacts): Promise<string> {
+  let prompt = buildSharedPreamble(false, !!serverContext, true, pages);
 
   prompt += `
 
@@ -407,14 +448,14 @@ All paths are relative to the project root (/).`;
   return prompt;
 }
 
-async function buildChatModePrompt(serverContext?: ServerContextMetadata | null, projectId?: string, modelSupportsTools = true): Promise<string> {
-  let prompt = buildChatPreamble(!!serverContext, modelSupportsTools);
+async function buildChatModePrompt(serverContext: ServerContextMetadata | null | undefined, projectId: string | undefined, modelSupportsTools: boolean, pages: PageFacts): Promise<string> {
+  let prompt = buildChatPreamble(!!serverContext, modelSupportsTools, pages);
   prompt += await buildDynamicContent(projectId, serverContext);
   return prompt;
 }
 
-async function buildCodeModePrompt(serverContext?: ServerContextMetadata | null, projectId?: string, modelSupportsTools = true, imageGenAvailable = false, webSearchAvailable = false, isServerSideGeneration = false): Promise<string> {
-  let prompt = buildSharedPreamble(false, !!serverContext, modelSupportsTools);
+async function buildCodeModePrompt(serverContext: ServerContextMetadata | null | undefined, projectId: string | undefined, modelSupportsTools: boolean, imageGenAvailable: boolean, webSearchAvailable: boolean, isServerSideGeneration: boolean, pages: PageFacts): Promise<string> {
+  let prompt = buildSharedPreamble(false, !!serverContext, modelSupportsTools, pages);
 
   if (modelSupportsTools) {
     prompt += `
@@ -449,9 +490,13 @@ End with --complete when done, or --incomplete if more work remains.
 All paths are relative to the project root (/).
 Reuse snippets from earlier in the conversation when possible.
 
-The user sees a live preview that updates as you write files — you cannot see it.
+${pages.renders && pages.canSeeImages
+    ? 'The user sees a live preview that updates as you write files. You can check the same pages: inspect reads a rendered page as text, and screenshot shows it to you as an image. An image costs more, so after a visual change look once, at the element you changed, rather than at whole pages again and again.'
+    : pages.renders
+      ? 'The user sees a live preview that updates as you write files. You cannot see it, but inspect reads a rendered page as text: sizes, positions and the CSS in force.'
+      : 'The user sees a live preview that updates as you write files — you cannot see it.'}
 After writing code, run build to check for errors, then run status when done.
-Use curl to inspect compiled page content when needed, but sparingly — each call is expensive. Avoid repeated curl/grep loops; one targeted fetch is usually enough.
+Use curl to read compiled page content when needed, but sparingly — each call is expensive. Avoid repeated curl/grep loops; one targeted fetch is usually enough.
 
 Spawn sub-agents to keep your context focused — they explore or edit independently and return a summary:
   ${modelSupportsTools ? 'bash({ command: "agent explore \'What colors are used?\' \'What fonts?\' \'What layout patterns?\'" })' : '```bash\nagent explore \'What colors are used?\' \'What fonts?\' \'What layout patterns?\'\n```'}

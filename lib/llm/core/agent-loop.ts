@@ -540,6 +540,10 @@ export class AgentLoop {
       // getSanitizedMessages() synthesizes placeholders for unexecuted calls.
       this.context.addAssistantTurn(response);
       this.context.addToolResults(toolResults);
+      const shots = toolResults.flatMap(r => (r.signals?.images as { mediaType: string; data: string }[] | undefined) ?? []);
+      if (shots.length > 0) {
+        this.context.addImages?.(shots, `The ${shots.length === 1 ? 'image' : `${shots.length} images`} the screenshot command just made, in the order its output lists them.`);
+      }
 
       // If execution was terminated by duplicate/pattern detection
       if (terminated) {

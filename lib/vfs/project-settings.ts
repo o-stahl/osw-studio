@@ -88,6 +88,10 @@ export function normalizeProjectSettings(raw: unknown): ProjectSettings {
   if (settings.runtime !== undefined && !KNOWN_RUNTIMES.has(settings.runtime as string)) {
     delete settings.runtime;
   }
+  // The same for the surface a project opens on: a value that names neither is no preference.
+  if (settings.opensIn !== undefined && settings.opensIn !== 'canvas' && settings.opensIn !== 'preview') {
+    delete settings.opensIn;
+  }
 
   return settings as ProjectSettings;
 }

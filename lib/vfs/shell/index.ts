@@ -22,6 +22,7 @@ import { findCommand } from './commands/find';
 import { generateimageCommand } from './commands/generate-image';
 import { grepCommand } from './commands/grep';
 import { headCommand } from './commands/head';
+import { inspectCommand } from './commands/inspect';
 import { lsCommand } from './commands/ls';
 import { mkdirCommand } from './commands/mkdir';
 import { mvCommand } from './commands/mv';
@@ -30,6 +31,7 @@ import { rgCommand } from './commands/rg';
 import { rmCommand } from './commands/rm';
 import { rmdirCommand } from './commands/rmdir';
 import { runtimeCommand } from './commands/runtime';
+import { screenshotCommand } from './commands/screenshot';
 import { searchCommand } from './commands/search';
 import { sedCommand } from './commands/sed';
 import { sleepCommand } from './commands/sleep';
@@ -38,6 +40,7 @@ import { specCommand } from './commands/spec';
 import { sqlite3Command } from './commands/sqlite3';
 import { ssCommand } from './commands/ss';
 import { statusCommand } from './commands/status';
+import { styleCommand } from './commands/style';
 import { tailCommand } from './commands/tail';
 import { touchCommand } from './commands/touch';
 import { trCommand } from './commands/tr';
@@ -57,6 +60,7 @@ export const SHELL_HANDLERS: Record<string, ShellHandler> = {
   'generate-image': generateimageCommand,
   'grep': grepCommand,
   'head': headCommand,
+  'inspect': inspectCommand,
   'ls': lsCommand,
   'mkdir': mkdirCommand,
   'mv': mvCommand,
@@ -65,6 +69,7 @@ export const SHELL_HANDLERS: Record<string, ShellHandler> = {
   'rm': rmCommand,
   'rmdir': rmdirCommand,
   'runtime': runtimeCommand,
+  'screenshot': screenshotCommand,
   'search': searchCommand,
   'sed': sedCommand,
   'sleep': sleepCommand,
@@ -73,6 +78,7 @@ export const SHELL_HANDLERS: Record<string, ShellHandler> = {
   'sqlite3': sqlite3Command,
   'ss': ssCommand,
   'status': statusCommand,
+  'style': styleCommand,
   'tail': tailCommand,
   'touch': touchCommand,
   'tr': trCommand,

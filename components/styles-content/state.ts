@@ -1,17 +1,19 @@
 /**
  * Pure reducer for the Styles tab. Emits commands rather than performing side effects,
  * so transitions are testable without mocking. Values come from the frame; this state
- * tracks pending confirmations, refusals, the transient declaration block, and overrides read back.
+ * tracks pending confirmations, refusals, the values this session wrote and what they lost to, and
+ * the overrides read back.
  */
 
-import type { FocusContextPayload } from '@/lib/preview/types';
-import type { ApplyResult, StyleDeclaration } from '@/lib/direct-edit/types';
+import type { FocusContextPayload, SpecifiedValue } from '@/lib/preview/types';
+import type { ApplyResult, StyleChange } from '@/lib/direct-edit/types';
+import { OVERRIDES_PATH, type OverrideScope } from '@/lib/direct-edit/overrides-css';
+import type { MarkerOverrides } from '@/lib/direct-edit/apply-style';
 import { MARKER_ATTR } from '@/lib/direct-edit/marker';
-import { QUERY_PROPERTIES, STYLE_PROPERTIES, readNamesFor } from './properties';
+import { QUERY_PROPERTIES, SPECIFIED_PROPERTIES, STYLE_PROPERTIES, readNamesFor } from './properties';
 import { parsePx } from './controls';
 
-/** Restated rather than imported to keep this module free of VFS dependencies. */
-export const OVERRIDES_PATH = '/overrides.css';
+export { OVERRIDES_PATH };
 
 /** The five ways an apply refuses that are not the multi-instance confirmation. */
 export type RefusalReason =
@@ -52,20 +54,19 @@ export interface Refusal {
   stamped: boolean;
 }
 
-/** Holds a pending write or removal awaiting multi-instance confirmation. */
+/** Holds a write awaiting multi-instance confirmation. */
 export interface PendingConfirmation {
-  /** The declaration to write. Absent when what is held is a removal. */
-  declaration?: StyleDeclaration;
-  /** The property whose override is to be removed. Absent when what is held is a write. */
-  removeProperty?: string;
+  /** The changes to write; a `null` value removes. */
+  changes: StyleChange[];
+  /** The width block they go in. */
+  scope: OverrideScope;
   file?: string;
   instances: number;
 }
 
 export type StylesCommand =
-  | { kind: 'apply'; declaration: StyleDeclaration; confirmedMultiInstance: boolean }
-  /** Take this property back off the element's override block. */
-  | { kind: 'remove'; property: string; confirmedMultiInstance: boolean }
+  /** Write these changes into the element's block for `scope`; a `null` value removes. */
+  | { kind: 'apply'; changes: StyleChange[]; scope: OverrideScope; confirmedMultiInstance: boolean }
   /**
    * Read back which properties `/overrides.css` declares for this marker.
    *
@@ -75,9 +76,17 @@ export type StylesCommand =
    * stepper's `+`.
    */
   | { kind: 'read-overrides'; markerId: string }
-  | { kind: 'preview'; markerId: string; css: string | null }
-  | { kind: 'probe'; nodeId: string; markerId: string; properties: string[] }
-  | { kind: 'query'; nodeId: string; properties: string[] }
+  /** `/overrides.css` as the write left it, for the frames to swap in. */
+  | { kind: 'broadcast'; css: string }
+  | { kind: 'probe'; nodeId: string; markerId: string; properties: string[]; tag?: 'earlier' }
+  /**
+   * Mark these written properties `!important` in the element's blocks: a probe showed them losing
+   * to a rule of the project or to the element's own `style` attribute. Answered by `applied`, with
+   * no changes, whose probe says whether they win now. `asked`: the user asked for it (Make it
+   * apply), so it is an undo step of its own rather than part of the write that set them.
+   */
+  | { kind: 'strengthen'; scope: OverrideScope; properties: string[]; asked?: boolean }
+  | { kind: 'query'; nodeId: string; properties: string[]; specified: string[] }
   | { kind: 'open-file'; path: string }
   /** Hand the refusal to the agent. `reason` is the user-facing message, which names the file. */
   | { kind: 'ask-agent'; reason: string }
@@ -96,17 +105,25 @@ export interface StylesState {
    * one. Never defaulted to 16: see `UnitContext` in `./controls.tsx`.
    */
   rootFontSize: number | null;
+  /** The winning declaration per property, as written: what Size, Font and the effects read. */
+  specified: Record<string, SpecifiedValue | null>;
+  /** The selection's frame width, from the same reply. */
+  viewportWidth: number | null;
+  /** The parent's layout, from the same reply: Fill writes `flex` in a flex row. */
+  parent: { display: string; flexDirection: string } | null;
+  /**
+   * The width block edits go in: the scope of the selection's frame width. Set by the panel, which
+   * knows the project's breakpoints. `committed` and `overridden` are about this scope only.
+   */
+  scope: OverrideScope;
   /** The marker `/overrides.css` blocks for this element are keyed to, once one exists. */
   markerId: string | null;
   /**
-   * The transient block, property → value, in the order it was written.
+   * The values this session wrote, property → value, in the order they were written; a removal
+   * takes its property out. What {@link lossAgentPrompt} quotes, so a request about a losing
+   * property names the value that was asked for.
    *
-   * Sent to `style-preview` whole, never one declaration at a time: the frame replaces the transient
-   * `<style>` on every send, so sending only the newest would visually revert every earlier edit —
-   * and since the controls render from computed style, those controls would then snap back too.
-   *
-   * Session-local and reset on `frame-ready`, because after a recompile `/overrides.css` itself
-   * carries the rules and the transient element is gone with the old document.
+   * Reset with the element, on `frame-ready` and on `reread`.
    */
   declarations: Record<string, string>;
   /**
@@ -121,13 +138,15 @@ export interface StylesState {
    * Properties `/overrides.css` declares for {@link markerId}, as last read back.
    *
    * The half of "is there something to reset" that {@link committed} cannot answer: an override
-   * written in a previous session is in the file and in nothing else. Lowercased, because that is
-   * how `declaredProperties` returns them and how they are compared.
+   * written in a previous session is in the file and in nothing else. As {@link propertyKey} gives
+   * them, because that is how the file's reader returns them and how they are compared.
    *
    * Emptied with the rest of the state when the element changes, and refilled by the answer — never
    * carried across elements, since a block belongs to exactly one marker.
    */
   overridden: readonly string[];
+  /** Everything `/overrides.css` holds for the marker, at every width, as last read back. */
+  overrides: MarkerOverrides | null;
   pending: PendingConfirmation | null;
   /**
    * Multi-instance editing accepted for **this element**, not for one commit.
@@ -139,8 +158,23 @@ export interface StylesState {
   refusal: Refusal | null;
   /** Computed property name → what beat the override there, or `null` when nothing could be named. */
   lost: Record<string, string | null>;
+  /** Read name → the variable its winning declaration is (`var(--name)` and nothing else), from the frame. */
+  variables: Record<string, string>;
   /** The names the outstanding probe asked about, so its answer only overwrites those. */
   probing: readonly string[];
+  /**
+   * Written properties already made `!important` for this element this session. A property is
+   * strengthened once: one that still loses after that lost to something a stylesheet cannot beat,
+   * and is reported.
+   */
+  strengthened: readonly string[];
+  /**
+   * Declarations the file already held for this element, not written this session, that lose: the
+   * name as the file declares it → what beat it. They are reported and offered (Make it apply),
+   * never strengthened unasked: one may have been losing for as long as the site has been
+   * published, and making it win changes how the page looks.
+   */
+  earlier: Record<string, string | null>;
   /** An apply is in flight. */
   busy: boolean;
 }
@@ -150,15 +184,23 @@ export function emptyStylesState(): StylesState {
     selection: null,
     computed: {},
     rootFontSize: null,
+    specified: {},
+    viewportWidth: null,
+    parent: null,
+    scope: 'all',
     markerId: null,
     declarations: {},
     committed: [],
     overridden: [],
+    overrides: null,
     pending: null,
     confirmed: false,
     refusal: null,
     lost: {},
+    variables: {},
     probing: [],
+    strengthened: [],
+    earlier: {},
     busy: false,
   };
 }
@@ -168,21 +210,37 @@ export type StylesEvent =
   | { type: 'select'; payload: FocusContextPayload | null }
   /** The frame loaded a document — the first one, or a recompile's replacement. */
   | { type: 'frame-ready' }
-  | { type: 'computed'; nodeId: string; values: Record<string, string>; rootFontSize?: string }
+  | {
+      type: 'computed';
+      nodeId: string;
+      values: Record<string, string>;
+      rootFontSize?: string;
+      specified?: Record<string, SpecifiedValue | null>;
+      variables?: Record<string, string>;
+      viewportWidth?: number;
+      parent?: { display: string; flexDirection: string } | null;
+    }
+  /** The width block edits now go in. */
+  | { type: 'scope'; scope: OverrideScope }
+  /** Something other than this panel wrote the files (an undo): read them and the element again. */
+  | { type: 'reread' }
+  /** The frame may have changed size (a scope switch resized it): ask it about the element again. */
+  | { type: 'requery' }
   /**
    * The answer to a `read-overrides` command. Carries the marker it is about, so an answer that
    * arrives after the user has moved on is dropped rather than credited to the new element.
    */
-  | { type: 'overrides'; markerId: string; properties: readonly string[] }
-  /** A control produced a declaration. */
-  | { type: 'change'; declaration: StyleDeclaration }
-  /** The user pressed Reset on a control: take this property's override off the element. */
-  | { type: 'reset'; property: string }
+  | { type: 'overrides'; markerId: string; overrides: MarkerOverrides }
+  /** A control produced changes: values to set, `null` to remove. */
+  | { type: 'change'; changes: StyleChange[] }
+  /** The user pressed a row's dot, or Reset: take these properties off the element at this width. */
+  | { type: 'reset'; properties: string[] }
   | { type: 'confirm' }
   | { type: 'cancel' }
-  | { type: 'applied'; declaration: StyleDeclaration; result: ApplyResult }
-  | { type: 'removed'; property: string; result: ApplyResult }
-  | { type: 'probed'; nodeId: string; lost: readonly string[]; winner?: string }
+  | { type: 'applied'; changes: StyleChange[]; scope: OverrideScope; result: ApplyResult }
+  | { type: 'probed'; nodeId: string; lost: readonly string[]; winner?: string; written?: readonly string[]; tag?: string }
+  /** The user asked for the declarations in {@link StylesState.earlier} to be made to win. */
+  | { type: 'make-apply' }
   /** The user took the refusal's offered action. */
   | { type: 'act-on-refusal' }
   | { type: 'dismiss-refusal' };
@@ -203,16 +261,18 @@ export function isSameSelection(state: StylesState, payload: FocusContextPayload
   return state.selection.domPath === payload.domPath;
 }
 
+/**
+ * A property name as `/overrides.css` compares it: a custom property (`--name`) as spelled, which CSS
+ * tells apart by case, and any other lowercased. The rule the file's reader keys its answer by
+ * (`nameKey` in `lib/direct-edit/overrides-css.ts`).
+ */
+export function propertyKey(property: string): string {
+  return property.startsWith('--') ? property : property.toLowerCase();
+}
+
 /** The computed names a set of written properties comes back under. */
 function probedNames(properties: readonly string[]): string[] {
   return Array.from(new Set(properties.flatMap(readNamesFor)));
-}
-
-/** The whole accumulated block, as a declaration list without braces. `null` when there is none. */
-export function declarationBlock(declarations: Record<string, string>): string | null {
-  const entries = Object.entries(declarations);
-  if (entries.length === 0) return null;
-  return entries.map(([property, value]) => `${property}: ${value};`).join(' ');
 }
 
 export function reduceStyles(state: StylesState, event: StylesEvent): StylesTransition {
@@ -220,7 +280,8 @@ export function reduceStyles(state: StylesState, event: StylesEvent): StylesTran
     case 'select': {
       if (!event.payload) return { state: emptyStylesState(), commands: [] };
       const same = isSameSelection(state, event.payload);
-      const base = same ? state : emptyStylesState();
+      // The width block stays: it is about the frame, which the next reply says again, not the element.
+      const base = same ? state : { ...emptyStylesState(), scope: state.scope };
       /**
        * The marker the *element* carries, preferred over the one this session happens to remember.
        *
@@ -241,8 +302,11 @@ export function reduceStyles(state: StylesState, event: StylesEvent): StylesTran
         // A block belongs to one marker, so a list read against a different one says nothing about
         // this one. The read below refills it.
         overridden: markerId === base.markerId ? base.overridden : [],
+        overrides: markerId === base.markerId ? base.overrides : null,
         computed: {},
         rootFontSize: null,
+        specified: {},
+        variables: {},
         refusal: null,
         pending: null,
         busy: false,
@@ -250,7 +314,7 @@ export function reduceStyles(state: StylesState, event: StylesEvent): StylesTran
       };
 
       const commands: StylesCommand[] = [
-        { kind: 'query', nodeId: event.payload.nodeId, properties: [...QUERY_PROPERTIES] },
+        { kind: 'query', nodeId: event.payload.nodeId, properties: [...QUERY_PROPERTIES], specified: [...SPECIFIED_PROPERTIES] },
       ];
       // The same element coming back with a marker and a history is the post-recompile case: the
       // rule is in `/overrides.css` now, so this is the first moment a probe can answer honestly.
@@ -273,8 +337,10 @@ export function reduceStyles(state: StylesState, event: StylesEvent): StylesTran
     }
 
     case 'frame-ready':
-      // The transient `<style>` died with the old document, and the rules it was showing are in
-      // `/overrides.css` by now. Re-sending it would mask a later agent edit to the same block.
+      // A new document, built from the files: what this session wrote is in `/overrides.css`, where
+      // the agent may have changed it since, so its values are no longer quoted, and a loss reported
+      // before the next write names the property alone. `committed` stays: it is the question list
+      // for the probe that runs once the element is selected again.
       return { state: { ...state, declarations: {} }, commands: [] };
 
     case 'computed': {
@@ -287,25 +353,87 @@ export function reduceStyles(state: StylesState, event: StylesEvent): StylesTran
           ...state,
           computed: event.values,
           rootFontSize: parsePx(event.rootFontSize),
+          specified: event.specified ?? {},
+          variables: event.variables ?? {},
+          viewportWidth: typeof event.viewportWidth === 'number' ? event.viewportWidth : state.viewportWidth,
+          parent: event.parent ?? null,
         },
         commands: [],
       };
+    }
+
+    case 'scope': {
+      if (event.scope === state.scope) return { state, commands: [] };
+      // The session's writes and verdicts are about the width they were made at. At another width
+      // the file says what is set, and a probe would measure rules that do not apply there.
+      return {
+        state: {
+          ...state,
+          scope: event.scope,
+          committed: [],
+          lost: {},
+          probing: [],
+          strengthened: [],
+          earlier: {},
+          overridden: overriddenIn(state.overrides, event.scope),
+        },
+        commands: [],
+      };
+    }
+
+    case 'requery':
+      if (!state.selection) return { state, commands: [] };
+      return {
+        state,
+        commands: [{ kind: 'query', nodeId: state.selection.nodeId, properties: [...QUERY_PROPERTIES], specified: [...SPECIFIED_PROPERTIES] }],
+      };
+
+    case 'reread': {
+      if (!state.selection) return { state, commands: [] };
+      const commands: StylesCommand[] = [
+        { kind: 'query', nodeId: state.selection.nodeId, properties: [...QUERY_PROPERTIES], specified: [...SPECIFIED_PROPERTIES] },
+      ];
+      if (state.markerId) commands.push({ kind: 'read-overrides', markerId: state.markerId });
+      // What this session wrote may have just been taken back: the file says what is set now.
+      return { state: { ...state, committed: [], declarations: {}, lost: {}, probing: [], strengthened: [], earlier: {} }, commands };
     }
 
     case 'overrides': {
       // A read is in flight across an element change often enough to matter — the user clicks the
       // next element while the file is being read — and the marker is what tells the two apart.
       if (!state.markerId || event.markerId !== state.markerId) return { state, commands: [] };
-      return { state: { ...state, overridden: [...event.properties] }, commands: [] };
+      const overridden = overriddenIn(event.overrides, state.scope);
+      const next: StylesState = { ...state, overrides: event.overrides, overridden };
+      // What the file held before this session is asked about too, by the names it declares, so a
+      // change that has been losing is shown in the panel rather than only on the page.
+      // Not at a width the block does not apply at, where everything in it would read as lost.
+      const applies = state.scope === 'all' || (state.viewportWidth !== null && state.viewportWidth <= state.scope);
+      const written = state.committed.map(propertyKey);
+      const before = overridden.filter(name => !written.includes(name));
+      if (!state.selection || !applies || before.length === 0) return { state: { ...next, earlier: {} }, commands: [] };
+      return {
+        state: next,
+        commands: [{ kind: 'probe', nodeId: state.selection.nodeId, markerId: state.markerId, properties: [...before], tag: 'earlier' }],
+      };
+    }
+
+    case 'make-apply': {
+      const properties = Object.keys(state.earlier).filter(name => !state.strengthened.includes(name));
+      if (!state.markerId || properties.length === 0) return { state, commands: [] };
+      return {
+        state: { ...state, earlier: {}, strengthened: [...state.strengthened, ...properties] },
+        commands: [{ kind: 'strengthen', scope: state.scope, properties, asked: true }],
+      };
     }
 
     case 'change': {
-      if (!state.selection) return { state, commands: [] };
+      if (!state.selection || event.changes.length === 0) return { state, commands: [] };
       return {
         state: { ...state, refusal: null, pending: null, busy: true },
         commands: [{
           kind: 'apply',
-          declaration: event.declaration,
+          changes: event.changes,
+          scope: state.scope,
           confirmedMultiInstance: state.confirmed,
         }],
       };
@@ -315,12 +443,13 @@ export function reduceStyles(state: StylesState, event: StylesEvent): StylesTran
       // Guarded on the marker as well as the selection: with no marker there is no block of ours in
       // `/overrides.css`, so there is nothing a removal could take out. See {@link canReset}, which
       // is what stops the control being offered in that state at all.
-      if (!state.selection || !state.markerId) return { state, commands: [] };
+      if (!state.selection || !state.markerId || event.properties.length === 0) return { state, commands: [] };
       return {
         state: { ...state, refusal: null, pending: null, busy: true },
         commands: [{
-          kind: 'remove',
-          property: event.property,
+          kind: 'apply',
+          changes: event.properties.map(property => ({ property, value: null })),
+          scope: state.scope,
           confirmedMultiInstance: state.confirmed,
         }],
       };
@@ -329,23 +458,12 @@ export function reduceStyles(state: StylesState, event: StylesEvent): StylesTran
     case 'confirm': {
       const pending = state.pending;
       if (!pending) return { state, commands: [] };
-      const armed: StylesState = { ...state, confirmed: true, pending: null, refusal: null, busy: true };
-      if (pending.removeProperty !== undefined) {
-        return {
-          state: armed,
-          commands: [{
-            kind: 'remove',
-            property: pending.removeProperty,
-            confirmedMultiInstance: true,
-          }],
-        };
-      }
-      if (!pending.declaration) return { state: { ...state, pending: null, busy: false }, commands: [] };
       return {
-        state: armed,
+        state: { ...state, confirmed: true, pending: null, refusal: null, busy: true },
         commands: [{
           kind: 'apply',
-          declaration: pending.declaration,
+          changes: pending.changes,
+          scope: pending.scope,
           confirmedMultiInstance: true,
         }],
       };
@@ -355,19 +473,33 @@ export function reduceStyles(state: StylesState, event: StylesEvent): StylesTran
       return { state: { ...state, pending: null, busy: false }, commands: [] };
 
     case 'applied':
-      return applied(state, event.declaration, event.result);
-
-    case 'removed':
-      return removed(state, event.property, event.result);
+      return applied(state, event.changes, event.scope, event.result);
 
     case 'probed': {
       if (!state.selection || event.nodeId !== state.selection.nodeId) return { state, commands: [] };
+      if (event.tag === 'earlier') {
+        // The whole answer about the file's own declarations, replacing the last one.
+        const earlier = Object.fromEntries((event.written ?? []).map(name => [name, event.winner ?? null]));
+        return { state: { ...state, earlier }, commands: [] };
+      }
       const lost = { ...state.lost };
       // Only what this probe asked about is re-decided. A probe about `color` that comes back clean
       // says nothing about the padding an earlier probe reported lost.
       for (const name of state.probing) delete lost[name];
       for (const name of event.lost) lost[name] = event.winner ?? null;
-      return { state: { ...state, lost, probing: [] }, commands: [] };
+      const probed: StylesState = { ...state, lost, probing: [] };
+      // A change the user made that loses is made to win, once: what this session wrote, not what
+      // an earlier one left, which may have been losing for as long as the site has been published.
+      const weak = state.markerId === null
+        ? []
+        : state.committed.filter(property => !state.strengthened.includes(property) && lossFor(probed, property) !== null);
+      if (weak.length === 0) return { state: probed, commands: [] };
+      // Not shown as lost while the stronger rule is being written; its probe says how it went.
+      for (const property of weak) for (const name of readNamesFor(property)) delete lost[name];
+      return {
+        state: { ...probed, strengthened: [...state.strengthened, ...weak] },
+        commands: [{ kind: 'strengthen', scope: state.scope, properties: weak }],
+      };
     }
 
     case 'act-on-refusal': {
@@ -391,9 +523,8 @@ export function reduceStyles(state: StylesState, event: StylesEvent): StylesTran
 /**
  * What a refused apply or removal leaves behind.
  *
- * Shared by both paths because the vocabulary is the same one: `applyStyleOverride` and
- * `removeStyleOverride` refuse for the same reasons and report them in the same `ApplyResult`, so a
- * second copy of this could only differ by being wrong.
+ * One for both: a removal is `applyStyleOverride` with `null` values, so it refuses for the same
+ * reasons and reports them in the same `ApplyResult`.
  */
 function refused(state: StylesState, result: ApplyResult): StylesState {
   return {
@@ -409,9 +540,15 @@ function refused(state: StylesState, result: ApplyResult): StylesState {
   };
 }
 
+/** The properties the file declares for the marker in `scope`, as {@link propertyKey} gives them. */
+function overriddenIn(overrides: MarkerOverrides | null, scope: OverrideScope): string[] {
+  return Object.keys(overrides?.byScope.get(scope) ?? {});
+}
+
 function applied(
   state: StylesState,
-  declaration: StyleDeclaration,
+  changes: StyleChange[],
+  scope: OverrideScope,
   result: ApplyResult,
 ): StylesTransition {
   if (!result.ok) {
@@ -422,11 +559,7 @@ function applied(
           ...state,
           busy: false,
           refusal: null,
-          pending: {
-            declaration,
-            file: result.file,
-            instances: result.instances ?? 0,
-          },
+          pending: { changes, scope, file: result.file, instances: result.instances ?? 0 },
         },
         commands: [],
       };
@@ -435,17 +568,37 @@ function applied(
   }
 
   const markerId = result.markerId ?? state.markerId;
-  // First write for this element: read the file for any existing overrides.
-  const learnedMarker = state.markerId === null && markerId !== null;
-  const declarations = { ...state.declarations, [declaration.property]: declaration.value };
-  const committed = state.committed.includes(declaration.property)
-    ? state.committed
-    : [...state.committed, declaration.property];
+  const sets = changes.filter(change => change.value !== null);
+  const removes = changes.filter(change => change.value === null).map(change => change.property);
 
-  // Whatever this property lost to before, the answer is about to be remeasured — or, on the source
-  // branch, cannot be measured until the frame returns. Either way the old verdict is not evidence.
+  const declarations = { ...state.declarations };
+  for (const change of sets) declarations[change.property] = change.value!;
+  for (const property of removes) delete declarations[property];
+
+  // Only the scope on screen is tracked: a write that landed elsewhere (the user switched width while
+  // it was in flight) is in the file, and the read below is what reports it.
+  const here = scope === state.scope;
+  let committed = state.committed;
+  let overridden = state.overridden;
+  if (here) {
+    committed = [
+      ...committed.filter(name => !removes.includes(name)),
+      ...sets.map(change => change.property).filter(name => !committed.includes(name)),
+    ];
+    // Dropped and added here rather than left to the re-read below: a dot has to appear or go in the
+    // same frame the press lands, and the read is a promise away.
+    const gone = removes.map(propertyKey);
+    overridden = [
+      ...overridden.filter(name => !gone.includes(name)),
+      ...sets.map(change => propertyKey(change.property)).filter(name => !overridden.includes(name)),
+    ];
+  }
+
+  // Whatever these properties lost to before, the answer is about to be remeasured, or, on the
+  // source branch, cannot be measured until the frame returns. Either way the old verdict is not
+  // evidence.
   const lost = { ...state.lost };
-  for (const name of readNamesFor(declaration.property)) delete lost[name];
+  for (const change of changes) for (const name of readNamesFor(change.property)) delete lost[name];
 
   const next: StylesState = {
     ...state,
@@ -455,88 +608,45 @@ function applied(
     markerId,
     declarations,
     committed,
+    overridden,
     lost,
+    // A property taken off starts over: set again, it is an ordinary declaration until it loses.
+    strengthened: here ? state.strengthened.filter(name => !removes.includes(name)) : state.strengthened,
   };
 
-  const read: StylesCommand[] = learnedMarker && markerId
-    ? [{ kind: 'read-overrides', markerId }]
-    : [];
+  // The file just changed under the dots and the CSS readout, and a removal can take a whole block
+  // with it, so what is there is re-read rather than inferred from what was asked for.
+  const read: StylesCommand[] = markerId ? [{ kind: 'read-overrides', markerId }] : [];
 
   const written = result.filesWritten ?? [];
   const wroteSource = written.some(path => path !== OVERRIDES_PATH);
   if (wroteSource || !markerId || !state.selection) {
-    // A recompile is coming. Anything sent into this document is sent into one about to be thrown
-    // away, and the probe would answer about a document that does not carry the marker yet. The
-    // file read is not a message to that document, so it still goes.
+    // A recompile is coming, or nothing changed in a document that carries the marker. Anything
+    // sent into this document is sent into one about to be thrown away, and the probe would answer
+    // about a document that does not carry the marker yet. The file read is not a message to that
+    // document, so it still goes.
     return { state: next, commands: read };
   }
 
-  const properties = probedNames(committed);
-  return {
-    state: { ...next, probing: properties },
-    commands: [
-      { kind: 'preview', markerId, css: declarationBlock(declarations) },
-      { kind: 'probe', nodeId: state.selection.nodeId, markerId, properties },
-      ...read,
-    ],
-  };
-}
-
-/** After a removal, refresh: the transient style can only add rules, not un-declare one. */
-function removed(state: StylesState, property: string, result: ApplyResult): StylesTransition {
-  if (!result.ok) {
-    if (result.reason === 'needs-confirmation') {
-      return {
-        state: {
-          ...state,
-          busy: false,
-          refusal: null,
-          pending: {
-            removeProperty: property,
-            file: result.file,
-            instances: result.instances ?? 0,
-          },
-        },
-        commands: [],
-      };
-    }
-    return { state: refused(state, result), commands: [] };
+  const commands: StylesCommand[] = [];
+  if (typeof result.css === 'string' && written.includes(OVERRIDES_PATH)) {
+    commands.push({ kind: 'broadcast', css: result.css });
+    // Read again once the frame has the new file: the Size modes, the effects and the dots read
+    // what is declared, which no request in this session can stand in for after a removal.
+    commands.push({ kind: 'query', nodeId: state.selection.nodeId, properties: [...QUERY_PROPERTIES], specified: [...SPECIFIED_PROPERTIES] });
   }
-
-  const declarations = { ...state.declarations };
-  delete declarations[property];
-  // Out of `committed` too: it is the probe's question list — probing a property we no longer
-  // override reports it lost, correctly and uselessly — and it is what {@link canReset} reads to
-  // decide the control is worth offering.
-  const committed = state.committed.filter(name => name !== property);
-  const lost = { ...state.lost };
-  for (const name of readNamesFor(property)) delete lost[name];
-
-  const next: StylesState = {
-    ...state,
-    busy: false,
-    refusal: null,
-    pending: null,
-    declarations,
-    committed,
-    // Dropped here rather than left to the re-read below: the control has to stop being offered in
-    // the same frame the press lands, and the read is a promise away.
-    overridden: state.overridden.filter(name => name !== property.toLowerCase()),
-    lost,
-  };
-
-  const wrote = (result.filesWritten ?? []).length > 0;
-  const commands: StylesCommand[] = wrote ? [{ kind: 'refresh' }] : [];
-  // The file just changed under the list, and a removal can take a whole block with it — so what is
-  // left is re-read rather than inferred from what was asked for.
-  if (state.markerId) commands.push({ kind: 'read-overrides', markerId: state.markerId });
-  return { state: next, commands };
+  if (here && committed.length > 0) {
+    const properties = probedNames(committed);
+    next.probing = properties;
+    commands.push({ kind: 'probe', nodeId: state.selection.nodeId, markerId, properties });
+  }
+  return { state: next, commands: [...commands, ...read] };
 }
 
 /** Two sources: session writes and file reads. Both needed because the file outlives the session. */
 export function canReset(state: StylesState, property: string): boolean {
   if (state.markerId === null) return false;
-  return state.committed.includes(property) || state.overridden.includes(property.toLowerCase());
+  return state.committed.includes(property) || state.overridden.includes(propertyKey(property));
 }
 
 export type RefusalOffer =
@@ -700,7 +810,16 @@ export function lostOverrides(state: StylesState): LostOverride[] {
     if (!loss) continue;
     out.push({ property: entry.property, label: entry.label, winner: loss.winner });
   }
+  // What the file held before this session, by the name it declares.
+  for (const [property, winner] of Object.entries(state.earlier)) {
+    if (!out.some(item => item.property === property)) out.push({ property, label: property, winner });
+  }
   return out;
+}
+
+/** Whether a loss on show can still be answered by marking it `!important`: the earlier ones not tried yet. */
+export function canMakeApply(state: StylesState): boolean {
+  return Object.keys(state.earlier).some(name => !state.strengthened.includes(name));
 }
 
 /** One clause per property, same shape. */
@@ -713,7 +832,7 @@ export function lossMessage(lost: readonly LostOverride[], t: StylesTranslator):
 /** The whole set of losses, handed to the agent as one request rather than one per control. */
 export function lossAgentPrompt(
   lost: readonly LostOverride[],
-  /** This session's transient block, property → value: what the person actually set. */
+  /** The values this session wrote, property → value: what the person actually set. */
   declarations: Record<string, string> = {},
 ): string {
   // The value, not just the property. "padding loses to X" does not say what padding was asked
@@ -727,3 +846,10 @@ export function lossAgentPrompt(
     + `the cascade:\n${lines.join('\n')}\n`
     + 'Change the project styles so the element gets the values I asked for.';
 }
+
+/**
+ * The fold-in task: the overrides move into the project's own
+ * stylesheets by the agent's judgement, and the file is emptied in the same task so no rule applies
+ * twice. Goes into the composer, so the person sends it.
+ */
+export const FOLD_IN_PROMPT = 'Move the rules in /overrides.css into the project\'s own stylesheets. First run style --sweep to drop rules for elements that no longer exist. Put each remaining rule where it fits the way this project is written: on the element\'s own rule, a component class, or a token, keeping the width each one applies at. Then empty /overrides.css, keeping the file and the links to it, and leave the data-osw-id attributes in the markup. Check the pages at 375 and 1440 px wide before and after (screenshot or inspect) so nothing looks different.'; // i18n-ignore: sent to the agent as the user's message

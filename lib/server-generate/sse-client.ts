@@ -44,7 +44,7 @@ export class SSEClient {
       'assistant_delta', 'reasoning_delta', 'reasoning_start', 'reasoning_complete',
       'toolCalls', 'tool_status', 'tool_param_delta', 'tool_result', 'tool_healed',
       'conversation_message', 'conversation_replaced', 'waiting', 'iteration', 'progress',
-      'error', 'stopped', 'compaction', 'agent_progress', 'retry', 'api_stopped', 'model_switched', 'model_picked', 'model_resolved',
+      'error', 'stopped', 'compaction', 'agent_progress', 'retry', 'api_stopped', 'model_switched', 'model_picked', 'model_resolved', 'allowance_low',
       'usage', 'skill_evaluation', 'checkpoint_created', 'exit_reason', 'ask', 'interview_gate',
       // Server generation lifecycle
       'files_changed', 'build_requested', 'search_requested', 'image_requested', 'usage_update', 'approval_required',
@@ -52,6 +52,8 @@ export class SSEClient {
       // Requests from an MCP client, which this tab answers because it holds the provider key
       // and the local copy of the project.
       'mcp_run_requested', 'mcp_project_changed', 'mcp_deployment_changed',
+      // Pages a server run or an MCP client needs rendered, and what this tab has selected.
+      'render_requested', 'selection_requested',
     ];
 
     for (const eventType of eventTypes) {

@@ -6,6 +6,10 @@ import type { VirtualFileSystem } from '@/lib/vfs';
 import type { ProviderId } from '@/lib/llm/providers/types';
 import type { WebSearchProviderId } from '@/lib/web-search/types';
 import type { InterviewTemplate } from '@/lib/interview/types';
+import type { ElementMatcher } from '@/lib/direct-edit/targets';
+import type { LineMatcher } from '@/lib/vfs/shell/types';
+import type { RenderJob, RenderResult } from '@/lib/canvas/render-types';
+import type { SentBlock } from '@/lib/semantic-blocks/types';
 
 /** Web-search config the client sends so the server can run a search when no browser is
  *  connected (the headless fallback). Carries the provider key, same boundary as the LLM key. */
@@ -35,6 +39,14 @@ export interface ServerOrchestratorContext {
   onImageRequested?: (prompt: string, opts: { aspectRatio?: string; imageSize?: string }) => Promise<ImageDelegationResult>;
   /** Client has an image-capable model assigned — drives whether `generate-image` is advertised. */
   imageGenAvailable?: boolean;
+  /** Selector matching for the agent's `style` command; the server has no DOM. */
+  matchElements?: ElementMatcher;
+  /** Runs `rg` and `grep` matching in a worker with a time limit, so a runaway pattern cannot hold the server. */
+  matchLines?: LineMatcher;
+  /** Renders a page in the connected browser for `inspect` and `screenshot`. */
+  renderInBrowser?: (job: RenderJob) => Promise<RenderResult>;
+  /** The agent model reads images (the client knows its model list), so `screenshot` can show it one. */
+  imageInputAvailable?: boolean;
 }
 
 /** Result of a browser-delegated image generation: the image, or why there is none. */
@@ -141,6 +153,8 @@ export interface StartGenerationRequest {
   webSearch?: ServerWebSearchConfig;
   /** Whether the project has an image-capable model. Generation is delegated back to the browser. */
   imageGenAvailable?: boolean;
+  /** Whether the agent model reads images, which the client knows from its model list. */
+  imageInputAvailable?: boolean;
   /**
    * The mode picked in the chat: `chat` only reads, `interview` runs the interview agent on its
    * template. Omitted means `code`.
@@ -153,8 +167,8 @@ export interface StartGenerationRequest {
   conversationHistory: unknown[];
   executeOptions?: {
     images?: Array<{ data: string; mediaType: string }>;
-    focusContext?: { domPath: string; snippet: string };
-    semanticBlocks?: Array<{ name: string; domPath: string; position: string; description: string }>;
+    focusContext?: { domPath: string; snippet: string; width?: number };
+    semanticBlocks?: SentBlock[];
     displayPrompt?: string;
   };
   generationParams: Omit<ServerGenerationParams, 'provider' | 'model' | 'apiKey' | 'providerBaseUrl'>;

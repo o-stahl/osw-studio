@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 
 import { withMessages } from '@/lib/i18n/__tests__/test-helpers';
 import en from '@/messages/en.json';
-import { MessageContext } from '../index';
+import { MessageContext, focusSummary } from '../index';
 
 /**
  * A section's Clear is a button of its own beside the section's toggle, so the keyboard reaches it
@@ -48,5 +48,21 @@ describe('MessageContext section', () => {
     act(() => { toggle.click(); });
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(container.textContent).toContain('body > main > h1');
+  });
+});
+
+describe('the focus section\'s summary', () => {
+  it('names the element and the width it was picked at', () => {
+    expect(focusSummary({ domPath: 'body > main > section.hero', snippet: '', width: 375 })).toBe('section.hero @375');
+    expect(focusSummary({ domPath: 'body > main > section.hero', snippet: '' })).toBe('section.hero');
+  });
+
+  it('shows it in the composer and on a sent message', () => {
+    const focus = { domPath: 'body > main > section.hero', snippet: '<section></section>', width: 768 };
+    act(() => { root.render(withMessages(<MessageContext focusContext={focus} onClearFocus={vi.fn()} />)); });
+    expect(container.textContent).toContain('section.hero @768');
+    act(() => { root.render(withMessages(<MessageContext focusContext={focus} readOnly />)); });
+    act(() => { container.querySelector<HTMLButtonElement>('button')!.click(); });
+    expect(container.textContent).toContain('section.hero @768');
   });
 });

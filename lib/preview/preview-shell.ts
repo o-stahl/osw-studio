@@ -11,6 +11,9 @@
  *
  * Text assets are rewritten in dependency order (a stylesheet after the images it names, a module
  * after the modules it imports), which works because a URL is only made once its contents are final.
+ *
+ * The map from the host's URLs to the frame's stays on the window as `__oswShellUrls`, so a copy of
+ * the page taken in the frame can name its files by the host's URLs again (Canvas's snapshots).
  */
 
 import type { PreviewStorageSnapshot } from './preview-storage';
@@ -55,7 +58,7 @@ export function previewShellHtml(loadId: number): string {
     + `if(waits)rest.push(x);else made[x.a.url]=URL.createObjectURL(new Blob([swap(x.t)],{type:x.a.blob.type}));});`
     + `if(rest.length===list.length){rest.forEach(function(x){made[x.a.url]=URL.createObjectURL(new Blob([swap(x.t)],{type:x.a.blob.type}));});rest=[];}`
     + `list=rest;}`
-    + `window.__oswStorageSeed=d.storage||{};`
+    + `window.__oswStorageSeed=d.storage||{};window.__oswShellUrls=made;`
     + `var html=swap(d.html);document.open();document.write(html);document.close();`
     + `}).catch(fail);});`
     + `p.postMessage({type:'${SHELL_READY}',loadId:id},'*');`

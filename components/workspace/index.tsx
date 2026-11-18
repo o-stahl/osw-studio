@@ -8,7 +8,7 @@ import { FileExplorer } from '@/components/file-explorer';
 import { MultiTabEditor, openFileInEditor } from '@/components/editor/multi-tab-editor';
 import { MultipagePreview, MultipagePreviewHandle } from '@/components/preview/multipage-preview';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, MessageSquare, FolderTree, Code2, Eye, Settings, Save, Bug, RotateCcw, History, Terminal as TerminalIcon, Sparkles, ChevronDown, ChevronUp, EllipsisVertical, Upload, ListTree, Undo2, Redo2 } from 'lucide-react';
+import { ArrowLeft, MessageSquare, FolderTree, Code2, Eye, Frame, Settings, Save, Bug, RotateCcw, History, Terminal as TerminalIcon, Sparkles, ChevronDown, ChevronUp, EllipsisVertical, Upload, ListTree, Undo2, Redo2 } from 'lucide-react';
 import { AppHeader, HeaderAction } from '@/components/ui/app-header';
 import { PendingImage, PendingAudio, PendingFile } from '@/lib/llm/multi-agent-orchestrator';
 import { configManager, migrateBackendKey } from '@/lib/config/storage';
@@ -18,14 +18,16 @@ import type { InterviewTemplate, InterviewHandoff } from '@/lib/interview/types'
 import { track } from '@/lib/telemetry';
 import { bucketInterviewTemplateId } from '@/lib/telemetry/tool-analytics';
 import { panelOnScreen, shownLayout } from '@/lib/stores/slices/layout';
+import type { FocusTarget } from '@/lib/stores/slices/project';
 import { isPanelKey, type PanelKey } from '@/lib/workspace-layout';
 import { DockArea } from '@/components/workspace/dock/dock-area';
 import { LayoutMenu } from '@/components/workspace/dock/layout-menu';
 import { useLayoutCommands, WORKSPACE_FOCUS_ATTR } from '@/components/workspace/dock/use-layout-commands';
+import { useNoHistorySwipe } from '@/components/workspace/use-no-history-swipe';
 import { isMac, modShortcut } from '@/lib/platform';
 import { busyNotice } from '@/lib/stores/slices/orchestrator';
 import { useCostSettings } from '@/lib/hooks/use-cost-settings';
-import { getModelInputModalities } from '@/lib/llm/providers/registry';
+import { resolveInputModalities } from '@/lib/llm/providers/registry';
 import { isProjectProviderReady } from '@/lib/llm/models/project-assignment';
 import type { ModelRef } from '@/lib/llm/models/assignment';
 import { continueAfterStop } from '@/lib/llm/continue-prompt';
@@ -43,9 +45,11 @@ import { useGuidedTour } from '@/components/guided-tour/context';
 import { GuidedTourTranscriptEvent } from '@/components/guided-tour/types';
 import { FocusContextPayload } from '@/lib/preview/types';
 import { elementKind } from '@/lib/preview/toolbar-dom';
-import type { PlacedBlock } from '@/lib/semantic-blocks/types';
+import { isSourcePlaced, type PlacedBlock } from '@/lib/semantic-blocks/types';
 import type { PlacementResult, PreviewHostMessage, PreviewMessage, ToolbarAction } from '@/lib/preview/types';
 import { getBlockById } from '@/lib/semantic-blocks/registry';
+import { isPlace, placedBlocksPrompt, placeholderAt, resolvePlacedBlocks, sentBlocks } from '@/lib/semantic-blocks/placement';
+import { newPlacementId } from '@/lib/semantic-blocks/placeholder';
 import { DebugPanel } from '@/components/debug-panel';
 import { ChatPanel } from '@/components/chat-panel';
 import { DeploymentSelector } from '@/components/workspace/deployment-selector';
@@ -57,17 +61,38 @@ import { ProjectSettingsModal } from '@/components/project-backend';
 import { SkillsPanel } from '@/components/workspace/skills-panel';
 import { PanelContainer, PanelHeader } from '@/components/ui/panel';
 import { ElementsPanel, type ElementsPanelHandle, type ElementsTab } from '@/components/elements-panel';
-import { buildApplyStyle, buildRemoveStyle, toPreviewSelection } from '@/components/styles-content/commit';
+import { buildApplyStyle, newGroup, toPreviewSelection } from '@/components/styles-content/commit';
 import { ImagePicker } from '@/components/image-picker';
 import { applyImageSrc } from '@/lib/direct-edit/apply-image';
 import { TextPopover } from '@/components/text-popover';
 import { applyText, readSourceText } from '@/lib/direct-edit/apply-text';
-import { useProjectColorTokens } from '@/components/styles-content/use-tokens';
+import { useProjectStyleFacts } from '@/components/styles-content/use-tokens';
 import { useSelectedImageUrl } from '@/components/styles-content/use-image-url';
-import { applyStyleOverride, readOverriddenProperties, removeStyleOverride } from '@/lib/direct-edit/apply-style';
+import { variableKey } from '@/components/styles-content/theme-variables';
+import { applyStyleOverride, OVERRIDES_PATH, OVERRIDES_WRITTEN_EVENT, readMarkerOverrides, sweepUnusedOverrides } from '@/lib/direct-edit/apply-style';
+import { OverridesText } from '@/lib/direct-edit/overrides-text';
+import { EditJournal, type JournalOutcome } from '@/lib/direct-edit/journal';
+import { setEditHistory } from '@/lib/direct-edit/edit-history';
+import { scopeOfWidth } from '@/lib/direct-edit/breakpoints';
+import type { OverrideScope } from '@/lib/direct-edit/overrides-css';
+import { applyStructure, type StructureApplyResult, type StructureOp } from '@/lib/direct-edit/apply-structure';
+import { MARKER_ATTR } from '@/lib/direct-edit/marker';
+import { LOCK_ATTR } from '@/lib/direct-edit/structure';
+import { applyVariable } from '@/lib/direct-edit/apply-variable';
+import type { VariableDefinition } from '@/lib/direct-edit/css-variables';
+import { styleHint } from '@/lib/direct-edit/style-hint';
+import { parseElementTarget } from '@/lib/direct-edit/targets';
+import { sourceRefOf } from '@/lib/direct-edit/source-line';
+import type { PreviewSelection } from '@/lib/direct-edit/types';
+import type { ElementAction } from '@/components/canvas/element-menu';
+import type { OverrideMark } from '@/lib/preview/types';
+import { CANVAS_DEVICE_ORDER, CANVAS_DEVICES } from '@/lib/canvas/types';
+import { asText } from '@/lib/vfs/as-text';
 import { ConsolePanel } from '@/components/console';
 import { drainRuntimeErrors, peekRuntimeErrors, formatRuntimeErrors } from '@/lib/preview/runtime-errors';
-import { supportsDirectEditing } from '@/lib/runtimes/registry';
+import { canvasSupport, supportsDirectEditing } from '@/lib/runtimes/registry';
+import { FALLBACK_RUNTIME, normalizeProjectSettings } from '@/lib/vfs/project-settings';
+import { CanvasPanel, type CanvasPanelHandle } from '@/components/canvas/canvas-panel';
 import { useMobileViewport } from '@/lib/hooks/use-mobile-viewport';
 import { ChatThread } from '@/components/quick-edit/thread';
 import { splitRuns } from '@/lib/quick-edit/runs';
@@ -87,12 +112,13 @@ interface WorkspaceProps {
   initialPreviewPath?: string;
 }
 
-type FocusTarget = FocusContextPayload & { timestamp: number };
-
 /** What makes two focus selections "the same one" for the 400 ms click dedup. */
 function focusSignature(selection: FocusContextPayload): string {
   return `${selection.domPath || ''}::${selection.tagName || ''}::${selection.outerHTML ? selection.outerHTML.length : 0}`;
 }
+
+/** The widths Applies to offers scopes for: the ones Canvas lays pages out at. */
+const SURFACE_WIDTHS = CANVAS_DEVICE_ORDER.map(device => CANVAS_DEVICES[device].w);
 
 /**
  * What to do with the focus context when the preview frame announces a fresh document.
@@ -168,6 +194,22 @@ export function previewHoverHighlight(input: { hovering: boolean; previewOpen: b
   return input.previewOpen ? 'panel' : 'route';
 }
 
+/**
+ * Which surface the Inspector's `Select element` button addresses: the one on screen, or with both
+ * or neither, the one the Inspector reads. Canvas has nothing to arm (its Select tool picks on every
+ * click), so a press addressed to it puts Canvas on screen in that tool.
+ */
+export function selectElementSurface(input: {
+  canvas: boolean;
+  previewOnScreen: boolean;
+  canvasOnScreen: boolean;
+  target: 'preview' | 'canvas';
+}): 'preview' | 'canvas' {
+  if (!input.canvas) return 'preview';
+  if (input.canvasOnScreen !== input.previewOnScreen) return input.canvasOnScreen ? 'canvas' : 'preview';
+  return input.target;
+}
+
 /** Toggles the focus picker. Both controls (header crosshair, Inspector button) share this flag. */
 export function focusToolPress(input: { armed: boolean }): { armed: boolean; openPreview: boolean } {
   return input.armed ? { armed: false, openPreview: false } : { armed: true, openPreview: true };
@@ -204,6 +246,14 @@ export function focusInclusionRelease(surface: SelectionSurface): { clearSelecti
   return { clearSelection: surface === 'mobile' };
 }
 
+/**
+ * The surface a selection is recorded as made on, which MCP `canvas_selection` reports. The phone
+ * layout has no Canvas, so a pick there is a Live Preview pick whatever the hidden desktop Inspector reads.
+ */
+export function pickedOn(surface: SelectionSurface, inspectTarget: 'preview' | 'canvas'): 'preview' | 'canvas' {
+  return surface === 'mobile' ? 'preview' : inspectTarget;
+}
+
 /** Formats the selection as chat context only when focusIncluded is true. */
 export function focusMessageContext<T extends { domPath: string }>(
   focus: T | null,
@@ -212,6 +262,78 @@ export function focusMessageContext<T extends { domPath: string }>(
 ): { promptBlock: string | null; generationFocus: T | null } {
   if (!focus || !included) return { promptBlock: null, generationFocus: null };
   return { promptBlock: formatBlock(focus), generationFocus: focus };
+}
+
+/** The head and tail of a long snippet, so the agent sees the element's opening and its end. */
+function truncateHtmlSnippet(html: string, maxLength: number = 1200): string {
+  if (!html) {
+    return '';
+  }
+  if (html.length <= maxLength) {
+    return html;
+  }
+  const headLength = Math.max(0, Math.floor(maxLength * 0.6));
+  const tailLength = Math.max(0, Math.floor(maxLength * 0.3));
+  const head = html.slice(0, headLength);
+  const tail = tailLength > 0 ? html.slice(-tailLength) : '';
+  return `${head}\n  (...truncated...)\n${tail}`;
+}
+
+/** Page content on one line of the context block, where a newline in it would start a line of its own. */
+const oneLine = (text: string): string => text.replace(/\s+/g, ' ');
+
+function describeFocusTarget(target: FocusContextPayload): string {
+  const attributeEntries = Object.entries(target.attributes || {}).slice(0, 6);
+  if (attributeEntries.length === 0) {
+    return `<${target.tagName}>`;
+  }
+  const summary = attributeEntries
+    .map(([key, raw]) => {
+      const value = oneLine(raw);
+      const trimmed = value.length > 40 ? `${value.slice(0, 37)}…` : value;
+      return `${key}="${trimmed}"`;
+    })
+    .join(' ');
+  return `<${target.tagName} ${summary}>`;
+}
+
+/**
+ * The selected element as the agent is told of it, ahead of the user's words: that it was picked
+ * and the request is about it, where it is (page and width, source position, marker), which are
+ * what `style` and `inspect` take as the element, then what it is.
+ *
+ * This is also where the agent learns of `style`, with the element already filled in: the system
+ * prompt does not teach it, so a project nobody selects in never gets an override file from the
+ * agent. The line is there when the element is written in a file, which is when `style` can reach it.
+ */
+export function focusContextBlock(target: FocusContextPayload, source: string | null = null): string {
+  const descriptor = describeFocusTarget(target);
+  const snippet = truncateHtmlSnippet(target.outerHTML, 1200);
+  const domPath = target.domPath || '(unknown path)';
+  // The attribute is page content: only a value `style` reads as a marker is given as one.
+  const stamped = target.attributes?.[MARKER_ATTR];
+  const marker = stamped && parseElementTarget(`@${stamped}`).kind === 'marker' ? stamped : null;
+  const instances = target.instanceCount ?? 1;
+  const element = marker ? `@${marker}` : source;
+  const locked = target.attributes ? LOCK_ATTR in target.attributes : false;
+  // Longer than any run of backticks in the page's HTML, which could otherwise close it.
+  const longestRun = Math.max(0, ...(snippet.match(/`+/g) ?? []).map(run => run.length));
+  const fence = '`'.repeat(Math.max(3, longestRun + 1));
+  return [
+    'Selected element (the user picked it on the page, and the request below is about it):', // i18n-ignore: part of the context block sent to the agent
+    ...(target.page ? [`- Page: ${oneLine(target.page)}${target.viewportWidth ? `, picked at ${target.viewportWidth} px wide` : ''}`] : []), // i18n-ignore: part of the context block sent to the agent
+    ...(source ? [`- Source: ${source}`] : []), // i18n-ignore: part of the context block sent to the agent
+    ...(marker ? [`- Marker: @${marker}`] : []), // i18n-ignore: part of the context block sent to the agent
+    ...(instances > 1 ? [`- Rendered ${instances} times from this one source tag (a loop, or a partial used more than once): a change to it changes all ${instances}`] : []), // i18n-ignore: part of the context block sent to the agent
+    `- Element: ${descriptor}`, // i18n-ignore: part of the context block sent to the agent
+    `- DOM path: ${domPath}`, // i18n-ignore: part of the context block sent to the agent
+    ...(locked ? ['- Locked by the user: restyle it freely, but do not move, remove or restructure it unless the request asks for that'] : []), // i18n-ignore: part of the context block sent to the agent
+    ...(element ? [`- ${styleHint(element, target.viewportWidth)}`] : []),
+    '- HTML:',
+    `${fence}html`,
+    snippet,
+    fence
+  ].join('\n');
 }
 
 /** One of the rail's panel buttons; `token` names its colour, and `fallback` stands in where a theme has none. */
@@ -223,6 +345,8 @@ interface RailButton {
   token: string | null;
   fallback?: string;
   unread?: boolean;
+  /** Why the panel can't open for this project; the button is disabled and says so. */
+  unavailable?: string;
 }
 
 /**
@@ -261,6 +385,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   const t = useTranslations('workspace');
   const tc = useTranslations('common');
   const tp = useTranslations('preview');
+  const tcanvas = useTranslations('canvas');
   const { number } = useLocalFormat();
   // The page the preview is on, for suggestions that are scoped to particular pages. Null until the
   // preview reports one, which selectPromptSuggestions reads as "offer everything".
@@ -399,9 +524,55 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
    */
   const mobileViewportRef = useRef(false);
   mobileViewportRef.current = mobileViewport;
+  /** Canvas's handle, in the shape of the preview's: what the Inspector addresses while Canvas has it. */
+  const canvasRef = useRef<CanvasPanelHandle | null>(null);
+  /**
+   * `/overrides.css` as the Inspector last wrote it, until a write that recompiles carries it. A page
+   * Live Preview loads without a recompile (a link followed inside it) is built from the compile's
+   * copy, so it is given this one.
+   */
+  const overridesRef = useRef<{ css: string; marks: OverrideMark[] } | null>(null);
+  const resendOverrides = useCallback((preview: MultipagePreviewHandle | null) => {
+    const held = overridesRef.current;
+    if (held) preview?.sendToFrame({ type: 'overrides-preview', css: held.css, marks: held.marks });
+  }, []);
+  /**
+   * The surface the desktop Inspector reads: the one that made the last pick. Replies from the other
+   * one are dropped, or node ids from the wrong document would reach the Elements tree. The phone
+   * layout has no Canvas.
+   */
+  const inspectTargetRef = useRef<'preview' | 'canvas'>('preview');
+  /** The surface the Inspector reads now: the one that picked last, or the other when that one is closed. */
+  const inspectTarget = useCallback((): 'preview' | 'canvas' => {
+    if (inspectTargetRef.current === 'canvas') return canvasRef.current ? 'canvas' : 'preview';
+    return desktopPreviewRef.current || !canvasRef.current ? 'preview' : 'canvas';
+  }, []);
   const inspectorTargets = useCallback(() => (mobileViewportRef.current
     ? { panel: mobileElementsPanelRef.current, preview: mobilePreviewRef.current, surface: 'mobile' as const }
-    : { panel: elementsPanelRef.current, preview: desktopPreviewRef.current, surface: 'desktop' as const }), []);
+    : {
+        panel: elementsPanelRef.current,
+        preview: inspectTarget() === 'canvas' ? canvasRef.current : desktopPreviewRef.current,
+        surface: 'desktop' as const,
+      }), [inspectTarget]);
+  /**
+   * The desktop Inspector moves to the surface that made a pick. That surface's document numbers its
+   * elements its own way, so the tree reads that document rather than keep the other one's rows.
+   */
+  const inspectOn = useCallback((target: 'preview' | 'canvas') => {
+    if (inspectTargetRef.current === target) return;
+    inspectTargetRef.current = target;
+    elementsPanelRef.current?.handleStructureChanged();
+  }, []);
+  /**
+   * The element a structural edit left selected, by its new `data-osw-src`, for the document the
+   * recompile brings: the old document has it only where a patch showed the edit (never for a
+   * partial or a loop). Given up when the person picks another element, or none, first.
+   */
+  const pendingSelectRef = useRef<string | null>(null);
+  /** An inserted Text or Image, and what follows once it is selected: typing in it, or the image picker. */
+  const afterInsertRef = useRef<{ src: string; then: 'text' | 'image' } | null>(null);
+  /** Canvas holds a selection: a new one after none brings the Inspector on screen, not every click. */
+  const canvasSelectedRef = useRef(false);
   const generatingRef = useRef(false);
   const handleGenerateRef = useRef<((promptText?: string, images?: PendingImage[], audio?: PendingAudio[], files?: PendingFile[]) => Promise<void>) | null>(null);
   // Both declared before their handlers, which the Styles tab's callbacks need and which are defined
@@ -482,18 +653,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
     const currentProvider = agent?.provider ?? configManager.getSelectedProvider();
     const modelId = agent?.model || currentModel || configManager.getDefaultModel();
 
-    // Check cached discovered models first (has accurate modality data from API)
-    const cached = configManager.getCachedModels(currentProvider);
-    if (cached) {
-      const model = (cached.models as import('@/lib/llm/providers/types').ProviderModel[])
-        .find(m => m.id === modelId);
-      if (model?.inputModalities) return model.inputModalities;
-      if (model?.supportsVision !== undefined) {
-        return model.supportsVision ? ['text' as const, 'image' as const] : ['text' as const];
-      }
-    }
-
-    return getModelInputModalities(currentProvider, modelId);
+    return resolveInputModalities(currentProvider, modelId, configManager.getCachedModels(currentProvider));
   }, [modelConfigVersion, currentModel]);
 
   const supportsVision = inputModalities.includes('image');
@@ -511,6 +671,8 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   const storeShowFiles = useWorkspaceStore(s => s.showFiles);
   const storeShowEditor = useWorkspaceStore(s => s.showEditor);
   const storeShowPreview = useWorkspaceStore(s => s.showPreview);
+  const storeShowCanvas = useWorkspaceStore(s => s.showCanvas);
+  const canvasAvailable = useWorkspaceStore(s => s.canvasAvailable);
   const storeShowCheckpoints = useWorkspaceStore(s => s.showCheckpoints);
   // Quick edit fixes the panel set without touching the store, so it never writes into the layout
   // the studio has saved.
@@ -519,6 +681,12 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   const showFiles = !quick && storeShowFiles;
   const showEditor = !quick && storeShowEditor;
   const showPreview = quick ? quickPanels.preview || !quickPanels.chat : storeShowPreview;
+  // Not in quick edit, which keeps to chat, preview and the Inspector.
+  const showCanvas = !quick && storeShowCanvas;
+  const resolvedRuntime = projectRuntime ?? FALLBACK_RUNTIME;
+  useEffect(() => {
+    useWorkspaceStore.getState().setCanvasAvailable(canvasSupport(resolvedRuntime) !== null);
+  }, [resolvedRuntime]);
   const showCheckpoints = !quick && storeShowCheckpoints;
   const showDebugPanel = useWorkspaceStore(s => s.showDebugPanel);
   const showProjectSettingsModal = useWorkspaceStore(s => s.showProjectSettingsModal);
@@ -546,12 +714,15 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   const hasUnreadConsole = useWorkspaceStore(s => s.hasUnreadConsole);
   // A background tab is open but not on screen, which is what the console's unread dot is about.
   const consoleOnScreen = useWorkspaceStore(s => panelOnScreen(s, 'console'));
+  // Off screen, Canvas holds no live page and runs no background work.
+  const canvasOnScreen = useWorkspaceStore(s => panelOnScreen(s, 'canvas'));
   // The chat lays itself out for the whole workspace when its cell is the only one on screen.
   const chatAlone = useWorkspaceStore(s => {
     const shown = shownLayout(s);
     return shown.columns.length === 1 && shown.columns[0].cells.length === 1 && shown.columns[0].cells[0].active === 'chat';
   });
   const commands = useLayoutCommands();
+  useNoHistorySwipe();
 
   /**
    * What a control under the pointer would do to the layout, drawn over the workspace: `rail`, a rail
@@ -619,99 +790,6 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       .join(' ');
   };
 
-  const truncateHtmlSnippet = useCallback((html: string, maxLength: number = 1200) => {
-    if (!html) {
-      return '';
-    }
-    if (html.length <= maxLength) {
-      return html;
-    }
-    const headLength = Math.max(0, Math.floor(maxLength * 0.6));
-    const tailLength = Math.max(0, Math.floor(maxLength * 0.3));
-    const head = html.slice(0, headLength);
-    const tail = tailLength > 0 ? html.slice(-tailLength) : '';
-    return `${head}\n  (...truncated...)\n${tail}`;
-  }, []);
-
-  // Truncate an HTML snippet so the given marker comment stays visible with
-  // surrounding context on both sides. Used for semantic block drops where the
-  // marker's position is the whole point of the snippet — head/tail truncation
-  // would drop the marker whenever it falls in the middle of a large parent.
-  const truncateHtmlAroundMarker = useCallback((html: string, marker: string, maxLength: number = 1200) => {
-    if (!html) return '';
-    if (html.length <= maxLength) return html;
-    const markerIdx = html.indexOf(marker);
-    if (markerIdx === -1) {
-      // Fall back to head/tail when the marker isn't present
-      const headLength = Math.max(0, Math.floor(maxLength * 0.6));
-      const tailLength = Math.max(0, Math.floor(maxLength * 0.3));
-      const head = html.slice(0, headLength);
-      const tail = tailLength > 0 ? html.slice(-tailLength) : '';
-      return `${head}\n  (...truncated...)\n${tail}`;
-    }
-    const half = Math.max(0, Math.floor((maxLength - marker.length) / 2));
-    const start = Math.max(0, markerIdx - half);
-    const end = Math.min(html.length, markerIdx + marker.length + half);
-    const prefix = start > 0 ? '(...truncated...)\n' : '';
-    const suffix = end < html.length ? '\n(...truncated...)' : '';
-    return `${prefix}${html.slice(start, end)}${suffix}`;
-  }, []);
-
-  const describeFocusTarget = useCallback((target: FocusTarget) => {
-    const attributeEntries = Object.entries(target.attributes || {}).slice(0, 6);
-    if (attributeEntries.length === 0) {
-      return `<${target.tagName}>`;
-    }
-    const summary = attributeEntries
-      .map(([key, value]) => {
-        const trimmed = value.length > 40 ? `${value.slice(0, 37)}…` : value;
-        return `${key}="${trimmed}"`;
-      })
-      .join(' ');
-    return `<${target.tagName} ${summary}>`;
-  }, []);
-
-  const formatFocusContextBlock = useCallback((target: FocusTarget) => {
-    const descriptor = describeFocusTarget(target);
-    const snippet = truncateHtmlSnippet(target.outerHTML, 1200);
-    const domPath = target.domPath || '(unknown path)';
-    return [
-      'Focus context:',
-      `- Target: ${descriptor}`,
-      `- DOM path: ${domPath}`, // i18n-ignore: part of the context block sent to the agent
-      '- HTML snippet:',
-      '```html',
-      snippet,
-      '```'
-    ].join('\n');
-  }, [describeFocusTarget, truncateHtmlSnippet]);
-
-  const formatPlacedBlocksContext = useCallback((blocks: PlacedBlock[]) => {
-    if (blocks.length === 0) return '';
-    const lines = [
-      'Semantic blocks to implement:',
-      'The user has placed the following semantic blocks at specific positions in the preview. Each block\'s HTML context below contains an HTML comment marker of the form `<!-- INSERT <block name> HERE -->` at the exact drop position — implement the block at that location. The user chose this position intentionally, so honor it precisely; adapt the block\'s layout and content to fit the surrounding context, and match the existing project\'s styling, colors, fonts, and conventions. Use placeholder/sample content where needed.',
-      '',
-    ];
-    blocks.forEach((placed, index) => {
-      const block = getBlockById(placed.blockId);
-      if (!block) return;
-      lines.push(`[${index + 1}] ${block.name} (page: ${placed.page})`);
-      lines.push(`    Description: ${block.description}`); // i18n-ignore: part of the context block sent to the agent
-      if (placed.htmlContext) {
-        const marker = `<!-- INSERT ${block.name} HERE -->`;
-        const snippet = truncateHtmlAroundMarker(placed.htmlContext, marker, 1200);
-        lines.push(`    Insert position in context (look for \`${marker}\`):`);
-        lines.push('    ```html');
-        lines.push(`    ${snippet}`);
-        lines.push('    ```');
-      } else {
-        lines.push(`    Position: insert ${placed.position} ${placed.domPath}`); // i18n-ignore: part of the context block sent to the agent
-      }
-      lines.push('');
-    });
-    return lines.join('\n');
-  }, [truncateHtmlAroundMarker]);
 
   /**
    * Apply the inclusion rule to a pending write of `next` over the current selection.
@@ -727,7 +805,8 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       next,
       state.focusIncluded,
       surface,
-      supportsDirectEditing(state.projectRuntime),
+      // Resolved as the preview compiles it: a project whose settings name no runtime still has the toolbar.
+      supportsDirectEditing(state.projectRuntime ?? FALLBACK_RUNTIME),
     ));
   }, []);
 
@@ -754,6 +833,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   }, [clearFocusSelection]);
 
   const handleFocusSelection = useCallback((selection: FocusContextPayload | null, surface: SelectionSurface) => {
+    if (selection?.srcAttr !== pendingSelectRef.current) pendingSelectRef.current = null;
     if (!selection) {
       clearFocusSelection(surface);
       return;
@@ -765,7 +845,8 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
     }
     const nextTarget: FocusTarget = {
       ...selection,
-      timestamp: now
+      timestamp: now,
+      surface: pickedOn(surface, inspectTarget()),
     };
     carryFocusInclusion(selection, surface);
     useWorkspaceStore.getState().setFocusContext(nextTarget);
@@ -776,16 +857,27 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
     // Asked of the surface the selection was made on, which the caller states. The mobile tree
     // can make selections now that the Inspector runs there, and the desktop instance's active
     // path is not the one this selection belongs to.
-    const madeOn = surface === 'mobile' ? mobilePreviewRef.current : desktopPreviewRef.current;
+    const madeOn = surface === 'mobile' ? mobilePreviewRef.current : inspectorTargets().preview;
     focusPathRef.current = madeOn?.getActivePath?.() ?? null;
-  }, [carryFocusInclusion, clearFocusSelection]);
+  }, [carryFocusInclusion, clearFocusSelection, inspectorTargets, inspectTarget]);
 
   // One handler per mount, so the surface is stated in the JSX that already knows it rather than
   // guessed at from a viewport. `onFocusSelection` takes a one-argument callback, so this is also
   // the only place the extra argument can come from.
-  const handleDesktopFocusSelection = useCallback(
-    (selection: FocusContextPayload | null) => handleFocusSelection(selection, 'desktop'),
-    [handleFocusSelection]);
+  const handleDesktopFocusSelection = useCallback((selection: FocusContextPayload | null) => {
+    // A pick in the preview gives it the Inspector; letting go of one is the preview's only while it has it.
+    if (selection) inspectOn('preview');
+    else if (inspectTarget() !== 'preview') return;
+    handleFocusSelection(selection, 'desktop');
+  }, [handleFocusSelection, inspectTarget, inspectOn]);
+  /** A pick on Canvas: the Inspector reads Canvas now, and a first pick brings it on screen. */
+  const handleCanvasFocusSelection = useCallback((selection: FocusContextPayload | null) => {
+    if (selection) inspectOn('canvas');
+    else if (inspectTarget() !== 'canvas') return;
+    handleFocusSelection(selection, 'desktop');
+    if (selection && !canvasSelectedRef.current) useWorkspaceStore.getState().revealPanel('elements');
+    canvasSelectedRef.current = !!selection;
+  }, [handleFocusSelection, inspectTarget, inspectOn]);
   const handleMobileFocusSelection = useCallback(
     (selection: FocusContextPayload | null) => handleFocusSelection(selection, 'mobile'),
     [handleFocusSelection]);
@@ -801,9 +893,9 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       return;
     }
     carryFocusInclusion(payload, 'desktop');
-    useWorkspaceStore.getState().setFocusContext({ ...payload, timestamp: now });
+    useWorkspaceStore.getState().setFocusContext({ ...payload, timestamp: now, surface: pickedOn(inspectorTargets().surface, inspectTarget()) });
     lastFocusSignatureRef.current = { signature: focusSignature(payload), timestamp: now };
-  }, [carryFocusInclusion, clearFocusSelection]);
+  }, [carryFocusInclusion, clearFocusSelection, inspectorTargets, inspectTarget]);
 
   // The Elements panel is a sibling of the preview in the panel map, so the frame's tree replies
   // have to be lifted through here. Stable identities: `onTreeLevel`/`onTreeStale` sit in the
@@ -847,6 +939,16 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   const handleFrameReady = useCallback(() => {
     const { panel, preview, surface } = inspectorTargets();
     panel?.handleFrameReady();
+    // A structural edit the old document could not show: its element, by where it now is.
+    const pending = pendingSelectRef.current;
+    if (pending) {
+      pendingSelectRef.current = null;
+      // The patched document may have selected it already: the answer, with this document's node
+      // id, must not be dropped as a repeat of that pick.
+      lastFocusSignatureRef.current = null;
+      sendToPreviewFrame({ type: 'select-src', src: pending });
+      return;
+    }
     // A recompile mints a new document, so the `nodeId` in the focus context is dead while the
     // context itself survives — nothing clears it on frame-ready. `domPath` is the handle that
     // outlives the document, and this turns it back into one the frame can be asked about. The
@@ -863,6 +965,50 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
     }
     sendToPreviewFrame({ type: 'selection-resolve', domPath: action.domPath });
   }, [sendToPreviewFrame, clearFocusSelection, inspectorTargets]);
+
+  /** The desktop preview's Inspector replies, taken only while the Inspector reads the preview. */
+  const previewInspector = useMemo(() => {
+    const only = <M,>(fn: (m: M) => void) => (m: M) => { if (inspectTarget() === 'preview') fn(m); };
+    return {
+      treeLevel: only(handleTreeLevel),
+      treeLevels: only(handleTreeLevels),
+      treeStale: only(() => handleTreeStale()),
+      styleComputed: only(handleStyleComputed),
+      styleProbeResult: only(handleStyleProbeResult),
+      selectionResolved: only(handleSelectionResolved),
+      frameReady: () => {
+        resendOverrides(desktopPreviewRef.current);
+        if (inspectTarget() === 'preview') handleFrameReady();
+      },
+    };
+  }, [handleTreeLevel, handleTreeLevels, handleTreeStale, handleStyleComputed, handleStyleProbeResult, handleSelectionResolved, handleFrameReady, inspectTarget, resendOverrides]);
+
+  const handleMobileFrameReady = useCallback(() => {
+    resendOverrides(mobilePreviewRef.current);
+    handleFrameReady();
+  }, [handleFrameReady, resendOverrides]);
+
+  /** Canvas's Inspector replies, from the artboard it is reading, taken only while the Inspector reads Canvas. */
+  const handleCanvasInspectorMessage = useCallback((message: PreviewMessage) => {
+    if (inspectTarget() !== 'canvas') return;
+    switch (message.type) {
+      case 'tree-level': handleTreeLevel(message); return;
+      case 'tree-levels': handleTreeLevels(message); return;
+      case 'tree-stale': handleTreeStale(); return;
+      case 'style-computed': handleStyleComputed(message); return;
+      case 'style-probe-result': handleStyleProbeResult(message); return;
+      case 'selection-resolved': handleSelectionResolved(message); return;
+    }
+  }, [handleTreeLevel, handleTreeLevels, handleTreeStale, handleStyleComputed, handleStyleProbeResult, handleSelectionResolved, inspectTarget]);
+
+  const handleCanvasFrameReady = useCallback(() => {
+    if (inspectTarget() === 'canvas') handleFrameReady();
+  }, [handleFrameReady, inspectTarget]);
+
+  /** Canvas's Inspector reads another artboard: the tree reads that artboard's document. */
+  const handleCanvasInspectedBoardChange = useCallback(() => {
+    if (inspectTarget() === 'canvas') elementsPanelRef.current?.handleStructureChanged();
+  }, [inspectTarget]);
 
   /**
    * A button on the preview toolbar was pressed.
@@ -921,7 +1067,21 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
     useWorkspaceStore.getState().revealPanel('preview');
   }, [quick]);
 
-  /** Desktop only. Arms the preview's element picker from the Inspector's empty state. */
+  /**
+   * The surface the Inspector's `Select element` button addresses (see {@link selectElementSurface}).
+   * The phone layout has no Canvas, whatever the hidden desktop layout shows.
+   */
+  const selectElementTarget = useCallback(() => {
+    const store = useWorkspaceStore.getState();
+    return selectElementSurface({
+      canvas: !quick && store.canvasAvailable && !mobileViewportRef.current,
+      previewOnScreen: panelOnScreen(store, 'preview'),
+      canvasOnScreen: panelOnScreen(store, 'canvas'),
+      target: inspectTarget(),
+    });
+  }, [quick, inspectTarget]);
+
+  /** Arms the preview's element picker from the Inspector's empty state, or on desktop puts Canvas in its Select tool. */
   const handleArmFocusTool = useCallback(() => {
     // The hover preview belongs to the gesture that is now over. Cleared before the panel work,
     // because opening a panel is what decides the strip's contents.
@@ -931,63 +1091,206 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
     // button clears them on the way in too; this is the guarantee that does not depend on it.
     store.setFocusToolHinted(false);
     const press = focusToolPress({ armed: store.focusToolArmed });
+    if (press.armed && selectElementTarget() === 'canvas') {
+      store.revealPanel('canvas');
+      canvasRef.current?.selectTool();
+      return;
+    }
     if (press.openPreview) handleOpenPreviewPanel();
     store.setFocusToolArmed(press.armed);
-  }, [handleSidebarHover, handleOpenPreviewPanel]);
+  }, [handleSidebarHover, handleOpenPreviewPanel, selectElementTarget]);
 
   /** The pointer is on that button. See {@link previewHoverHighlight} for why this is two cases. */
   const handleSelectElementHover = useCallback((hovering: boolean) => {
     const store = useWorkspaceStore.getState();
+    const surface = selectElementTarget();
     // The preview *panel* highlight below says where the press sends you; this says which control in
     // that panel it is about. One signal drives both, so the crosshair's tint cannot outlive the
-    // panel outline — and it is written before the switch, whose every case returns.
-    store.setFocusToolHinted(hovering);
-    switch (previewHoverHighlight({ hovering, previewOpen: panelOnScreen(store, 'preview') })) {
+    // panel outline, and it is written before the switch, whose every case returns. The crosshair
+    // is Live Preview's; Canvas has none to tint.
+    store.setFocusToolHinted(hovering && surface === 'preview');
+    switch (previewHoverHighlight({ hovering, previewOpen: panelOnScreen(store, surface) })) {
       case 'panel':
-        store.setPanelHint({ kind: 'outline', panel: 'preview' });
+        store.setPanelHint({ kind: 'outline', panel: surface });
         return;
       case 'route':
-        handleSidebarHover('preview', 'reveal');
+        handleSidebarHover(surface, 'reveal');
         return;
       case 'clear':
         handleSidebarHover(null);
         return;
     }
-  }, [handleSidebarHover]);
+  }, [handleSidebarHover, selectElementTarget]);
+
+  /**
+   * Undo and redo for the Inspector's writes, for this project. Checked against the files before it
+   * writes anything back (see `EditJournal`), so it never undoes over the agent's or the editor's work.
+   */
+  const journal = useMemo(() => new EditJournal({
+    read: async (path) => {
+      try {
+        return (await vfs.fileExists(project.id, path)) ? asText((await vfs.readFile(project.id, path)).content) : null;
+      } catch {
+        return null;
+      }
+    },
+    write: async (path, content, silent) => {
+      if (await vfs.fileExists(project.id, path)) await vfs.updateFile(project.id, path, content, { silent });
+      else await vfs.createFile(project.id, path, content, { silent });
+    },
+    remove: async (path, silent) => { await vfs.deleteFile(project.id, path, { silent }); },
+  }), [project.id]);
+
+  /** The file as it is now, which the Styles tab lays changes it has not written yet over. */
+  const overridesText = useMemo(() => new OverridesText(async () => (
+    (await vfs.fileExists(project.id, OVERRIDES_PATH)) ? asText((await vfs.readFile(project.id, OVERRIDES_PATH)).content) : ''
+  )), [project.id]);
+  const readOverridesText = useCallback(() => overridesText.read(), [overridesText]);
+
+  useEffect(() => {
+    // A write that is not silent: the agent, the editor, a sync, or a page the Styles tab stamped.
+    const compiled = () => { overridesRef.current = null; overridesText.drop(); };
+    window.addEventListener('filesChanged', compiled);
+    return () => window.removeEventListener('filesChanged', compiled);
+  }, [overridesText]);
+  /**
+   * `/overrides.css` as the Styles tab shows it, reaching every frame showing the project, Live Preview
+   * and Canvas alike: a write's result, or a change not yet written.
+   */
+  const broadcastOverrides = useCallback((css: string, marks: OverrideMark[] = [], unmarks: string[] = []) => {
+    overridesRef.current = { css, marks };
+    const message = { type: 'overrides-preview' as const, css, marks, unmarks };
+    desktopPreviewRef.current?.sendToFrame(message);
+    mobilePreviewRef.current?.sendToFrame(message);
+    canvasRef.current?.sendToFrame(message);
+  }, []);
+
+  useEffect(() => {
+    // The agent's `style` command writes the file silently, as the Styles tab does, and is shown the
+    // same way: the new rules go to every frame without a recompile.
+    const written = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId?: string; css?: string }>).detail;
+      if (!detail || detail.projectId !== project.id || typeof detail.css !== 'string') return;
+      overridesText.set(detail.css);
+      broadcastOverrides(detail.css);
+      elementsPanelRef.current?.handleOverridesChanged();
+      mobileElementsPanelRef.current?.handleOverridesChanged();
+    };
+    window.addEventListener(OVERRIDES_WRITTEN_EVENT, written);
+    return () => window.removeEventListener(OVERRIDES_WRITTEN_EVENT, written);
+  }, [project.id, overridesText, broadcastOverrides]);
+
+  const afterJournal = useCallback((outcome: JournalOutcome, way: 'undo' | 'redo') => {
+    if (!outcome.ok) {
+      if (outcome.reason === 'changed') toast(t(way === 'undo' ? 'editUndoChanged' : 'editRedoChanged', { path: outcome.path }));
+      if (outcome.reason === 'failed') toast.error(t(way === 'undo' ? 'editUndoFailed' : 'editRedoFailed', { path: outcome.path }));
+      return;
+    }
+    const css = outcome.written.find(write => write.path === OVERRIDES_PATH);
+    if (css) {
+      overridesText.set(css.content ?? '');
+      broadcastOverrides(css.content ?? '');
+    }
+    elementsPanelRef.current?.handleOverridesChanged();
+    mobileElementsPanelRef.current?.handleOverridesChanged();
+  }, [broadcastOverrides, overridesText, t]);
+
+  useEffect(() => {
+    setEditHistory({
+      projectId: project.id,
+      record: (group, kind, write) => journal.record(group, kind, write),
+      undoAt: () => journal.undoAt(),
+      redoAt: () => journal.redoAt(),
+      undo: () => { void journal.undo().then(outcome => afterJournal(outcome, 'undo')); },
+      redo: () => { void journal.redo().then(outcome => afterJournal(outcome, 'redo')); },
+    });
+    return () => setEditHistory(null);
+  }, [journal, afterJournal, project.id]);
+
+  /**
+   * The Styles tab's Remove unused: the rules of markers no file has any more go, as one undo step,
+   * and the frames get the file without them. Not while the agent is writing, which races it.
+   */
+  const handleSweepOverrides = useCallback(async (): Promise<number | null> => {
+    if (useWorkspaceStore.getState().isProjectGenerating(project.id)) return null;
+    const group = `sweep:${Date.now()}`;
+    const { removed, css } = await sweepUnusedOverrides(project.id, { record: (write) => journal.record(group, 'style', write) });
+    if (css !== null && removed.length > 0) {
+      overridesText.set(css);
+      broadcastOverrides(css);
+      elementsPanelRef.current?.handleOverridesChanged();
+      mobileElementsPanelRef.current?.handleOverridesChanged();
+    }
+    return removed.length;
+  }, [project.id, journal, overridesText, broadcastOverrides]);
 
   /** isGenerating injected because lib/direct-edit/ must not import lib/stores/. */
   const applyStyle = useMemo(
     () => buildApplyStyle(project.id, {
-      apply: applyStyleOverride,
+      apply: (...args) => overridesText.track(() => applyStyleOverride(...args), result => (result.ok ? result.css : undefined)),
       isGenerating: () => useWorkspaceStore.getState().isProjectGenerating(project.id),
+      record: (group, write) => journal.record(group, 'style', write),
     }),
-    [project.id],
-  );
-
-  /** Separate from applyStyle; different arguments and independently optional. */
-  const removeStyle = useMemo(
-    () => buildRemoveStyle(project.id, {
-      remove: removeStyleOverride,
-      isGenerating: () => useWorkspaceStore.getState().isProjectGenerating(project.id),
-    }),
-    [project.id],
+    [project.id, journal, overridesText],
   );
 
   /**
-   * What `/overrides.css` already declares for one element — the Styles tab's Reset, after a reload.
+   * The Styles tab's variable edits: written into the stylesheet that declares the variable, and
+   * recorded for undo. Writes to one variable in quick succession (a colour being dragged) are one
+   * undo step; a write given its step (`step`) goes in that one.
+   */
+  const variableGesture = useRef<{ key: string; group: string; at: number } | null>(null);
+  const applyVariableEdit = useCallback((def: VariableDefinition, value: string, step?: string) => {
+    const key = variableKey(def);
+    const now = Date.now();
+    const last = variableGesture.current;
+    const group = step ?? (last && last.key === key && now - last.at < 1500 ? last.group : `variable:${now}:${Math.random().toString(36).slice(2)}`);
+    if (!step) variableGesture.current = { key, group, at: now };
+    return applyVariable(project.id, def, value, {
+      isGenerating: () => useWorkspaceStore.getState().isProjectGenerating(project.id),
+      record: (write) => journal.record(group, 'style', write),
+    });
+  }, [project.id, journal]);
+
+  /** A variable's value shown on every frame before its stylesheet is written; `null` takes it back. */
+  const previewVariable = useCallback((name: string, value: string | null) => {
+    const message = { type: 'variable-preview' as const, name, value };
+    desktopPreviewRef.current?.sendToFrame(message);
+    mobilePreviewRef.current?.sendToFrame(message);
+    canvasRef.current?.sendToFrame(message);
+  }, []);
+
+  /**
+   * What `/overrides.css` already holds for one element, at every width: the Styles tab's dots and
+   * Reset, after a reload.
    *
-   * Bound to the project like the two above, but with no generation gate: it reads a file and writes
+   * Bound to the project like the write, but with no generation gate: it reads a file and writes
    * nothing, and the removal it enables is gated where the race actually is.
    */
   const readOverrides = useMemo(
-    () => (markerId: string) => readOverriddenProperties(project.id, markerId),
+    () => (markerId: string) => readMarkerOverrides(project.id, markerId),
     [project.id],
   );
 
   // Re-read on every file change: a token the agent just renamed must not go on being offered.
   // Only while the panel is open — the read pulls every file's content out of storage, and the
   // panel is closed by default, so nobody who is not using this pays for it.
-  const colorTokens = useProjectColorTokens(showElements ? project.id : null, refreshTrigger);
+  const styleFacts = useProjectStyleFacts(showElements || activeMobilePanel === 'elements' ? project.id : null, refreshTrigger);
+  const colorTokens = styleFacts.colorTokens;
+
+  /**
+   * Applies to, on the surface the Inspector reads: Canvas moves the selection to the artboard of a
+   * width in that scope; Live Preview shows the page at a device size in it.
+   */
+  const handleStyleScope = useCallback((scope: OverrideScope) => {
+    if (inspectTarget() === 'canvas') {
+      canvasRef.current?.moveToScope(scope, styleFacts.breakpoints);
+      return;
+    }
+    const devices = [['mobile', CANVAS_DEVICES.phone.w], ['tablet', CANVAS_DEVICES.tablet.w], ['desktop', CANVAS_DEVICES.desktop.w]] as const;
+    const fit = devices.find(([, width]) => scopeOfWidth(width, styleFacts.breakpoints) === scope);
+    if (fit) desktopPreviewRef.current?.setDevice(fit[0]);
+  }, [inspectTarget, styleFacts.breakpoints]);
 
   /**
    * The bytes behind the selected image, for the Styles tab's CONTENT preview.
@@ -1061,11 +1364,13 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
   const handleReplaceImage = useCallback(async (path: string, confirmedMultiInstance: boolean) => {
     const focus = useWorkspaceStore.getState().focusContext;
     if (!focus) return { ok: false, reason: 'unresolvable' as const, filesWritten: [] };
+    const group = newGroup();
     return applyImageSrc(project.id, toPreviewSelection(focus), path, {
       confirmedMultiInstance,
       isGenerating: () => useWorkspaceStore.getState().isProjectGenerating(project.id),
+      record: write => journal.record(group, 'image', write),
     });
-  }, [project.id]);
+  }, [project.id, journal]);
 
   /**
    * What the selected element says, for the toolbar's **Text** popover.
@@ -1085,20 +1390,211 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
    *
    * Reads the selection at call time rather than closing over it, for the same reason the Replace
    * write does: the dialog can outlive the click that opened it, and the write must be against the
-   * element it is about.
+   * element it is about. `asked` is that element when a confirmation toast, not the dialog, asked.
    *
    * **Not silent.** This writes a source file, so every `data-osw-src` after the edit shifts and the
    * recompile is what makes the preview and the toolbar agree with the file again. Nothing here asks
    * for the toolbar back: it returns through the `selection-resolve` handshake on frame-ready.
    */
-  const handleApplyText = useCallback(async (text: string, confirmedMultiInstance: boolean) => {
-    const focus = useWorkspaceStore.getState().focusContext;
+  const handleApplyText = useCallback(async (text: string, confirmedMultiInstance: boolean, asked?: FocusTarget | null) => {
+    const focus = asked ?? useWorkspaceStore.getState().focusContext;
     if (!focus) return { ok: false, reason: 'unresolvable' as const, filesWritten: [] };
+    const group = newGroup();
     return applyText(project.id, toPreviewSelection(focus), text, {
       confirmedMultiInstance,
       isGenerating: () => useWorkspaceStore.getState().isProjectGenerating(project.id),
+      record: write => journal.record(group, 'text', write),
     });
-  }, [project.id]);
+  }, [project.id, journal]);
+
+  // ---------- structure: Canvas and the Elements tab ----------
+
+  /** What Copy style took: the element's override blocks, by width. */
+  const [styleClip, setStyleClip] = useState<Map<OverrideScope, Record<string, string>> | null>(null);
+  const styleClipRef = useRef(styleClip);
+  styleClipRef.current = styleClip;
+
+  const structureRefusal = useCallback((result: StructureApplyResult): string => {
+    switch (result.reason) {
+      case 'locked': return t('structure.refused.locked');
+      case 'crosses-template': return t('structure.refused.crossesTemplate');
+      case 'into-itself': return t('structure.refused.intoItself');
+      case 'not-a-frame': return t('structure.refused.notAFrame');
+      case 'no-place': return t('structure.refused.noPlace');
+      case 'cross-file': return t('structure.refused.crossFile');
+      case 'unclosed': return t('structure.refused.unclosed', { file: result.file ?? '' });
+      case 'stale-index': return t('structure.refused.stale');
+      case 'missing-file': return t('structure.refused.missing', { file: result.file ?? '' });
+      case 'generating': return t('structure.refused.generating');
+      case 'ambiguous-stylesheet': return t('structure.refused.stylesheet', { message: result.message ?? '' });
+      default: return t('structure.refused.unresolvable');
+    }
+  }, [t]);
+
+  /**
+   * One structural edit: written, shown in every frame at once where it can be, and the element it
+   * leaves selected. `target` names the element when it is not the selection (a dragged tree row).
+   */
+  const runStructure = useCallback(async (
+    op: StructureOp,
+    opts: {
+      target?: PreviewSelection;
+      confirmed?: boolean;
+      instances?: number;
+      /** Told of the write, once it is made: after the confirmation, where one was asked for. */
+      onWritten?: (result: StructureApplyResult) => void;
+    } = {},
+  ): Promise<void> => {
+    const focus = useWorkspaceStore.getState().focusContext;
+    const placing = op.kind === 'insert' || op.kind === 'block';
+    const selection = placing ? null : opts.target ?? (focus ? toPreviewSelection(focus) : null);
+    if (!placing && !selection?.srcAttr) {
+      toast(t('structure.refused.unresolvable'));
+      return;
+    }
+    const group = newGroup();
+    let result: StructureApplyResult;
+    try {
+      result = await applyStructure(project.id, selection, op, {
+        confirmed: opts.confirmed,
+        instances: opts.instances,
+        isGenerating: () => useWorkspaceStore.getState().isProjectGenerating(project.id),
+        record: write => journal.record(group, 'structure', write),
+      });
+    } catch (error) {
+      logger.error('[Workspace] A structural edit could not be written:', error);
+      toast.error(t('structure.refused.writeFailed', { message: error instanceof Error ? error.message : String(error) }));
+      return;
+    }
+    if (!result.ok) {
+      if (result.reason === 'needs-confirmation') {
+        const shared = result.file?.startsWith('/templates/') && (result.instances ?? 1) <= 1;
+        // On the element asked about: the toast outlives the selection that raised it.
+        toast(shared ? t('structure.confirmShared', { file: result.file ?? '' }) : t('structure.confirmMany', { count: result.instances ?? 2 }), {
+          action: { label: t('structure.confirmAction'), onClick: () => { void runStructure(op, { ...opts, target: selection ?? undefined, confirmed: true }); } },
+        });
+        return;
+      }
+      toast.error(structureRefusal(result));
+      return;
+    }
+    opts.onWritten?.(result);
+    if (typeof result.css === 'string') {
+      overridesText.set(result.css);
+      broadcastOverrides(result.css);
+    }
+    if (result.patch) {
+      const message = { type: 'structure-patch' as const, ...result.patch };
+      desktopPreviewRef.current?.sendToFrame(message);
+      mobilePreviewRef.current?.sendToFrame(message);
+      canvasRef.current?.sendToFrame(message);
+    }
+    const { panel, surface } = inspectorTargets();
+    panel?.handleStructureChanged();
+    // Selected again in the recompiled document, patched or not: a frame the patch did not apply to
+    // never has the element, and nothing reads its answer. An edit that wrote nothing is followed by
+    // no recompile, so it leaves a selection still waiting for an earlier one as it was.
+    if (result.filesWritten?.length) pendingSelectRef.current = result.select ?? null;
+    if (result.select) {
+      // A patched frame has the element now.
+      if (result.patch) sendToPreviewFrame({ type: 'select-src', src: result.select });
+      if (op.kind === 'insert' && (op.element === 'text' || op.element === 'image')) {
+        afterInsertRef.current = { src: result.select, then: op.element };
+      }
+    } else if (result.select === null && (!opts.target || opts.target.srcAttr === focus?.srcAttr)) {
+      // Only when the edit was on the selection: removing another element, a placed block's
+      // placeholder for one, leaves the selection as it was.
+      clearFocusSelection(surface);
+      sendToPreviewFrame({ type: 'selection-clear' });
+    }
+  }, [project.id, journal, t, structureRefusal, overridesText, broadcastOverrides, inspectorTargets, sendToPreviewFrame, clearFocusSelection]);
+
+  // A new Text is typed into where it was made, a new Image gets its picker: once it is the selection.
+  useEffect(() => {
+    const after = afterInsertRef.current;
+    if (!after || focusContext?.srcAttr !== after.src) return;
+    afterInsertRef.current = null;
+    if (after.then === 'image') { setImagePickerOpen(true); return; }
+    if (!mobileViewportRef.current && inspectTarget() === 'canvas') canvasRef.current?.editTextAt(after.src);
+    else setTextPopoverOpen(true);
+  }, [focusContext, inspectTarget]);
+
+  /** Every width's overrides of `element` (from Canvas), or of the selection, for Paste style. */
+  const copyStyle = useCallback(async (element?: FocusContextPayload) => {
+    const marker = (element ?? useWorkspaceStore.getState().focusContext)?.attributes?.[MARKER_ATTR];
+    const read = marker ? await readMarkerOverrides(project.id, marker) : null;
+    const count = read ? [...read.byScope.values()].reduce((n, bag) => n + Object.keys(bag).length, 0) : 0;
+    if (!read || count === 0) { toast(t('structure.nothingToCopy')); return; }
+    setStyleClip(read.byScope);
+    toast(t('structure.copied', { count }));
+  }, [project.id, t]);
+
+  /**
+   * Every width's block Copy style took, onto the selection, or onto `asked`: the element Canvas
+   * names, or the one a confirmation was about. One undo step.
+   */
+  const pasteStyle = useCallback(async (confirmed = false, asked?: FocusContextPayload) => {
+    const clip = styleClipRef.current;
+    const focus = asked ?? useWorkspaceStore.getState().focusContext;
+    if (!clip || !focus) return;
+    const group = newGroup();
+    let markerId = focus.attributes?.[MARKER_ATTR] ?? null;
+    let css: string | undefined;
+    for (const [scope, bag] of clip) {
+      const changes = Object.entries(bag).map(([property, value]) => ({ property, value }));
+      const result = await applyStyle(focus, changes, { scope, markerId, confirmedMultiInstance: confirmed, group });
+      if (!result.ok) {
+        if (result.reason === 'needs-confirmation') {
+          toast(t('structure.confirmMany', { count: result.instances ?? 2 }), {
+            action: { label: t('structure.confirmAction'), onClick: () => { void pasteStyle(true, focus); } },
+          });
+        } else {
+          toast.error(structureRefusal(result));
+        }
+        break;
+      }
+      markerId = result.markerId ?? markerId;
+      if (typeof result.css === 'string') css = result.css;
+    }
+    if (css !== undefined) broadcastOverrides(css);
+    inspectorTargets().panel?.handleOverridesChanged();
+  }, [applyStyle, broadcastOverrides, inspectorTargets, structureRefusal, t]);
+
+  /** What the element menu, the Canvas keys and the Elements tab's structure toolbar ask for. */
+  const handleElementAction = useCallback((action: ElementAction, target?: PreviewSelection) => {
+    const focus = useWorkspaceStore.getState().focusContext;
+    switch (action) {
+      case 'move-up': void runStructure({ kind: 'step', dir: -1 }, { target }); return;
+      case 'move-down': void runStructure({ kind: 'step', dir: 1 }, { target }); return;
+      case 'wrap':
+      case 'unwrap':
+      case 'duplicate':
+      case 'delete':
+        void runStructure({ kind: action }, { target });
+        return;
+      case 'copy-style': void copyStyle(); return;
+      case 'paste-style': void pasteStyle(); return;
+      case 'include':
+      case 'edit-text':
+        if (focus) handleToolbarAction({ type: 'toolbar-action', action: action === 'include' ? 'include' : 'text', nodeId: focus.nodeId });
+        return;
+      default:
+    }
+  }, [runStructure, copyStyle, pasteStyle, handleToolbarAction]);
+
+  /** Text typed in place on an artboard: the same write the popover makes, on the selection or the element a confirmation was about. */
+  const handleCanvasTextEdited = useCallback(async (text: string, confirmed = false, asked?: FocusTarget | null) => {
+    const focus = asked ?? useWorkspaceStore.getState().focusContext;
+    const result = await handleApplyText(text, confirmed, focus);
+    if (result.ok) return;
+    if (result.reason === 'needs-confirmation') {
+      toast(t('structure.confirmMany', { count: result.instances ?? 2 }), {
+        action: { label: t('structure.confirmAction'), onClick: () => { void handleCanvasTextEdited(text, true, focus); } },
+      });
+      return;
+    }
+    toast.error(structureRefusal(result));
+  }, [handleApplyText, structureRefusal, t]);
 
   const handleRefreshPreviewForStyles = useCallback(() => {
     useWorkspaceStore.getState().bumpRefreshTrigger();
@@ -1108,8 +1604,30 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
     useWorkspaceStore.getState().setPaletteOpen(!useWorkspaceStore.getState().paletteOpen);
   }, []);
 
-  const handlePlacementComplete = useCallback((payload: PlacementResult) => {
-    const currentPage = previewRef.current?.getActivePath?.() || '/';
+  /**
+   * A block placed in Live Preview, or on a Canvas artboard showing `page`. On a page with source
+   * positions its placeholder is written there (one undo step, every frame patched), and the chip
+   * comes once the write is made.
+   */
+  const handlePlacementComplete = useCallback((payload: PlacementResult, page?: string) => {
+    if ('place' in payload) {
+      const block = getBlockById(payload.blockId);
+      if (!block) return;
+      if (!isPlace(payload.place)) { toast(t('structure.blockNoPlace')); return; }
+      const where = page ?? (typeof payload.page === 'string' ? payload.page : null) ?? (previewRef.current?.getActivePath?.() || '/');
+      const placementId = newPlacementId(block.id);
+      inspectTargetRef.current = page ? 'canvas' : 'preview';
+      void runStructure({ kind: 'block', place: payload.place, block: block.id, placementId }, {
+        instances: Math.max(1, Number(payload.instances) || 1),
+        onWritten: (result) => {
+          const file = result.file;
+          if (!file) return;
+          useWorkspaceStore.setState(s => ({ placedBlocks: [...s.placedBlocks, { blockId: block.id, placementId, page: where, file }] }));
+        },
+      });
+      return;
+    }
+    const currentPage = page ?? (previewRef.current?.getActivePath?.() || '/');
     useWorkspaceStore.setState(s => ({ placedBlocks: [...s.placedBlocks, {
       blockId: payload.blockId,
       placementId: payload.placementId,
@@ -1118,17 +1636,72 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       page: currentPage,
       htmlContext: payload.htmlContext,
     }] }));
-  }, []);
+  }, [runStructure, t]);
+
+  /**
+   * A placed block's placeholder, taken out: from its file as a structural delete (one undo step),
+   * or from the frames that alone showed it, Live Preview's and Canvas's artboards.
+   */
+  const removePlaceholder = useCallback(async (placed: PlacedBlock) => {
+    if (!isSourcePlaced(placed)) {
+      desktopPreviewRef.current?.removePlaceholder(placed.placementId);
+      mobilePreviewRef.current?.removePlaceholder(placed.placementId);
+      canvasRef.current?.sendToFrame({ type: 'placement-remove', placementId: placed.placementId });
+      return;
+    }
+    let at: number | null = null;
+    try {
+      at = placeholderAt(asText((await vfs.readFile(project.id, placed.file)).content), placed.placementId);
+    } catch {
+      at = null;
+    }
+    if (at === null) return;
+    await runStructure({ kind: 'delete' }, { target: { srcAttr: `${placed.file}:${at}`, tagName: 'div' }, confirmed: true });
+  }, [project.id, runStructure]);
 
   const handleRemovePlacedBlock = useCallback((placementId: string) => {
+    const placed = useWorkspaceStore.getState().placedBlocks.find(b => b.placementId === placementId);
     useWorkspaceStore.setState(s => ({ placedBlocks: s.placedBlocks.filter(b => b.placementId !== placementId) }));
-    previewRef.current?.removePlaceholder(placementId);
-  }, []);
+    if (placed) void removePlaceholder(placed);
+  }, [removePlaceholder]);
 
   const handleClearPlacedBlocks = useCallback(() => {
-    placedBlocks.forEach(b => previewRef.current?.removePlaceholder(b.placementId));
+    const placed = useWorkspaceStore.getState().placedBlocks;
     useWorkspaceStore.setState({ placedBlocks: [] });
-  }, [placedBlocks]);
+    void (async () => { for (const b of placed) await removePlaceholder(b); })();
+  }, [removePlaceholder]);
+
+  /**
+   * A placeholder deleted on the page, or its write undone, hides its chip, and coming back (a redo)
+   * shows it again. Only the latest check counts, and only for the chips it read.
+   */
+  const placementCheckRef = useRef(0);
+  useEffect(() => {
+    const check = () => {
+      const placed = useWorkspaceStore.getState().placedBlocks.filter(isSourcePlaced);
+      if (placed.length === 0) return;
+      const seq = ++placementCheckRef.current;
+      void resolvePlacedBlocks(project.id, placed).then((resolved) => {
+        if (seq !== placementCheckRef.current) return;
+        const present = new Set(resolved.flatMap(b => ('file' in b ? [b.placementId] : [])));
+        const read = new Set(placed.map(b => b.placementId));
+        useWorkspaceStore.setState((s) => {
+          let changed = false;
+          const next = s.placedBlocks.map((b) => {
+            if (!isSourcePlaced(b) || !read.has(b.placementId)) return b;
+            const missing = !present.has(b.placementId);
+            if (Boolean(b.missing) === missing) return b;
+            changed = true;
+            return { ...b, missing };
+          });
+          return changed ? { placedBlocks: next } : s;
+        });
+      });
+    };
+    window.addEventListener('filesChanged', check);
+    return () => window.removeEventListener('filesChanged', check);
+  }, [project.id]);
+  const shownPlacedBlocks = useMemo(() => placedBlocks.filter(b => !(isSourcePlaced(b) && b.missing)), [placedBlocks]);
 
   /** The preview as it is, at a width a model can read, for the composer's Screenshot item. */
   const handleCaptureContextScreenshot = useCallback(
@@ -1317,7 +1890,10 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
 
         // Initialize store persistence and load debug events
         useWorkspaceStore.getState().initPersistence(project.id);
-        useWorkspaceStore.getState().initLayout();
+        useWorkspaceStore.getState().initLayout({
+          canvas: canvasSupport(useWorkspaceStore.getState().projectRuntime ?? FALLBACK_RUNTIME) !== null,
+          front: normalizeProjectSettings(latestProject.settings).opensIn,
+        });
         useWorkspaceStore.getState().setCurrentModel(configManager.getDefaultModel());
         try {
           await useWorkspaceStore.getState().loadDebugEvents(project.id);
@@ -1849,9 +2425,11 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
     // sent message's context card *and* `/api/server-generate` (`orchestrator.ts`, `uiMeta` and
     // `executeOptions`), so ungating either read here puts an element the user only *selected* in
     // front of the agent.
-    const included = focusMessageContext(focusContext, focusIncluded, formatFocusContextBlock);
+    const source = focusIncluded && focusContext?.srcAttr ? await sourceRefOf(project.id, focusContext.srcAttr) : null;
+    const included = focusMessageContext(focusContext, focusIncluded, target => focusContextBlock(target, source));
     if (included.promptBlock) contextParts.push(included.promptBlock);
-    if (placedBlocks.length > 0) contextParts.push(formatPlacedBlocksContext(placedBlocks));
+    const blocks = placedBlocks.length > 0 ? await resolvePlacedBlocks(project.id, placedBlocks) : [];
+    if (blocks.length > 0) contextParts.push(placedBlocksPrompt(blocks));
     if (contextParts.length > 0) messageContent = contextParts.join('\n\n') + '\n\n' + messageContent;
 
     const started = await storeStartGeneration(messageContent, images, {
@@ -1859,7 +2437,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       chatMode: mode === 'chat',
       projectId: project.id,
       focusContext: included.generationFocus,
-      placedBlocks,
+      semanticBlocks: blocks.length > 0 ? sentBlocks(blocks) : undefined,
       isTourLockingInput,
       displayPrompt: (promptText ?? '').trim(),
       // Resuming an interview: keep the template's agenda available so it is
@@ -1883,10 +2461,11 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
     handleFilesChange();
     releaseFocusInclusion(surface);
     if (placedBlocks.length > 0) {
-      placedBlocks.forEach(b => previewRef.current?.removePlaceholder(b.placementId));
+      // A placeholder written into the source stays there for the agent to replace.
+      placedBlocks.forEach(b => { if (!isSourcePlaced(b)) void removePlaceholder(b); });
       useWorkspaceStore.setState({ placedBlocks: [] });
     }
-  }, [storeStartGeneration, mode, activeInterview, project.id, focusContext, focusIncluded, placedBlocks, isTourLockingInput, handleFilesChange, formatFocusContextBlock, formatPlacedBlocksContext, releaseFocusInclusion]);
+  }, [storeStartGeneration, mode, activeInterview, project.id, focusContext, focusIncluded, placedBlocks, isTourLockingInput, handleFilesChange, releaseFocusInclusion, removePlaceholder]);
 
   /**
    * The mobile composer's send.
@@ -2274,25 +2853,30 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
               { key: 'files', label: t('tabs.fileExplorer'), Icon: FolderTree, on: showFiles, token: 'files' },
               { key: 'editor', label: t('tabs.codeEditor'), Icon: Code2, on: showEditor, token: 'editor' },
               { key: 'preview', label: t('tabs.preview'), Icon: Eye, on: showPreview, token: 'preview' },
+              {
+                key: 'canvas', label: t('tabs.canvas'), Icon: Frame, on: showCanvas, token: 'canvas',
+                unavailable: canvasAvailable ? undefined : tcanvas('unavailable'),
+              },
               { key: 'elements', label: t('tabs.inspector'), Icon: ListTree, on: showElements, token: 'elements' },
               { key: 'skills', label: tc('terms.skills'), Icon: Sparkles, on: showSkillsPanel, token: 'skills', fallback: '#a855f7' },
               { key: 'console', label: t('tabs.console'), Icon: TerminalIcon, on: showConsole, token: 'terminal', fallback: '#22c55e', unread: hasUnreadConsole && !consoleOnScreen },
               { key: 'checkpoints', label: t('tabs.checkpoints'), Icon: History, on: showCheckpoints, token: 'checkpoint' },
               // Debug has no colour of its own: it is drawn in the foreground, and its tooltip is the app's.
               { key: 'debug', label: t('tabs.debugEvents'), Icon: Bug, on: showDebugPanel, token: null },
-            ] satisfies RailButton[]).map(({ key, label, Icon, on, token, fallback, unread }: RailButton) => (
+            ] satisfies RailButton[]).map(({ key, label, Icon, on, token, fallback, unread, unavailable }: RailButton) => (
               <Tip
                 key={key}
-                label={unread ? `${label} · ${t('layout.unread')}` : label}
+                label={unavailable ? `${label} · ${unavailable}` : unread ? `${label} · ${t('layout.unread')}` : label}
                 side="right"
-                tone={token ? panelTooltipStyle(token, fallback) : undefined}
+                tone={token && !unavailable ? panelTooltipStyle(token, fallback) : undefined}
               >
                 <button
-                  className={`relative h-6 w-6 px-1 rounded-sm flex items-center justify-center transition-all ${
+                  className={`relative h-6 w-6 px-1 rounded-sm flex items-center justify-center transition-all disabled:opacity-40 disabled:pointer-events-none ${
                     on
                       ? token ? 'shadow-sm' : 'bg-foreground shadow-sm'
                       : 'bg-transparent text-muted-foreground hover:bg-muted/80 hover:text-foreground'
                   }`}
+                  disabled={!!unavailable && !on}
                   style={token
                     ? { backgroundColor: on ? `var(--button-${token}-active-bg)` : undefined, color: on ? `var(--button-${token}-active-fg)` : undefined }
                     : { color: on ? 'var(--background)' : undefined }}
@@ -2345,7 +2929,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                 runtimeErrors={runtimeErrors}
                 onSendRuntimeErrors={handleSendRuntimeErrors}
                 onClearRuntimeErrors={handleClearRuntimeErrors}
-                placedBlocks={placedBlocks}
+                placedBlocks={shownPlacedBlocks}
                 onRemovePlacedBlock={handleRemovePlacedBlock}
                 onClearPlacedBlocks={handleClearPlacedBlocks}
               onCaptureContextScreenshot={handleCaptureContextScreenshot}
@@ -2388,6 +2972,34 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
               </div>
             );
 
+            if (showCanvas) panelMap.canvas = (
+              <CanvasPanel
+                ref={canvasRef}
+                projectId={project.id}
+                runtime={resolvedRuntime}
+                onClose={() => commands.close('canvas')}
+                onScreen={canvasOnScreen && !mobileViewport}
+                onFocusSelection={handleCanvasFocusSelection}
+                onToolbarAction={handleToolbarAction}
+                onToolbarHover={handleToolbarHover}
+                onInspectorMessage={handleCanvasInspectorMessage}
+                onFrameReady={handleCanvasFrameReady}
+                deploymentId={selectedDeploymentId}
+                onStructure={(op, opts) => { inspectTargetRef.current = 'canvas'; void runStructure(op, opts); }}
+                onElementAction={handleElementAction}
+                onStyleCommand={(command, nodeId, where) => inspectorTargets().panel?.styleCommand(command, nodeId, where)}
+                onStyleClip={(action, element) => { if (action === 'copy-style') void copyStyle(element); else void pasteStyle(false, element); }}
+                onInspectedBoardChange={handleCanvasInspectedBoardChange}
+                onHandleDrag={(phase, changes) => elementsPanelRef.current?.dragStyle(phase, changes)}
+                onTextEdited={(text) => { void handleCanvasTextEdited(text); }}
+                onHoverNode={(nodeId) => { if (inspectTarget() === 'canvas') elementsPanelRef.current?.highlightNode(nodeId); }}
+                canStyle={showElements}
+                canPasteStyle={styleClip !== null}
+                breakpoints={styleFacts.breakpoints}
+                onPlacementComplete={handlePlacementComplete}
+              />
+            );
+
             if (showPreview) panelMap.preview = (
               <div
                 className={fullscreenPreview
@@ -2414,15 +3026,15 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                   onFullscreen={handleEnterFullscreen}
                   isFullscreen={fullscreenPreview}
                   provenance
-                  onTreeLevel={handleTreeLevel}
-                  onTreeLevels={handleTreeLevels}
-                  onTreeStale={handleTreeStale}
-                  onSelectionResolved={handleSelectionResolved}
+                  onTreeLevel={previewInspector.treeLevel}
+                  onTreeLevels={previewInspector.treeLevels}
+                  onTreeStale={previewInspector.treeStale}
+                  onSelectionResolved={previewInspector.selectionResolved}
                   onToolbarAction={handleToolbarAction}
                   onToolbarHover={handleToolbarHover}
-                  onFrameReady={handleFrameReady}
-                  onStyleComputed={handleStyleComputed}
-                  onStyleProbeResult={handleStyleProbeResult}
+                  onFrameReady={previewInspector.frameReady}
+                  onStyleComputed={previewInspector.styleComputed}
+                  onStyleProbeResult={previewInspector.styleProbeResult}
                 />
               </div>
             );
@@ -2446,26 +3058,39 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                   ref={elementsPanelRef}
                   projectId={project.id}
                   runtime={projectRuntime || 'handlebars'}
-                  previewOpen={showPreview}
+                  previewOpen={showPreview || showCanvas}
                   onOpenPreview={handleOpenPreviewPanel}
                   sendToFrame={sendToPreviewFrame}
                   selection={focusContext}
                   applyStyle={applyStyle}
-                  removeStyle={removeStyle}
                   onReadOverrides={readOverrides}
                   colorTokens={colorTokens}
+                  onOverrides={broadcastOverrides}
+                  readOverridesText={readOverridesText}
+                  breakpoints={styleFacts.breakpoints}
+                  surfaceWidths={SURFACE_WIDTHS}
+                  onScope={handleStyleScope}
+                  fontTokens={styleFacts.fontTokens}
+                  variables={styleFacts.variables}
+                  variableUses={styleFacts.variableUses}
+                  onApplyVariable={applyVariableEdit}
+                  onPreviewVariable={previewVariable}
                   onReadText={handleReadText}
                   onApplyText={handleApplyText}
                   onReplaceImage={handleOpenImagePicker}
                   imageUrl={selectedImageUrl}
                   onOpenFile={handleOpenStyleFile}
                   onAskAgent={handleStyleAskAgent}
+                  onSweepOverrides={handleSweepOverrides}
                   onRefreshPreview={handleRefreshPreviewForStyles}
                   onSelectElement={handleArmFocusTool}
                   onSelectElementHover={handleSelectElementHover}
                   focusToolArmed={focusToolArmed}
                   activeTab={elementsTab}
                   onTabChange={setElementsTab}
+                  onElementAction={handleElementAction}
+                  onStructure={(op, target) => { void runStructure(op, { target }); }}
+                  canPasteStyle={styleClip !== null}
                 />
               </PanelContainer>
             );
@@ -2528,7 +3153,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                 runtimeErrors={runtimeErrors}
                 onSendRuntimeErrors={handleSendRuntimeErrors}
                 onClearRuntimeErrors={handleClearRuntimeErrors}
-                placedBlocks={placedBlocks}
+                placedBlocks={shownPlacedBlocks}
                 onRemovePlacedBlock={handleRemovePlacedBlock}
                 onClearPlacedBlocks={handleClearPlacedBlocks}
                 onCaptureContextScreenshot={handleCaptureContextScreenshot}
@@ -2590,7 +3215,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                     onTreeLevels={handleTreeLevels}
                     onTreeStale={handleTreeStale}
                     onSelectionResolved={handleSelectionResolved}
-                    onFrameReady={handleFrameReady}
+                    onFrameReady={handleMobileFrameReady}
                     onStyleComputed={handleStyleComputed}
                     onStyleProbeResult={handleStyleProbeResult}
                     onToolbarAction={handleToolbarAction}
@@ -2611,21 +3236,32 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                       sendToFrame={sendToPreviewFrame}
                       selection={focusContext}
                       applyStyle={applyStyle}
-                      removeStyle={removeStyle}
                       onReadOverrides={readOverrides}
                       colorTokens={colorTokens}
+                      onOverrides={broadcastOverrides}
+                      readOverridesText={readOverridesText}
+                      breakpoints={styleFacts.breakpoints}
+                      fontTokens={styleFacts.fontTokens}
+                      variables={styleFacts.variables}
+                      variableUses={styleFacts.variableUses}
+                      onApplyVariable={applyVariableEdit}
+                      onPreviewVariable={previewVariable}
                       onReadText={handleReadText}
                       onApplyText={handleApplyText}
                       onReplaceImage={handleOpenImagePicker}
                       imageUrl={selectedImageUrl}
                       onOpenFile={handleOpenStyleFile}
                       onAskAgent={handleStyleAskAgent}
+                      onSweepOverrides={handleSweepOverrides}
                       onRefreshPreview={handleRefreshPreviewForStyles}
                       onSelectElement={handleArmFocusTool}
                       onSelectElementHover={handleSelectElementHover}
                       focusToolArmed={focusToolArmed}
                       activeTab={elementsTab}
                       onTabChange={setElementsTab}
+                      onElementAction={handleElementAction}
+                      onStructure={(op, target) => { void runStructure(op, { target }); }}
+                      canPasteStyle={styleClip !== null}
                     />
                   </div>
                 )}

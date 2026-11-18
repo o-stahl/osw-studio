@@ -164,9 +164,11 @@ describe('checkLayout', () => {
     expect(checkLayout(L, BOX)).toEqual({ code: 'height', panel: 'chat', px: 420 });
   });
 
-  it('refuses the Inspector and the preview in one tab group, and allows them stacked', () => {
-    expect(checkLayout(layout([[100, [[100, ['preview', 'elements']]]]]), BOX)).toEqual({ code: 'inspector-preview' });
+  it('refuses the Inspector in one tab group with either surface it picks in, and allows them stacked', () => {
+    expect(checkLayout(layout([[100, [[100, ['preview', 'elements']]]]]), BOX)).toEqual({ code: 'inspector-surface', panel: 'preview' });
+    expect(checkLayout(layout([[100, [[100, ['canvas', 'elements']]]]]), BOX)).toEqual({ code: 'inspector-surface', panel: 'canvas' });
     expect(checkLayout(layout([[100, [[50, ['preview']], [50, ['elements']]]]]), BOX)).toBeNull();
+    expect(checkLayout(layout([[100, [[50, ['canvas', 'preview']], [50, ['elements']]]]]), BOX)).toBeNull();
   });
 });
 
@@ -217,10 +219,43 @@ describe('validateLayout', () => {
     expect(L.columns[0].cells[0].active).toBe('chat');
   });
 
+  it('drops panels it does not know, and the cells and columns they leave empty, keeping the rest', () => {
+    // Saved by a version with panels this one does not have.
+    const L = validateLayout({
+      v: 1,
+      columns: [
+        { id: 'col1', size: 30, cells: [{ id: 'cell2', size: 50, tabs: ['chat'], active: 'chat' }, { id: 'cell8', size: 50, tabs: ['notes'], active: 'notes' }] },
+        { id: 'col3', size: 40, cells: [{ id: 'cell4', size: 60, tabs: ['preview', 'terminal'], active: 'terminal' }, { id: 'cell5', size: 40, tabs: ['files'], active: 'files' }] },
+        { id: 'col6', size: 30, cells: [{ id: 'cell7', size: 100, tabs: ['inbox'], active: 'inbox' }] },
+      ],
+    })!;
+    expect(L).not.toBeNull();
+    expect(shapeOf(L)).toBe('chat>chat|preview>preview/files>files');
+    expect(L.columns.map((c) => [c.id, ...c.cells.map((x) => x.id)])).toEqual([['col1', 'cell2'], ['col3', 'cell4', 'cell5']]);
+    // A dropped cell's height goes to the cell above, a dropped column's width to its left neighbour.
+    expect(sizes(L)).toEqual([30, 70]);
+    expect(L.columns[1].cells.map((x) => Math.round(x.size))).toEqual([60, 40]);
+    // The dropped ids are not handed out again, where a closed panel's last place would find them.
+    expect(L.seq).toBe(8);
+    expect(checkLayout(L, BOX)).toBeNull();
+
+    // Between two cells that stay, the dropped one's height goes to the cell above.
+    const three = validateLayout({
+      v: 1,
+      columns: [{ id: 'a', size: 100, cells: [
+        { id: 'b', size: 20, tabs: ['chat'], active: 'chat' },
+        { id: 'c', size: 30, tabs: ['notes'], active: 'notes' },
+        { id: 'd', size: 50, tabs: ['files'], active: 'files' },
+      ] }],
+    })!;
+    expect(three.columns[0].cells.map((x) => [x.id, x.size])).toEqual([['b', 50], ['d', 50]]);
+  });
+
   it.each([
     ['not an object', 'nope'],
     ['another version', { v: 2, columns: [] }],
-    ['an unknown panel', { v: 1, columns: [{ id: 'a', size: 100, cells: [{ id: 'b', size: 100, tabs: ['terminal'], active: 'terminal' }] }] }],
+    ['only unknown panels', { v: 1, columns: [{ id: 'a', size: 100, cells: [{ id: 'b', size: 100, tabs: ['terminal'], active: 'terminal' }] }] }],
+    ['a tab that is not a name', { v: 1, columns: [{ id: 'a', size: 100, cells: [{ id: 'b', size: 100, tabs: ['chat', 7], active: 'chat' }] }] }],
     ['a panel twice', { v: 1, columns: [{ id: 'a', size: 50, cells: [{ id: 'b', size: 100, tabs: ['chat'], active: 'chat' }] }, { id: 'c', size: 50, cells: [{ id: 'd', size: 100, tabs: ['chat'], active: 'chat' }] }] }],
     ['a repeated id', { v: 1, columns: [{ id: 'a', size: 100, cells: [{ id: 'a', size: 100, tabs: ['chat'], active: 'chat' }] }] }],
     ['an empty cell', { v: 1, columns: [{ id: 'a', size: 100, cells: [{ id: 'b', size: 100, tabs: [], active: 'chat' }] }] }],

@@ -127,6 +127,21 @@ export function supportsDirectEditing(runtime: ProjectRuntime | undefined | null
   return config.previewMode === 'visual' && !config.bundled;
 }
 
+/**
+ * What the Canvas panel can do in a runtime: `edit` where the page's elements come from source files
+ * (the same two facts as {@link supportsDirectEditing}), `view` where the page exists but a bundle
+ * draws its markup at run time, so nothing on it can be traced to a source, and null where there is
+ * no page at all. A missing or unknown runtime is null, for the reason it is for direct editing.
+ */
+export type CanvasSupport = 'edit' | 'view' | null;
+
+export function canvasSupport(runtime: ProjectRuntime | undefined | null): CanvasSupport {
+  if (!runtime) return null;
+  const config = RUNTIME_CONFIGS.find(c => c.id === runtime);
+  if (!config || config.previewMode !== 'visual') return null;
+  return config.bundled ? 'view' : 'edit';
+}
+
 export function getRuntimeBadge(runtime: ProjectRuntime): { label: string; className: string } {
   const cfg = getRuntimeConfig(runtime);
   return {

@@ -89,7 +89,9 @@ describe('useStylePropLabels', () => {
 
   it('translates every writable property, including the expanded sides', () => {
     const { label } = readLabels();
-    const english = WRITABLE_PROPERTIES.map(e => e.label);
+    // Position's X, Y and Z name axes, which are the same letters in every locale.
+    const axes = ['X', 'Y', 'Z'];
+    const english = WRITABLE_PROPERTIES.map(e => e.label).filter(l => !axes.includes(l));
     expect(label).toHaveLength(WRITABLE_PROPERTIES.length);
     // A fallback would come back as the entry's own English label.
     expect(label.filter(l => english.includes(l))).toEqual([]);

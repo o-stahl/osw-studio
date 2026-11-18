@@ -3,7 +3,8 @@ import type { ProjectRuntime, PromptSuggestion } from '@/lib/vfs/types';
 import type { FocusContextPayload } from '@/lib/preview/types';
 import { track } from '@/lib/telemetry';
 
-type FocusTarget = FocusContextPayload & { timestamp: number };
+/** A selection as the workspace holds it: when it was made, and on which surface (MCP `canvas_selection` reports both). */
+export type FocusTarget = FocusContextPayload & { timestamp: number; surface?: 'canvas' | 'preview' };
 
 /**
  * What the agent is being asked to be: read-only, editing, or running an interview.

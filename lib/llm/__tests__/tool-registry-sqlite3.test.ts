@@ -71,4 +71,13 @@ describe('sqlite3 in Server Mode', () => {
     expect(JSON.parse(String(init.body))).toMatchObject({ deploymentId: 'dep-1', cmd: ['sqlite3', 'SELECT 1'] });
     expect(result).toContain('rows');
   });
+
+  it('answers a failed command with the route\'s exit status and the output it returned', async () => {
+    h.workspace = 'w1';
+    h.apiFetch.mockResolvedValueOnce(new Response(JSON.stringify({ exitCode: 3, stdout: 'id|name\n1|a', stderr: '' }), { status: 200 }));
+    const result: string = await registry.execute(bashToolCall('sqlite3 "SELECT 1"'), 'test-project', {});
+    expect(result.startsWith('Error: ')).toBe(true);
+    expect(result).toContain('1|a');
+    expect(result).toContain('exit status 3');
+  });
 });

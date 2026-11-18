@@ -21,26 +21,26 @@
  * Preview-only instrumentation. It must never reach project source or published output; see the
  * `provenance` option on VirtualServer, which is off unless the preview asks for it.
  *
- * Intended consumers, none of which import this yet — they arrive in later units: the preview's
- * selector and placement scripts, which strip the attribute out of everything the agent sees, and
- * `curl -o`, which is the one path that writes compiled HTML back into project source.
+ * Used by the preview's navigation and placement scripts (`STRIP_PROVENANCE_JS`), which strip the
+ * attribute out of everything the agent sees, and by `curl -o` (`stripProvenance`), the one path
+ * that writes compiled HTML back into project source.
  */
 
 /**
  * Never tagged.
  *
- * `html`, `head` and `body` are excluded because three places downstream match the *opening* tag as
- * a literal string: `components/preview/multipage-preview.tsx` (~1238) and
- * `lib/preview/inject-vfs-blob-map.ts` (~19) both do `html.includes('<head>')`, and
- * `lib/preview/virtual-server.ts` (~826) falls back to `content.includes('<body>')`. A tagged
+ * `html`, `head` and `body` are excluded because code downstream matches the *opening* tag as a
+ * literal string: `lib/preview/inject-vfs-blob-map.ts` does `html.includes('<head>')`, and
+ * `lib/preview/virtual-server.ts` falls back to `content.includes('<body>')`. A tagged
  * `<head data-osw-src="...">` fails that test and sends the blob map down a fallback branch that
  * prepends it *before* the doctype, putting the whole preview into quirks mode. The rest are
  * head-region or non-visual tags that are never direct-edit targets, so excluding them costs
  * nothing.
  */
-const EXCLUDED_TAGS = new Set([
+export const UNTAGGED_TAGS = [
   'html', 'head', 'body', 'title', 'meta', 'link', 'base', 'script', 'style',
-]);
+] as const;
+const EXCLUDED_TAGS = new Set<string>(UNTAGGED_TAGS);
 
 /**
  * Elements whose content is text, not markup, so the scanner must skip to the closing tag.
@@ -50,6 +50,11 @@ const EXCLUDED_TAGS = new Set([
  * is a legitimate styling target; only its content is skipped.
  */
 const RAW_TEXT_TAGS = new Set(['script', 'style', 'title', 'textarea']);
+
+/** Whether the compile stamps `data-osw-src` on a tag of this (lowercase) name. */
+export function carriesProvenance(tagName: string): boolean {
+  return !EXCLUDED_TAGS.has(tagName);
+}
 
 /**
  * The attribute name.
@@ -219,10 +224,10 @@ export function stripProvenance(html: string): string {
 /**
  * The same stripper, as JavaScript source for injection into the preview iframe.
  *
- * The selector script and the placement script are template literals stringified into the iframe,
- * so they cannot import this module. Interpolating this constant keeps one authored copy instead of
- * three, and avoids hand-escaping a regex inside a template literal — where `\s` would collapse to a
- * literal `s` before being emitted. That is a live bug at multipage-preview.tsx:370.
+ * The selector script (`navigation-script.ts`) and the placement script (`placement-script.ts`) are
+ * template literals stringified into the iframe, so they cannot import this module. Interpolating
+ * this constant keeps one authored copy instead of three, and avoids hand-escaping a regex inside a
+ * template literal, where `\s` would collapse to a literal `s` before being emitted.
  *
  * The doubled backslashes below are deliberate: this is a template literal, so `\\s` here is `\s`
  * and `\\d` is `\d` in the emitted JavaScript. The pattern must stay identical to STRIP_RE above —

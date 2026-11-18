@@ -1,18 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   buildApplyStyle,
-  buildRemoveStyle,
   createCommitScheduler,
   overlayRequested,
   toPreviewSelection,
   writtenNumber,
-  type StyleRemover,
   type StyleWriter,
 } from '../commit';
 import { propertyEntry, type SegmentedEntry, type StepperEntry } from '../properties';
 import { formatComputed, stepValue, activeOptionValue } from '../controls';
 import type { FocusContextPayload } from '@/lib/preview/types';
-import type { ApplyResult, PreviewSelection, StyleDeclaration } from '@/lib/direct-edit/types';
+import type { ApplyResult, PreviewSelection, RecordedWrite, StyleChange } from '@/lib/direct-edit/types';
 
 /**
  * The debounce, the optimistic overlay and the apply seam.
@@ -41,11 +39,11 @@ describe('the commit scheduler', () => {
   afterEach(() => vi.useRealTimers());
 
   it('coalesces a burst of presses into ONE commit, at the value stopped on', () => {
-    const commits: StyleDeclaration[][] = [];
+    const commits: StyleChange[][] = [];
     const scheduler = createCommitScheduler(300, d => commits.push(d));
 
     for (const value of ['0.5rem', '0.75rem', '1rem', '1.5rem']) {
-      scheduler.schedule({ property: 'padding-block', value });
+      scheduler.schedule([{ property: 'padding-block', value }]);
       vi.advanceTimersByTime(50);
     }
     expect(commits).toEqual([]);
@@ -60,7 +58,7 @@ describe('the commit scheduler', () => {
     const commit = vi.fn();
     const scheduler = createCommitScheduler(300, commit);
     for (let i = 0; i < 10; i++) {
-      scheduler.schedule({ property: 'padding-block', value: `${i}rem` });
+      scheduler.schedule([{ property: 'padding-block', value: `${i}rem` }]);
       vi.advanceTimersByTime(299);
     }
     expect(commit).not.toHaveBeenCalled();
@@ -69,11 +67,11 @@ describe('the commit scheduler', () => {
   });
 
   it('commits several properties touched in one window together, in first-touch order', () => {
-    const commits: StyleDeclaration[][] = [];
+    const commits: StyleChange[][] = [];
     const scheduler = createCommitScheduler(300, d => commits.push(d));
-    scheduler.schedule({ property: 'padding-block', value: '1rem' });
-    scheduler.schedule({ property: 'color', value: 'red' });
-    scheduler.schedule({ property: 'padding-block', value: '2rem' });
+    scheduler.schedule([{ property: 'padding-block', value: '1rem' }]);
+    scheduler.schedule([{ property: 'color', value: 'red' }]);
+    scheduler.schedule([{ property: 'padding-block', value: '2rem' }]);
     vi.advanceTimersByTime(300);
     expect(commits).toEqual([[
       { property: 'padding-block', value: '2rem' },
@@ -84,7 +82,7 @@ describe('the commit scheduler', () => {
   it('flushes on demand and does not then fire the timer too', () => {
     const commit = vi.fn();
     const scheduler = createCommitScheduler(300, commit);
-    scheduler.schedule({ property: 'padding-block', value: '1rem' });
+    scheduler.schedule([{ property: 'padding-block', value: '1rem' }]);
     scheduler.flush();
     expect(commit).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(1000);
@@ -100,7 +98,7 @@ describe('the commit scheduler', () => {
   it('throws away a cancelled burst', () => {
     const commit = vi.fn();
     const scheduler = createCommitScheduler(300, commit);
-    scheduler.schedule({ property: 'padding-block', value: '1rem' });
+    scheduler.schedule([{ property: 'padding-block', value: '1rem' }]);
     scheduler.cancel();
     vi.advanceTimersByTime(1000);
     expect(commit).not.toHaveBeenCalled();
@@ -188,11 +186,16 @@ describe('writtenNumber', () => {
 
 describe('the apply seam', () => {
   const result: ApplyResult = { ok: true, markerId: 'm1', filesWritten: ['/overrides.css'] };
+  const opts = (over: { confirmedMultiInstance?: boolean; group?: string } = {}) =>
+    ({ scope: 'all' as const, markerId: null, confirmedMultiInstance: false, ...over });
 
   function spy() {
-    const calls: { projectId: string; selection: PreviewSelection; declaration: StyleDeclaration; opts: { confirmedMultiInstance: boolean; isGenerating: () => boolean } }[] = [];
-    const apply: StyleWriter = async (projectId, selection, declaration, opts) => {
-      calls.push({ projectId, selection, declaration, opts });
+    const calls: { projectId: string; selection: PreviewSelection; changes: readonly StyleChange[]; opts: Parameters<StyleWriter>[3] }[] = [];
+    const apply: StyleWriter = async (projectId, selection, changes, o) => {
+      calls.push({ projectId, selection, changes, opts: o });
+      // A write that changes two files, as a first edit does.
+      o.record?.({ path: '/index.html', before: 'a', after: 'b', silent: false });
+      o.record?.({ path: '/overrides.css', before: null, after: 'c', silent: true });
       return result;
     };
     return { apply, calls };
@@ -204,7 +207,7 @@ describe('the apply seam', () => {
     // to the same files, and nothing downstream would notice.
     const { apply, calls } = spy();
     const isGenerating = vi.fn(() => true);
-    await buildApplyStyle('p1', { apply, isGenerating })(payload(), { property: 'color', value: 'red' }, false);
+    await buildApplyStyle('p1', { apply, isGenerating })(payload(), [{ property: 'color', value: 'red' }], opts());
 
     expect(calls).toHaveLength(1);
     expect(typeof calls[0].opts.isGenerating).toBe('function');
@@ -212,12 +215,23 @@ describe('the apply seam', () => {
     expect(isGenerating).toHaveBeenCalled();
   });
 
-  it('forwards the confirmation flag rather than deciding it', async () => {
+  it('forwards the confirmation flag, the width block and the marker rather than deciding them', async () => {
     const { apply, calls } = spy();
     const bound = buildApplyStyle('p1', { apply, isGenerating: () => false });
-    await bound(payload(), { property: 'color', value: 'red' }, true);
-    await bound(payload(), { property: 'color', value: 'red' }, false);
+    await bound(payload(), [{ property: 'color', value: 'red' }], opts({ confirmedMultiInstance: true }));
+    await bound(payload(), [{ property: 'color', value: null }], { scope: 640, markerId: 'm9', confirmedMultiInstance: false });
     expect(calls.map(c => c.opts.confirmedMultiInstance)).toEqual([true, false]);
+    expect(calls.map(c => c.opts.scope)).toEqual(['all', 640]);
+    expect(calls.map(c => c.opts.markerId)).toEqual([null, 'm9']);
+    expect(calls[1].changes).toEqual([{ property: 'color', value: null }]);
+  });
+
+  it('forwards the marker a first write stamps and the properties to make win', async () => {
+    const { apply, calls } = spy();
+    const bound = buildApplyStyle('p1', { apply, isGenerating: () => false });
+    await bound(payload(), [], { scope: 640, markerId: null, newMarkerId: 'm10', confirmedMultiInstance: false, strengthen: ['color'] });
+    expect(calls[0].opts.newMarkerId).toBe('m10');
+    expect(calls[0].opts.strengthen).toEqual(['color']);
   });
 
   it('binds the project but NOT the selection', async () => {
@@ -225,61 +239,30 @@ describe('the apply seam', () => {
     // though the panel may already be showing another one.
     const { apply, calls } = spy();
     const bound = buildApplyStyle('p1', { apply, isGenerating: () => false });
-    await bound(payload({ tagName: 'P' }), { property: 'color', value: 'red' }, false);
-    await bound(payload({ tagName: 'FOOTER' }), { property: 'color', value: 'red' }, false);
+    await bound(payload({ tagName: 'P' }), [{ property: 'color', value: 'red' }], opts());
+    await bound(payload({ tagName: 'FOOTER' }), [{ property: 'color', value: 'red' }], opts());
     expect(calls.map(c => c.projectId)).toEqual(['p1', 'p1']);
     expect(calls.map(c => c.selection.tagName)).toEqual(['P', 'FOOTER']);
   });
-});
 
-describe('the remove seam', () => {
-  const result: ApplyResult = { ok: true, markerId: 'm1', filesWritten: ['/overrides.css'] };
+  it('records one write\'s files under one group, and a drag\'s writes under the drag\'s group', async () => {
+    const { apply } = spy();
+    const recorded: { group: string; path: string }[] = [];
+    const bound = buildApplyStyle('p1', {
+      apply,
+      isGenerating: () => false,
+      record: (group: string, write: RecordedWrite) => recorded.push({ group, path: write.path }),
+    });
+    await bound(payload(), [{ property: 'color', value: 'red' }], opts());
+    await bound(payload(), [{ property: 'color', value: 'blue' }], opts());
+    await bound(payload(), [{ property: 'color', value: 'green' }], opts({ group: 'drag-1' }));
+    await bound(payload(), [{ property: 'color', value: 'teal' }], opts({ group: 'drag-1' }));
 
-  function spy() {
-    const calls: {
-      projectId: string;
-      selection: PreviewSelection;
-      markerId: string;
-      property: string;
-      opts: { confirmedMultiInstance: boolean; isGenerating: () => boolean };
-    }[] = [];
-    const remove: StyleRemover = async (projectId, selection, markerId, property, opts) => {
-      calls.push({ projectId, selection, markerId, property, opts });
-      return result;
-    };
-    return { remove, calls };
-  }
-
-  it('passes the generation gate through to the write path', async () => {
-    // Reset is a write, so it needs the same gate the apply path has — and had it dropped here,
-    // every test above would still pass, because the gate lives on the far side of this seam.
-    const { remove, calls } = spy();
-    const isGenerating = vi.fn(() => true);
-    await buildRemoveStyle('p1', { remove, isGenerating })(payload(), 'm1', 'color', false);
-
-    expect(calls).toHaveLength(1);
-    expect(typeof calls[0].opts.isGenerating).toBe('function');
-    expect(calls[0].opts.isGenerating()).toBe(true);
-    expect(isGenerating).toHaveBeenCalled();
-  });
-
-  it('forwards the confirmation flag rather than deciding it', async () => {
-    const { remove, calls } = spy();
-    const bound = buildRemoveStyle('p1', { remove, isGenerating: () => false });
-    await bound(payload(), 'm1', 'color', true);
-    await bound(payload(), 'm1', 'color', false);
-    expect(calls.map(c => c.opts.confirmedMultiInstance)).toEqual([true, false]);
-  });
-
-  it('binds the project but NOT the selection, the marker or the property', async () => {
-    const { remove, calls } = spy();
-    const bound = buildRemoveStyle('p1', { remove, isGenerating: () => false });
-    await bound(payload({ tagName: 'P' }), 'm1', 'color', false);
-    await bound(payload({ tagName: 'FOOTER' }), 'm2', 'padding-block', false);
-    expect(calls.map(c => c.projectId)).toEqual(['p1', 'p1']);
-    expect(calls.map(c => c.selection.tagName)).toEqual(['P', 'FOOTER']);
-    expect(calls.map(c => c.markerId)).toEqual(['m1', 'm2']);
-    expect(calls.map(c => c.property)).toEqual(['color', 'padding-block']);
+    const groups = recorded.map(r => r.group);
+    // Both files of a write share its group; two writes outside a drag get two groups.
+    expect(groups[0]).toBe(groups[1]);
+    expect(groups[2]).not.toBe(groups[0]);
+    expect(groups.slice(4)).toEqual(['drag-1', 'drag-1', 'drag-1', 'drag-1']);
   });
 });
 
@@ -302,5 +285,18 @@ describe('toPreviewSelection', () => {
 
   it('sends null rather than undefined for an element with no provenance', () => {
     expect(toPreviewSelection(payload()).srcAttr).toBeNull();
+  });
+});
+
+describe('the commit scheduler with batches', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('commits a control\'s several changes, removals included, as one list', () => {
+    const commits: StyleChange[][] = [];
+    const scheduler = createCommitScheduler(300, d => commits.push(d));
+    scheduler.schedule([{ property: 'width', value: null }, { property: 'flex', value: '1 1 0' }]);
+    vi.advanceTimersByTime(300);
+    expect(commits).toEqual([[{ property: 'width', value: null }, { property: 'flex', value: '1 1 0' }]]);
   });
 });

@@ -25,8 +25,16 @@ preference. If the whole thing should flip from light to dark, rewrite those val
 - **Separation is a hairline**, \`--line\` or \`--line-strong\`, plus space. Shadows are for buttons and
   for things that genuinely float.
 - **One accent**: \`--accent\` for a fill with \`--on-accent\` on it, \`--accent-text\` for accent-coloured
-  text on a page ground, \`--accent-quiet\` for labels. To retheme, change the hue in the accent
-  values and leave everything else alone.
+  text on a page ground, \`--accent-quiet\` for labels. To retheme, change \`--accent\` and leave
+  everything else alone: its hover, soft, text and quiet variants are worked out from it in the
+  \`@supports\` block under \`:root\`. Keep the fixed values above that block in step with it, for
+  browsers that cannot work them out.
+- **Type sizes are steps**, \`--text-2xs\` to \`--text-lg\`, with \`--text-h2\` and \`--text-h1\` for
+  headings. Set a \`font-size\` with a step, not a number, and change a step to change every rule on it.
+- **Spacing on the quarter-rem grid is a step**, one of \`--space-2\` (0.5rem), \`--space-3\`,
+  \`--space-4\`, \`--space-5\`, \`--space-6\`, \`--space-8\` and \`--space-10\` (2.5rem), and no others. A
+  padding, margin or gap is written with steps or with numbers, not a mix; a value tuned by eye off
+  the grid (\`0.85rem\`) keeps its number.
 - **Semantic colour** (\`--ok\`, \`--warn\`, \`--stop\`, where the template has them) means state. Never
   use it for emphasis, and never use the accent for state.
 

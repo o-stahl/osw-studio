@@ -70,6 +70,7 @@ const WRITE_INVOCATIONS: Record<string, string> = {
   cp: '/a /b',
   'generate-image': '"a cat"',
   runtime: 'react',
+  style: '@h7x2m4qp color=red',
 };
 
 describe('read-only mode blocks every writing command', () => {

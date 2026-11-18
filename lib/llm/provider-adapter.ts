@@ -13,9 +13,10 @@ import { apiFetch } from '@/lib/api/backend-status';
 import { requestSnapshotStore } from './request-snapshot';
 import { logger } from '@/lib/utils';
 import { configManager } from '@/lib/config/storage';
-import { classifyProviderError, type ApiErrorBody, type ApiErrorCode } from './provider-errors';
+import { classifyProviderError, limitSourceOf, TRIAL_SESSIONS_LIMIT_SOURCE, type ApiErrorBody, type ApiErrorCode } from './provider-errors';
 import { isDemo } from '@/lib/demo';
 import { OSWS_PROVIDER } from '@/lib/inference/allowance';
+import { allowanceLow, readAllowanceUsage } from '@/lib/inference/allowance-usage';
 import { track } from '@/lib/telemetry';
 
 /** Waits `ms`, or ends with the abort, as a fetch would, when `signal` aborts first. */
@@ -69,6 +70,8 @@ export class ProviderApiError extends Error {
 
   /** For an error sent inside the stream: its own type code (`upstream_idle`, `timeout`…), when it gives one. */
   streamErrorType?: string;
+  /** Which of the provider's limits refused the request, when it names one (`limitSourceOf`). */
+  limitSource?: string;
 }
 
 /**
@@ -141,6 +144,8 @@ export interface ProviderAdapterConfig {
 
 export class OswsProviderAdapter implements ProviderAdapter {
   private pricingEnsured = new Set<string>();
+  /** The note that OSW Studio inference is running low has been sent for this task. */
+  private allowanceLowSaid = false;
 
   constructor(private config: ProviderAdapterConfig) {}
 
@@ -294,7 +299,9 @@ export class OswsProviderAdapter implements ProviderAdapter {
         errorMessage = 'Your HuggingFace sign-in has expired. Sign in again to keep going.';
       }
 
-      throw new ProviderApiError(errorMessage, status, errorType, errorCategory, provider, model, timing);
+      const refused = new ProviderApiError(errorMessage, status, errorType, errorCategory, provider, model, timing);
+      refused.limitSource = limitSourceOf({ limit_source: body.limitSource });
+      throw refused;
     }
 
     // Only 'bash' is ever advertised, but derive from the tools we actually sent
@@ -309,9 +316,10 @@ export class OswsProviderAdapter implements ProviderAdapter {
       const midstreamStatus = typeof result.midstreamError.code === 'number' ? result.midstreamError.code : 0;
       // A provider error relayed inside the stream still says what happened: a busy free model
       // arrives this way as often as on the status line.
-      const midstreamCode = midstreamStatus === 429 || midstreamStatus === 403
-        ? classifyProviderError({ status: midstreamStatus, provider, message: result.midstreamError.message, metadata: result.midstreamError.metadata }).code
-        : undefined;
+      const midstreamClass = midstreamStatus === 429 || midstreamStatus === 403
+        ? classifyProviderError({ status: midstreamStatus, provider, message: result.midstreamError.message, metadata: result.midstreamError.metadata })
+        : {};
+      const midstreamCode = midstreamClass.code;
       const midstreamCategory = midstreamCode ? CODE_CATEGORIES[midstreamCode] : 'midstream_error';
       const error = new ProviderApiError(
         result.midstreamError.message,
@@ -322,6 +330,7 @@ export class OswsProviderAdapter implements ProviderAdapter {
         model,
       );
       error.streamErrorType = streamErrorType(result.midstreamError.metadata);
+      error.limitSource = midstreamClass.limitSource;
       throw error;
     }
 
@@ -469,6 +478,16 @@ export class OswsProviderAdapter implements ProviderAdapter {
     silent = false,
     allowedToolNames?: ReadonlySet<string>,
   ): Promise<StreamResponse> {
+    // OSW Studio inference says how much of the day is used with each answer. Once it runs low with
+    // no further trial session to come, the chat says so, once a task: the task may be cut off.
+    if (!silent && provider === OSWS_PROVIDER && !this.allowanceLowSaid) {
+      const allowance = readAllowanceUsage(response.headers);
+      if (allowance && allowanceLow(allowance)) {
+        this.allowanceLowSaid = true;
+        this.config.progress.onEvent('allowance_low', { provider, ...(allowance.resetAt ? { resetAt: allowance.resetAt } : {}) });
+      }
+    }
+
     const result = await parseStreamingResponse(response, {
       provider,
       model,
@@ -521,7 +540,9 @@ export class OswsProviderAdapter implements ProviderAdapter {
       const failure = err instanceof TrialCheckError ? err.failure : 'unavailable';
       if (failure === 'trial_limit') {
         const resetAt = err instanceof TrialCheckError ? err.resetAt : undefined;
-        throw new ProviderApiError('OSW Studio inference has no more free sessions for this network today.', 429, 'rate_limit', 'daily_limit', OSWS_PROVIDER, model, resetAt ? { resetAt } : {});
+        const limit = new ProviderApiError('OSW Studio inference has no more free sessions for this network today.', 429, 'rate_limit', 'daily_limit', OSWS_PROVIDER, model, resetAt ? { resetAt } : {});
+        limit.limitSource = TRIAL_SESSIONS_LIMIT_SOURCE;
+        throw limit;
       }
       if (failure === 'check_failed') {
         throw new ProviderApiError('The bot check for OSW Studio inference did not pass.', 401, 'auth', 'auth_expired', OSWS_PROVIDER, model);

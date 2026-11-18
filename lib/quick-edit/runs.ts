@@ -7,6 +7,7 @@ import { toolCommand } from '@/lib/agent-activity/parse-command';
 import { parseStatusCommand } from '@/lib/llm/status-command';
 import { describeForming, type FormingStep } from './forming';
 import type { InterviewGate } from '@/lib/interview/completion';
+import type { SentBlock } from '@/lib/semantic-blocks/types';
 
 /**
  * The event stream cut into runs: one per request a person made.
@@ -80,8 +81,8 @@ type RunActivity = 'thinking' | 'writing' | 'working' | null;
  * reads, so a request is marked up here exactly as it is in the workspace.
  */
 export interface RunContext {
-  focusContext?: { domPath: string; snippet: string };
-  semanticBlocks?: Array<{ name: string; domPath: string; position: string; description: string }>;
+  focusContext?: { domPath: string; snippet: string; width?: number };
+  semanticBlocks?: SentBlock[];
   attachedFiles?: Array<{ name: string }>;
   /** Image and audio blocks, as they appear in the message content. */
   contentBlocks?: ContentBlock[];
@@ -456,6 +457,9 @@ function finish(start: DebugEvent, events: DebugEvent[]): Run {
         break;
       case 'model_picked':
         pushNotice({ kind: 'limit', data: { kind: 'picked', provider: String(data.provider ?? ''), toModel: String(data.model ?? '') } });
+        break;
+      case 'allowance_low':
+        pushNotice({ kind: 'limit', data: { kind: 'low', provider: String(data.provider ?? ''), ...(typeof data.resetAt === 'number' ? { resetAt: data.resetAt } : {}) } });
         break;
       case 'model_resolved': {
         // OpenRouter's free router may answer with a different model; noted only when it changes.

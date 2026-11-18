@@ -75,7 +75,7 @@ beforeEach(() => {
 describe('the style-probe message', () => {
   it('reports the property an inline style took from the override, and names it', () => {
     const nodeId = selectCard();
-    send({ type: 'style-preview', markerId: 'm1', css: 'color: rgb(1, 2, 3);' });
+    send({ type: 'overrides-preview', css: '[data-osw-id="m1"][data-osw-id] { color: rgb(1, 2, 3); }' });
     (document.querySelector('.card') as HTMLElement).style.color = 'rgb(3, 3, 3)';
 
     const reply = probe(nodeId, 'm1', ['color']);
@@ -85,9 +85,29 @@ describe('the style-probe message', () => {
     expect(reply.winner).toBe('inline style');
   });
 
+  it('hands back the request\'s tag and the asked-about names that lost, and wins once marked !important', () => {
+    const nodeId = selectCard();
+    send({ type: 'overrides-preview', css: '[data-osw-id="m1"][data-osw-id] { color: rgb(1, 2, 3); }' });
+    (document.querySelector('.card') as HTMLElement).style.color = 'rgb(3, 3, 3)';
+
+    posted.length = 0;
+    send({ type: 'style-probe', nodeId, markerId: 'm1', properties: ['color'], tag: 'earlier' });
+    const tagged = only('style-probe-result') as PostedMessage & { tag?: string; written?: string[] };
+    expect(tagged.tag).toBe('earlier');
+    expect(tagged.written).toEqual(['color']);
+    // An untagged request gets no tag back.
+    expect(probe(nodeId, 'm1', ['color'])).not.toHaveProperty('tag');
+
+    // The same rule marked !important beats the style attribute, which is what strengthening relies on.
+    send({ type: 'overrides-preview', css: '[data-osw-id="m1"][data-osw-id] { color: rgb(1, 2, 3) !important; }' });
+    const strong = probe(nodeId, 'm1', ['color']) as PostedMessage & { written?: string[] };
+    expect(strong.lost).toEqual([]);
+    expect(strong.written).toEqual([]);
+  });
+
   it('omits winner entirely when nothing was lost', () => {
     const nodeId = selectCard();
-    send({ type: 'style-preview', markerId: 'm1', css: 'color: rgb(1, 2, 3);' });
+    send({ type: 'overrides-preview', css: '[data-osw-id="m1"][data-osw-id] { color: rgb(1, 2, 3); }' });
 
     const reply = probe(nodeId, 'm1', ['color']);
 
@@ -123,7 +143,7 @@ describe('the style-probe message', () => {
     // the others valid — a junk nodeId resolves to no element and returns before the properties or
     // the marker are ever read, so it cannot stand in for them.
     const nodeId = selectCard();
-    send({ type: 'style-preview', markerId: 'm1', css: 'color: rgb(1, 2, 3);' });
+    send({ type: 'overrides-preview', css: '[data-osw-id="m1"][data-osw-id] { color: rgb(1, 2, 3); }' });
 
     for (const properties of [undefined, null, 7, {}, 'color']) {
       const reply = probe(nodeId, 'm1', properties);

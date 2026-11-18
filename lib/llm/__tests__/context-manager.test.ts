@@ -276,3 +276,88 @@ describe('ContextManagerImpl', () => {
     expect(msgs[0].reasoning_details![0].text).toBe('internal reasoning');
   });
 });
+
+describe('ContextManagerImpl.addImages', () => {
+  const image = { mediaType: 'image/jpeg', data: 'AAAA' };
+
+  it('adds the images as a user message after the results, outside the stored conversation', () => {
+    const cm = new ContextManagerImpl(defaultConfig);
+    cm.addToolResults([{ tool_call_id: 'tc1', content: 'Took 1 screenshot.', success: true }]);
+    const added: Message[] = [];
+    cm.onMessageAdded = (m) => added.push(m);
+    cm.addImages([image], 'Shot.');
+    expect(cm.getMessages().map((m) => m.role)).toEqual(['tool', 'user']);
+    const last = cm.getMessages().at(-1)!;
+    expect(last.role).toBe('user');
+    expect(last.content).toEqual([{ type: 'text', text: 'Shot.' }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,AAAA' } }]);
+    expect(added).toEqual([]);
+  });
+
+  it('keeps only the newest images attached', () => {
+    const cm = new ContextManagerImpl(defaultConfig);
+    cm.addImages([image], 'First.');
+    cm.addImages([image], 'Second.');
+    const shots = cm.getMessages().filter((m) => m.metadata?.screenshot);
+    expect(shots[0].content).toBe('First. (no longer attached)');
+    expect(Array.isArray(shots[1].content)).toBe(true);
+  });
+
+  it('keeps the newest through a compaction, after the kept messages, and leaves every one out of the summary', async () => {
+    const cm = new ContextManagerImpl(smallConfig);
+    const provider = mockProvider('summary');
+    cm.addImages([{ mediaType: 'image/jpeg', data: 'OLDER' }], 'Older.');
+    for (let i = 0; i < 6; i++) {
+      cm.addUserMessage(`message ${i} ${'x'.repeat(200)}`);
+      cm.addAssistantTurn({ content: `answer ${i}` } as ParsedResponse);
+    }
+    cm.addImages([image], 'Shot.');
+    const replaced: Message[][] = [];
+    cm.onMessagesReplaced = (messages) => replaced.push(messages);
+    await cm.compact(provider);
+
+    // The stored conversation is told of the compaction without the screenshot, as it never had it.
+    expect(replaced).toHaveLength(1);
+    expect(JSON.stringify(replaced[0])).not.toContain('base64,AAAA');
+    const shots = cm.getMessages().filter((m) => m.metadata?.screenshot);
+    expect(shots).toHaveLength(1);
+    expect(cm.getMessages().at(-1)).toBe(shots[0]);
+    expect(shots[0].content).toEqual([{ type: 'text', text: 'Shot.' }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,AAAA' } }]);
+    const sent = JSON.stringify(vi.mocked(provider.call).mock.calls);
+    expect(sent).not.toContain('base64,AAAA');
+    expect(sent).not.toContain('Older.');
+  });
+
+  it('counts an image as a fixed amount rather than by the size of its data', () => {
+    const small = new ContextManagerImpl(defaultConfig);
+    small.addImages([{ mediaType: 'image/jpeg', data: 'A'.repeat(1_000) }], 'Shot.');
+    const large = new ContextManagerImpl(defaultConfig);
+    large.addImages([{ mediaType: 'image/jpeg', data: 'A'.repeat(300_000) }], 'Shot.');
+
+    expect(large.getTokenEstimate()).toBe(small.getTokenEstimate());
+    expect(large.getTokenEstimate()).toBeLessThan(defaultConfig.threshold / 10);
+    // The image counts for something beyond its caption.
+    const captionOnly = new ContextManagerImpl(defaultConfig);
+    captionOnly.addUserMessage([{ type: 'text', text: 'Shot.' }]);
+    expect(large.getTokenEstimate()).toBeGreaterThan(captionOnly.getTokenEstimate());
+  });
+});
+
+describe('ContextManagerImpl token estimate', () => {
+  it('counts an audio clip as a fixed amount rather than by the size of its data', () => {
+    const clip = (data: string) => [
+      { type: 'text' as const, text: 'Transcribe this.' },
+      { type: 'input_audio' as const, input_audio: { data, format: 'wav' as const } },
+    ];
+    const short = new ContextManagerImpl(defaultConfig);
+    short.addUserMessage(clip('A'.repeat(1_000)));
+    const long = new ContextManagerImpl(defaultConfig);
+    long.addUserMessage(clip('A'.repeat(300_000)));
+
+    expect(long.getTokenEstimate()).toBe(short.getTokenEstimate());
+    expect(long.getTokenEstimate()).toBeLessThan(defaultConfig.threshold / 10);
+    // The clip counts for something beyond the text beside it.
+    const textOnly = new ContextManagerImpl(defaultConfig);
+    textOnly.addUserMessage([{ type: 'text', text: 'Transcribe this.' }]);
+    expect(long.getTokenEstimate()).toBeGreaterThan(textOnly.getTokenEstimate());
+  });
+});

@@ -71,6 +71,21 @@ describe('orchestrator slice — generation lifecycle', () => {
     expect(store.getState().generating).toBe(false);
   });
 
+  it('sends the message as the person wrote it, with the picked element and blocks for its context card', async () => {
+    // The prompt carries the focus block for the model; the message on screen shows the words and a
+    // card. A browser run sent neither the words nor the card, so the block showed as the message.
+    const focus = { domPath: 'body > h1', tagName: 'h1', nodeId: 'n1', attributes: {}, outerHTML: '<h1>Hi</h1>', viewportWidth: 375 };
+    await store.getState().startGeneration('Focus context:\n- Target: <h1>\n\nTighten it', undefined, {
+      projectId: 'test-project', displayPrompt: 'Tighten it', focusContext: focus,
+      semanticBlocks: [{ blockId: 'hero', name: 'Hero Section', description: 'A hero', file: '/index.html' }],
+    });
+    expect(mockExecute).toHaveBeenCalledWith('Focus context:\n- Target: <h1>\n\nTighten it', expect.objectContaining({
+      displayPrompt: 'Tighten it',
+      focusContext: { domPath: 'body > h1', snippet: '<h1>Hi</h1>', width: 375 },
+      semanticBlocks: [{ blockId: 'hero', name: 'Hero Section', description: 'A hero', file: '/index.html' }],
+    }));
+  });
+
   it('startGeneration rejects if already generating', async () => {
     const first = store.getState().startGeneration('task 1');
     await store.getState().startGeneration('task 2');

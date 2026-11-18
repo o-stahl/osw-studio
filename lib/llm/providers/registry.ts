@@ -585,6 +585,21 @@ export function getModelInputModalities(providerId: ProviderId, modelId: string)
   return ['text'];
 }
 
+/**
+ * A model's input modalities, from the discovered model list first, which has the API's own data,
+ * then from the registry. `cached` is the provider's cached discovery (`configManager.getCachedModels`).
+ */
+export function resolveInputModalities(
+  providerId: ProviderId,
+  modelId: string,
+  cached: { models: unknown[] } | null | undefined,
+): InputModality[] {
+  const model = (cached?.models as ProviderModel[] | undefined)?.find(m => m.id === modelId);
+  if (model?.inputModalities) return model.inputModalities;
+  if (model?.supportsVision !== undefined) return model.supportsVision ? ['text', 'image'] : ['text'];
+  return getModelInputModalities(providerId, modelId);
+}
+
 export function modelSupportsVision(providerId: ProviderId, modelId: string): boolean {
   return getModelInputModalities(providerId, modelId).includes('image');
 }

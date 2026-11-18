@@ -247,6 +247,14 @@ describe('LimitNotice', () => {
     expect(container.textContent).toContain('Groq did not answer');
   });
 
+  it('says OSW Studio inference is nearly used up and when it renews, or tomorrow when no time came', () => {
+    const limits = createTranslator({ locale: 'en', messages: en, namespace: 'limits' });
+    render(<LimitNotice data={{ kind: 'low', provider: 'osws', resetAt: Date.now() + 3 * 3600_000 }} />);
+    expect(container.textContent).toBe(limits('allowanceLow', { when: 'in 3 hours' }));
+    render(<LimitNotice data={{ kind: 'low', provider: 'osws' }} />);
+    expect(container.textContent).toBe(limits('allowanceLowNoTime'));
+  });
+
   it('names the free model a run is on, or says the router chooses', () => {
     const limits = createTranslator({ locale: 'en', messages: en, namespace: 'limits' });
     render(<LimitNotice data={{ kind: 'picked', provider: 'openrouter', toModel: 'nvidia/nemotron-3-ultra-550b-a55b:free' }} />);

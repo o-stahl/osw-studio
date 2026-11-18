@@ -165,14 +165,15 @@ describe('a segmented control', () => {
   });
 
   it('leaves every option inactive for an unrecognised keyword', () => {
-    // `justify` is a real value of `text-align`, and it is not one of ours. Lighting up "Left"
-    // would claim the element is left-aligned and change it the moment the user agreed.
-    const values = { 'text-align': 'justify' };
+    // `-webkit-center` is what Chrome computes for `<center>`, and it is not one of ours. Lighting
+    // up "Centre" would claim a value the control does not write.
+    const values = { 'text-align': '-webkit-center' };
     for (const option of textAlign.options) {
-      expect(optionMatches(textAlign, option, values), `${option.value} should not match justify`)
+      expect(optionMatches(textAlign, option, values), `${option.value} should not match -webkit-center`)
         .toBe(false);
     }
     expect(activeOptionValue(textAlign, values)).toBeNull();
+    expect(activeOptionValue(textAlign, { 'text-align': 'justify' })).toBe('justify');
   });
 
   it('leaves every option inactive when the frame has not answered', () => {

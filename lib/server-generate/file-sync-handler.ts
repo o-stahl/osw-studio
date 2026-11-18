@@ -23,6 +23,11 @@ export function cancelPendingFileSync(projectId?: string): void {
   }
 }
 
+/** Settles once every pull already asked for on this project has landed. */
+export function whenFilesSynced(projectId: string): Promise<void> {
+  return projectSyncState.get(projectId)?.pending ?? Promise.resolve();
+}
+
 export async function handleFilesChanged(data: { sourceProjectId: string; paths: string[]; taskId: string }): Promise<void> {
   const state = getState(data.sourceProjectId);
   state.cancelled = false;

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from 'vitest';
-import { STYLE_PREVIEW_JS, STYLE_LOCATOR_JS, TRANSIENT_STYLE_ATTR } from '../style-preview';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { STYLE_PREVIEW_JS, STYLE_LOCATOR_JS, OVERRIDES_STYLE_ATTR } from '../style-preview';
 import type { OverrideRuleLocation } from '../style-preview';
 
 /**
@@ -39,21 +39,27 @@ interface RankedDeclaration {
   specificity: number;
   order: number;
   origin: string;
+  /** The declaration as written. */
+  value: string;
   /** The winner is the override's own declaration — the definition of "the change applied". */
   ours: boolean;
 }
 
 const frame = new Function(
   `${STYLE_PREVIEW_JS}${STYLE_LOCATOR_JS}\nreturn {
-     apply: __oswApplyStylePreview,
+     apply: __oswApplyOverrides,
      locate: __oswLocateOverrideRule,
      rank: __oswRankDeclaration,
+     specified: __oswSpecifiedValues,
      resolveOrigin: __oswResolveSheetOrigin,
      specificity: __oswSpecificity,
-     beats: __oswBeats
+     beats: __oswBeats,
+     declared: __oswDeclared
    };`,
 )() as {
-  apply: (markerId: string, css: string | null) => Element | null;
+  /** Swaps in a whole /overrides.css. */
+  apply: (css: string) => Element | null;
+  specified: (el: Element | null, properties: unknown) => Record<string, { value: string; origin: string; ours: boolean } | null>;
   /** Typed against the declared contract, so a locator that stopped returning an element is a
    *  type error here as well as a failing assertion. */
   locate: (markerId: string) => OverrideRuleLocation | null;
@@ -61,6 +67,7 @@ const frame = new Function(
   resolveOrigin: (href: unknown, blobMap: unknown) => string | null;
   specificity: (selector: string) => number;
   beats: (candidate: unknown, best: unknown) => boolean;
+  declared: (style: { getPropertyValue: (name: string) => string }, property: string) => { value: string; name: string } | null;
 };
 
 const SELECTOR = '[data-osw-id="m1"][data-osw-id]';
@@ -88,16 +95,26 @@ beforeEach(() => {
 });
 
 describe('locating our own rule', () => {
-  it('finds it in the transient style when one is present', () => {
-    frame.apply('m1', 'color: rgb(1, 2, 3);');
+  it('finds it in the swapped-in /overrides.css, and names that file', () => {
+    frame.apply(`${SELECTOR} { color: rgb(1, 2, 3); }`);
 
     const found = frame.locate('m1')!;
 
     expect(found).not.toBeNull();
-    expect(found.element).toBe(document.querySelector(`style[${TRANSIENT_STYLE_ATTR}]`));
+    expect(found.element).toBe(document.querySelector(`style[${OVERRIDES_STYLE_ATTR}]`));
     expect(found.rule.selectorText).toBe(SELECTOR);
     expect(found.rule.style.getPropertyValue('color')).toBe('rgb(1, 2, 3)');
-    expect(found.origin).toBe('transient style');
+    expect(found.origin).toBe('/overrides.css');
+  });
+
+  it('finds it inside a width block', () => {
+    // The probe's gate is "our rule is in the document", and a width block's rule is ours too.
+    frame.apply(`@media (max-width: 640px) {\n  ${SELECTOR} { color: rgb(4, 4, 4); }\n}`);
+
+    const found = frame.locate('m1')!;
+
+    expect(found).not.toBeNull();
+    expect(found.rule.style.getPropertyValue('color')).toBe('rgb(4, 4, 4)');
   });
 
   it('finds it in another stylesheet when the transient is absent', () => {
@@ -124,20 +141,6 @@ describe('locating our own rule', () => {
     found.element.remove();
 
     expect(window.getComputedStyle(marked()).color).not.toBe('rgb(7, 7, 7)');
-  });
-
-  it('prefers the transient when both carry the marker selector', () => {
-    pageSheet(`${SELECTOR} { color: rgb(7, 7, 7); }`);
-    frame.apply('m1', 'color: rgb(1, 2, 3);');
-
-    const found = frame.locate('m1')!;
-
-    // The transient is last in <head> and therefore the rule actually in force, so it is the one
-    // whose origin the probe should be able to name. Both copies are ours either way — the ranking
-    // recognises them by selector — so this is about which one the locator reports, not about
-    // whether the override applied.
-    expect(found.origin).toBe('transient style');
-    expect(found.rule.style.getPropertyValue('color')).toBe('rgb(1, 2, 3)');
   });
 
   it('takes the last of several blocks for one marker, as the CSS writer does', () => {
@@ -240,13 +243,13 @@ describe('ranking who wins the cascade', () => {
     // The change from the toggle-based probe, and the whole fix. Our declaration is ranked like
     // any other; `ours` is what turns "who won" into "did the override apply". Excluding it —
     // which the old winner scan did — leaves nothing to compare the answer against.
-    frame.apply('m1', 'color: rgb(1, 2, 3);');
+    frame.apply(`${SELECTOR} { color: rgb(1, 2, 3); }`);
 
     const best = frame.rank(marked(), 'color', SELECTOR)!;
 
     expect(best).not.toBeNull();
     expect(best.ours).toBe(true);
-    expect(best.origin).toBe('transient style');
+    expect(best.origin).toBe('/overrides.css');
   });
 
   it('flags a rule that is not ours, whatever sheet it is in', () => {
@@ -261,7 +264,7 @@ describe('ranking who wins the cascade', () => {
     expect(best.origin).toBe('inline style');
   });
 
-  it('recognises our rule in an ordinary sheet, not only in the transient style', () => {
+  it('recognises our rule in an ordinary sheet, not only in the swapped-in file', () => {
     pageSheet(`${SELECTOR} { color: rgb(1, 2, 3); }`);
 
     expect(frame.rank(marked(), 'color', SELECTOR)!.ours).toBe(true);
@@ -296,6 +299,63 @@ describe('ranking who wins the cascade', () => {
 
     expect(frame.rank(marked(), 'color', SELECTOR)).toBeNull();
   });
+
+  it('ranks a grouped rule by the part of its list that reaches the element', () => {
+    // `.nav a, .footer a` is two selectors of 101 each, and only one of them reaches a link in the
+    // nav: the rule carries 101 against the override's 200, not the 202 of the two together.
+    document.body.innerHTML = '<nav class="nav"><a class="card" id="hero" data-osw-id="m1" href="#">x</a></nav>';
+    frame.apply(`${SELECTOR} { color: rgb(1, 2, 3); }`);
+    pageSheet('.nav a, .footer a { color: rgb(7, 7, 7); }');
+
+    expect(frame.rank(marked(), 'color', SELECTOR)!.ours).toBe(true);
+  });
+
+  it('takes the most specific of the parts that match, and none that do not', () => {
+    frame.apply(`${SELECTOR} { color: rgb(1, 2, 3); }`);
+    // The id names another element; `.card` (100) is what reaches this one.
+    pageSheet('#elsewhere, .card { color: rgb(7, 7, 7); }');
+    expect(frame.rank(marked(), 'color', SELECTOR)!.ours).toBe(true);
+
+    pageSheet('.elsewhere, .card, #hero { color: rgb(9, 9, 9); }');
+    expect(frame.rank(marked(), 'color', SELECTOR)).toMatchObject({ ours: false, value: 'rgb(9, 9, 9)' });
+  });
+
+  it('splits a list only at its own commas, not those inside a pseudo-class or a quoted value', () => {
+    frame.apply(`${SELECTOR} { color: rgb(1, 2, 3); }`);
+    // The first part carries an id and reaches the element; `:not()` and the attribute value each
+    // hold a comma of their own, and a part cut at either would match nothing.
+    pageSheet(':not(.x, .y)#hero[title="a,b"], .elsewhere { color: rgb(7, 7, 7); }');
+    marked().setAttribute('title', 'a,b');
+
+    expect(frame.rank(marked(), 'color', SELECTOR)).toMatchObject({ ours: false, value: 'rgb(7, 7, 7)' });
+  });
+
+  describe('a stylesheet that is not in force', () => {
+    const real = (window as { matchMedia?: unknown }).matchMedia;
+    afterEach(() => {
+      (window as { matchMedia?: unknown }).matchMedia = real;
+    });
+
+    it('leaves out a sheet whose own media does not match the frame', () => {
+      // jsdom has no matchMedia; this one answers as a screen at any width would.
+      (window as { matchMedia?: unknown }).matchMedia = (query: string) => ({ matches: query === 'screen' });
+      frame.apply(`${SELECTOR} { color: rgb(1, 2, 3); }`);
+      pageSheet('.card { color: rgb(7, 7, 7) !important; }').setAttribute('media', 'print');
+      expect(frame.rank(marked(), 'color', SELECTOR)!.ours).toBe(true);
+
+      pageSheet('.card { color: rgb(9, 9, 9) !important; }').setAttribute('media', 'screen');
+      expect(frame.rank(marked(), 'color', SELECTOR)).toMatchObject({ ours: false, value: 'rgb(9, 9, 9)' });
+    });
+
+    it('leaves out a disabled sheet', () => {
+      frame.apply(`${SELECTOR} { color: rgb(1, 2, 3); }`);
+      const sheet = pageSheet('.card { color: rgb(7, 7, 7) !important; }').sheet!;
+      expect(frame.rank(marked(), 'color', SELECTOR)!.ours).toBe(false);
+
+      sheet.disabled = true;
+      expect(frame.rank(marked(), 'color', SELECTOR)!.ours).toBe(true);
+    });
+  });
 });
 
 describe('the ranking the winner scan uses', () => {
@@ -323,5 +383,101 @@ describe('the ranking the winner scan uses', () => {
     expect(frame.specificity('main > div.card span')).toBe(103);
     // A bracket inside a quoted attribute value does not end the attribute selector.
     expect(frame.specificity('[title="]"]')).toBe(100);
+  });
+});
+
+describe('reading the winning declaration as written', () => {
+  it('gives the value the stylesheet says, not the computed one, with where it came from', () => {
+    pageSheet('.card { width: 100%; }');
+    frame.apply(`${SELECTOR} { max-width: 40rem; }`);
+
+    const out = frame.specified(marked(), ['width', 'max-width', 'height']);
+
+    expect(out.width).toEqual({ value: '100%', origin: 'a stylesheet', ours: false });
+    expect(out['max-width']).toEqual({ value: '40rem', origin: '/overrides.css', ours: true, under: null });
+    expect(out.height).toBeNull();
+  });
+
+  it('answers an empty map for no element or no list', () => {
+    expect(frame.specified(null, ['width'])).toEqual({});
+    expect(frame.specified(marked(), 'width')).toEqual({});
+  });
+
+  it('reads a margin side from its physical twin, and takes whichever of the two wins', () => {
+    // Longhands, because jsdom does not expand `margin: 0 auto` into them as Chrome does.
+    pageSheet('.card { margin-left: auto; margin-right: auto; margin-top: 8px; }');
+    expect(frame.specified(marked(), ['margin-inline-start', 'margin-inline-end', 'margin-block-start', 'margin-block-end'])).toEqual({
+      'margin-inline-start': { value: 'auto', origin: 'a stylesheet', ours: false },
+      'margin-inline-end': { value: 'auto', origin: 'a stylesheet', ours: false },
+      'margin-block-start': { value: '8px', origin: 'a stylesheet', ours: false },
+      'margin-block-end': null,
+    });
+    // The override's logical side outranks the page's physical one; a later physical one outranks it.
+    frame.apply(`${SELECTOR} { margin-inline-start: 2rem; }`);
+    expect(frame.specified(marked(), ['margin-inline-start'])['margin-inline-start']).toMatchObject({ value: '2rem', ours: true });
+    pageSheet('#hero { margin-left: 3rem; }');
+    expect(frame.specified(marked(), ['margin-inline-start'])['margin-inline-start']).toMatchObject({ value: '3rem', ours: false });
+  });
+});
+
+describe('what applies without the override', () => {
+  it('names the declaration ours beats, and nothing when ours stands alone', () => {
+    pageSheet('.card { box-shadow: 0px 1px 2px red; }');
+    frame.apply(`${SELECTOR} { box-shadow: 0px 8px 24px blue; color: rgb(1, 1, 1); }`);
+
+    const out = frame.specified(marked(), ['box-shadow', 'color']) as Record<string, { ours: boolean; under?: { value: string; origin: string } | null }>;
+
+    expect(out['box-shadow'].ours).toBe(true);
+    expect(out['box-shadow'].under).toEqual({ value: '0px 1px 2px red', origin: 'a stylesheet' });
+    expect(out.color.under).toBeNull();
+  });
+});
+
+describe('what a rule declares for a longhand', () => {
+  /**
+   * A rule's style as Chrome answers it. A shorthand written with var() is kept whole, and each of
+   * its longhands answers '' until the value is computed; jsdom's CSSOM does not model that, so the
+   * style here is a stand-in with exactly those answers.
+   */
+  const style = (declarations: Record<string, string>) => ({ getPropertyValue: (name: string) => declarations[name] ?? '' });
+
+  it('is the longhand itself when the rule has one', () => {
+    expect(frame.declared(style({ 'margin-top': '8px', margin: '' }), 'margin-top')).toEqual({ value: '8px', name: 'margin-top' });
+  });
+
+  it('is the var() shorthand that sets it, where the longhand answers nothing', () => {
+    // `.hero { margin: 0 var(--gutter) var(--section) }`: without this the rule was passed over
+    // and `* { margin: 0 }` named as what sets the hero's margin.
+    const hero = style({ margin: '0 var(--gutter) var(--section)', 'border-radius': 'var(--radius)' });
+    expect(frame.declared(hero, 'margin-bottom')).toEqual({ value: '0 var(--gutter) var(--section)', name: 'margin' });
+    expect(frame.declared(hero, 'border-top-left-radius')).toEqual({ value: 'var(--radius)', name: 'border-radius' });
+    expect(frame.declared(style({ gap: 'var(--gap)' }), 'row-gap')).toMatchObject({ name: 'gap' });
+    expect(frame.declared(style({ 'border-top': '1px solid var(--line)' }), 'border-top-width')).toMatchObject({ name: 'border-top' });
+  });
+
+  it('is nothing for a rule that does not set the property, a shorthand without var() included', () => {
+    expect(frame.declared(style({ color: 'red' }), 'margin-top')).toBeNull();
+    // A plain shorthand is expanded by the browser, so its longhands answer for themselves.
+    expect(frame.declared(style({ padding: '4px' }), 'margin-top')).toBeNull();
+    // Only a var() shorthand stands in for its longhands: a plain one that answers nothing for a
+    // longhand does not set it.
+    expect(frame.declared(style({ margin: '4px' }), 'margin-top')).toBeNull();
+    expect(frame.declared(style({ padding: 'var(--pad)' }), 'margin-top')).toBeNull();
+  });
+
+  it('is a var() block or inline shorthand only for the sides on its own axis', () => {
+    // Horizontal writing, as the panel's side names assume: block is top and bottom, inline is
+    // left and right.
+    const inline = style({ 'padding-inline': 'var(--space-4)' });
+    expect(frame.declared(inline, 'padding-left')).toEqual({ value: 'var(--space-4)', name: 'padding-inline' });
+    expect(frame.declared(inline, 'padding-inline-end')).toMatchObject({ name: 'padding-inline' });
+    expect(frame.declared(inline, 'padding-top')).toBeNull();
+    expect(frame.declared(inline, 'padding-block-start')).toBeNull();
+
+    const block = style({ 'margin-block': 'var(--space-2)' });
+    expect(frame.declared(block, 'margin-bottom')).toMatchObject({ name: 'margin-block' });
+    expect(frame.declared(block, 'margin-block-start')).toMatchObject({ name: 'margin-block' });
+    expect(frame.declared(block, 'margin-right')).toBeNull();
+    expect(frame.declared(block, 'margin-inline-start')).toBeNull();
   });
 });

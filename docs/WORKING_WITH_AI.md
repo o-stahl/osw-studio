@@ -468,11 +468,19 @@ See **[Backend → AI Integration](?doc=backend-features#ai-integration)** for m
 
 ### Focus Tool
 
-Click the **crosshair** icon in the preview toolbar, then click any element to attach it as context to your next message. The AI receives the element's HTML, path, and surrounding structure, so you can say "make this bigger" instead of describing what you mean.
+Click the **crosshair** icon in the preview toolbar, then click any element to attach it as context to your next message. The AI receives the element's HTML, path, and surrounding structure, and where it is: the page, the width you picked it at, and its line in the source. So you can say "make this bigger on phones" instead of describing what you mean.
+
+### The AI Sees Your Pages
+
+The AI can look at a page as visitors see it, at any width, with its scripts run: `inspect` reads the page's layout and says which CSS rule sets each value, and `screenshot` shows it the page when the model reads images.
+
+When you have selected an element and ask for a change to it, in a static or Handlebars project, the AI can make the change where the Inspector's own changes go, `/overrides.css`. It then checks that the change shows on the page. When a stronger rule in your CSS would win, the change is marked `!important` so it applies; if even that does not help, the AI says what wins and takes its change back out. In browser mode, Ctrl/Cmd+Z in the workspace undoes it like your own edits. To turn those overrides into ordinary CSS in your stylesheets, press **Move into stylesheets** under the CSS readout in the Styles tab and send the request it puts in the chat. **Remove unused** next to it clears out rules for elements that no longer exist.
+
+Your own edits are looked after when the AI rewrites a page. A style you gave an element in the Inspector hangs on a `data-osw-id` attribute in the HTML; if a rewrite leaves the attribute out, it is put back where the element can still be recognised, and the AI is told. The same goes for a block placeholder it removed without being asked and an element you locked.
 
 ### Semantic Blocks
 
-Open the **Blocks** palette in the preview toolbar and drag any of the 36 blocks (hero, pricing, gallery, contact form, etc.) onto the preview at the position you want. The AI writes code that integrates with your existing project's style — blocks are specifications, not pre-built snippets.
+Open the **Blocks** palette in the preview toolbar or on Canvas and drag any of the 36 blocks (hero, pricing, gallery, contact form, etc.) onto the page where you want it. In static and Handlebars projects a placeholder for the block goes into the page's HTML, so it shows in the file, the Elements tab and on every Canvas artboard; Ctrl/Cmd+Z takes it out again, and so does removing the block from the chat. When you send your message, the AI replaces the placeholder with the block, written to fit your project's style: blocks are specifications, not pre-built snippets. Styles you give the placeholder in the Styles tab, such as its height or spacing, carry over to the block. A placeholder that has not been built yet stays in your project and is left out of the site when you publish or export it. In other project types the placeholder shows in the preview only.
 
 ### Image Attachments
 

@@ -1,4 +1,5 @@
 import { MARKER_SELECTOR_TEMPLATE } from '@/lib/direct-edit/overrides-css';
+import { MARKER_ATTR } from '@/lib/direct-edit/marker';
 
 /** Style-reading scripts injected into the preview frame as source text. */
 
@@ -74,12 +75,13 @@ function __oswRootFontSize() {
 `;
 
 /**
- * The attribute that marks the transient `<style>` as ours.
+ * The attribute on the `<style>` that stands in for `/overrides.css` once the Inspector has written
+ * it, and on the `<link>` to the file where a document builder marks it.
  *
- * One source: the frame source below interpolates it, the locator recognises the element by it, and
+ * One source: the frame source below interpolates it, the Canvas document builder writes it, and
  * anything that later has to exclude the element from what reaches the agent reads it from here.
  */
-export const TRANSIENT_STYLE_ATTR = 'data-osw-style';
+export const OVERRIDES_STYLE_ATTR = 'data-osw-overrides';
 
 /** Shared selector template emitted once so multiple constants don't redeclare `__oswSelectorFor`. */
 const SELECTOR_FOR_JS = `
@@ -105,37 +107,92 @@ function __oswSelectorFor(markerId) {
 `;
 
 /**
- * Applies a transient style rule in-frame so edits render before the file is written.
- * Appended last in `<head>` to win the cascade; replaced (not appended to) on each send;
- * never re-injected on frame-ready -- a `srcdoc` reassignment clears it naturally.
+ * Swaps a new `/overrides.css` into the frame, where the file's `<link>` was, so an Inspector write
+ * shows without a recompile. The whole file, not one rule: width blocks keep their order, several
+ * elements' edits stay, and a removed declaration is gone. The link is found by its mark, else by
+ * the URL the page's file map gives `/overrides.css`; a page without one gets the style at the end
+ * of its head, where the link would be. A recompile mints a new document with the file in it.
  */
 export const STYLE_PREVIEW_JS = `${SELECTOR_FOR_JS}
-var __oswTransientStyleAttr = ${JSON.stringify(TRANSIENT_STYLE_ATTR)};
+var __oswOverridesAttr = ${JSON.stringify(OVERRIDES_STYLE_ATTR)};
 
-function __oswTransientStyleElement() {
-  return document.querySelector('style[' + __oswTransientStyleAttr + ']');
+function __oswOverridesStyle() {
+  return document.querySelector('style[' + __oswOverridesAttr + ']');
 }
 
-function __oswApplyStylePreview(markerId, css) {
-  var existing = __oswTransientStyleElement();
-  var selector = __oswSelectorFor(markerId);
-  var blank = css == null || typeof css !== 'string' || css.trim() === '';
-  if (blank || selector === null) {
-    // Clearing is the null case AND every unusable input: leaving a stale block up would keep
-    // showing an edit the host believes it has taken back.
-    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
-    return null;
+function __oswOverridesLink() {
+  var marked = document.querySelector('link[' + __oswOverridesAttr + ']');
+  if (marked) return marked;
+  var map = window.__oswVfsBlobUrls;
+  var url = map && typeof map === 'object' ? map['/overrides.css'] : null;
+  if (typeof url !== 'string' || url === '') return null;
+  var links = document.querySelectorAll('link');
+  for (var i = 0; i < links.length; i++) {
+    if (links[i].getAttribute('href') === url) return links[i];
   }
-  var head = document.head;
-  if (!head) return null;
-  var el = existing;
+  return null;
+}
+
+function __oswApplyOverrides(css) {
+  if (typeof css !== 'string') return null;
+  var el = __oswOverridesStyle();
   if (!el) {
     el = document.createElement('style');
-    el.setAttribute(__oswTransientStyleAttr, '1');
+    el.setAttribute(__oswOverridesAttr, '');
+    var link = __oswOverridesLink();
+    if (link && link.parentNode) {
+      link.parentNode.insertBefore(el, link);
+      link.parentNode.removeChild(link);
+    } else {
+      var head = document.head || document.documentElement;
+      if (!head) return null;
+      head.appendChild(el);
+    }
   }
-  el.textContent = selector + ' { ' + css + ' }';
-  head.appendChild(el);
+  if (el.textContent !== css) el.textContent = css;
   return el;
+}
+
+var __oswMarkerAttr = ${JSON.stringify(MARKER_ATTR)};
+
+/** Elements this document marked itself, as against markers its source carries. */
+var __oswProvisional = typeof WeakSet === 'function' ? new WeakSet() : null;
+
+function __oswWithSrc(src) {
+  var all = document.querySelectorAll('[data-osw-src]');
+  var out = [];
+  for (var i = 0; i < all.length; i++) if (all[i].getAttribute('data-osw-src') === src) out.push(all[i]);
+  return out;
+}
+
+function __oswMarkElements(marks, unmarks) {
+  // An element's first edit: the frame shows it at once on the marker the write is about to stamp
+  // into source, on every element that source tag renders, as the stamp will. One already marked
+  // keeps its own. A write that did not stamp takes its marker back, and only where this document
+  // put it.
+  if (Array.isArray(unmarks)) {
+    for (var u = 0; u < unmarks.length; u++) {
+      if (!__oswSafeMarkerId(unmarks[u])) continue;
+      var held = document.querySelectorAll('[' + __oswMarkerAttr + '="' + unmarks[u] + '"]');
+      for (var h = 0; h < held.length; h++) {
+        if (__oswProvisional && __oswProvisional.has(held[h])) {
+          held[h].removeAttribute(__oswMarkerAttr);
+          __oswProvisional.delete(held[h]);
+        }
+      }
+    }
+  }
+  if (!Array.isArray(marks)) return;
+  for (var i = 0; i < marks.length; i++) {
+    var mark = marks[i];
+    if (!mark || typeof mark.src !== 'string' || !__oswSafeMarkerId(mark.markerId)) continue;
+    var found = __oswWithSrc(mark.src);
+    for (var j = 0; j < found.length; j++) {
+      if (found[j].hasAttribute(__oswMarkerAttr)) continue;
+      found[j].setAttribute(__oswMarkerAttr, mark.markerId);
+      if (__oswProvisional) __oswProvisional.add(found[j]);
+    }
+  }
 }
 `;
 
@@ -152,15 +209,17 @@ export interface OverrideRuleLocation {
   element: Element;
   sheet: CSSStyleSheet;
   rule: CSSStyleRule;
-  /** A VFS path where one is knowable, else `transient style` or `a stylesheet`. Never a blob id. */
+  /** A VFS path where one is knowable, else `a stylesheet`. Never a blob id. */
   origin: string;
 }
 
 /**
- * Finds which CSS rule overrides the override (`__oswLocateOverrideRule`) and ranks every
- * declaration that reaches the element (`__oswRankDeclaration`).
+ * Finds which CSS rule overrides the override (`__oswLocateOverrideRule`), ranks every declaration
+ * that reaches the element (`__oswRankDeclaration`), and reads the winning declarations' values
+ * (`__oswSpecifiedValues`).
  *
- * Requires {@link STYLE_PREVIEW_JS} in scope (uses `__oswSelectorFor`, `__oswTransientStyleElement`).
+ * Requires {@link STYLE_PREVIEW_JS} in scope (uses `__oswSelectorFor`, `__oswOverridesStyle`,
+ * `__oswMarkerAttr`).
  *
  * Known limits: only `@media` grouping rules are walked (and only while matching);
  * `:not()`/`:is()` arguments do not contribute to specificity; UA defaults are not walked.
@@ -187,13 +246,23 @@ function __oswNormalizeSelectorText(text) {
   return out;
 }
 
+// Whether a sheet's own media query, from its element's media attribute, holds in this frame now. No
+// attribute is every medium.
+function __oswSheetMediaApplies(element) {
+  var text = element.getAttribute('media');
+  if (text === null || text.trim() === '') return true;
+  try { return window.matchMedia(text).matches; } catch (e) { return false; }
+}
+
+// The sheets in force: a disabled one, or one whose media does not match, sets nothing here.
 function __oswStyleSheetEntries() {
   var out = [];
   var nodes = document.querySelectorAll('style, link');
   for (var i = 0; i < nodes.length; i++) {
     var sheet = null;
     try { sheet = nodes[i].sheet; } catch (e) { sheet = null; }
-    if (sheet) out.push({ element: nodes[i], sheet: sheet });
+    if (!sheet || sheet.disabled || !__oswSheetMediaApplies(nodes[i])) continue;
+    out.push({ element: nodes[i], sheet: sheet });
   }
   return out;
 }
@@ -222,18 +291,29 @@ function __oswResolveSheetOrigin(href, blobMap) {
 }
 
 function __oswSheetOrigin(entry) {
+  // The Inspector's copy of the file, swapped in where its link was.
+  if (entry.element === __oswOverridesStyle()) return '/overrides.css';
   var href = null;
   try { href = entry.sheet.href; } catch (e) { href = null; }
   var resolved = __oswResolveSheetOrigin(href, window.__oswVfsBlobUrls);
   return resolved === null ? 'a stylesheet' : resolved;
 }
 
-function __oswFindRuleBySelector(sheet, selector) {
-  var rules = __oswRulesOf(sheet);
+function __oswFindRuleIn(rules, selector) {
   var found = null;
   for (var i = 0; i < rules.length; i++) {
     var rule = rules[i];
-    if (!rule || typeof rule.selectorText !== 'string' || !rule.style) continue;
+    if (!rule) continue;
+    if (typeof rule.selectorText !== 'string' || !rule.style) {
+      // A width block of /overrides.css, or any other group: our rule in it is still ours.
+      var nested = null;
+      try { nested = rule.cssRules; } catch (e) { nested = null; }
+      if (nested && nested.length > 0) {
+        var inner = __oswFindRuleIn(nested, selector);
+        if (inner) found = inner;
+      }
+      continue;
+    }
     if (__oswNormalizeSelectorText(rule.selectorText) !== selector) continue;
     // The LAST match wins, here and in upsertDeclaration, for the same reason: duplicates of one
     // selector have equal specificity, so the later one is the one the user is looking at.
@@ -242,24 +322,16 @@ function __oswFindRuleBySelector(sheet, selector) {
   return found;
 }
 
+function __oswFindRuleBySelector(sheet, selector) {
+  return __oswFindRuleIn(__oswRulesOf(sheet), selector);
+}
+
 function __oswLocateOverrideRule(markerId) {
   var selector = __oswSelectorFor(markerId);
   if (selector === null) return null;
   var entries = __oswStyleSheetEntries();
-  var transientEl = __oswTransientStyleElement();
-  var i;
-  // The transient first, and by element: it is last in <head> and therefore the rule in force
-  // whenever both it and /overrides.css carry the marker.
-  for (i = 0; i < entries.length; i++) {
-    if (entries[i].element !== transientEl) continue;
-    var mine = __oswFindRuleBySelector(entries[i].sheet, selector);
-    if (mine) {
-      return { element: entries[i].element, sheet: entries[i].sheet, rule: mine, origin: 'transient style' };
-    }
-  }
   var best = null;
-  for (i = 0; i < entries.length; i++) {
-    if (entries[i].element === transientEl) continue;
+  for (var i = 0; i < entries.length; i++) {
     var rule = __oswFindRuleBySelector(entries[i].sheet, selector);
     if (!rule) continue;
     best = {
@@ -331,6 +403,42 @@ function __oswSpecificity(selector) {
   return ids * 10000 + classes * 100 + types;
 }
 
+// The selectors of a list, cut at its own commas: not at one inside parentheses, brackets, a quoted
+// value or an escape.
+function __oswSelectorParts(selector) {
+  var parts = [];
+  var start = 0;
+  var depth = 0;
+  var i = 0;
+  while (i < selector.length) {
+    var c = selector.charAt(i);
+    if (selector.charCodeAt(i) === 92) { i += 2; continue; }
+    if (c === '"' || c === "'") { i = __oswSkipString(selector, i); continue; }
+    if (c === '[') { i = __oswSkipTo(selector, i + 1, ']'); continue; }
+    if (c === '(') depth++;
+    else if (c === ')' && depth > 0) depth--;
+    else if (c === ',' && depth === 0) { parts.push(selector.slice(start, i)); start = i + 1; }
+    i++;
+  }
+  parts.push(selector.slice(start));
+  return parts;
+}
+
+// A rule's specificity for one element: that of the most specific selector in its list that matches
+// the element, as the cascade counts it. A list as a whole has no specificity of its own.
+function __oswMatchedSpecificity(el, selector) {
+  var parts = __oswSelectorParts(selector);
+  var best = 0;
+  for (var i = 0; i < parts.length; i++) {
+    var hit = false;
+    try { hit = el.matches(parts[i]); } catch (e) { hit = false; }
+    if (!hit) continue;
+    var specificity = __oswSpecificity(parts[i]);
+    if (specificity > best) best = specificity;
+  }
+  return best;
+}
+
 function __oswBeats(candidate, best) {
   if (best === null) return true;
   if (candidate.important !== best.important) return candidate.important;
@@ -338,9 +446,6 @@ function __oswBeats(candidate, best) {
   return candidate.order >= best.order;
 }
 
-function __oswOriginOf(entry, transientEl) {
-  return entry.element === transientEl ? 'transient style' : __oswSheetOrigin(entry);
-}
 
 function __oswGroupApplies(rule) {
   // See the "known limits" note above: @media only, and only while it matches right now. Anything
@@ -351,7 +456,43 @@ function __oswGroupApplies(rule) {
   try { return window.matchMedia(text).matches; } catch (e) { return false; }
 }
 
-function __oswRankRules(el, property, ourSelector, rules, entry, transientEl, state) {
+// The shorthands that can set a longhand. A shorthand written with var() is kept whole until the
+// value is computed, and the rule's style then answers '' for each of its longhands: without this
+// the rule would not be seen to declare them, and the next rule down would be named as the winner.
+function __oswShorthandsOf(property) {
+  // By axis, in horizontal writing as the panel's side names assume: '-block' sets top and bottom,
+  // '-inline' left and right.
+  var m = /^(margin|padding)-(top|bottom|block-start|block-end|left|right|inline-start|inline-end)$/.exec(property);
+  if (m) return [m[1], m[1] + (/^(top|bottom|block-)/.test(m[2]) ? '-block' : '-inline')];
+  m = /^(margin|padding)-(block|inline)$/.exec(property);
+  if (m) return [m[1]];
+  if (/^border-.*-radius$/.test(property)) return ['border-radius'];
+  m = /^border-(top|right|bottom|left)-(width|style|color)$/.exec(property);
+  if (m) return ['border-' + m[2], 'border-' + m[1], 'border'];
+  if (property === 'row-gap' || property === 'column-gap') return ['gap'];
+  if (property === 'overflow-x' || property === 'overflow-y') return ['overflow'];
+  if (/^background-/.test(property)) return ['background'];
+  if (/^font-(size|weight|style|family)$/.test(property) || property === 'line-height') return ['font'];
+  if (/^flex-(grow|shrink|basis)$/.test(property)) return ['flex'];
+  if (/^flex-(direction|wrap)$/.test(property)) return ['flex-flow'];
+  if (property === 'top' || property === 'right' || property === 'bottom' || property === 'left') return ['inset'];
+  if (/^grid-template-(columns|rows)$/.test(property)) return ['grid-template', 'grid'];
+  return [];
+}
+
+// What a rule's style declares for a property: its own value, or the var() shorthand that sets it.
+function __oswDeclared(style, property) {
+  var value = style.getPropertyValue(property);
+  if (value !== '') return { value: value, name: property };
+  var shorthands = __oswShorthandsOf(property);
+  for (var i = 0; i < shorthands.length; i++) {
+    var whole = style.getPropertyValue(shorthands[i]);
+    if (whole !== '' && whole.indexOf('var(') !== -1) return { value: whole, name: shorthands[i] };
+  }
+  return null;
+}
+
+function __oswRankRules(el, property, ourSelector, rules, entry, state, media) {
   for (var i = 0; i < rules.length; i++) {
     var rule = rules[i];
     if (!rule) continue;
@@ -361,59 +502,126 @@ function __oswRankRules(el, property, ourSelector, rules, entry, transientEl, st
       var nested = null;
       try { nested = rule.cssRules; } catch (e) { nested = null; }
       if (nested && nested.length > 0 && __oswGroupApplies(rule)) {
-        __oswRankRules(el, property, ourSelector, nested, entry, transientEl, state);
+        var groupMedia = null;
+        try { groupMedia = rule.media ? rule.media.mediaText : null; } catch (e) { groupMedia = null; }
+        __oswRankRules(el, property, ourSelector, nested, entry, state, groupMedia || media || null);
       }
       continue;
     }
     // Counted before the two filters, so order is document order over every style rule and does
     // not shift as rules stop declaring the property being asked about.
     state.order++;
-    if (rule.style.getPropertyValue(property) === '') continue;
+    var declared = __oswDeclared(rule.style, property);
+    if (!declared) continue;
     var matched = false;
     // An invalid or unsupported selector throws here rather than returning false.
     try { matched = el.matches(rule.selectorText); } catch (e) { matched = false; }
     if (!matched) continue;
     var candidate = {
-      important: rule.style.getPropertyPriority(property) === 'important',
-      specificity: __oswSpecificity(rule.selectorText),
+      important: rule.style.getPropertyPriority(declared.name) === 'important',
+      specificity: __oswMatchedSpecificity(el, rule.selectorText),
       order: state.order,
       // Resolved here rather than per sheet: inverting the blob map is a scan of its own, and
       // most sheets contribute no candidate at all.
-      origin: __oswOriginOf(entry, transientEl),
-      // Ours by selector, not by sheet: the same doubled marker selector is in the transient
+      origin: __oswSheetOrigin(entry),
+      value: declared.value,
+      // For a reader: the inspect command names the rule that sets each value.
+      selector: rule.selectorText,
+      media: media || null,
+      // Ours by selector, not by sheet: the same doubled marker selector is in the swapped-in
       // <style> before a recompile and in /overrides.css after one, and both are the override.
       // Nothing else writes that selector — it names one marker on one element — so a rule
       // carrying it is the override wherever it turns up, including a hand-edit of the file.
       ours: __oswNormalizeSelectorText(rule.selectorText) === ourSelector
     };
     if (__oswBeats(candidate, state.best)) state.best = candidate;
+    if (!candidate.ours && __oswBeats(candidate, state.other)) state.other = candidate;
   }
 }
 
 function __oswRankDeclaration(el, property, ourSelector) {
   if (!el || typeof property !== 'string' || property === '') return null;
-  var state = { order: 0, best: null };
+  var state = { order: 0, best: null, other: null };
   // The element's own style attribute, as a candidate rather than an early return: it outranks
   // every normal rule whatever their specificity, but an !important rule still outranks it.
-  var inline = '';
-  try { inline = el.style ? el.style.getPropertyValue(property) : ''; } catch (e) { inline = ''; }
-  if (inline !== '') {
+  var inline = null;
+  try { inline = el.style ? __oswDeclared(el.style, property) : null; } catch (e) { inline = null; }
+  if (inline) {
     state.best = {
-      important: el.style.getPropertyPriority(property) === 'important',
+      important: el.style.getPropertyPriority(inline.name) === 'important',
       specificity: Infinity,
       order: -1,
       origin: 'inline style',
+      value: inline.value,
+      selector: '',
+      media: null,
       ours: false
     };
+    state.other = state.best;
   }
   var entries = __oswStyleSheetEntries();
-  var transientEl = __oswTransientStyleElement();
   for (var i = 0; i < entries.length; i++) {
-    __oswRankRules(
-      el, property, ourSelector, __oswRulesOf(entries[i].sheet), entries[i], transientEl, state
-    );
+    __oswRankRules(el, property, ourSelector, __oswRulesOf(entries[i].sheet), entries[i], state);
   }
+  if (state.best) state.best.under = state.other;
   return state.best;
+}
+
+// A logical side and its physical twin set the same value, and whichever declaration wins between
+// them is what the element has: 'margin: 0 auto' declares 'margin-left', which the panel reads as
+// 'margin-inline-start'. Horizontal writing, left to right, as the panel's side names assume.
+var __oswSidesTwin = {
+  'padding-block-start': 'padding-top', 'padding-block-end': 'padding-bottom',
+  'padding-inline-start': 'padding-left', 'padding-inline-end': 'padding-right',
+  'margin-block-start': 'margin-top', 'margin-block-end': 'margin-bottom',
+  'margin-inline-start': 'margin-left', 'margin-inline-end': 'margin-right'
+};
+
+// The variable a property's winning declaration is, when it is one reference and nothing else
+// ('var(--space-4)'): what the Styles tab shows beside the row, and offers to edit. A logical side is
+// looked for under its physical name too, as most stylesheets write it. Nothing is said of a value
+// the element inherits: only a rule that reaches the element itself counts.
+function __oswVariablesOf(el, properties) {
+  var out = {};
+  if (!el || !Array.isArray(properties)) return out;
+  for (var i = 0; i < properties.length; i++) {
+    var property = properties[i];
+    if (typeof property !== 'string' || property === '') continue;
+    var best = __oswRankDeclaration(el, property, null);
+    var twin = Object.prototype.hasOwnProperty.call(__oswSidesTwin, property) ? __oswSidesTwin[property] : null;
+    if (twin) {
+      var physical = __oswRankDeclaration(el, twin, null);
+      if (physical && __oswBeats(physical, best)) best = physical;
+    }
+    // Doubled backslashes: this is a template literal, which would take single ones for itself.
+    var m = best ? /^var\\(\\s*(--[A-Za-z0-9_-]+)\\s*(?:,[^)]*)?\\)$/.exec(String(best.value || '').trim()) : null;
+    if (m) out[property] = m[1];
+  }
+  return out;
+}
+
+function __oswSpecifiedValues(el, properties) {
+  // What the stylesheets say rather than what the engine computed: 'width: 100%' and
+  // 'fit-content' both compute to pixels, and the Size controls need to tell them apart.
+  var out = {};
+  if (!el || !Array.isArray(properties)) return out;
+  var ourSelector = __oswSelectorFor(el.getAttribute ? el.getAttribute(__oswMarkerAttr) : null);
+  for (var i = 0; i < properties.length; i++) {
+    var property = properties[i];
+    if (typeof property !== 'string' || property === '') continue;
+    var best = __oswRankDeclaration(el, property, ourSelector);
+    var twin = Object.prototype.hasOwnProperty.call(__oswSidesTwin, property) ? __oswSidesTwin[property] : null;
+    if (twin) {
+      var physical = __oswRankDeclaration(el, twin, ourSelector);
+      if (physical && __oswBeats(physical, best)) best = physical;
+    }
+    if (!best) { out[property] = null; continue; }
+    var entry = { value: String(best.value || ''), origin: best.origin, ours: best.ours };
+    // What would apply without the element's own override: what taking it off leaves behind.
+    if (best.ours) entry.under = best.under ? { value: String(best.under.value || ''), origin: best.under.origin } : null;
+    out[property] = entry;
+  }
+  return out;
 }
 `;
 
@@ -426,12 +634,12 @@ function __oswRankDeclaration(el, property, ourSelector) {
 export const STYLE_PROBE_JS = `
 function __oswProbeStyleLoss(el, markerId, properties) {
   var wanted = el ? __oswExpandProperties(properties) : [];
-  if (wanted.length === 0) return { lost: [], winner: null };
+  if (wanted.length === 0) return { lost: [], winner: null, written: [] };
   var located = __oswLocateOverrideRule(markerId);
   // Nothing of ours is in the document, so nothing of ours can have been beaten. Reporting every
   // requested property as lost here would light up the whole panel the first time a marker is
   // probed before its rule has been written.
-  if (!located || !located.element || !located.element.parentNode) return { lost: [], winner: null };
+  if (!located || !located.element || !located.element.parentNode) return { lost: [], winner: null, written: [] };
 
   var ourSelector = __oswSelectorFor(markerId);
   var lost = [];
@@ -445,6 +653,15 @@ function __oswProbeStyleLoss(el, markerId, properties) {
     lost.push(wanted[i]);
     if (winner === null) winner = best.origin;
   }
-  return { lost: lost, winner: winner };
+  // The asked-about names themselves that lost somewhere: 'padding' when 'padding-top' did. A caller
+  // that asked with the names a file declares gets back the declarations to act on.
+  var written = [];
+  for (var w = 0; w < properties.length && lost.length > 0; w++) {
+    var names = __oswExpandProperties([properties[w]]);
+    for (var n = 0; n < names.length; n++) {
+      if (lost.indexOf(names[n]) !== -1) { written.push(properties[w]); break; }
+    }
+  }
+  return { lost: lost, winner: winner, written: written };
 }
 `;

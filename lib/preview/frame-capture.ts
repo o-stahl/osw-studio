@@ -24,6 +24,8 @@ interface FrameCaptureOptions {
   fullPage: boolean;
   waitForContent: boolean;
   minWaitDelay: number;
+  /** Paint at this scale instead of the one worked out from `captureWidth`: Canvas's thumbnails are a quarter. */
+  scale?: number;
 }
 
 export const CAPTURE_RUNTIME_JS = `
@@ -88,7 +90,7 @@ function paint() {
     ? Math.max(body.scrollHeight, body.offsetHeight, root.clientHeight, root.scrollHeight, root.offsetHeight)
     : opts.captureHeight;
   var width = Math.max(root.clientWidth, body.scrollWidth, 1);
-  var scale = width < opts.captureWidth ? Math.min(2, opts.captureWidth / width) : 1;
+  var scale = opts.scale || (width < opts.captureWidth ? Math.min(2, opts.captureWidth / width) : 1);
   var ms = window.modernScreenshot;
   return ms.createContext(root, {
     width: width, height: height, scale: scale, backgroundColor: '#ffffff', timeout: 3000, autoDestruct: true,

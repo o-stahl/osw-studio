@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifyProviderError, classifyGeminiError, parseRetryAfter, parseResetHeader, providerMessageForDisplay } from '../provider-errors';
+import { classifyProviderError, classifyGeminiError, limitSourceOf, parseRetryAfter, parseResetHeader, providerMessageForDisplay } from '../provider-errors';
 
 const headers = (h: Record<string, string>) => ({ get: (name: string) => h[name.toLowerCase()] ?? null });
 
@@ -66,7 +66,7 @@ describe('classifyProviderError', () => {
       message: 'Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day',
       headers: headers({ 'x-ratelimit-reset': '1791158400000' }),
     });
-    expect(result).toEqual({ code: 'daily_limit', resetAt: 1791158400000 });
+    expect(result).toEqual({ code: 'daily_limit', resetAt: 1791158400000, limitSource: 'openrouter_free_daily' });
   });
 
   it('does not read "rate-limited" as spent credit because it contains "limit"', () => {
@@ -108,6 +108,17 @@ describe('classifyProviderError', () => {
     expect(classifyProviderError({ status: 529, provider: 'anthropic', message: 'Overloaded' }).code).toBe('overloaded');
     expect(classifyProviderError({ status: 400, provider: 'openai', message: 'maximum context length exceeded' }).code).toBe('context_too_long');
     expect(classifyProviderError({ status: 400, provider: 'groq', message: 'model does not support tools' }).code).toBe('tool_unsupported');
+  });
+
+  it('names the limit a refusal carries as an id, and never passes on free text', () => {
+    const osws = (limit_source: unknown) => classifyProviderError({ status: 402, provider: 'osws', message: 'used up', metadata: { limit_source } });
+    expect(osws('osws_visitor_daily')).toMatchObject({ code: 'daily_limit', limitSource: 'osws_visitor_daily' });
+    expect(osws('osws_monthly')).toMatchObject({ code: 'credit_exhausted', limitSource: 'osws_monthly' });
+    expect(osws('Account a@b.c is over its limit')).not.toHaveProperty('limitSource');
+    expect(osws(42)).not.toHaveProperty('limitSource');
+    expect(limitSourceOf({ limit_source: 'upstream_provider_shared_pool' })).toBe('upstream_provider_shared_pool');
+    expect(limitSourceOf(undefined, 'Rate limit exceeded: free-models-per-day. Add 10 credits')).toBe('openrouter_free_daily');
+    expect(limitSourceOf(undefined, 'Rate limit exceeded')).toBeUndefined();
   });
 
   it('leaves an unrecognised error without a code', () => {
@@ -167,7 +178,7 @@ describe('classifyProviderError — the free allowance', () => {
   });
 
   it('reads the pool and a visitor\'s day as today\'s allowance, with when it refills', () => {
-    expect(allowance('osws_pool', { 'x-ratelimit-reset': '1800000000000' })).toEqual({ code: 'daily_limit', resetAt: 1_800_000_000_000 });
+    expect(allowance('osws_pool', { 'x-ratelimit-reset': '1800000000000' })).toEqual({ code: 'daily_limit', resetAt: 1_800_000_000_000, limitSource: 'osws_pool' });
     expect(allowance('osws_visitor_daily').code).toBe('daily_limit');
   });
 
