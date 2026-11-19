@@ -130,13 +130,16 @@ export interface ProviderAdapterConfig {
   /** Context length a local provider is loaded with; undefined for cloud providers. */
   getLocalContextLength?: () => number | undefined;
   /**
-   * What ties a project's requests together for the free allowance (the orchestrator passes the
-   * project id), which uses it to keep them on one upstream and its prompt cache warm.
+   * What ties a project's requests together (the orchestrator passes the project id): the free
+   * allowance keeps them on one upstream with its prompt cache warm, and Opencode Go routes by it.
    * `/api/generate` hashes it before it leaves.
    */
   getSessionId?: () => string | undefined;
   progress: ProgressReporter;
 }
+
+/** Providers that route a conversation by a session id: the allowance and Opencode Go. */
+const SESSION_PROVIDERS: ReadonlySet<string> = new Set([OSWS_PROVIDER, 'opencode-go']);
 
 // ---------------------------------------------------------------------------
 // OswsProviderAdapter
@@ -226,7 +229,7 @@ export class OswsProviderAdapter implements ProviderAdapter {
       ...(providerConfig.baseUrl ? { baseUrl: providerConfig.baseUrl } : {}),
       ...(providerConfig.customHeaders ? { customHeaders: providerConfig.customHeaders } : {}),
       ...(localContextLength ? { context_length: localContextLength } : {}),
-      ...(provider === OSWS_PROVIDER && this.config.getSessionId?.() ? { sessionId: this.config.getSessionId() } : {}),
+      ...(SESSION_PROVIDERS.has(provider) && this.config.getSessionId?.() ? { sessionId: this.config.getSessionId() } : {}),
     };
 
     // Debug capture of the exact outgoing history (no-op unless enabled in the

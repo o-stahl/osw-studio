@@ -683,7 +683,7 @@ export class CanvasEngine {
           frame.style.height = `${settled.height}px`;
           // The settle already waited for the page to go quiet; waiting again for fonts and images from
           // the network could take longer than the whole capture is given.
-          const bitmap = await requestFrameCapture(frame, { captureWidth: b.w, captureHeight: settled.height, fullPage: true, waitForContent: false, minWaitDelay: 0, scale: THUMB_SCALE }, 10000);
+          const bitmap = await requestFrameCapture(frame, { captureWidth: b.w, captureHeight: settled.height, fullPage: true, waitForContent: false, minWaitDelay: 0, scale: THUMB_SCALE }, 15000);
           const blob = await bitmapToJpeg(bitmap);
           // An artboard removed meanwhile, or an engine gone, would never revoke the URL.
           if (!this.destroyed && this.boards.get(b.id) === b) {

@@ -73,6 +73,12 @@ describe('the free allowance on the demo', () => {
     expect(bodies()[1].sessionId).toBeUndefined();
   });
 
+  it('sends the project id to Opencode Go too, which routes a conversation by it', async () => {
+    vi.mocked(apiFetch).mockImplementation(async () => okResponse());
+    await adapter('opencode-go').call({ messages });
+    expect(bodies()[0].sessionId).toBe('project-1');
+  });
+
   it('runs the check when the server asks for a session, and sends the request again once', async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce(sessionNeeded()).mockResolvedValueOnce(okResponse());
     await adapter().call({ messages });

@@ -142,3 +142,35 @@ describe('POST /api/generate — error class on the error body', () => {
     await expect(res.json()).resolves.toMatchObject({ code: 'auth', error: 'Google Gemini API error: API key not valid' });
   });
 });
+
+describe('POST /api/generate — Opencode Go session', () => {
+  // Opencode Go refuses a request without `x-opencode-session` ("cannot be routed efficiently"); its
+  // docs ask for a stable id per conversation, and for the client's own user agent.
+  const headersOf = (fetchMock: ReturnType<typeof upstream>) => new Headers((fetchMock.mock.calls[0][1] as RequestInit).headers);
+  const reply = { choices: [{ message: { role: 'assistant', content: 'ok' } }] };
+
+  it('sends a hash of the project id as the session, never the id itself', async () => {
+    const fetchMock = upstream(200, reply);
+    await post({ provider: 'opencode-go', apiKey: 'sk-x', model: 'glm-5', sessionId: 'project-123' });
+    const session = headersOf(fetchMock).get('x-opencode-session');
+    expect(session).toMatch(/^[0-9a-f]{32}$/);
+    expect(session).not.toContain('project-123');
+    expect(headersOf(fetchMock).get('user-agent')).toMatch(/^osw-studio/);
+
+    const again = upstream(200, reply);
+    await post({ provider: 'opencode-go', apiKey: 'sk-x', model: 'glm-5', sessionId: 'project-123' });
+    expect(headersOf(again).get('x-opencode-session')).toBe(session);
+  });
+
+  it('sends it on the Anthropic-format models as well', async () => {
+    const fetchMock = upstream(200, { content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn' });
+    await post({ provider: 'opencode-go', apiKey: 'sk-x', model: 'minimax-m2.7', sessionId: 'project-123' });
+    expect(headersOf(fetchMock).get('x-opencode-session')).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  it('sends no session header to other providers', async () => {
+    const fetchMock = upstream(200, reply);
+    await post({ provider: 'openrouter', apiKey: 'sk-or-x', model: 'a/b', sessionId: 'project-123' });
+    expect(headersOf(fetchMock).get('x-opencode-session')).toBeNull();
+  });
+});

@@ -210,3 +210,16 @@ describe('a failed redo', () => {
     expect(line).toMatch(/way === 'undo' \? 'editUndoFailed' : 'editRedoFailed'/);
   });
 });
+
+describe('the preview a workspace action reads', () => {
+  it('is read through shownPreview for placement and the composer screenshot, with no shared ref left', () => {
+    // A single `previewRef` written by both mounts held whichever committed last: on a desktop, the
+    // hidden mobile frame.
+    expect(SOURCE).not.toMatch(/\bpreviewRef\b/);
+    const placed = callbackBody('handlePlacementComplete');
+    expect(placed.match(/shownPreviewHandle\(\)\?\.getActivePath/g)?.length).toBe(2);
+    expect(SOURCE).toMatch(/const handleCaptureContextScreenshot = useCallback\(\s*\(\) => shownPreviewHandle\(\)\?\.captureScreenshot\(/);
+    // shownPreview takes the desktop handle before the mobile one.
+    expect(SOURCE).toMatch(/shownPreview\(mobileViewportRef\.current, desktopPreviewRef\.current, mobilePreviewRef\.current\)/);
+  });
+});

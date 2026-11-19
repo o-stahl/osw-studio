@@ -37,6 +37,20 @@ describe('getDefaultModel', () => {
     }
   });
 
+  it('names a model in the list of every provider that cannot discover its models', () => {
+    // Without discovery the hand-kept list is all the picker has, so a default missing from it is
+    // never shown and a connect falls back to another model.
+    const checked: string[] = [];
+    for (const provider of BUILT_INS) {
+      const config = providers[provider];
+      const model = getDefaultModel(provider);
+      if (config.supportsModelDiscovery || !model || !config.models?.length) continue;
+      checked.push(provider);
+      expect(config.models.map(m => m.id), provider).toContain(model);
+    }
+    expect(checked).toContain('minimax');
+  });
+
   it('returns nothing for each built-in named as having no default', () => {
     // The control: an exemption kept after its provider gained a default, or left the registry,
     // would widen the sweep's blind spot unnoticed.

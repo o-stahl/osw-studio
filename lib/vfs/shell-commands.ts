@@ -156,7 +156,7 @@ export function parseSedArgs(args: string[]): SedArgs {
     }
     // Address-based expression (/pattern/d, 5,10d, $d, /p1/,/p2/c\text, etc.)
     // Must distinguish from file paths like /styles/style.css:
-    //   Address: /re/d, /re/p, /re/n         (command letter at end of token)
+    //   Address: /re/d, /re/p, /re/n         (command letter at end of token, or before ; or a newline)
     //            /re/c\text, /re/a\text, /re/i\text  (command letter + backslash)
     //            /re/,/re2/...                (range — comma right after the first addr)
     //   Path:    /dir/file.ext               (second slash followed by arbitrary text)
@@ -165,7 +165,7 @@ export function parseSedArgs(args: string[]): SedArgs {
     if (
       /^\d+!?[,dpcians{]/.test(a) ||
       /^[\\$]/.test(a) ||
-      /^\/[^/]*\/(?:!?[dpn]$|!?[cai]\\|!?\{|,)/.test(a)
+      /^\/[^/]*\/(?:!?[dpn](?:$|[;\n])|!?[cai]\\|!?\{|,)/.test(a)
     ) {
       expressions.push(a);
       continue;

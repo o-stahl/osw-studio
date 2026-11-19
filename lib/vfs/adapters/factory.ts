@@ -21,15 +21,3 @@ export function createClientAdapter(): StorageAdapter {
   const dbName = workspaceId ? `osw-studio-${workspaceId}` : undefined;
   return new IndexedDBAdapter(dbName);
 }
-
-/**
- * Create storage adapter for server-side usage (Server mode only)
- * Returns SQLiteAdapter configured to use data/osws.sqlite
- *
- * NOTE: This function uses dynamic import to avoid bundling sqlite in client code
- */
-export async function createServerAdapter(): Promise<StorageAdapter> {
-  // Dynamic import to avoid bundling server-only code in client
-  const { SQLiteAdapter } = await import('./sqlite-adapter');
-  return new SQLiteAdapter();
-}

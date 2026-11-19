@@ -135,7 +135,7 @@ describe('POST /api/mcp', () => {
     expect(tools.map(t => t.name).sort()).toEqual([
       'agent_cancel', 'agent_run', 'agent_status', 'analytics_overview',
       'backend_delete', 'backend_list', 'backend_upsert', 'bash', 'canvas_selection',
-      'deployments_create', 'deployments_list', 'deployments_publish',
+      'deployments_create', 'deployments_duplicate', 'deployments_list', 'deployments_publish',
       'deployments_sql', 'deployments_unpublish', 'deployments_update',
       'deployments_url',
       'files_download_url',
@@ -143,7 +143,9 @@ describe('POST /api/mcp', () => {
       'files_upload_url',
       'files_write',
       'preview_screenshot',
-      'projects_create', 'projects_get', 'projects_list',
+      'projects_create', 'projects_duplicate', 'projects_get', 'projects_list',
+      'skills_duplicate', 'skills_list',
+      'templates_duplicate', 'templates_list',
     ]);
     // A client that is refused needs to know which scope was missing, so each description says.
     const scopeless = tools.filter(t => !/[Nn]eeds [a-z:]+/.test(t.description));
@@ -382,6 +384,22 @@ describe('POST /api/mcp', () => {
 
     expect(out.isError).toBe(true);
     expect(out.text).toMatch(/No task/);
+  });
+
+  it("reports the task's real last event id, whatever id the caller asked from", async () => {
+    // Asking from a high id is the cheap "status only" call; its answer has to say where to resume.
+    const { taskManager, eventBus } = await import('@/lib/server-generate/singleton');
+    await taskManager.initialize();
+    const mine = taskManager.createTask('p1', userId, '', workspaceId);
+    eventBus.emit(mine, 'p1', 'iteration', { n: 1 });
+    const last = eventBus.emit(mine, 'p1', 'usage', { tokens: 3 }).id;
+
+    const ahead = JSON.parse((await callTool('agent_status', { workspaceId, taskId: mine, sinceEventId: 999999 })).text!);
+    expect(ahead.events).toEqual([]);
+    expect(ahead.lastEventId).toBe(last);
+
+    const caughtUp = JSON.parse((await callTool('agent_status', { workspaceId, taskId: mine, sinceEventId: last })).text!);
+    expect(caughtUp.lastEventId).toBe(last);
   });
 
   it('creates an unpublished deployment and turns analytics on without publishing it', async () => {
@@ -696,3 +714,141 @@ describe('the page tools, answered by an open tab', () => {
   });
 });
 
+
+describe('the duplicate tools', () => {
+  const store = async () => (await import('@/lib/vfs/adapters/server')).getWorkspaceAdapter(workspaceId);
+  const answer = (out: { text?: string }) => JSON.parse(out.text!);
+
+  it('copies a project whole, on its own ids, and leaves the original alone', async () => {
+    const adapter = await store();
+    const bytes = new Uint8Array([137, 80, 78, 71, 0, 255]);
+    const now = new Date();
+    await adapter.createFile({
+      id: 'f2', projectId: 'p1', path: '/logo.png', name: 'logo.png', type: 'image', content: bytes.buffer,
+      mimeType: 'image/png', size: bytes.length, createdAt: now, updatedAt: now, metadata: {},
+    });
+    await callTool('backend_upsert', { workspaceId, projectId: 'p1', kind: 'edge', name: 'hello', code: 'return 1', method: 'GET' });
+    await callTool('backend_upsert', { workspaceId, projectId: 'p1', kind: 'server', name: 'helper', code: 'return 2' });
+    await callTool('backend_upsert', { workspaceId, projectId: 'p1', kind: 'secret', name: 'KEY', value: 'v1' });
+    await callTool('backend_upsert', { workspaceId, projectId: 'p1', kind: 'schedule', name: 'daily', cronExpression: '0 8 * * *', functionName: 'hello' });
+
+    const out = await callTool('projects_duplicate', { workspaceId, projectId: 'p1' });
+    expect(out.isError).toBe(false);
+    const copy = answer(out);
+    expect(copy).toMatchObject({ name: 'Site (Copy)', copiedFrom: 'p1', runtime: 'static', files: ['/index.html', '/logo.png'] });
+    expect(copy.id).not.toBe('p1');
+
+    const logo = (await adapter.listFiles(copy.id)).find(f => f.path === '/logo.png')!;
+    expect([...new Uint8Array(logo.content as ArrayBuffer)]).toEqual([...bytes]);
+    const [edge] = await adapter.listEdgeFunctions(copy.id);
+    const [original] = await adapter.listEdgeFunctions('p1');
+    expect(edge).toMatchObject({ name: 'hello', code: 'return 1' });
+    expect(edge.id).not.toBe(original.id);
+    expect((await adapter.listServerFunctions(copy.id)).map(f => f.name)).toEqual(['helper']);
+    expect(await adapter.listSecrets(copy.id)).toEqual([expect.objectContaining({ name: 'KEY', value: 'v1' })]);
+    expect((await adapter.listScheduledFunctions(copy.id))[0].functionId).toBe(edge.id);
+    expect((await adapter.listScheduledFunctions('p1'))[0].functionId).toBe(original.id);
+
+    expect(answer(await callTool('projects_duplicate', { workspaceId, projectId: 'p1' })).name).toBe('Site (Copy 2)');
+    expect(answer(await callTool('projects_duplicate', { workspaceId, projectId: 'p1', name: 'Mine' })).name).toBe('Mine');
+  });
+
+  it('refuses a project copy past the workspace limit, or without the write scope', async () => {
+    const { updateWorkspace } = await import('@/lib/auth/system-database');
+    updateWorkspace(workspaceId, { max_projects: 1 });
+    const limited = await callTool('projects_duplicate', { workspaceId, projectId: 'p1' });
+    expect(limited.isError).toBe(true);
+    expect(limited.text).toMatch(/Project limit reached \(1\)/);
+    expect((await store()).listProjectSummaries()).toHaveLength(1);
+
+    vi.stubEnv('MCP_DEV_SCOPES', 'projects:read');
+    for (const [name, args] of [
+      ['projects_duplicate', { projectId: 'p1' }], ['templates_duplicate', { templateId: 't' }], ['skills_duplicate', { skillId: 's' }],
+    ] as const) {
+      const out = await callTool(name, { workspaceId, ...args });
+      expect(out.isError).toBe(true);
+      expect(out.text).toMatch(/projects:write/);
+    }
+    expect((await callTool('skills_list', { workspaceId })).isError).toBe(false);
+    expect((await callTool('templates_list', { workspaceId })).isError).toBe(false);
+  });
+
+  it('copies a custom template and refuses a built-in one', async () => {
+    const adapter = await store();
+    await adapter.saveCustomTemplate({
+      id: 't1', name: 'Shop', description: 'd', version: '2.0.0', directories: ['/css'],
+      files: [{ path: '/index.html', content: '<p>x</p>' }], assets: [], metadata: { license: 'mit', tags: ['a'] }, importedAt: new Date(0),
+      runtime: 'react', backendFeatures: { secrets: [{ name: 'KEY' }] },
+    });
+    expect(answer(await callTool('templates_list', { workspaceId }))).toEqual([expect.objectContaining({ id: 't1', name: 'Shop' })]);
+
+    const copy = answer(await callTool('templates_duplicate', { workspaceId, templateId: 't1' }));
+    expect(copy).toMatchObject({ name: 'Shop (Copy)', copiedFrom: 't1', files: 1 });
+    expect(await adapter.getCustomTemplate(copy.id)).toMatchObject({
+      version: '2.0.0', directories: ['/css'], files: [{ path: '/index.html', content: '<p>x</p>' }], metadata: { license: 'mit', tags: ['a'] },
+      runtime: 'react', backendFeatures: { secrets: [{ name: 'KEY' }] },
+    });
+    expect((await adapter.getCustomTemplate('t1'))!.name).toBe('Shop');
+
+    const builtIn = await callTool('templates_duplicate', { workspaceId, templateId: 'blank' });
+    expect(builtIn.isError).toBe(true);
+    expect(builtIn.text).toMatch(/projects_create/);
+  });
+
+  it('copies a skill under a new name in its frontmatter, built-in ones included', async () => {
+    const adapter = await store();
+    const now = new Date();
+    const content = '---\nname: audit\ndescription: "Check: pages"\nlicense: MIT\n---\n\nname: stays in the body\n';
+    await adapter.createSkill({ id: 'audit', name: 'audit', description: 'Check: pages', content, markdown: 'name: stays in the body', createdAt: now, updatedAt: now });
+
+    expect(answer(await callTool('skills_duplicate', { workspaceId, skillId: 'audit' })).id).toBe('audit-copy');
+    const copy = (await adapter.getSkill('audit-copy'))!;
+    expect(copy).toMatchObject({ name: 'audit-copy', description: 'Check: pages', isBuiltIn: false });
+    expect(copy.content).toBe(content.replace('name: audit', 'name: audit-copy'));
+    expect(answer(await callTool('skills_duplicate', { workspaceId, skillId: 'audit' })).id).toBe('audit-copy-2');
+
+    const taken = await callTool('skills_duplicate', { workspaceId, skillId: 'audit', name: 'audit' });
+    expect(taken.isError).toBe(true);
+    // Refused for the name, before the database's unique id would turn it into a storage error.
+    expect(taken.text).toMatch(/named audit already exists/);
+
+    const listed = answer(await callTool('skills_list', { workspaceId })) as { id: string; builtIn: boolean }[];
+    const builtIn = listed.find(s => s.builtIn)!;
+    expect(listed.filter(s => !s.builtIn).map(s => s.id).sort()).toEqual(['audit', 'audit-copy', 'audit-copy-2']);
+    const fromBuiltIn = answer(await callTool('skills_duplicate', { workspaceId, skillId: builtIn.id, name: 'my-copy' }));
+    expect(fromBuiltIn.id).toBe('my-copy');
+    expect(await adapter.getSkill('my-copy')).toMatchObject({ name: 'my-copy', isBuiltIn: false });
+  });
+
+  it('copies a deployment\'s settings and none of its address, review or publish state', async () => {
+    const adapter = await store();
+    const { id } = answer(await callTool('deployments_create', { workspaceId, projectId: 'p1', name: 'Live' }));
+    const source = (await adapter.getDeployment(id))!;
+    await adapter.updateDeployment({
+      ...source,
+      slug: 'live', customDomain: 'example.test', underConstruction: true, databaseEnabled: true,
+      headScripts: [{ id: 's', name: 'tag', content: 'x', type: 'inline', enabled: true }],
+      seo: { title: 'Home' }, review: { enabled: true, passwordHash: 'hash' },
+      publishedAt: new Date(), lastPublishedVersion: 4, settingsVersion: 4,
+    });
+
+    const out = answer(await callTool('deployments_duplicate', { workspaceId, deploymentId: id }));
+    expect(out).toMatchObject({ name: 'Live (Copy)', copiedFrom: id, projectId: 'p1', published: false });
+    const copy = (await adapter.getDeployment(out.id))!;
+    expect(copy).toMatchObject({
+      underConstruction: true, databaseEnabled: true, seo: { title: 'Home' }, settingsVersion: 1,
+      headScripts: [expect.objectContaining({ name: 'tag' })],
+    });
+    expect(copy.slug ?? null).toBeNull();
+    expect(copy.customDomain ?? null).toBeNull();
+    expect(copy.publishedAt ?? null).toBeNull();
+    expect(copy.lastPublishedVersion ?? null).toBeNull();
+    expect(copy.review?.enabled).not.toBe(true);
+    expect(copy.review?.passwordHash).toBeUndefined();
+
+    const sql = (query: string) => callTool('deployments_sql', { workspaceId, deploymentId: out.id, sql: query });
+    expect((await sql('CREATE TABLE notes (body TEXT)')).isError).toBe(false);
+    expect((await sql("INSERT INTO notes VALUES ('hi')")).isError).toBe(false);
+    expect(answer(await sql('SELECT body FROM notes')).rows).toEqual([{ body: 'hi' }]);
+  });
+});

@@ -13,6 +13,9 @@ import type { CustomConnection } from '@/lib/llm/providers/connection-record';
 import { EnhancedSyncStatusResponse } from './sync-types';
 import { encodeTemplateFiles, decodeTemplateFiles } from './binary-encoding';
 import { isArrayBuffer } from './is-array-buffer';
+import {
+  mergeBackendFeatures, readBackendBase, sameBackendItem, writeBackendBase, type BackendFeatureSet,
+} from './backend-sync';
 import { apiFetch } from '@/lib/api/backend-status';
 
 export interface SyncResult {
@@ -1204,6 +1207,7 @@ export class SyncManager {
         return { success: false, error: errorData.error || `HTTP ${response.status}` };
       }
 
+      writeBackendBase(projectId, features ?? { edgeFunctions: [], serverFunctions: [], secrets: [], scheduledFunctions: [] });
       return { success: true };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
@@ -1211,8 +1215,10 @@ export class SyncManager {
   }
 
   /**
-   * Pull backend features from server (core SQLite) to IndexedDB
-   * Called during project sync/pull operations
+   * Bring the browser's backend features and the server's together.
+   *
+   * What only the browser has reaches the server, what a connector or a run changed there reaches
+   * the browser, and a deletion on either side stands (`mergeBackendFeatures`).
    */
   async pullBackendFeatures(projectId: string): Promise<{ success: boolean; error?: string }> {
     try {
@@ -1225,63 +1231,62 @@ export class SyncManager {
         return { success: false, error: errorData.error || `HTTP ${response.status}` };
       }
 
-      const data = await response.json() as {
-        edgeFunctions?: import('./types').EdgeFunction[];
-        serverFunctions?: import('./types').ServerFunction[];
-        secrets?: import('./types').Secret[];
-        scheduledFunctions?: import('./types').ScheduledFunction[];
+      const data = await response.json() as Partial<BackendFeatureSet>;
+      const server: BackendFeatureSet = {
+        edgeFunctions: data.edgeFunctions ?? [],
+        serverFunctions: data.serverFunctions ?? [],
+        secrets: data.secrets ?? [],
+        scheduledFunctions: data.scheduledFunctions ?? [],
       };
 
-      // Write pulled features to IndexedDB via the VFS adapter
+      let merged: BackendFeatureSet;
+      let needsPush: boolean;
       try {
         const { vfs } = await import('@/lib/vfs');
         const adapter = vfs.getStorageAdapter();
+        const local: BackendFeatureSet = {
+          edgeFunctions: await adapter.listEdgeFunctions?.(projectId) ?? [],
+          serverFunctions: await adapter.listServerFunctions?.(projectId) ?? [],
+          secrets: await adapter.listSecrets?.(projectId) ?? [],
+          scheduledFunctions: await adapter.listScheduledFunctions?.(projectId) ?? [],
+        };
+        const result = mergeBackendFeatures(local, server, readBackendBase(projectId));
+        ({ merged, needsPush } = result);
 
-        // Clear existing features for this project, then re-create from server data
-        if (adapter.listEdgeFunctions && adapter.deleteEdgeFunction && adapter.createEdgeFunction) {
-          const existing = await adapter.listEdgeFunctions(projectId);
-          for (const fn of existing) {
-            await adapter.deleteEdgeFunction(fn.id);
+        const store = async <K extends keyof BackendFeatureSet>(
+          kind: K,
+          remove: ((id: string) => Promise<void>) | undefined,
+          create: ((item: BackendFeatureSet[K][number]) => Promise<void>) | undefined,
+        ) => {
+          if (!remove || !create) return;
+          const kept = new Set<string>();
+          for (const stored of local[kind]) {
+            const next = result.merged[kind].find(item => item.id === stored.id);
+            if (next && sameBackendItem(kind, stored, next, result.merged, local)) kept.add(stored.id);
+            else await remove(stored.id);
           }
-          for (const fn of data.edgeFunctions || []) {
-            await adapter.createEdgeFunction({ ...fn, projectId });
+          for (const item of result.merged[kind]) {
+            if (!kept.has(item.id)) await create({ ...item, projectId });
           }
-        }
-
-        if (adapter.listServerFunctions && adapter.deleteServerFunction && adapter.createServerFunction) {
-          const existing = await adapter.listServerFunctions(projectId);
-          for (const fn of existing) {
-            await adapter.deleteServerFunction(fn.id);
-          }
-          for (const fn of data.serverFunctions || []) {
-            await adapter.createServerFunction({ ...fn, projectId });
-          }
-        }
-
-        if (adapter.listSecrets && adapter.deleteSecret && adapter.createSecret) {
-          const existing = await adapter.listSecrets(projectId);
-          for (const s of existing) {
-            await adapter.deleteSecret(s.id);
-          }
-          for (const s of data.secrets || []) {
-            await adapter.createSecret({ ...s, projectId });
-          }
-        }
-
-        if (adapter.listScheduledFunctions && adapter.deleteScheduledFunction && adapter.createScheduledFunction) {
-          const existing = await adapter.listScheduledFunctions(projectId);
-          for (const fn of existing) {
-            await adapter.deleteScheduledFunction(fn.id);
-          }
-          for (const fn of data.scheduledFunctions || []) {
-            await adapter.createScheduledFunction({ ...fn, projectId });
-          }
-        }
+        };
+        await store('edgeFunctions', adapter.deleteEdgeFunction?.bind(adapter), adapter.createEdgeFunction?.bind(adapter));
+        await store('serverFunctions', adapter.deleteServerFunction?.bind(adapter), adapter.createServerFunction?.bind(adapter));
+        await store('secrets', adapter.deleteSecret?.bind(adapter), adapter.createSecret?.bind(adapter));
+        await store('scheduledFunctions', adapter.deleteScheduledFunction?.bind(adapter), adapter.createScheduledFunction?.bind(adapter));
       } catch (writeError) {
         console.error('[SyncManager] Failed to write pulled backend features to IndexedDB:', writeError);
-        return { success: false, error: writeError instanceof Error ? writeError.message : 'Failed to write to IndexedDB' }; // i18n-ignore: the only caller discards the result
+        return { success: false, error: writeError instanceof Error ? writeError.message : 'Failed to write backend features' };
       }
 
+      if (needsPush) {
+        const pushed = await this.pushBackendFeatures(projectId, merged);
+        if (!pushed.success) {
+          writeBackendBase(projectId, server);
+          return pushed;
+        }
+      } else {
+        writeBackendBase(projectId, merged);
+      }
       return { success: true };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };

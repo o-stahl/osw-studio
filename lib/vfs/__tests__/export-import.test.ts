@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import 'fake-indexeddb/auto';
 import { vfs } from '../index';
 
@@ -100,6 +100,18 @@ describe('project export/import round-trip', () => {
     expect(forkFns[0].id).not.toBe('ef1');
     expect(forkFns[0].name).toBe('ping');
     expect((await vfs.readFile(project.id, '/index.html')).content).toBe('<h1>x</h1>');
+  });
+
+  it('copyProject removes a copy that fails partway', async () => {
+    const project = await vfs.createProject('Half Copied', 'test');
+    await vfs.createFile(project.id, '/index.html', '<h1>x</h1>');
+    const adapter = vfs.getStorageAdapter();
+    const spy = vi.spyOn(adapter as Required<Pick<typeof adapter, 'listEdgeFunctions'>>, 'listEdgeFunctions').mockRejectedValueOnce(new Error('storage full'));
+
+    await expect(vfs.copyProject(project.id, 'The Copy')).rejects.toThrow('storage full');
+
+    spy.mockRestore();
+    expect((await vfs.listProjects()).map((p) => p.name)).not.toContain('The Copy');
   });
 
   it('noteProjectEdit stamps updatedAt so a backend-only change is a local edit', async () => {

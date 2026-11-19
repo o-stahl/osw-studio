@@ -269,8 +269,19 @@ export class IndexedDBAdapter implements StorageAdapter {
     const scheduledFunctionIds = scheduledFunctions.map(f => f.id);
 
     // Phase 2 (write): Delete all items in a single multi-store transaction for atomicity
-    const storeNames = ['projects', 'files', 'fileTree', 'edgeFunctions', 'serverFunctions', 'secrets', 'scheduledFunctions'];
+    const history = ['checkpoints', 'debugEvents', 'conversations'].filter(name => db.objectStoreNames.contains(name));
+    const storeNames = ['projects', 'files', 'fileTree', 'edgeFunctions', 'serverFunctions', 'secrets', 'scheduledFunctions', ...history];
     const tx = db.transaction(storeNames, 'readwrite');
+
+    // The project's chat, checkpoints and old conversations, found by the projectId index.
+    for (const name of history) {
+      tx.objectStore(name).index('projectId').openKeyCursor(IDBKeyRange.only(id)).onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursor | null>).result;
+        if (!cursor) return;
+        tx.objectStore(name).delete(cursor.primaryKey);
+        cursor.continue();
+      };
+    }
 
     const deleteFromStore = (storeName: string, ids: string[]) => {
       const store = tx.objectStore(storeName);

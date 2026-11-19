@@ -34,7 +34,10 @@ const canvas = { width: 1280, height: 720 };
 
 interface Context {
   root: Element;
-  options: { filter: (n: Node) => boolean; width: number; height: number; scale: number; autoDestruct: boolean };
+  options: {
+    filter: (n: Node) => boolean; width: number; height: number; scale: number; autoDestruct: boolean;
+    backgroundColor: string; onCreateForeignObjectSvg: (svg: SVGSVGElement) => void;
+  };
   sandbox?: {
     contentWindow: { document: { body: Element; createElement: (t: string) => Element }; getComputedStyle: typeof getComputedStyle };
     remove: () => void;
@@ -176,6 +179,144 @@ describe('CAPTURE_RUNTIME_JS', () => {
     const { reply } = await run();
 
     expect(reply).toEqual({ type: 'preview:capture-result', reqId: 7, error: 'no foreignObject' });
+  });
+
+  it('paints the root in the page\'s own background, and white where it has none', async () => {
+    const contexts = stubPainter();
+    document.documentElement.style.backgroundColor = 'rgb(11, 10, 8)';
+    await run();
+    document.documentElement.style.backgroundColor = '';
+    await run();
+    expect(contexts.map(c => c.options.backgroundColor)).toEqual(['rgb(11, 10, 8)', '#ffffff']);
+  });
+
+  describe('web fonts of a stylesheet the frame cannot read', () => {
+    const rule = (family: string, range: string, cssText: string) => ({ type: 5, cssText, family, range });
+    type Rule = ReturnType<typeof rule>;
+    class FakeSheet {
+      cssRules: unknown[] = [];
+      replaceSync(text: string) {
+        this.cssRules = (JSON.parse(text) as Rule[]).map(r => ({
+          type: r.type,
+          cssText: r.cssText,
+          style: { getPropertyValue: (p: string) => ({ 'font-family': r.family, 'font-style': 'normal', 'unicode-range': r.range } as Record<string, string>)[p] ?? '' },
+        }));
+      }
+    }
+
+    beforeEach(() => {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.test/css';
+      Object.defineProperty(link, 'sheet', { get: () => ({ get cssRules() { throw new DOMException('blocked', 'SecurityError'); } }) });
+      document.head.appendChild(link);
+      Object.defineProperty(document, 'fonts', {
+        configurable: true,
+        value: [
+          { family: '"Inter"', style: 'normal', unicodeRange: 'U+0-FF', status: 'loaded' },
+          { family: 'Inter', style: 'normal', unicodeRange: 'U+100-1FF', status: 'unloaded' },
+        ],
+      });
+      vi.stubGlobal('CSSStyleSheet', FakeSheet);
+      vi.stubGlobal('fetch', vi.fn(async () => ({
+        ok: true,
+        text: async () => JSON.stringify([
+          rule('Inter', 'U+0-FF', '@font-face{latin}'),
+          rule('Inter', 'U+100-1FF', '@font-face{extended}'),
+          { ...rule('Inter', 'U+0-FF', 'p{}'), type: 1 },
+        ]),
+      })));
+    });
+    afterEach(() => { delete (document as unknown as { fonts?: unknown }).fonts; });
+
+    const fontStyle = () => document.querySelector<HTMLStyleElement>('style[data-osw-capture]');
+
+    it('hands the painter the faces the page loaded, in a sheet the page does not apply', async () => {
+      let seen: { css: string; media: string; painted: boolean } | null = null;
+      stubPainter(async (context: Context) => {
+        const style = fontStyle()!;
+        seen = { css: style.textContent!.trim(), media: style.media, painted: context.options.filter(style) };
+        return canvas;
+      });
+
+      await run();
+
+      expect(fetch).toHaveBeenCalledWith('https://fonts.test/css');
+      expect(seen).toEqual({ css: '@font-face{latin}', media: 'not all', painted: false });
+      expect(fontStyle()).toBeNull();
+    });
+
+    it('removes that sheet when painting fails', async () => {
+      stubPainter(async () => { throw new Error('no foreignObject'); });
+      await run();
+      expect(fontStyle()).toBeNull();
+    });
+
+    it('paints without the fonts when they do not arrive in time', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+        let styled = true;
+        stubPainter(async () => { styled = fontStyle() !== null; return canvas; });
+        const pending = run();
+        await vi.advanceTimersByTimeAsync(1500);
+        expect((await pending).reply.bitmap).toEqual({ from: canvas });
+        expect(styled).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  it('gives the painter 10 s before it reports the render timed out', async () => {
+    vi.useFakeTimers();
+    try {
+      stubPainter(() => new Promise(() => {}));
+      let reply: Record<string, unknown> | null = null;
+      void run().then(r => { reply = r.reply; });
+      await vi.advanceTimersByTimeAsync(9900);
+      expect(reply).toBeNull();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(reply).toMatchObject({ error: 'render timed out' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('puts what CSS gave a symbol\'s shapes on the painter\'s copy, and leaves what resolves at the <use>', async () => {
+    const NS = 'http://www.w3.org/2000/svg';
+    const holder = document.createElement('div');
+    holder.innerHTML = `<svg><symbol id="i"><path class="ic"/><rect fill="var(--logo-bg,#000)"/><g fill="currentColor"><path class="inherits"/></g></symbol></svg>`;
+    document.body.appendChild(holder);
+    const symbol = holder.querySelector('symbol')!;
+    const color = 'rgb(1, 2, 3)';
+    const base: Record<string, string> = { color, fill: 'rgb(0, 0, 0)', stroke: 'none', 'stroke-width': '1px' };
+    const styles = new Map<Element, Record<string, string>>([
+      [symbol, base],
+      [symbol.querySelector('.ic')!, { ...base, fill: 'none', stroke: color, 'stroke-width': '2px' }],
+      [symbol.querySelector('rect')!, { ...base, fill: 'rgb(9, 9, 9)' }],
+      [symbol.querySelector('g')!, { ...base, fill: color }],
+      [symbol.querySelector('.inherits')!, { ...base, fill: color }],
+    ]);
+    vi.stubGlobal('getComputedStyle', (el: Element) => {
+      const values = styles.get(el) ?? base;
+      return { color: values.color, backgroundColor: '', getPropertyValue: (p: string) => values[p] ?? '' };
+    });
+    const contexts = stubPainter();
+    await run();
+
+    const svg = document.createElementNS(NS, 'svg');
+    const defs = svg.appendChild(document.createElementNS(NS, 'defs'));
+    const copy = defs.appendChild(symbol.cloneNode(true)) as SVGElement;
+    contexts[0].options.onCreateForeignObjectSvg(svg);
+
+    const style = (selector: string) => copy.querySelector<SVGElement>(selector)!.style;
+    expect(style('.ic').getPropertyValue('fill')).toBe('none');
+    expect(style('.ic').getPropertyValue('stroke').toLowerCase()).toBe('currentcolor');
+    expect(style('.ic').getPropertyValue('stroke-width')).toBe('2px');
+    expect(style('rect').getPropertyValue('fill')).toBe('');
+    expect(style('g').getPropertyValue('fill')).toBe('');
+    expect(style('.inherits').getPropertyValue('fill')).toBe('');
   });
 
   it('loads the painter from the app when the frame does not have it', async () => {

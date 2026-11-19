@@ -151,14 +151,14 @@ describe('orchestrator slice — IndexedDB persistence', () => {
 
     expect(debugEventsState.saveEvents).not.toHaveBeenCalled();
 
-    vi.advanceTimersByTime(500);
+    await vi.advanceTimersByTimeAsync(500);
     expect(debugEventsState.saveEvents).toHaveBeenCalledWith(
       'test-project-1',
       expect.any(Array),
     );
   });
 
-  it('resets debounce timer on rapid events', () => {
+  it('resets debounce timer on rapid events', async () => {
     store.getState().initProject({ id: 'test-project-1', name: 'Test' });
     store.getState().initPersistence('test-project-1');
     store.getState().addDebugEvent('test', { x: 1 });
@@ -166,7 +166,7 @@ describe('orchestrator slice — IndexedDB persistence', () => {
     store.getState().addDebugEvent('test', { x: 2 });
     vi.advanceTimersByTime(300);
     expect(debugEventsState.saveEvents).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(200);
+    await vi.advanceTimersByTimeAsync(200);
     expect(debugEventsState.saveEvents).toHaveBeenCalledTimes(1);
   });
 });
@@ -190,11 +190,11 @@ describe('orchestrator slice — background event routing', () => {
     expect(store.getState().debugEvents).toHaveLength(0);
   });
 
-  it('background events are persisted via debouncedSave', () => {
+  it('background events are persisted via debouncedSave', async () => {
     vi.useFakeTimers();
     store.getState().initPersistence('other-project');
     store.getState().addDebugEvent('test_event', { x: 1 }, 'other-project');
-    vi.advanceTimersByTime(500);
+    await vi.advanceTimersByTimeAsync(500);
     expect(debugEventsState.saveEvents).toHaveBeenCalledWith(
       'other-project',
       expect.arrayContaining([expect.objectContaining({ event: 'test_event' })]),

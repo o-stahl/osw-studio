@@ -168,6 +168,35 @@ describe('sed {...} command grouping', () => {
 
 // ---------- sed substitution feedback ----------
 
+describe('sed scripts of several commands', () => {
+  const text = 'l1\nl2\nl3\nl4\nl5\nl6';
+
+  it('runs commands separated by ;', async () => {
+    const result = await exec(['sed', '-n', '1,2p;4,5p'], text);
+    expect(result.success).toBe(true);
+    expect(result.stdout).toBe('l1\nl2\nl4\nl5');
+  });
+
+  it('runs commands on separate lines of one script', async () => {
+    const result = await exec(['sed', 's/l1/one/\ns/l6/six/'], text);
+    expect(result.stdout).toBe('one\nl2\nl3\nl4\nl5\nsix');
+  });
+
+  it('keeps a ; inside a pattern, a replacement or a group', async () => {
+    expect((await exec(['sed', 's/a;b/c/;s/x/y/'], 'a;b x')).stdout).toBe('c y');
+    expect((await exec(['sed', '-n', '/;/p;3p'], 'a\nb;c\nd')).stdout).toBe('b;c\nd');
+    expect((await exec(['sed', '2{s/l2/two;2/;s/two/TWO/}'], text)).stdout).toBe('l1\nTWO;2\nl3\nl4\nl5\nl6');
+  });
+
+  it('keeps a ; after an escaped delimiter inside a pattern', async () => {
+    expect((await exec(['sed', 's/a\\/;b/c/;s/x/y/'], 'a/;b x')).stdout).toBe('c y');
+  });
+
+  it('keeps a ; inside appended text, which runs to the end of its line', async () => {
+    expect((await exec(['sed', '1a\\x;y'], 'l1\nl2')).stdout).toBe('l1\nx;y\nl2');
+  });
+});
+
 describe('sed substitution feedback', () => {
   it('reports substitution count on -i success', async () => {
     mockVfs.readFile.mockResolvedValueOnce({ content: 'hello world\nhello there' });

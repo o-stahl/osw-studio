@@ -20,15 +20,18 @@ import { FunctionEditor } from './function-editor';
 import { cn } from '@/lib/utils';
 import type { FunctionsDataProvider } from './data-providers';
 import { apiFetch } from '@/lib/api/backend-status';
+import { originOf } from '@/lib/web/site-origin';
 
 interface FunctionsManagerProps {
   deploymentId?: string;
   dataProvider?: FunctionsDataProvider;
   hideRuntimeFeatures?: boolean;
   workspaceId?: string;
+  /** The deployment's site address, from the server. Its functions are served on the same host. */
+  publicUrl?: string;
 }
 
-export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatures, workspaceId }: FunctionsManagerProps) {
+export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatures, workspaceId, publicUrl }: FunctionsManagerProps) {
   const tc = useTranslations('common');
   const t = useTranslations('backend');
   const apiBase = workspaceId ? `/api/w/${workspaceId}` : '/api';
@@ -107,10 +110,13 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
     }
   };
 
+  /** Where the deployment's site calls the function: the public route, not this manager's API. */
+  const functionUrl = (fn: EdgeFunction) =>
+    `${originOf(publicUrl) ?? window.location.origin}/api/deployments/${deploymentId}/functions/${fn.name}`;
+
   const copyUrl = (fn: EdgeFunction) => {
     if (!deploymentId) return;
-    const url = `${window.location.origin}${apiBase}/deployments/${deploymentId}/functions/${fn.name}`;
-    navigator.clipboard.writeText(url);
+    navigator.clipboard.writeText(functionUrl(fn));
     setCopiedUrl(fn.id);
     setTimeout(() => setCopiedUrl(null), 2000);
   };
@@ -287,7 +293,7 @@ export function FunctionsManager({ deploymentId, dataProvider, hideRuntimeFeatur
                       </DropdownMenuItem>
                       {!hideRuntimeFeatures && deploymentId && (
                         <DropdownMenuItem
-                          onClick={() => window.open(`${apiBase}/deployments/${deploymentId}/functions/${fn.name}`, '_blank')}
+                          onClick={() => window.open(functionUrl(fn), '_blank')}
                         >
                           <ExternalLink className="h-4 w-4 mr-2" />
                           {t('openInBrowser')}

@@ -258,6 +258,16 @@ Habits:
     }
 
     const headers = buildHeaders(selectedProvider, apiKey, providerConfig, wireFormat, allowance ? undefined : requestCustomHeaders);
+    // What the client sends to tie a conversation together (a project id) leaves only as a hash.
+    const sessionHash = typeof sessionId === 'string' && sessionId
+      ? createHash('sha256').update(sessionId).digest('hex').slice(0, 32)
+      : undefined;
+    // Opencode Go refuses a request without a stable session id per conversation, which it routes
+    // and caches by, and asks clients to name themselves in the user agent.
+    if (selectedProvider === 'opencode-go') {
+      headers['User-Agent'] = 'osw-studio';
+      if (sessionHash) headers['x-opencode-session'] = sessionHash;
+    }
     
     let processedMessages = chatMessages;
     let anthropicSystemPrompt = '';
@@ -454,10 +464,9 @@ Habits:
       stream: streamEnabled
     };
 
-    // The allowance keeps one conversation on one upstream with its prompt cache warm. What the
-    // client sends (a project id) leaves only as a hash.
-    if (allowance && typeof sessionId === 'string' && sessionId) {
-      requestBody.session_id = createHash('sha256').update(sessionId).digest('hex').slice(0, 32);
+    // The allowance keeps one conversation on one upstream with its prompt cache warm.
+    if (allowance && sessionHash) {
+      requestBody.session_id = sessionHash;
     }
 
     // Request usage stats in streaming responses (needed for compaction threshold).

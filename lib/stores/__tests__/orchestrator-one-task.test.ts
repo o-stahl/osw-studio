@@ -3,6 +3,10 @@ import { createTestStore, setupOrchestratorMocks } from './test-helpers';
 import { toast } from 'sonner';
 import { debugEventsState } from '@/lib/llm/debug-events-state';
 
+vi.mock('@/lib/vfs/sync-manager', () => ({
+  getSyncManager: () => ({ pullBackendFeatures: vi.fn(async () => ({ success: true })) }),
+}));
+
 setupOrchestratorMocks();
 
 // Tasks are kept one per project id. A second start for a project that is already generating used to

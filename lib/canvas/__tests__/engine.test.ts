@@ -14,7 +14,7 @@ import type { ThumbCache } from '../thumbs';
 const stubs = vi.hoisted(() => ({
   send: vi.fn<(target: Window, loadId: number, html: string, blobUrls: Iterable<string>, cache?: Map<string, Blob>) => Promise<void>>(),
   answer: vi.fn<() => Promise<void>>(),
-  capture: vi.fn<() => Promise<unknown>>(),
+  capture: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 }));
 vi.mock('@/lib/preview/preview-shell', () => ({
   previewShellHtml: (loadId: number) => `<!doctype html><title>shell ${loadId}</title>`,
@@ -22,7 +22,7 @@ vi.mock('@/lib/preview/preview-shell', () => ({
     stubs.send(target, loadId, html, blobUrls, cache),
 }));
 vi.mock('@/lib/preview/function-proxy', () => ({ answerFunctionCall: () => stubs.answer() }));
-vi.mock('@/lib/preview/frame-capture', () => ({ requestFrameCapture: () => stubs.capture() }));
+vi.mock('@/lib/preview/frame-capture', () => ({ requestFrameCapture: (...args: unknown[]) => stubs.capture(...args) }));
 
 import { CanvasEngine, type CanvasCompile, type EngineCallbacks } from '../engine';
 
@@ -535,6 +535,8 @@ describe('thumbnails', () => {
       engine.setView(IN_VIEW, 0.5);
       await settleNext();
       expect(stubs.capture, 'no thumbnail was being painted').toHaveBeenCalled();
+      // A full-page thumbnail is given 15 s to paint.
+      expect(stubs.capture.mock.calls[0][2]).toBe(15000);
       // The width is turned off while the thumbnail is painted.
       engine.setBoards([]);
       paint({ width: 10, height: 10, close: () => {} });

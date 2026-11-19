@@ -164,9 +164,27 @@ const zhipuModels: ProviderModel[] = [
 
 const minimaxModels: ProviderModel[] = [
   {
+    id: 'MiniMax-M2.7',
+    name: 'MiniMax M2.7',
+    description: 'Most capable model — coding, reasoning, and tool use',
+    contextLength: 204800,
+    maxTokens: 128000,
+    supportsFunctions: true,
+    pricing: { input: 0.30, output: 1.20 },
+  },
+  {
+    id: 'MiniMax-M2.7-highspeed',
+    name: 'MiniMax M2.7 Highspeed',
+    description: 'Faster variant at ~100 tokens/sec',
+    contextLength: 204800,
+    maxTokens: 128000,
+    supportsFunctions: true,
+    pricing: { input: 0.60, output: 2.40 },
+  },
+  {
     id: 'MiniMax-M2.5',
     name: 'MiniMax M2.5',
-    description: 'Most capable model — coding, reasoning, and tool use',
+    description: 'Coding, reasoning, and tool use',
     contextLength: 204800,
     maxTokens: 128000,
     supportsFunctions: true,

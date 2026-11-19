@@ -434,6 +434,8 @@ describe('a template too large for one request', () => {
     const result = await getSyncManager(WORKSPACE).pushTemplate({
       id: 'tmpl-big',
       name: 'Big',
+      runtime: 'react',
+      backendFeatures: { secrets: [{ name: 'KEY' }] },
       description: 'made from a large project',
       version: '1.0.0',
       files,
@@ -447,5 +449,6 @@ describe('a template too large for one request', () => {
     expect(stored?.files.map((f) => f.path).sort())
       .toEqual(['/a.txt', '/b.txt', '/c.txt', '/small.txt']);
     expect(stored?.files.find((f) => f.path === '/small.txt')?.content).toBe('tiny');
+    expect(stored).toMatchObject({ runtime: 'react', backendFeatures: { secrets: [{ name: 'KEY' }] } });
   });
 });

@@ -5,6 +5,8 @@
  * projects, skills, and templates.
  */
 
+import type { CustomTemplate } from './types';
+
 /**
  * Sync status for individual items
  */
@@ -203,4 +205,19 @@ export function calculateItemSyncStatus(
   }
 
   return 'synced';
+}
+
+/**
+ * A template pulled from the server, for saving over the local one.
+ *
+ * Server rows written before the database stored `runtime` and `backendFeatures` have neither, so
+ * the local values stand where the server has none. The next push then gives them to the server.
+ */
+export function withLocalTemplateFields(pulled: CustomTemplate, local: CustomTemplate | null): CustomTemplate {
+  if (!local) return pulled;
+  return {
+    ...pulled,
+    runtime: pulled.runtime ?? local.runtime,
+    backendFeatures: pulled.backendFeatures ?? local.backendFeatures,
+  };
 }

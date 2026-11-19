@@ -11,6 +11,7 @@ import type { McpPrincipal } from './auth';
 import { ROLE_FOR_SCOPE, type McpScope } from './scopes';
 import { commandLineWrites } from '@/lib/llm/write-scope';
 import { createTransfer, MAX_UPLOAD_BYTES, TRANSFER_TTL_MS } from './transfers';
+import { copyName, deploymentCopy, renameSkillFile, skillCopyName } from './duplicate';
 import type { Deployment, EdgeFunction, ScheduledFunction, Secret, ServerFunction } from '@/lib/vfs/types';
 
 /**
@@ -428,6 +429,109 @@ export function createOswMcpServer(principal: McpPrincipal, instance?: { origin?
     });
   });
 
+  tool('projects_duplicate', 'Copy a project: its files, folders, settings, edge and server functions, schedules and secrets. Its deployments, chats and checkpoints are not copied. Needs projects:write.', {
+    workspaceId: ws, projectId: project,
+    name: z.string().min(1).optional().describe('Name of the copy. Default: the original\'s name with (Copy)'),
+  }, async ({ workspaceId, projectId, name }) => {
+    const adapter = await workspace(workspaceId, 'projects:write');
+    const source = await adapter.getProject(projectId);
+    if (!source) return refused(`No project ${projectId} in this workspace.`);
+
+    const { projectLimitRefusal } = await import('@/lib/api/project-quota');
+    const refusal = await projectLimitRefusal(adapter, workspaceId);
+    if (refusal) return refused(refusal);
+
+    const { VirtualFileSystem } = await import('@/lib/vfs');
+    const { runWithVFS } = await import('@/lib/server-generate/vfs-context');
+    const projectVfs = new VirtualFileSystem(adapter);
+    await projectVfs.init();
+    const copyTitle = name ?? copyName(source.name, adapter.listProjectSummaries().map(p => p.name));
+    const copy = await runWithVFS(projectVfs, () => projectVfs.copyProject(projectId, copyTitle));
+
+    const { notifyProjectChanged } = await import('./notify');
+    notifyProjectChanged({
+      userId: principal.userId, projectId: copy.id, projectName: copy.name,
+      created: true, clientLabel: principal.clientLabel,
+    });
+
+    const files = await adapter.listFiles(copy.id);
+    return text({ id: copy.id, name: copy.name, copiedFrom: projectId, runtime: copy.settings?.runtime, files: files.map(f => f.path).sort() });
+  });
+
+  tool('templates_list', 'The workspace\'s custom project templates. The built-in ones are the templates projects_create offers. Needs projects:read.', { workspaceId: ws }, async ({ workspaceId }) => {
+    const adapter = await workspace(workspaceId, 'projects:read');
+    return text(adapter.listTemplateSummaries());
+  });
+
+  tool('templates_duplicate', 'Copy one of the workspace\'s custom templates. Built-in templates cannot be copied. The copy appears in an open tab after a Server Sync pull. Needs projects:write.', {
+    workspaceId: ws,
+    templateId: z.string().describe('Custom template id, from templates_list'),
+    name: z.string().min(1).optional().describe('Name of the copy. Default: the original\'s name with (Copy)'),
+  }, async ({ workspaceId, templateId, name }) => {
+    const adapter = await workspace(workspaceId, 'projects:write');
+    const source = await adapter.getCustomTemplate(templateId);
+    if (!source) {
+      const { getBuiltInTemplateDefinition } = await import('@/lib/vfs/templates/registry');
+      return refused(getBuiltInTemplateDefinition(templateId)
+        ? `"${templateId}" is a built-in template, which cannot be copied. Start a project from it with projects_create.`
+        : `No custom template ${templateId} in this workspace.`);
+    }
+    const now = new Date();
+    const copy = {
+      ...source,
+      id: randomUUID(),
+      name: name ?? copyName(source.name, adapter.listTemplateSummaries().map(t => t.name)),
+      importedAt: now,
+      updatedAt: now,
+    };
+    await adapter.saveCustomTemplate(copy);
+    return text({ id: copy.id, name: copy.name, copiedFrom: templateId, files: copy.files.length });
+  });
+
+  tool('skills_list', 'The skills in the workspace: its custom skills and the built-in ones. Needs projects:read.', { workspaceId: ws }, async ({ workspaceId }) => {
+    const adapter = await workspace(workspaceId, 'projects:read');
+    const { BUILT_IN_SKILLS } = await import('@/lib/vfs/skills/registry');
+    const { parseSkillFile } = await import('@/lib/vfs/skills/parser');
+    const custom = (await adapter.getAllSkills()).filter(s => !s.isBuiltIn);
+    return text([
+      ...custom.map(s => ({ id: s.id, name: s.name, description: s.description, builtIn: false })),
+      ...BUILT_IN_SKILLS.map(s => {
+        const { frontmatter } = parseSkillFile(s.content);
+        return { id: s.id, name: frontmatter.name, description: frontmatter.description, builtIn: true };
+      }),
+    ]);
+  });
+
+  tool('skills_duplicate', 'Copy a skill, custom or built-in, as a new custom skill. The copy appears in an open tab after a Server Sync pull. Needs projects:write.', {
+    workspaceId: ws,
+    skillId: z.string().describe('Skill id, from skills_list'),
+    name: z.string().regex(/^[a-z0-9-]+$/).optional().describe('Name of the copy, which is also its id: lowercase letters, digits and hyphens. Default: the original\'s name with -copy'),
+  }, async ({ workspaceId, skillId, name }) => {
+    const adapter = await workspace(workspaceId, 'projects:write');
+    const { BUILT_IN_SKILLS } = await import('@/lib/vfs/skills/registry');
+    const { parseSkillFile } = await import('@/lib/vfs/skills/parser');
+    const content = (await adapter.getSkill(skillId))?.content ?? BUILT_IN_SKILLS.find(s => s.id === skillId)?.content;
+    if (content === undefined) return refused(`No skill ${skillId} in this workspace.`);
+
+    const taken = [...(await adapter.getAllSkills()).map(s => s.id), ...BUILT_IN_SKILLS.map(s => s.id)];
+    if (name && taken.includes(name)) return refused(`A skill named ${name} already exists.`);
+    const copyId = name ?? skillCopyName(skillId, taken);
+
+    let parsed: ReturnType<typeof parseSkillFile>;
+    const copied = renameSkillFile(content, copyId);
+    try {
+      parsed = parseSkillFile(copied);
+    } catch {
+      return refused(`Skill ${skillId} has no valid SKILL.md frontmatter, so it cannot be copied.`);
+    }
+    const now = new Date();
+    await adapter.createSkill({
+      id: copyId, name: copyId, description: parsed.frontmatter.description,
+      content: copied, markdown: parsed.markdown, createdAt: now, updatedAt: now,
+    });
+    return text({ id: copyId, name: copyId, copiedFrom: skillId });
+  });
+
   tool('bash', BASH_DESCRIPTION, {
     workspaceId: ws, projectId: project,
     command: z.string().describe('One command, as a single string'),
@@ -668,12 +772,14 @@ export function createOswMcpServer(principal: McpPrincipal, instance?: { origin?
     if (!task || task.sessionId !== principal.userId) return refused(`No task ${taskId} for this account.`);
 
     const events = (eventBus.replayFrom(taskId, sinceEventId) ?? []).filter(e => REPORTED_EVENTS.has(e.event));
+    const buffered = eventBus.getBuffer(taskId);
     return text({
       status: task.status,
       projectId: task.projectId,
       startedAt: new Date(task.startedAt).toISOString(),
       pendingApproval: task.pendingApproval ?? null,
-      lastEventId: events.length > 0 ? events[events.length - 1].id : sinceEventId,
+      // The task's newest event, reported or not, so a caller resumes from the stream's real end.
+      lastEventId: buffered.length > 0 ? buffered[buffered.length - 1].id : 0,
       events: events.map(e => ({ id: e.id, event: e.event, data: summarise(e.event, e.data) })),
     });
   });
@@ -847,6 +953,25 @@ export function createOswMcpServer(principal: McpPrincipal, instance?: { origin?
     return text({
       id: deployment.id, name: deployment.name, projectId, published: false,
       url: deploymentPublicUrl(deployment),
+    });
+  });
+
+  tool('deployments_duplicate', 'Copy a deployment\'s settings into a new unpublished deployment of the same project: scripts, CDN links, analytics, SEO, compliance, under-construction and whether its database is on. Its address, custom domain, review settings and database contents are not copied. Needs deploy. Publish it with deployments_publish.', {
+    workspaceId: ws, deploymentId: z.string().describe('Deployment id'),
+    name: z.string().min(1).optional().describe('Name of the copy. Default: the original\'s name with (Copy)'),
+  }, async ({ workspaceId, deploymentId, name }) => {
+    const adapter = await workspace(workspaceId, 'deploy');
+    const source = await adapter.getDeployment(deploymentId);
+    if (!source) return refused(`No deployment ${deploymentId} in this workspace.`);
+    const existing = await adapter.listDeployments();
+    const copy = deploymentCopy(source, randomUUID(), name ?? copyName(source.name, existing.map(d => d.name)), new Date());
+    await adapter.createDeployment(copy);
+    if (copy.databaseEnabled) await adapter.enableDeploymentDatabase(copy.id);
+    try { ensureDeploymentRoute(copy.id, workspaceId); } catch { /* non-fatal */ }
+    notifyDeployment(principal, copy.id, copy.name, 'created');
+    return text({
+      id: copy.id, name: copy.name, copiedFrom: deploymentId, projectId: copy.projectId, published: false,
+      url: deploymentPublicUrl(copy),
     });
   });
 

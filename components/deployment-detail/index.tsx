@@ -501,7 +501,7 @@ export function DeploymentDetail({
             {/* Backend sections */}
             {activeNav === 'functions' && (
               <div className="h-[calc(100vh-10rem)]">
-                <FunctionsManager deploymentId={deployment.id} workspaceId={workspaceId} />
+                <FunctionsManager deploymentId={deployment.id} workspaceId={workspaceId} publicUrl={deployment.publicUrl} />
               </div>
             )}
             {activeNav === 'helpers' && (

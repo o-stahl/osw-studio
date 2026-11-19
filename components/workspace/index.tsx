@@ -195,6 +195,14 @@ export function previewHoverHighlight(input: { hovering: boolean; previewOpen: b
 }
 
 /**
+ * The Live Preview on screen. The desktop and mobile layouts are both mounted, the other only hidden
+ * by CSS, so its frame is not the page the person sees.
+ */
+export function shownPreview<T>(mobileViewport: boolean, desktop: T | null, mobile: T | null): T | null {
+  return mobileViewport ? mobile : desktop;
+}
+
+/**
  * Which surface the Inspector's `Select element` button addresses: the one on screen, or with both
  * or neither, the one the Inspector reads. Canvas has nothing to arm (its Select tool picks on every
  * click), so a press addressed to it puts Canvas on screen in that tool.
@@ -471,27 +479,20 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
    * a recompile of the same page (re-resolve) from a navigation to another one (clear).
    */
   const focusPathRef = useRef<string | null>(null);
-  const previewRef = useRef<MultipagePreviewHandle>(null);
   const elementsPanelRef = useRef<ElementsPanelHandle>(null);
   /**
    * The *desktop* preview's handle, specifically.
    *
    * The desktop block (`hidden md:flex`) and the mobile block (`flex md:hidden`) are both always in
    * the React tree — the mobile one is hidden by CSS, not unmounted, and its preview renders
-   * whenever `activeMobilePanel === 'preview'`, which is the store's default. Both pass
-   * `previewRef`, and the mobile instance commits last, so on a desktop viewport `previewRef` points
-   * at a hidden frame that was compiled without provenance.
-   *
-   * That is a pre-existing hazard for every consumer of `previewRef` and is deliberately left
-   * alone. The Elements tree cannot live with it: `sendToFrame` addresses one specific iframe, and
-   * addressing the hidden one would serialize a document with no `data-osw-src` in it at all. So the
-   * tree keeps its own reference to the instance whose props it is wired to.
+   * whenever `activeMobilePanel === 'preview'`, which is the store's default. One ref shared by
+   * both would hold whichever committed last: on a desktop viewport, the hidden mobile frame, which
+   * was compiled without provenance. So each keeps its own, and `shownPreviewHandle` picks the one
+   * on screen.
    */
   const desktopPreviewRef = useRef<MultipagePreviewHandle | null>(null);
-  // Stable, so it runs on mount and unmount only. An inline callback ref would re-run on every
-  // render and start reordering which instance `previewRef` ends up holding.
+  // Stable, so it runs on mount and unmount only.
   const attachDesktopPreview = useCallback((handle: MultipagePreviewHandle | null) => {
-    previewRef.current = handle;
     desktopPreviewRef.current = handle;
   }, []);
   /**
@@ -500,13 +501,9 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
    * The Inspector runs on both trees now, and `sendToFrame` addresses one iframe. On a phone the
    * desktop instance is mounted but CSS-hidden and its document is the wrong one to ask, so the
    * frame plumbing resolves the handle by viewport rather than reaching for either directly.
-   *
-   * It still writes `previewRef` because the mobile mount always did (it was `ref={previewRef}`),
-   * and that ref's instance-ordering hazard is documented above and deliberately left as it was.
    */
   const mobilePreviewRef = useRef<MultipagePreviewHandle | null>(null);
   const attachMobilePreview = useCallback((handle: MultipagePreviewHandle | null) => {
-    previewRef.current = handle;
     mobilePreviewRef.current = handle;
   }, []);
   /**
@@ -524,6 +521,11 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
    */
   const mobileViewportRef = useRef(false);
   mobileViewportRef.current = mobileViewport;
+  /** The Live Preview the person is looking at. */
+  const shownPreviewHandle = useCallback(
+    () => shownPreview(mobileViewportRef.current, desktopPreviewRef.current, mobilePreviewRef.current),
+    [],
+  );
   /** Canvas's handle, in the shape of the preview's: what the Inspector addresses while Canvas has it. */
   const canvasRef = useRef<CanvasPanelHandle | null>(null);
   /**
@@ -1614,7 +1616,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       const block = getBlockById(payload.blockId);
       if (!block) return;
       if (!isPlace(payload.place)) { toast(t('structure.blockNoPlace')); return; }
-      const where = page ?? (typeof payload.page === 'string' ? payload.page : null) ?? (previewRef.current?.getActivePath?.() || '/');
+      const where = page ?? (typeof payload.page === 'string' ? payload.page : null) ?? (shownPreviewHandle()?.getActivePath?.() || '/');
       const placementId = newPlacementId(block.id);
       inspectTargetRef.current = page ? 'canvas' : 'preview';
       void runStructure({ kind: 'block', place: payload.place, block: block.id, placementId }, {
@@ -1627,7 +1629,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       });
       return;
     }
-    const currentPage = page ?? (previewRef.current?.getActivePath?.() || '/');
+    const currentPage = page ?? (shownPreviewHandle()?.getActivePath?.() || '/');
     useWorkspaceStore.setState(s => ({ placedBlocks: [...s.placedBlocks, {
       blockId: payload.blockId,
       placementId: payload.placementId,
@@ -1636,7 +1638,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
       page: currentPage,
       htmlContext: payload.htmlContext,
     }] }));
-  }, [runStructure, t]);
+  }, [runStructure, shownPreviewHandle, t]);
 
   /**
    * A placed block's placeholder, taken out: from its file as a structural delete (one undo step),
@@ -1705,8 +1707,8 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
 
   /** The preview as it is, at a width a model can read, for the composer's Screenshot item. */
   const handleCaptureContextScreenshot = useCallback(
-    () => previewRef.current?.captureScreenshot(false, { outputWidth: 1280 }) ?? Promise.resolve(null),
-    [],
+    () => shownPreviewHandle()?.captureScreenshot(false, { outputWidth: 1280 }) ?? Promise.resolve(null),
+    [shownPreviewHandle],
   );
 
   const handleClosePreview = useCallback(() => {
@@ -3040,9 +3042,8 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
             );
 
             // The mobile tree has its own Elements entry, which keeps its preview mounted
-            // alongside so there is a frame to query; see the mobile block. Both blocks pass
-            // `ref={previewRef}`, so the Inspector addresses `inspectorPreview()` rather than
-            // that ref.
+            // alongside so there is a frame to query; see the mobile block. Each block keeps its own
+            // preview handle, and the Inspector addresses the one on screen (`inspectorTargets()`).
             if (showElements) panelMap.elements = (
               <PanelContainer>
                 <PanelHeader

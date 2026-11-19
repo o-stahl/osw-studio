@@ -20,7 +20,7 @@ import { BLOB_ENCODING, putBlob, readBlob } from './blob-store';
 import { logger } from '@/lib/utils';
 import type { Database } from 'better-sqlite3';
 import { StorageAdapter } from './types';
-import { Project, VirtualFile, FileTreeNode, CustomTemplate, Deployment, EdgeFunction, ServerFunction, Secret, ScheduledFunction } from '../types';
+import { Project, VirtualFile, FileTreeNode, CustomTemplate, BackendFeatures, ProjectRuntime, Deployment, EdgeFunction, ServerFunction, Secret, ScheduledFunction } from '../types';
 import { normalizeProjectSettings } from '../project-settings';
 import { Skill } from '../skills/types';
 import type { ModelTemplate, ModelAssignment } from '@/lib/llm/models/assignment';
@@ -507,6 +507,16 @@ const MIGRATIONS: Migration[] = [
       db.exec(`DROP TABLE deployments`);
       db.exec(`ALTER TABLE deployments_v13 RENAME TO deployments`);
       for (const index of indexes) db.exec(index.sql);
+    }
+  },
+  {
+    id: 'add_custom_template_runtime_v14',
+    up: (db) => {
+      // Rows from before this stay NULL: what they lost is only in the browsers that pushed them.
+      const cols = db.prepare(`PRAGMA table_info(custom_templates)`).all() as Array<{ name: string }>;
+      if (cols.length === 0) return;
+      if (!cols.some((c) => c.name === 'runtime')) db.exec(`ALTER TABLE custom_templates ADD COLUMN runtime TEXT`);
+      if (!cols.some((c) => c.name === 'backend_features')) db.exec(`ALTER TABLE custom_templates ADD COLUMN backend_features TEXT`);
     }
   },
 ];
@@ -1496,7 +1506,7 @@ export class SQLiteAdapter implements StorageAdapter {
         UPDATE custom_templates SET
           name = ?, description = ?, version = ?,
           files = ?, directories = ?, assets = ?,
-          metadata = ?, updated_at = ?
+          metadata = ?, runtime = ?, backend_features = ?, updated_at = ?
         WHERE id = ?
       `);
       stmt.run(
@@ -1507,6 +1517,8 @@ export class SQLiteAdapter implements StorageAdapter {
         JSON.stringify(template.directories ?? []),
         JSON.stringify(template.assets ?? []),
         JSON.stringify(template.metadata ?? {}),
+        template.runtime ?? null,
+        template.backendFeatures ? JSON.stringify(template.backendFeatures) : null,
         new Date().toISOString(),
         template.id
       );
@@ -1515,8 +1527,8 @@ export class SQLiteAdapter implements StorageAdapter {
       const stmt = db.prepare(`
         INSERT INTO custom_templates (
           id, name, description, version,
-          files, directories, assets, metadata, imported_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          files, directories, assets, metadata, runtime, backend_features, imported_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       stmt.run(
         template.id,
@@ -1527,6 +1539,8 @@ export class SQLiteAdapter implements StorageAdapter {
         JSON.stringify(template.directories ?? []),
         JSON.stringify(template.assets ?? []),
         JSON.stringify(template.metadata ?? {}),
+        template.runtime ?? null,
+        template.backendFeatures ? JSON.stringify(template.backendFeatures) : null,
         importedAt,
         importedAt
       );
@@ -1564,6 +1578,8 @@ export class SQLiteAdapter implements StorageAdapter {
       directories: parseJSON(row.directories as string, []),
       assets: parseJSON(row.assets as string, []),
       metadata: parseJSON(row.metadata as string, { license: 'personal' }),
+      runtime: (row.runtime as ProjectRuntime | null) ?? undefined,
+      backendFeatures: row.backend_features ? parseJSON<BackendFeatures | undefined>(row.backend_features as string, undefined) : undefined,
       importedAt: parseDate(row.imported_at as string),
     };
   }

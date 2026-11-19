@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.111.1 - 2026-11-19
+
+### Agent and MCP
+- **MCP duplicates projects, templates, skills and deployments**: `projects_duplicate`, `templates_duplicate`, `skills_duplicate` and `deployments_duplicate` in `lib/mcp/server.ts` (copy names from `copyName` and `skillCopyName`, the deployment's copied fields from `deploymentCopy`, in `lib/mcp/duplicate.ts`), with `templates_list` and `skills_list` for ids. `VirtualFileSystem.copyProject` is split out of `forkLocalDraft`. A deployment copy leaves out `slug`, `customDomain`, `review` and publish state.
+
+### Fixes
+- **Preview captures keep the page's background, web fonts and `<symbol>` icon styles**: `CAPTURE_RUNTIME_JS` (`lib/preview/frame-capture.ts`) paints the root's own `background-color` (`pageBackground`), embeds the loaded `@font-face` rules of cross-origin stylesheets (`remoteFontStyle`) and copies CSS onto the painter's symbol copies (`keepShapeStyles`). Captures were painted on white, in fallback fonts, with CSS-styled icons unfilled. The paint gets 10 s, Canvas thumbnails 15 s.
+- **Canvas `renderPage` timeouts say how far the page got**: `settle` (`lib/canvas/render-job.ts`) names the stage reached (frame not started, page not loaded, loaded but not settled) and whether the tab was in the background.
+- **Server runs keep backend features made in the browser**: `pullBackendFeatures` (`lib/vfs/sync-manager.ts`) runs before a server run as well as after, and merges by name with `mergeBackendFeatures` (`lib/vfs/backend-sync.ts`) against the `osw-backend-synced:<projectId>` record in localStorage, sending the result to the server. It deleted every local edge function, server function, schedule and secret and recreated the server's.
+- **A project's stored chat survives events that arrive off screen**: `writeChat` and `loadDebugEvents` (`lib/stores/slices/orchestrator.ts`) merge partial event lists into the stored chat with `mergeChatEvents` (`lib/stores/chat-merge.ts`), dropping events the server replayed. A reopened tab's SSE replay or a background run's buffer was saved over it, losing older runs.
+- **Custom templates keep `runtime` and `backendFeatures` in Server Mode**: migration `add_custom_template_runtime_v14` adds `custom_templates.runtime` and `backend_features`, read and written by `SQLiteAdapter`. Both were dropped on push, and a pull then erased them locally; `withLocalTemplateFields` (`lib/vfs/sync-types.ts`) keeps the local values when an older server row has none.
+- **Deleting a project removes its chat and checkpoints from the browser**: `IndexedDBAdapter.deleteProject` also deletes the project's `checkpoints`, `debugEvents` and legacy `conversations` rows, by their `projectId` index, in the same transaction.
+- **The MiniMax model list includes the default `MiniMax-M2.7`**: `MiniMax-M2.7` and `MiniMax-M2.7-highspeed` are in `minimaxModels` (`lib/llm/providers/registry.ts`), which has no discovery, so the picker shows the default and connecting no longer falls back to M2.5.
+- **A function's copied URL and "Open in browser" reach the function**: `FunctionsManager` builds `/api/deployments/<id>/functions/<name>` on the origin of the deployment's `publicUrl`, not under the workspace API base `/api/w/<id>`, which serves no functions.
+- **MCP `agent_status` reports the task's real last event id**: `lastEventId` is the newest event in the task's buffer, not the caller's `sinceEventId` when nothing newer was reported.
+- **A Pollinations 403 is classified as `model_refused`**: `classifyProviderError` (`lib/llm/provider-errors.ts`) treats it as paid-model access or permissions, not `auth`; Pollinations' bad key is 401.
+- **Opencode Go requests carry `x-opencode-session`**: `/api/generate` sends `x-opencode-session` (a hash of the project id the adapter now sends for `opencode-go`, as for `osws`; `SESSION_PROVIDERS` in `lib/llm/provider-adapter.ts`) and `User-Agent: osw-studio`. Without the session header Opencode Go refused every request with a 400.
+- **The project shell's `sed` runs scripts of several commands**: `splitSedScript` (`lib/vfs/shell/internals.ts`) splits at `;` and newlines outside addresses, `s` sections, `{...}` groups and `a`/`i`/`c` text, for scripts and groups alike; `parseSedArgs` takes `/re/p;…` as a script. `sed -n '1,2p;4,5p'` answered "unsupported command".
+- **Placing a block and the composer's screenshot read the preview on screen**: `shownPreview` (`components/workspace/index.tsx`) picks the desktop or mobile Live Preview by viewport; the shared `previewRef`, which held whichever layout's preview mounted last, is removed.
+- **`createServerAdapter` lives only in `lib/vfs/adapters/server.ts`**: the unused copy in `lib/vfs/adapters/factory.ts` is removed.
+
+### Tests
+- **Coverage for the fixes and the MCP duplicate tools**: new `lib/vfs/__tests__/backend-features-sync.test.ts`, `delete-project-history.test.ts`, `lib/vfs/adapters/__tests__/custom-template-persistence.test.ts`, `lib/stores/__tests__/chat-merge.test.ts`, `orchestrator-chat-persistence.test.ts`, `orchestrator-server-backend-sync.test.ts`, `lib/mcp/__tests__/duplicate.test.ts`, `components/database-manager/__tests__/function-url.test.tsx`, `components/workspace/__tests__/shown-preview.test.ts`, and the duplicate-tool cases in `app/api/mcp/__tests__/route.test.ts`.
+
 ## v1.111.0 - 2026-11-18
 
 ### Canvas

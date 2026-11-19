@@ -130,13 +130,17 @@ async function settle(job: RenderJob): Promise<{ settled: Settled; close: () => 
   const deploymentId = vfs.getRuntimeDeploymentId();
   /** Why the frame could not build the page, when it said so. */
   let shellError: string | null = null;
+  /** How far the frame got, for when it does not finish. */
+  let reached = 'the preview frame did not start';
 
   const onMessage = (event: MessageEvent) => {
     const win = frame.contentWindow;
     if (!win || event.source !== win) return;
     const data = event.data as { type?: string; loadId?: number; reqId?: number } & Record<string, unknown>;
     if (!data || typeof data.type !== 'string') return;
+    if (data.type === 'preview:ready' && data.loadId === loadId) reached = 'the page loaded but did not settle';
     if (data.type === 'preview:shell-ready' && data.loadId === loadId) {
+      reached = 'the page did not load';
       void sendShellContent(win, loadId, doc, project.compile.blobUrls.values(), cache, getPreviewStorage(job.projectId)).catch((err) => {
         logger.error('[Canvas] Could not send a page to the render frame:', err);
       });
@@ -182,7 +186,8 @@ async function settle(job: RenderJob): Promise<{ settled: Settled; close: () => 
   }
   if (!done) {
     close();
-    return { error: `${page} did not finish loading within ${SETTLE_TIMEOUT_MS / 1000} s` };
+    const background = document.hidden ? ', with this tab in the background' : '';
+    return { error: `${page} did not finish loading within ${SETTLE_TIMEOUT_MS / 1000} s: ${reached}${background}` };
   }
   const height = Math.max(devH, Math.round(Number(done.height) || devH));
   return {

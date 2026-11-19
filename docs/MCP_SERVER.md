@@ -94,6 +94,11 @@ These five are the whole list. A scope outside it is ignored rather than granted
 | `projects_list` | `projects:read` | The projects in a workspace, newest first (`limit`, 500 by default) |
 | `projects_get` | `projects:read` | A project's settings and metadata |
 | `projects_create` | `projects:write` | Start a project from a built-in template |
+| `projects_duplicate` | `projects:write` | Copy a project with its files, settings, functions, schedules and secrets |
+| `templates_list` | `projects:read` | The workspace's custom templates |
+| `templates_duplicate` | `projects:write` | Copy a custom template |
+| `skills_list` | `projects:read` | The workspace's custom skills and the built-in ones |
+| `skills_duplicate` | `projects:write` | Copy a custom or built-in skill as a new custom skill |
 | `bash` | `projects:read` / `projects:write` | Run a command against a project's files |
 | `files_upload_url` | `projects:write` | A one-time URL to store a file from your disk (`curl -T`) |
 | `files_download_url` | `projects:read` | A one-time URL to save a project file to your disk (`curl -o`) |
@@ -110,6 +115,7 @@ These five are the whole list. A scope outside it is ignored rather than granted
 | `deployments_list` | `deploy` | The deployments in the workspace and their published state |
 | `deployments_url` | `deploy` | Where a deployment is served, and whether a review password gates it |
 | `deployments_create` | `deploy` | Create an unpublished deployment for a project |
+| `deployments_duplicate` | `deploy` | Copy a deployment's settings into a new unpublished deployment |
 | `deployments_update` | `deploy` | Set under-construction, analytics, or database |
 | `deployments_publish` | `deploy` | Build a deployment and serve it |
 | `deployments_unpublish` | `deploy` | Take the site off traffic, keeping the deployment and its data |

@@ -222,6 +222,72 @@ function parseSedAddress(expr: string): { addr: SedAddress; rest: string } | nul
   return null;
 }
 
+/** The index just past the closing `delim` of a section starting at `i`, past backslash escapes. */
+function skipDelimited(s: string, i: number, delim: string): number {
+  for (; i < s.length; i++) {
+    if (s[i] === '\\') { i++; continue; }
+    if (s[i] === delim) return i + 1;
+  }
+  return s.length;
+}
+
+function skipAddress(s: string, i: number): number {
+  if (/\d/.test(s[i] ?? '')) { while (/\d/.test(s[i] ?? '')) i++; return i; }
+  if (s[i] === '$') return i + 1;
+  if (s[i] === '/') return skipDelimited(s, i + 1, '/');
+  if (s[i] === '\\' && i + 1 < s.length) return skipDelimited(s, i + 2, s[i + 1]);
+  return i;
+}
+
+/** The end of the command starting at `i`: its addresses, `!`, and the command with its arguments. */
+function skipSedCommand(s: string, i: number): number {
+  i = skipAddress(s, i);
+  if (s[i] === ',') i = skipAddress(s, i + 1);
+  while (s[i] === ' ' || s[i] === '\t') i++;
+  if (s[i] === '!') i++;
+  while (s[i] === ' ' || s[i] === '\t') i++;
+  const c = s[i];
+  if (c === 's' && i + 1 < s.length) {
+    const delim = s[i + 1];
+    let j = skipDelimited(s, skipDelimited(s, i + 2, delim), delim);
+    while (j < s.length && /[gpiIm0-9]/.test(s[j])) j++;
+    return j;
+  }
+  // a, i and c take the rest of the line as their text, `;` included.
+  if (c === 'a' || c === 'i' || c === 'c') {
+    const end = s.indexOf('\n', i);
+    return end < 0 ? s.length : end;
+  }
+  if (c === '{') {
+    let j = i + 1;
+    for (;;) {
+      while (j < s.length && /[\s;]/.test(s[j])) j++;
+      if (j >= s.length) return s.length;
+      if (s[j] === '}') return j + 1;
+      const next = skipSedCommand(s, j);
+      j = next > j ? next : j + 1;
+    }
+  }
+  return i < s.length ? i + 1 : i;
+}
+
+/**
+ * A sed script split into its commands, at `;` and newlines between commands. A `;` inside an
+ * address, an `s` section, a `{...}` group or `a`/`i`/`c` text belongs to that command.
+ */
+export function splitSedScript(script: string): string[] {
+  const commands: string[] = [];
+  let i = 0;
+  while (i < script.length) {
+    while (i < script.length && /[\s;]/.test(script[i])) i++;
+    if (i >= script.length) break;
+    const end = skipSedCommand(script, i);
+    commands.push(script.slice(i, end > i ? end : script.length).trim());
+    i = end > i ? end : script.length;
+  }
+  return commands;
+}
+
 /**
  * Parse a full sed command expression including optional addresses.
  * Supports: /addr1/,/addr2/d  /addr1/,/addr2/c\text  /addr1/,/addr2/p  s/old/new/g
@@ -268,7 +334,7 @@ export function parseSedCommand(expr: string): SedCommand | { error: string } {
     const closeIdx = remaining.lastIndexOf('}');
     if (closeIdx < 0) return { error: `sed: unmatched { in: ${expr}` };
     const inner = remaining.slice(1, closeIdx).trim();
-    const innerParts = inner.split(';').map(s => s.trim()).filter(Boolean);
+    const innerParts = splitSedScript(inner);
     const commands: SedCommand[] = [];
     for (const part of innerParts) {
       const parsed = parseSedCommand(part);

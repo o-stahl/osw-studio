@@ -79,6 +79,25 @@ describe('a render job whose page fails to load', () => {
     expect(document.body.querySelector('iframe')).toBeNull();
   });
 
+  it('says how far a page got when it does not finish, and when the tab is in the background', async () => {
+    const attempt = async (messages: string[]) => {
+      const result = renderPage({ kind: 'inspect', projectId: 'p1', page: '/index.html', width: 1440 });
+      await vi.advanceTimersByTimeAsync(0);
+      const frame = document.body.querySelector('iframe')!;
+      const loadId = Number(/shell (\d+)/.exec(frame.srcdoc)?.[1]);
+      for (const type of messages) post(frame, { type, loadId });
+      await vi.advanceTimersByTimeAsync(16000);
+      const outcome = await result;
+      return outcome.ok ? '' : outcome.error;
+    };
+    const prefix = '/index.html did not finish loading within 15 s: ';
+    expect(await attempt([])).toBe(`${prefix}the preview frame did not start`);
+    expect(await attempt(['preview:shell-ready'])).toBe(`${prefix}the page did not load`);
+    expect(await attempt(['preview:shell-ready', 'preview:ready'])).toBe(`${prefix}the page loaded but did not settle`);
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    expect(await attempt([])).toBe(`${prefix}the preview frame did not start, with this tab in the background`);
+  });
+
   it('ends at once when its frame cannot build the page, with the frame\'s reason as one short line', async () => {
     const reason = `Failed to read ${'a'.repeat(400)}\n    at swap (about:srcdoc:1:200)`;
     let ended = false;

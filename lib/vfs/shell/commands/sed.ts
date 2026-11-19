@@ -1,5 +1,5 @@
 import type { ShellEnv, ShellResult } from '../types';
-import { SedCommand, addressMatches, parseSedCommand } from '../internals';
+import { SedCommand, addressMatches, parseSedCommand, splitSedScript } from '../internals';
 import { applyRedirectGuarded, checkWrite, normalizePath, recordFileVersion, truncate } from '../runtime';
 import { parseSedArgs } from '@/lib/vfs/shell-commands';
 
@@ -39,9 +39,11 @@ export async function sedCommand(env: ShellEnv): Promise<ShellResult> {
           // Parse all expressions using the unified parser
           const parsedCmds: SedCommand[] = [];
           for (const expr of expressions) {
-            const parsed = parseSedCommand(expr);
-            if ('error' in parsed) return { stdout: '', stderr: parsed.error, exitCode: 2 };
-            parsedCmds.push(parsed);
+            for (const command of splitSedScript(expr)) {
+              const parsed = parseSedCommand(command);
+              if ('error' in parsed) return { stdout: '', stderr: parsed.error, exitCode: 2 };
+              parsedCmds.push(parsed);
+            }
           }
 
           // Get input content

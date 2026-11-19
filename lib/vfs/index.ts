@@ -2168,12 +2168,20 @@ export class VirtualFileSystem {
    * Does not clone deployments.
    */
   async forkLocalDraft(projectId: string): Promise<Project> {
+    return this.copyProject(projectId, original => `${original.name} (local draft)`.slice(0, 50));
+  }
+
+  /**
+   * A new project with this one's files, folders, settings and backend records (scheduled
+   * functions remapped to the copied edge functions). A copy that fails partway is removed.
+   */
+  async copyProject(projectId: string, name: string | ((original: Project) => string)): Promise<Project> {
     this.ensureInitialized();
     const adapter = this.adapter;
     const originalProject = await this.getProject(projectId);
+    const newName = typeof name === 'string' ? name : name(originalProject);
     const files = await this.adapter.listFiles(projectId);
     const treeNodes = await this.adapter.getAllTreeNodes(projectId);
-    const newName = `${originalProject.name} (local draft)`.slice(0, 50);
     const newProject = await this.createProject(newName, originalProject.description);
 
     try {

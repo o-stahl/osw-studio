@@ -19,7 +19,7 @@ export type ApiErrorCode =
   | 'auth'
   /** The provider refused this request's content (moderation, a guardrail). Another model may take it. */
   | 'blocked'
-  /** OpenRouter refused the model whatever was sent: `permission_denied` (a model served only to listed apps, or a guardrail on the account or key), or any other 403 it gave no content reason for. */
+  /** The provider refused the model whatever was sent. OpenRouter: `permission_denied` (a model served only to listed apps, or a guardrail on the account or key), or any other 403 it gave no content reason for. Pollinations: any 403 (paid-model access or permissions). */
   | 'model_refused'
   /** The model is gone, renamed, or has no provider serving it right now. */
   | 'model_unavailable'
@@ -115,14 +115,15 @@ export function classifyProviderError(input: ProviderErrorInput): ProviderErrorC
     // OpenRouter answers 403 for what was sent (a moderation flag: `reasons`, `flagged_input`) or
     // for the model (`permission_denied`: a model served only to listed apps, or a guardrail on the
     // account or key); a bad key is 401. An OpenRouter 403 with neither is treated as the model, the
-    // closest fit. Elsewhere 403 is usually a key without access, unless it says it was the content.
+    // closest fit. Pollinations' 403 is also the model (paid-model access or permissions; its bad key
+    // is 401). Elsewhere 403 is usually a key without access, unless it says it was the content.
     const type = typeof input.metadata?.error_type === 'string' ? input.metadata.error_type : '';
     if (CONTENT_ERROR_TYPES.has(type) || Array.isArray(input.metadata?.reasons) || typeof input.metadata?.flagged_input === 'string') {
       return { code: 'blocked' };
     }
     if (provider === 'openrouter' && type === 'permission_denied') return { code: 'model_refused' };
     if (BLOCK_WORDS.some((w) => lower.includes(w))) return { code: 'blocked' };
-    return { code: provider === 'openrouter' ? 'model_refused' : 'auth' };
+    return { code: provider === 'openrouter' || provider === 'pollinations' ? 'model_refused' : 'auth' };
   }
   // The free allowance names its own limits in `metadata.limit_source`: the pool (`osws_pool`) and a
   // visitor's day (`osws_visitor_daily`) refill within the day. The monthly cap renews with the month

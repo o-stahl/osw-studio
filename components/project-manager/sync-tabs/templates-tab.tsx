@@ -2,7 +2,7 @@
 
 import { Dispatch, SetStateAction, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { SyncableItem } from '@/lib/vfs/sync-types';
+import { SyncableItem, withLocalTemplateFields } from '@/lib/vfs/sync-types';
 import { SummaryBar } from './summary-bar';
 import { SyncItemRow } from '../sync-item-row';
 import { vfs } from '@/lib/vfs';
@@ -116,7 +116,8 @@ export function TemplatesTab({
         updatedAt: result.template.updatedAt ? new Date(result.template.updatedAt) : new Date(),
       };
 
-      await vfs.getStorageAdapter().saveCustomTemplate(template);
+      const adapter = vfs.getStorageAdapter();
+      await adapter.saveCustomTemplate(withLocalTemplateFields(template, await adapter.getCustomTemplate(template.id)));
 
       toast.success(t('pulledName', { name: item.name }));
       if (!opts?.silent) {

@@ -11,6 +11,14 @@ describe('classifyProviderError', () => {
     expect(classifyProviderError({ status: 401, provider: 'openrouter', message: 'User not found.' }).code).toBe('auth');
   });
 
+  it('reads a Pollinations 403 as the model, and its 401 as the key', () => {
+    // Pollinations documents 403 FORBIDDEN as "insufficient permissions or paid-model access for
+    // this model"; a missing or bad key is 401, an empty balance 402.
+    expect(classifyProviderError({ status: 403, provider: 'pollinations', message: 'Access denied' }).code).toBe('model_refused');
+    expect(classifyProviderError({ status: 401, provider: 'pollinations', message: 'Missing or invalid API key' }).code).toBe('auth');
+    expect(classifyProviderError({ status: 402, provider: 'pollinations', message: 'Balance too low' }).code).toBe('credit_exhausted');
+  });
+
   it('tells a refusal of what was sent from a model that refuses this app', () => {
     // What was sent: moderation metadata, or the content error types. Another prompt may pass.
     const sent = (metadata: Record<string, unknown>) => classifyProviderError({ status: 403, provider: 'openrouter', message: 'Forbidden', metadata }).code;

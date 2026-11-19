@@ -14,6 +14,7 @@ import type { SentBlock } from '@/lib/semantic-blocks/types';
 import { normalizeProjectSettings } from '@/lib/vfs/project-settings';
 import { markMcpActivity, clearMcpActivity } from '@/lib/api/mcp-activity';
 import { debugEventsState } from '@/lib/llm/debug-events-state';
+import { mergeChatEvents } from '../chat-merge';
 import { drainRuntimeErrors } from '@/lib/preview/runtime-errors';
 import { logger } from '@/lib/utils';
 import { SSEClient } from '@/lib/server-generate/sse-client';
@@ -89,6 +90,13 @@ const pendingDeltas = new Map<string, { eventId: string; fragments: any[] }>();
 // When the user views a different project while generation runs, events accumulate
 // here instead of in the store's debugEvents (which shows the viewed project's history).
 const backgroundEventsMap = new Map<string, DebugEvent[]>();
+
+// The project whose whole stored chat is in `debugEvents`. Events of any other are only part of a
+// chat, and are merged into what is stored rather than written over it.
+let loadedChat: string | null = null;
+const chatLoads = new Map<string, Promise<void>>();
+const chatWrites = new Map<string, Promise<void>>();
+let latestChatLoad: string | null = null;
 
 let reattaching = false;
 const dismissedServerProjects = new Set<string>();
@@ -356,12 +364,29 @@ export async function pullAndCheckpointServerFiles(
   }
 }
 
-function debouncedSave(projectId: string, events: DebugEvent[]) {
+/** One write at a time per project, so a merge never works from a chat another is replacing. */
+function writeChat(projectId: string, events: DebugEvent[], partial: boolean): Promise<void> {
+  const write = async () => {
+    if (!partial && loadedChat === projectId) {
+      await debugEventsState.saveEvents(projectId, events);
+      return;
+    }
+    const stored = (await debugEventsState.loadEvents(projectId)) as DebugEvent[] | undefined;
+    await debugEventsState.saveEvents(projectId, mergeChatEvents(stored ?? [], events, MAX_DEBUG_EVENTS));
+  };
+  const next = (chatWrites.get(projectId) ?? Promise.resolve()).then(write, write);
+  chatWrites.set(projectId, next);
+  const settle = () => { if (chatWrites.get(projectId) === next) chatWrites.delete(projectId); };
+  next.then(settle, settle);
+  return next;
+}
+
+function debouncedSave(projectId: string, events: DebugEvent[], partial = false) {
   if (!persistProjectIds.has(projectId)) return;
   const existing = saveDebounceTimers.get(projectId);
   if (existing) clearTimeout(existing);
   const timer = setTimeout(() => {
-    Promise.resolve(debugEventsState.saveEvents(projectId, events)).catch(error => {
+    writeChat(projectId, events, partial).catch(error => {
       logger.error('Failed to persist debug events:', error);
     });
   }, 500);
@@ -376,9 +401,9 @@ function cancelSave(projectId: string) {
   }
 }
 
-function flushSave(projectId: string, events: DebugEvent[]) {
+function flushSave(projectId: string, events: DebugEvent[], partial = false) {
   cancelSave(projectId);
-  Promise.resolve(debugEventsState.saveEvents(projectId, events)).catch(error => {
+  writeChat(projectId, events, partial).catch(error => {
     logger.error('Failed to flush debug events:', error);
   });
 }
@@ -602,7 +627,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
               data: { all },
             };
             backgroundEventsMap.set(source, buffer);
-            debouncedSave(source, buffer);
+            debouncedSave(source, buffer, true);
             return;
           }
         }
@@ -612,7 +637,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
         buffer = buffer.slice(-MAX_DEBUG_EVENTS);
       }
       backgroundEventsMap.set(source, buffer);
-      debouncedSave(source, buffer);
+      debouncedSave(source, buffer, true);
       return;
     }
 
@@ -1091,8 +1116,8 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
         // Flush buffered events
         const buffer = backgroundEventsMap.get(projectId);
         if (buffer && buffer.length > 0) {
-          flushSave(projectId, buffer);
-        } else {
+          flushSave(projectId, buffer, true);
+        } else if (get().projectId === projectId) {
           flushSave(projectId, get().debugEvents);
         }
         backgroundEventsMap.delete(projectId);
@@ -1165,7 +1190,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     }
     // Flush buffered events
     const buffer = backgroundEventsMap.get(targetId);
-    if (buffer && buffer.length > 0) flushSave(targetId, buffer);
+    if (buffer && buffer.length > 0) flushSave(targetId, buffer, true);
     // Dispatch event
     if (typeof globalThis.dispatchEvent === 'function') {
       globalThis.dispatchEvent(new CustomEvent('generationStateChanged', { detail: { generating: false, projectId: targetId } }));
@@ -1205,35 +1230,51 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     // background generations keep showing until they finish.
     get().dismissGenerationResult(projectId);
 
-    // Background buffer takes priority — SSE replay may have populated it while
-    // the user was on another page (e.g. project list during reattach).
-    // Persist to IDB before deleting so StrictMode double-calls find fresh data.
-    const buffer = backgroundEventsMap.get(projectId);
-    if (buffer && buffer.length > 0) {
-      backgroundEventsMap.delete(projectId);
-      set({ debugEvents: buffer });
-      try { debugEventsState.saveEvents(projectId, buffer)?.catch?.(() => {}); } catch {}
-      return;
+    // A second open of the same project waits for the first, which is already reading the chat.
+    const pending = chatLoads.get(projectId);
+    if (pending) {
+      await pending;
+      if (!backgroundEventsMap.get(projectId)?.length) return;
     }
 
-    // If actively generating, in-memory debugEvents are already authoritative.
-    if (get().isProjectGenerating(projectId)) return;
+    // What arrived while the project was off screen, or a run's events already on screen, is only
+    // part of the chat: it joins the stored events rather than standing in for them.
+    const buffer = backgroundEventsMap.get(projectId);
+    const hasBuffer = !!buffer && buffer.length > 0;
+    const generating = get().isProjectGenerating(projectId);
+    if (!hasBuffer && generating && loadedChat === projectId) return;
 
-    try {
-      const savedEvents = await debugEventsState.loadEvents(projectId);
-      if (savedEvents.length > 0) {
+    backgroundEventsMap.delete(projectId);
+    loadedChat = null;
+    latestChatLoad = projectId;
+    if (hasBuffer) set({ debugEvents: buffer });
+    const hasLiveEvents = hasBuffer || (generating && get().projectId === projectId);
+
+    const load = (async () => {
+      try {
+        const savedEvents = (await debugEventsState.loadEvents(projectId)) ?? [];
         const normalized: DebugEvent[] = savedEvents.map(e => ({
           ...e,
           count: (e as any).count ?? 1,
           version: (e as any).version ?? 1,
         }));
-        set({ debugEvents: normalized });
-      } else {
-        set({ debugEvents: [] });
+        if (latestChatLoad !== projectId) {
+          if (hasBuffer) await writeChat(projectId, buffer, true);
+          return;
+        }
+        const merged = hasLiveEvents
+          ? mergeChatEvents(normalized, get().debugEvents, MAX_DEBUG_EVENTS)
+          : normalized;
+        set({ debugEvents: merged });
+        loadedChat = projectId;
+        if (hasLiveEvents) await writeChat(projectId, merged, false);
+      } catch (error) {
+        logger.error('Failed to load debug events:', error);
       }
-    } catch (error) {
-      logger.error('Failed to load debug events:', error);
-    }
+    })();
+    chatLoads.set(projectId, load);
+    await load;
+    chatLoads.delete(projectId);
   },
 
   clearChat: async (projectId: string) => {
@@ -1249,7 +1290,10 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       backgroundEventsMap.set(projectId, []);
       if (task) set({ generationTasks: newTasks });
     }
+    cancelSave(projectId);
+    if (get().projectId === projectId) loadedChat = projectId;
     try {
+      await chatWrites.get(projectId)?.catch(() => {});
       await debugEventsState.clearEvents(projectId);
     } catch (error) {
       logger.error('Failed to clear debug events:', error);
@@ -1717,6 +1761,14 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       logger.warn('[ServerGen] Pre-generation sync error:', err);
     }
 
+    // The run's end pulls the server's backend features, and the run itself should see this tab's.
+    try {
+      const { getSyncManager } = await import('@/lib/vfs/sync-manager');
+      await getSyncManager().pullBackendFeatures?.(projectId);
+    } catch (err) {
+      logger.warn('[ServerGen] Pre-generation backend sync error:', err);
+    }
+
     // Snapshot current project state so the user can roll back after server generation
     let snapshotId: string | null = null;
     try {
@@ -1798,7 +1850,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
         const kept = strip(backgroundEventsMap.get(projectId) ?? []);
         if (kept.length > 0) {
           backgroundEventsMap.set(projectId, kept);
-          debouncedSave(projectId, kept);
+          debouncedSave(projectId, kept, true);
         } else {
           backgroundEventsMap.delete(projectId);
           cancelSave(projectId);
