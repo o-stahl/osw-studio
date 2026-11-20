@@ -362,6 +362,8 @@ export class OswsProviderAdapter implements ProviderAdapter {
       usage: result.usage,
       reasoningDetails: result.reasoningDetails,
       invalidToolName: result.invalidToolName,
+      ...(result.finishReason ? { finishReason: result.finishReason } : {}),
+      ...(result.nativeFinishReason ? { nativeFinishReason: result.nativeFinishReason } : {}),
       ...(streamError ? { streamError } : {}),
       ...(unfinishedToolCallIds ? { unfinishedToolCallIds } : {}),
     };

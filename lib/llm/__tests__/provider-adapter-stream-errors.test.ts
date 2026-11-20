@@ -173,3 +173,14 @@ describe('a retry on the status line', () => {
     expect(apiFetch).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('an answer with nothing in it', () => {
+  it('carries the finish reasons to the loop, the upstream model\'s own included', async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce(stream([
+      sse({ choices: [{ index: 0, delta: {}, finish_reason: 'stop', native_finish_reason: 'MALFORMED_FUNCTION_CALL' }] }),
+      'data: [DONE]\n\n',
+    ]));
+    const result = await settle(makeAdapter().call({ messages, tools }));
+    expect(result).toMatchObject({ finishReason: 'stop', nativeFinishReason: 'MALFORMED_FUNCTION_CALL' });
+  });
+});

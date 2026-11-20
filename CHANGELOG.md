@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.111.2 - 2026-11-20
+
+### Fixes
+- **A failed server run ends with the same project pull as a finished one**: `finishServerTask` and `reattachServerTasks` (`lib/stores/slices/orchestrator.ts`) run `pullAndCheckpointServerFiles` after every ending but `awaiting_user`. After a failed run the tab kept its pre-run `revision`, so each Save's push was refused (409), leaving the project dirty with "edited on another device".
+- **The end-of-run pull marks the project dirty only when the run changed files**: `pullAndCheckpointServerFiles` calls `markDirty` when `files_changed` arrived during the run or the pull wrote, created or deleted a file, and skips files whose content is already the same (`sameFileContent`). The "After server generation" checkpoint and the refresh still follow every pull.
+- **`autoSyncProject` waits while a server run holds the project**: the push (`lib/vfs/auto-sync.ts`) is held by `lib/vfs/push-gate.ts` (`setPushGate` is set by the orchestrator slice: a task with `serverTaskId` and no result), and `releaseHeldPush` sends it after the end-of-run pull, or when the run pauses for approval. A Save during a run was refused (409).
+- **A push refused with 409 is sent again when both sides hold the same files**: `pushProject` calls `adoptRevisionIfSameFiles` (`lib/vfs/auto-sync.ts`, comparing with `sameFileSets` in `lib/vfs/file-compare.ts`), takes the server's `revision` and pushes once more; `pullAndCheckpointServerFiles` does the same for a project with unpushed local changes (`behindOnly`) and waits for `whenFilesSynced` first. One refusal left the project refused on every later Save, run and reopen.
+- **`updateProjectCost` leaves the project's revision and `updatedAt` alone**: `VirtualFileSystem.updateProjectCost` and `applyProjectCostDelta` (`lib/vfs/index.ts`) store with `preserveUpdatedAt`. On the server each model call's cost moved the revision, refusing a push from a tab that had every file.
+- **A server run's `task_complete` counts each call's cost once**: the runner's progress callback (`lib/server-generate/server-orchestrator-runner.ts`) no longer calls `ServerConfigManager.updateSessionCost`, which the orchestrator's cost tracker already calls; the reported cost was double.
+- **The agent loop emits `empty_response` for a turn with no text, tool call or reasoning**: the event (`lib/llm/core/agent-loop.ts`) carries `finishReason` and `nativeFinishReason` (OpenRouter's `native_finish_reason`, kept by `parseStreamingResponse` and passed on by `OswsProviderAdapter`) with the turn's completion and reasoning token counts.
+- **Server runs' `nudge` and retry events reach the tab's Debug Events**: `SSEClient` (`lib/server-generate/sse-client.ts`) subscribes to `nudge`, `empty_response`, `reasoning_only_retry`, `malformed_tool_call` and `tool_error_retry`. The server sent them and the tab had no listener, so a server run's debug log showed the reminder messages without the events behind them.
+
+### Tests
+- **Coverage for Save around server runs, the run's cost and empty turns**: new `lib/vfs/__tests__/save-after-server-run.test.ts` (real routes, SQLite and IndexedDB), `lib/vfs/__tests__/push-gate.test.ts`, `lib/stores/__tests__/orchestrator-server-end-pull.test.ts`, `lib/llm/__tests__/streaming-parser-finish-reason.test.ts`, and cases in `server-orchestrator-runner.test.ts`, `agent-loop.test.ts`, `provider-adapter-stream-errors.test.ts` and `sse-client-events.test.ts`.
+
 ## v1.111.1 - 2026-11-19
 
 ### Agent and MCP

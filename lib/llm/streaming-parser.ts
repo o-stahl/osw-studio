@@ -19,6 +19,8 @@ export interface StreamResponse {
   usage?: UsageInfo;
   wasTruncated?: boolean;   // True if response was cut off due to max_tokens
   finishReason?: string;    // The actual finish reason from the API
+  /** The upstream model's own finish reason, where a router passes it on (OpenRouter's `native_finish_reason`). */
+  nativeFinishReason?: string;
   /** Set when the stream was aborted early because the model called a tool
    *  whose name isn't one of the advertised tools (only 'bash' exists). */
   invalidToolName?: string;
@@ -84,6 +86,7 @@ export async function parseStreamingResponse(
   }
   let wasTruncated = false;
   let lastFinishReason: string | undefined;
+  let nativeFinishReason: string | undefined;
   const reasoningDetails: ReasoningDetail[] = [];  // Structured reasoning blocks captured for multi-turn replay
 
   // State for extracting inline <think>...</think> blocks (MiniMax, Ollama thinking models, etc.)
@@ -353,6 +356,8 @@ export async function parseStreamingResponse(
               // Handle OpenAI/OpenRouter streaming format
               const delta = json.choices?.[0]?.delta;
               const finishReason = json.choices?.[0]?.finish_reason;
+              const native = json.choices?.[0]?.native_finish_reason;
+              if (typeof native === 'string' && native) nativeFinishReason = native;
 
               // Track finish reason for truncation detection
               if (finishReason) {
@@ -686,6 +691,7 @@ export async function parseStreamingResponse(
     usage: usageInfo,
     wasTruncated,
     finishReason: lastFinishReason,
+    ...(nativeFinishReason ? { nativeFinishReason } : {}),
     reasoningDetails: reasoningDetails.length > 0 ? reasoningDetails : undefined,
     midstreamError,
     invalidToolName,

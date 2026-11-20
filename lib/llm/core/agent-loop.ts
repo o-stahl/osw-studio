@@ -415,6 +415,16 @@ export class AgentLoop {
       if (!response.toolCalls || response.toolCalls.length === 0) {
         const hasContent = !!(response.content && response.content.trim());
         const hasReasoning = !!response.reasoningDetails?.length;
+        // Nothing to act on or keep: say why the provider ended it, which no other event shows.
+        if (!hasContent && !hasReasoning) {
+          this.progress.onEvent('empty_response', {
+            iteration,
+            finishReason: response.finishReason ?? null,
+            nativeFinishReason: response.nativeFinishReason ?? null,
+            completionTokens: response.usage?.completionTokens ?? null,
+            reasoningTokens: response.usage?.reasoningTokens ?? null,
+          });
+        }
 
         // Explore/plan/setup agents exit immediately
         if (this.config.agentType === 'explore' || this.config.agentType === 'plan' || this.config.agentType === 'setup') {

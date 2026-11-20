@@ -15,6 +15,8 @@ import { normalizeProjectSettings } from '@/lib/vfs/project-settings';
 import { markMcpActivity, clearMcpActivity } from '@/lib/api/mcp-activity';
 import { debugEventsState } from '@/lib/llm/debug-events-state';
 import { mergeChatEvents } from '../chat-merge';
+import { sameFileContent, sameFileSets } from '@/lib/vfs/file-compare';
+import { releaseHeldPush, requestPush, setPushGate } from '@/lib/vfs/push-gate';
 import { drainRuntimeErrors } from '@/lib/preview/runtime-errors';
 import { logger } from '@/lib/utils';
 import { SSEClient } from '@/lib/server-generate/sse-client';
@@ -193,12 +195,19 @@ function finishServerTask(
       if (data.result === 'stopped' || data.mode !== 'chat') {
         toast.success(translator()(data.result === 'stopped' ? 'orchestrator.taskStopped' : 'orchestrator.taskCompleted'));
       }
-      pullAndCheckpointServerFiles(projectId, get).catch(err => {
-        logger.warn('[ServerGen] Post-completion pull failed:', err);
-      });
     }
   } else if (data.error) {
     toast.error(String(data.error), { duration: 5000 });
+  }
+  // A failed run has written files too, and the project record with its revision arrives only with
+  // this pull: without it the next push carries a stale revision and is refused as a conflict.
+  // The run no longer holds the project: a push that waited goes out once this tab has its files.
+  if (!awaitingUser) {
+    pullAndCheckpointServerFiles(projectId, get).catch(err => {
+      logger.warn('[ServerGen] Post-completion pull failed:', err);
+    }).finally(() => releaseHeldPush(projectId));
+  } else {
+    void whenFilesSynced(projectId).finally(() => releaseHeldPush(projectId));
   }
 }
 /**
@@ -263,12 +272,17 @@ function recordServerUsage(
   }).catch(err => logger.warn('[ServerGen] Failed to record cost:', err));
 }
 
+/** Projects whose server run sent files to this tab while it ran (`files_changed`). */
+const runWroteFiles = new Set<string>();
+
 export async function pullAndCheckpointServerFiles(
   projectId: string,
   get: () => CombinedState,
 ) {
   const { getSyncManager } = await import('@/lib/vfs/sync-manager');
   const syncMgr = getSyncManager();
+  // What the run wrote is still arriving file by file; the comparisons below are with all of it.
+  await whenFilesSynced(projectId);
   const pullResult = await syncMgr.pullProjectWithFiles(projectId);
   if (!pullResult.success || !pullResult.project || !pullResult.files) return;
 
@@ -288,11 +302,14 @@ export async function pullAndCheckpointServerFiles(
     };
   }
   const existingFiles = await vfs.getAllFilesAndDirectories(projectId);
-  const existingFilePaths = new Set(
+  const existingContent = new Map(
     existingFiles
       .filter((f): f is import('@/lib/vfs/types').VirtualFile => !('type' in f && f.type === 'directory'))
-      .map(f => f.path)
+      .map(f => [f.path, f.content] as const)
   );
+  const existingFilePaths = new Set(existingContent.keys());
+  // The run changed files: ones that reached this tab while it ran, or ones this pull brings.
+  let changed = runWroteFiles.delete(projectId);
   // A record with no files that has never been saved holds nothing to protect, which is what a
   // project the connector has just created looks like: `createProject` seeds a root node and no
   // files, and leaves `lastSyncedAt` unset — which `localHasUnackedEdits` reads as local edits, so
@@ -301,26 +318,31 @@ export async function pullAndCheckpointServerFiles(
   // only one of them wins the race to seed it.
   const nothingToProtect = existingFilePaths.size === 0 && !target.lastSavedAt;
   const unacked = nothingToProtect ? false : localHasUnackedEdits(target);
+  // Unpushed local work over the very files the server holds (a Save during the run, say): nothing
+  // is in conflict, only the revision is behind. It is taken, and the local record goes up as it is.
+  const behindOnly = unacked && sameFileSets([...existingContent].map(([path, content]) => ({ path, content })), serverFiles);
   await saveManager.runWithSuppressedDirty(projectId, async () => {
     for (const file of serverFiles) {
       if (existingFilePaths.has(file.path)) {
-        if (!unacked) {
+        if (!unacked && !sameFileContent(existingContent.get(file.path), file.content)) {
           await vfs.updateFile(projectId, file.path, file.content, { silent: true });
+          changed = true;
         }
       } else {
         await vfs.createFile(projectId, file.path, file.content, { silent: true });
+        changed = true;
       }
     }
     if (!unacked) {
       const serverPaths = new Set(serverFiles.map(f => f.path));
       for (const p of existingFilePaths) {
         if (!serverPaths.has(p)) {
-          try { await vfs.deleteFile(projectId, p, { silent: true }); } catch {}
+          try { await vfs.deleteFile(projectId, p, { silent: true }); changed = true; } catch {}
         }
       }
     }
   });
-  if (unacked) {
+  if (unacked && !behindOnly) {
     await markSyncNeedsRetry(projectId, target.name || serverProject.name, { reason: 'conflict' });
     return;
   }
@@ -329,6 +351,11 @@ export async function pullAndCheckpointServerFiles(
   await queueProjectWrite(projectId, async () => {
     let record = target;
     try { record = await vfs.getProject(projectId); } catch { /* first pull: nothing stored yet */ }
+    if (behindOnly) {
+      if (typeof serverProject.revision === 'number') record.revision = serverProject.revision;
+      await vfs.updateProject(record, { preserveUpdatedAt: true });
+      return;
+    }
     record.name = serverProject.name;
     record.description = serverProject.description;
     if (serverProject.settings) record.settings = normalizeProjectSettings(serverProject.settings);
@@ -341,6 +368,7 @@ export async function pullAndCheckpointServerFiles(
     }
     await vfs.updateProject(record, { preserveUpdatedAt: true });
   });
+  if (behindOnly) requestPush(projectId);
   // Files are one store; edge/server functions, schedules and secrets are another. An MCP
   // backend_upsert writes the latter, and without this pull a later UI publish would push the
   // tab's stale IndexedDB copy and wipe the connector's work.
@@ -349,6 +377,8 @@ export async function pullAndCheckpointServerFiles(
   } catch (err) {
     logger.warn('[ServerGen] Backend features pull failed:', err);
   }
+  // Every run ends on a checkpoint, as a browser run does: Retry and Undo read the one before a
+  // run's last checkpoint as its starting point, which for a server run is its pre-run snapshot.
   try {
     const cp = await checkpointManager.createCheckpoint(projectId, 'After server generation', { kind: 'auto', label: { key: 'afterServerGeneration' } });
     get().addDebugEvent('checkpoint_created', {
@@ -359,7 +389,8 @@ export async function pullAndCheckpointServerFiles(
   }
   if (get().projectId === projectId) {
     window.dispatchEvent(new Event('filesChanged'));
-    get().markDirty();
+    // A run that changed no file, one that failed on its first call say, leaves nothing to save.
+    if (changed) get().markDirty();
     get().bumpRefreshTrigger();
   }
 }
@@ -543,7 +574,13 @@ type CombinedState = OrchestratorSlice & {
   focusContext: FocusTarget | null;
 };
 
-export const createOrchestratorSlice: StateCreator<CombinedState, [], [], OrchestratorSlice> = (set, get) => ({
+export const createOrchestratorSlice: StateCreator<CombinedState, [], [], OrchestratorSlice> = (set, get) => {
+  // A project's pushes wait while a server run this tab follows is writing its server copy.
+  setPushGate((projectId) => {
+    const task = get().generationTasks.get(projectId);
+    return !!task?.serverTaskId && task.result === null;
+  });
+  return {
   generationTasks: new Map<string, GenerationTask>(),
   debugEvents: [],
   currentModel: '',
@@ -1431,6 +1468,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       onEvent: (event, data) => {
         const projectId = data.sourceProjectId as string;
         if (event === 'files_changed') {
+          if (projectId) runWroteFiles.add(projectId);
           handleFilesChanged(data as any).then(() => {
             if (get().projectId === projectId) {
               get().markDirty();
@@ -2045,12 +2083,11 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
             recovered: true,
           }, serverTask.projectId);
 
-          if (result === 'completed') {
-            try {
-              await pullAndCheckpointServerFiles(serverTask.projectId, get);
-            } catch (err) {
-              logger.warn('[Reattach] pull failed:', err);
-            }
+          // A failed run wrote files too, and the record's revision comes only with the pull.
+          try {
+            await pullAndCheckpointServerFiles(serverTask.projectId, get);
+          } catch (err) {
+            logger.warn('[Reattach] pull failed:', err);
           }
         }
       }
@@ -2072,6 +2109,8 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       }
 
       set({ generationTasks, ...deriveScalarFields(generationTasks, get().projectId) });
+      // Pushes that waited on a run that has since ended, or whose outcome is unknown, go out now.
+      for (const pid of generationTasks.keys()) releaseHeldPush(pid);
       // Hold the channel open for as long as the tab is, rather than only while a task runs.
       // The server uses it to ask this tab for things it cannot do itself: run an agent task with
       // the provider key that lives here, or pull a project an MCP client just changed. It used to
@@ -2085,4 +2124,5 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
       reattaching = false;
     }
   },
-});
+  };
+};

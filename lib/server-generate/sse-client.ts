@@ -46,6 +46,8 @@ export class SSEClient {
       'conversation_message', 'conversation_replaced', 'waiting', 'iteration', 'progress',
       'error', 'stopped', 'compaction', 'agent_progress', 'retry', 'api_stopped', 'model_switched', 'model_picked', 'model_resolved', 'allowance_low',
       'usage', 'skill_evaluation', 'checkpoint_created', 'exit_reason', 'ask', 'interview_gate',
+      // How the loop steered a turn that ended without a tool call, as a browser run records them
+      'nudge', 'empty_response', 'reasoning_only_retry', 'malformed_tool_call', 'tool_error_retry',
       // Server generation lifecycle
       'files_changed', 'build_requested', 'search_requested', 'image_requested', 'usage_update', 'approval_required',
       'task_complete', 'sync_gap', 'notification', 'runtimeChanged',

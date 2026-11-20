@@ -32,6 +32,9 @@ export interface ParsedResponse {
   reasoningDetails?: ReasoningDetail[];
   /** Set when the stream was aborted early on an unexpected tool name. */
   invalidToolName?: string;
+  /** Why the provider ended the answer, and the upstream model's own reason where a router gives it. */
+  finishReason?: string;
+  nativeFinishReason?: string;
   /** The stream ended in a provider error after some of the answer had arrived. */
   streamError?: StreamErrorInfo;
   /** Tool calls the stream error cut off while their arguments were still arriving: never run. */

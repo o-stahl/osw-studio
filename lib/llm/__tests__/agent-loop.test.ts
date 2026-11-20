@@ -1011,6 +1011,31 @@ describe('AgentLoop history integrity and retry safeguards', () => {
     expect(result.success).toBe(true);
   });
 
+  it('says why the provider ended a turn that brought nothing, and stays quiet on one that did', async () => {
+    const provider = createMockProvider([
+      { content: 'Here is the page.' },
+      {
+        content: '', finishReason: 'stop', nativeFinishReason: 'MALFORMED_FUNCTION_CALL',
+        usage: { promptTokens: 100, completionTokens: 2141, totalTokens: 2241, reasoningTokens: 2133 },
+      },
+    ]);
+    const progress = createMockProgress();
+    const loop = new AgentLoop({
+      config: defaultConfig({ maxNudges: 1 }),
+      provider,
+      executor: createMockExecutor(),
+      context: createMockContext(),
+      progress,
+      cost: createMockCost(),
+    });
+    await loop.run('Build a landing page');
+
+    const empty = (progress.onEvent as ReturnType<typeof vi.fn>).mock.calls.filter(c => c[0] === 'empty_response');
+    expect(empty.map(c => c[1])).toEqual([{
+      iteration: 1, finishReason: 'stop', nativeFinishReason: 'MALFORMED_FUNCTION_CALL', completionTokens: 2141, reasoningTokens: 2133,
+    }]);
+  });
+
   it('falls back to status nudges after reasoning-only retries are exhausted', async () => {
     const reasoningOnly = () => ({
       content: '',

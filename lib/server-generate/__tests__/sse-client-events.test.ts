@@ -34,6 +34,15 @@ describe('SSEClient event subscriptions', () => {
     expect(subscribed.has('mcp_project_changed')).toBe(true);
   });
 
+  it('subscribes to how the loop steered a turn without a tool call, as a browser run records it', () => {
+    new SSEClient({ onEvent: vi.fn() }).connect();
+
+    const subscribed = FakeEventSource.last!.listeners;
+    for (const event of ['nudge', 'empty_response', 'reasoning_only_retry', 'malformed_tool_call', 'tool_error_retry']) {
+      expect(subscribed.has(event), event).toBe(true);
+    }
+  });
+
   it('still subscribes to the generation events it always did', () => {
     new SSEClient({ onEvent: vi.fn() }).connect();
 

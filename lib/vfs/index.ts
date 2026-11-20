@@ -1590,7 +1590,9 @@ export class VirtualFileSystem {
       }
     }
 
-    await this.updateProject(project);
+    // Spend is not an edit: on the server a new `updatedAt` and revision would refuse the next push
+    // from a tab that has every file the run wrote.
+    await this.updateProject(project, { preserveUpdatedAt: true });
   }
 
   async applyProjectCostDelta(
@@ -1656,7 +1658,7 @@ export class VirtualFileSystem {
       }
     }
 
-    await this.updateProject(project);
+    await this.updateProject(project, { preserveUpdatedAt: true });
   }
 
   /**

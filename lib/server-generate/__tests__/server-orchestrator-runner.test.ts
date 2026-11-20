@@ -352,6 +352,34 @@ describe('runServerGeneration', () => {
     expect(emitted.find((e) => e.event === 'task_complete')?.data.mode).toBe(reported);
   });
 
+  it('reports each call\'s cost once in task_complete', async () => {
+    // Per call, the orchestrator's cost tracker records the cost on the run's config, and the
+    // provider adapter reports the same call in a `usage` event that carries its cost.
+    const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
+    const { MultiAgentOrchestrator } = await import('@/lib/llm/multi-agent-orchestrator');
+    (MultiAgentOrchestrator as any).mockImplementationOnce(
+      (_projId: string, _role: string, progressCb: (event: string, data?: unknown) => void, opts: { serverContext: ServerOrchestratorContext }) => ({
+        execute: vi.fn().mockImplementation(async () => {
+          for (const cost of [0.25, 0.5]) {
+            const usage = { promptTokens: 100, completionTokens: 10, totalTokens: 110 };
+            progressCb('usage', { usage, cost });
+            opts.serverContext.config.updateSessionCost(usage, cost);
+            progressCb('usage', { usage, totalCost: cost });
+          }
+          return { success: true };
+        }),
+        stop: vi.fn(),
+        importConversation: vi.fn(),
+      }),
+    );
+    const emitted: Array<{ event: string; data: Record<string, unknown> }> = [];
+    bus.addListener('sess-1', (e) => emitted.push(e));
+
+    await runServerGeneration(taskId, makeRequest(), makeDeps());
+
+    expect(emitted.find((e) => e.event === 'task_complete')!.data.cost).toBeCloseTo(0.75);
+  });
+
   it('flushes dirty paths as files_changed on tool_status completed', async () => {
     const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
     const { MultiAgentOrchestrator } = await import('@/lib/llm/multi-agent-orchestrator');

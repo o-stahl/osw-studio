@@ -185,13 +185,6 @@ async function runTask(task: ServerTask, request: StartGenerationRequest, deps: 
       flushDirtyPaths();
     }
 
-    if (event === 'usage' && eventData.cost != null) {
-      serverConfig.updateSessionCost(
-        { promptTokens: (eventData as any).promptTokens, completionTokens: (eventData as any).completionTokens },
-        eventData.cost as number,
-      );
-    }
-
     // A gated command with no standing allow pauses the run (awaiting_user). Record what needs
     // approval so the client can show a persisted Allow/Deny prompt after the user returns; the
     // event above already reached the client live for the in-session case.

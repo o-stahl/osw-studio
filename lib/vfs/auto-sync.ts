@@ -17,6 +17,8 @@ import { toast } from 'sonner';
 import { apiFetch, getBackendStatus, subscribeBackendStatus } from '@/lib/api/backend-status';
 import { track } from '@/lib/telemetry';
 import { translator } from '@/lib/i18n/runtime';
+import { holdPush, setHeldPushSender } from './push-gate';
+import { sameFileSets } from './file-compare';
 
 // ── Workspace-scoped URL helpers ─────────────────────────────────────────────
 
@@ -244,6 +246,9 @@ async function postProjectBatches(
 const pushesInFlight = new Map<string, Promise<void>>();
 
 export async function autoSyncProject(projectId: string, silent = true): Promise<void> {
+  // A server run is writing the project's server copy: the push goes out after the run's pull.
+  if (holdPush(projectId)) return;
+
   const inFlight = pushesInFlight.get(projectId);
   if (inFlight) await inFlight.catch(() => { /* its own caller reported it */ });
 
@@ -253,6 +258,30 @@ export async function autoSyncProject(projectId: string, silent = true): Promise
     await push;
   } finally {
     if (pushesInFlight.get(projectId) === push) pushesInFlight.delete(projectId);
+  }
+}
+
+setHeldPushSender((projectId) => { void autoSyncProject(projectId, false); });
+
+/**
+ * After a refused push: take the server's revision when its files are exactly this browser's.
+ *
+ * The revision also moves for writes this tab already has (a server run's, mirrored as they were
+ * made), and then nothing is in conflict but the number. With identical files a retry sends no file
+ * and deletes none, so it cannot undo another writer's work; any difference stays a conflict.
+ */
+async function adoptRevisionIfSameFiles(projectId: string): Promise<boolean> {
+  try {
+    const response = await apiFetch(getAutoSyncApiUrl(`/sync/projects/${projectId}`));
+    if (!response.ok) return false;
+    const data = await response.json() as { project?: Project; files?: unknown[] };
+    if (typeof data.project?.revision !== 'number' || !Array.isArray(data.files)) return false;
+    const serverFiles = data.files.map(raw => deserializeFileContent(raw as Parameters<typeof deserializeFileContent>[0]));
+    if (!sameFileSets(await vfs.listFiles(projectId), serverFiles)) return false;
+    await persistAcknowledgedRevision(projectId, data.project.revision);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -298,27 +327,32 @@ async function pushProject(projectId: string, silent: boolean): Promise<void> {
   }
 
   try {
-    const project = await vfs.getProject(projectId);
+    let project = await vfs.getProject(projectId);
     if (!project) {
       logger.error(`[AutoSync] Project ${projectId} not found`);
       return;
     }
 
+    const send = async () => {
+      const files = await vfs.listFiles(projectId);
+      // Ask the server what it already has, so an unchanged file is not re-uploaded and, more
+      // importantly, so the push does not have to be a full delete-and-recreate of every file.
+      const delta = await buildFileDelta(projectId, files);
+      if (!delta) {
+        throw new Error('Sync failed: could not read the server manifest');
+      }
+      // An expired session: the banner is up, and the load after signing in pushes what is left.
+      return delta === 'unauthorized'
+        ? 'unauthorized' as const
+        : postProjectBatches(projectId, project, delta.files, delta.deletedPaths);
+    };
 
-    // Get all files
-    const files = await vfs.listFiles(projectId);
-
-    // Ask the server what it already has, so an unchanged file is not re-uploaded and, more
-    // importantly, so the push does not have to be a full delete-and-recreate of every file.
-    const delta = await buildFileDelta(projectId, files);
-    if (!delta) {
-      throw new Error('Sync failed: could not read the server manifest');
+    let response = await send();
+    // Refused for the revision alone, with the same files on both sides: once more from the server's.
+    if (response !== 'unauthorized' && response.status === 409 && await adoptRevisionIfSameFiles(projectId)) {
+      project = await vfs.getProject(projectId);
+      response = await send();
     }
-
-    // An expired session: the banner is up, and the load after signing in pushes what is left.
-    const response = delta === 'unauthorized'
-      ? 'unauthorized'
-      : await postProjectBatches(projectId, project, delta.files, delta.deletedPaths);
 
     if (response === 'unauthorized' || response.status === 401) {
       syncRetries.delete(projectId);
@@ -327,9 +361,10 @@ async function pushProject(projectId: string, silent: boolean): Promise<void> {
     }
 
     if (response.status === 409) {
-      // Do not retry. A one-commit second writer is also local+1; retrying with a fresh
-      // manifest treats their files as deletedPaths and removes them. Lost acks are
-      // handled by persistAcknowledgedRevision on success.
+      // No blind retry. A one-commit second writer is also local+1; retrying with a fresh
+      // manifest treats their files as deletedPaths and removes them. The one retry above is
+      // made only when both sides hold the same files. Lost acks are handled by
+      // persistAcknowledgedRevision on success.
       await markSyncNeedsRetry(projectId, project.name, { silent, reason: 'conflict' });
       return;
     }
