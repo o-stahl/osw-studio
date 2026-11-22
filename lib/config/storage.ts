@@ -104,6 +104,10 @@ export interface AppSettings {
   modelPickerCollapsed?: string[];
   /** Intent group ids collapsed in the template picker. */
   templatePickerCollapsed?: string[];
+  /** Unpinned automatic checkpoints each project keeps in this browser (Settings → Data); see `unpinnedLimit`. */
+  checkpointsKept?: number;
+  /** Unpinned saves each project keeps besides its latest (Settings → Data); see `savesLimit`. */
+  savesKept?: number;
 }
 
 /**

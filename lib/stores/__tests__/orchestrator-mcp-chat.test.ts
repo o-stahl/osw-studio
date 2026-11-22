@@ -91,6 +91,25 @@ describe('orchestrator slice — an MCP prompt in the chat', () => {
     expect(events[0].data.message.content).toBe('an earlier turn');
   });
 
+  // A reload replays the echo, and the stored chat has to recognise it as this message.
+  it('records the echo\'s identity on the message it merged into', async () => {
+    store.setState({
+      debugEvents: [{
+        id: 'pending', timestamp: 2, event: 'conversation_message', count: 1, version: 1,
+        data: { message: { role: 'user', content: 'Add an About section', ui_metadata: { awaitingServerEcho: true } } },
+      }] as never,
+    });
+    const send = await eventsInto('viewed-project', 'viewed-project');
+
+    send({ ...serverUserMessage, sourceTaskId: 't1', sourceEventId: 7 });
+
+    const [message] = store.getState().debugEvents;
+    expect(message.data).toMatchObject({ sourceTaskId: 't1', sourceEventId: 7 });
+    const { mergeChatEvents } = await import('../chat-merge');
+    const replayed = { id: 'replay', timestamp: 3, event: 'conversation_message', count: 1, version: 1, data: { ...serverUserMessage, sourceTaskId: 't1', sourceEventId: 7 } };
+    expect(mergeChatEvents([message], [replayed as never], 100)).toHaveLength(1);
+  });
+
   it('clears the chat of the project named, not the one on screen', async () => {
     const viewed = [{
       id: 'a', timestamp: 1, event: 'conversation_message', count: 1, version: 1,

@@ -3100,7 +3100,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
               <CheckpointPanel
                 projectId={project.id}
                 events={debugEvents}
-                currentCheckpointId={checkpointManager.getCurrentCheckpoint()?.id}
+                savedCheckpointId={saveManager.getSavedCheckpointId(project.id)}
                 onRestore={handleRestoreCheckpoint}
                 onScrollToTurn={handleScrollToCheckpoint}
                 onClose={() => commands.close('checkpoints')}
@@ -3274,7 +3274,7 @@ export function Workspace({ project, onBack, backLabel, workspaceId, initialPrev
                 <CheckpointPanel
                   projectId={project.id}
                   events={debugEvents}
-                  currentCheckpointId={checkpointManager.getCurrentCheckpoint()?.id}
+                  savedCheckpointId={saveManager.getSavedCheckpointId(project.id)}
                   onRestore={handleRestoreCheckpoint}
                   onScrollToTurn={handleScrollToCheckpoint}
                   onClose={() => useWorkspaceStore.getState().setActiveMobilePanel('chat')}

@@ -278,6 +278,16 @@ const runWroteFiles = new Set<string>();
 export async function pullAndCheckpointServerFiles(
   projectId: string,
   get: () => CombinedState,
+  options: {
+    /** A run picked up on page load: its checkpoint is made only if this pull brought its files. */
+    onlyIfChanged?: boolean;
+    /**
+     * The MCP client whose change this pull brings in. Its checkpoint is made only if the pull
+     * changed something, is named for the client, and replaces the client's checkpoint from a moment
+     * ago, so a connector writing file after file leaves one checkpoint rather than one per file.
+     */
+    connector?: string;
+  } = {},
 ) {
   const { getSyncManager } = await import('@/lib/vfs/sync-manager');
   const syncMgr = getSyncManager();
@@ -372,20 +382,36 @@ export async function pullAndCheckpointServerFiles(
   // Files are one store; edge/server functions, schedules and secrets are another. An MCP
   // backend_upsert writes the latter, and without this pull a later UI publish would push the
   // tab's stale IndexedDB copy and wipe the connector's work.
+  let backendChanged = false;
   try {
-    await syncMgr.pullBackendFeatures?.(projectId);
+    backendChanged = (await syncMgr.pullBackendFeatures?.(projectId))?.changed === true;
   } catch (err) {
     logger.warn('[ServerGen] Backend features pull failed:', err);
   }
   // Every run ends on a checkpoint, as a browser run does: Retry and Undo read the one before a
   // run's last checkpoint as its starting point, which for a server run is its pre-run snapshot.
-  try {
-    const cp = await checkpointManager.createCheckpoint(projectId, 'After server generation', { kind: 'auto', label: { key: 'afterServerGeneration' } });
-    get().addDebugEvent('checkpoint_created', {
-      checkpointId: cp.id, description: cp.description, timestamp: cp.timestamp,
-    }, projectId);
-  } catch (cpErr) {
-    logger.warn('[ServerGen] Post-generation checkpoint failed:', cpErr);
+  // A run picked up on page load already has one when an earlier tab or load took its files in.
+  const connector = options.connector;
+  const onlyIfChanged = options.onlyIfChanged || connector !== undefined;
+  if (!onlyIfChanged || changed || backendChanged) {
+    try {
+      const replaces = connector !== undefined ? await connectorCheckpointToReplace(projectId, connector) : undefined;
+      const cp = connector !== undefined
+        ? await checkpointManager.createCheckpoint(projectId, connector ? `After changes from ${connector}` : 'After changes from a connector', { // i18n-ignore: stored English; the panel shows `label`
+            kind: 'auto', label: connector ? { key: 'afterConnector', values: { client: connector } } : { key: 'afterConnectorUnnamed' }, replaces,
+          })
+        : await checkpointManager.createCheckpoint(projectId, 'After server generation', { kind: 'auto', label: { key: 'afterServerGeneration' } });
+      if (replaces && cp.id === replaces) {
+        // The chat already marks this checkpoint; the panel and Undo re-read it.
+        get().incrementCheckpointRefresh();
+      } else {
+        get().addDebugEvent('checkpoint_created', {
+          checkpointId: cp.id, description: cp.description, timestamp: cp.timestamp,
+        }, projectId);
+      }
+    } catch (cpErr) {
+      logger.warn('[ServerGen] Post-generation checkpoint failed:', cpErr);
+    }
   }
   if (get().projectId === projectId) {
     window.dispatchEvent(new Event('filesChanged'));
@@ -393,6 +419,36 @@ export async function pullAndCheckpointServerFiles(
     if (changed) get().markDirty();
     get().bumpRefreshTrigger();
   }
+}
+
+/** How long after a connector's checkpoint its next change still counts as the same burst. */
+const CONNECTOR_BURST_MS = 60_000;
+
+/**
+ * The checkpoint a connector's change should replace: the project's newest, if this client made it
+ * within the last minute and nothing has claimed it since (a pin, a name, or being the last save).
+ */
+async function connectorCheckpointToReplace(projectId: string, client: string): Promise<string | undefined> {
+  const [newest] = await checkpointManager.getCheckpoints(projectId);
+  const key = newest?.label?.key;
+  if (!newest || newest.pinned || (key !== 'afterConnector' && key !== 'afterConnectorUnnamed')) return undefined;
+  if ((newest.label?.values?.client ?? '') !== client) return undefined;
+  if (Date.now() - new Date(newest.timestamp).getTime() > CONNECTOR_BURST_MS) return undefined;
+  try {
+    if ((await vfs.getProject(projectId)).lastSavedCheckpointId === newest.id) return undefined;
+  } catch { /* no record yet: nothing is its save */ }
+  return newest.id;
+}
+
+/** Whether a chat holds this server event already, by its run and the server's id for it. */
+function holdsServerEvent(events: DebugEvent[], data: { sourceTaskId?: unknown; sourceEventId?: unknown } | undefined): boolean {
+  const task = data?.sourceTaskId;
+  const id = data?.sourceEventId;
+  if (!task || id === undefined) return false;
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (events[i].data?.sourceTaskId === task && events[i].data?.sourceEventId === id) return true;
+  }
+  return false;
 }
 
 /** One write at a time per project, so a merge never works from a chat another is replacing. */
@@ -441,6 +497,28 @@ function flushSave(projectId: string, events: DebugEvent[], partial = false) {
 
 /** The pull an MCP client's last change to each project started, so a render can wait for it. */
 const mcpPulls = new Map<string, Promise<void>>();
+/** A pull waiting for the running one, which every notice arriving meanwhile shares. */
+const mcpPullsWaiting = new Map<string, Promise<void>>();
+
+/**
+ * One MCP pull at a time per project. A client writing many files sends a notice per write, and
+ * each pull fetches the whole project and may write a checkpoint; run side by side they raced each
+ * other's record writes. Notices that arrive while a pull runs share the one queued after it, which
+ * starts after they were sent and so sees their changes.
+ */
+function queueMcpPull(projectId: string, pull: () => Promise<void>): Promise<void> {
+  const waiting = mcpPullsWaiting.get(projectId);
+  if (waiting) return waiting;
+  const next = (mcpPulls.get(projectId) ?? Promise.resolve()).then(() => {
+    mcpPullsWaiting.delete(projectId);
+    return pull();
+  });
+  const settled = next.then(() => {}, () => {});
+  mcpPullsWaiting.set(projectId, next);
+  mcpPulls.set(projectId, settled);
+  void settled.then(() => { if (mcpPulls.get(projectId) === settled) mcpPulls.delete(projectId); });
+  return next;
+}
 
 function isTabVisible(): boolean {
   return typeof document !== 'undefined' && !document.hidden;
@@ -568,6 +646,7 @@ type CombinedState = OrchestratorSlice & {
   workspaceReady: boolean;
   markDirty: () => void;
   bumpRefreshTrigger: () => void;
+  incrementCheckpointRefresh: () => void;
   updateProjectSettings: (settings: { runtime?: ProjectRuntime }) => void;
   appendComposerDraft: (text: string) => void;
   /** The project slice's selection, which MCP `canvas_selection` reads. */
@@ -637,6 +716,10 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     const source = sourceProjectId ?? projectId;
     const isBackground = source !== projectId;
     const shouldCoalesce = event === 'assistant_delta' || event === 'tool_param_delta' || event === 'reasoning_delta';
+
+    // A server event this chat already holds is a replay: a new connection is sent the runs of the
+    // last half hour, which a reload inside the project has already loaded with the chat.
+    if (holdsServerEvent(isBackground ? backgroundEventsMap.get(source) ?? [] : get().debugEvents, data)) return;
 
     const debugEvent: DebugEvent = {
       id: `${Date.now()}-${debugIdCounter++}`,
@@ -1378,13 +1461,9 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
             // next page load. Losing the race is the normal outcome for one of them, not a fault.
           }
         }
-        const pull = pullAndCheckpointServerFiles(data.projectId, get);
         // A render asked for after this change waits for it (`render_requested` below).
-        mcpPulls.set(data.projectId, pull.then(() => {}, () => {}));
-        await pull;
-        if (get().projectId === data.projectId) {
-          get().markDirty();
-        }
+        // The pull marks the project unsaved itself, and only if it changed a file.
+        await queueMcpPull(data.projectId, () => pullAndCheckpointServerFiles(data.projectId, get, { connector: data.clientLabel || '' }));
         get().bumpRefreshTrigger();
       } catch (error) {
         logger.warn('[MCP] Could not pull a project an MCP client changed:', error);
@@ -1603,6 +1682,9 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
                 delete merged.awaitingServerEcho;
                 existing.data = {
                   ...existing.data,
+                  // The echo's identity, so its copy in a later replay is recognised as this message.
+                  sourceTaskId: data.sourceTaskId,
+                  sourceEventId: data.sourceEventId,
                   message: { ...existing.data.message, ui_metadata: merged },
                 };
                 existing.version = (existing.version ?? 1) + 1;
@@ -2085,7 +2167,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
 
           // A failed run wrote files too, and the record's revision comes only with the pull.
           try {
-            await pullAndCheckpointServerFiles(serverTask.projectId, get);
+            await pullAndCheckpointServerFiles(serverTask.projectId, get, { onlyIfChanged: true });
           } catch (err) {
             logger.warn('[Reattach] pull failed:', err);
           }

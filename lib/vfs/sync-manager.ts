@@ -1218,9 +1218,10 @@ export class SyncManager {
    * Bring the browser's backend features and the server's together.
    *
    * What only the browser has reaches the server, what a connector or a run changed there reaches
-   * the browser, and a deletion on either side stands (`mergeBackendFeatures`).
+   * the browser, and a deletion on either side stands (`mergeBackendFeatures`). `changed` says
+   * whether this browser's copy changed, which decides whether a checkpoint follows the pull.
    */
-  async pullBackendFeatures(projectId: string): Promise<{ success: boolean; error?: string }> {
+  async pullBackendFeatures(projectId: string): Promise<{ success: boolean; error?: string; changed?: boolean }> {
     try {
       const response = await apiFetch(`${this.baseUrl}${this.getApiUrl(`/sync/backend-features/${projectId}`)}`, {
         method: 'GET',
@@ -1241,6 +1242,7 @@ export class SyncManager {
 
       let merged: BackendFeatureSet;
       let needsPush: boolean;
+      let changed = false;
       try {
         const { vfs } = await import('@/lib/vfs');
         const adapter = vfs.getStorageAdapter();
@@ -1263,10 +1265,10 @@ export class SyncManager {
           for (const stored of local[kind]) {
             const next = result.merged[kind].find(item => item.id === stored.id);
             if (next && sameBackendItem(kind, stored, next, result.merged, local)) kept.add(stored.id);
-            else await remove(stored.id);
+            else { await remove(stored.id); changed = true; }
           }
           for (const item of result.merged[kind]) {
-            if (!kept.has(item.id)) await create({ ...item, projectId });
+            if (!kept.has(item.id)) { await create({ ...item, projectId }); changed = true; }
           }
         };
         await store('edgeFunctions', adapter.deleteEdgeFunction?.bind(adapter), adapter.createEdgeFunction?.bind(adapter));
@@ -1282,12 +1284,12 @@ export class SyncManager {
         const pushed = await this.pushBackendFeatures(projectId, merged);
         if (!pushed.success) {
           writeBackendBase(projectId, server);
-          return pushed;
+          return { ...pushed, changed };
         }
       } else {
         writeBackendBase(projectId, merged);
       }
-      return { success: true };
+      return { success: true, changed };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : translator()('sync.networkError') };
     }

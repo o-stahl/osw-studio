@@ -1,4 +1,5 @@
 import { getActiveVFS } from './index';
+import { configManager } from '@/lib/config/storage';
 import { logger } from '@/lib/utils';
 import { compressToUTF16, decompressFromUTF16 } from 'lz-string';
 import {
@@ -9,6 +10,7 @@ import {
   type BackendRestorePreview,
   type CheckpointBackendSnapshot,
 } from './checkpoint-backend';
+import { compareFiles, indexFiles, type CheckpointChanges, type FileIndex } from './checkpoint-changes';
 
 export { isEmptyPreview };
 export type { BackendRestorePreview, CheckpointBackendSnapshot };
@@ -26,9 +28,16 @@ interface CheckpointFileContent {
  * the English beside it: older checkpoints have only that, and it is what logs and the agent see.
  */
 export interface CheckpointLabel {
-  key: 'projectOpened' | 'preGeneration' | 'afterServerGeneration' | 'preSyncPull' | 'beforeImport' | 'manualSave' | 'afterPrompt' | 'afterFailure';
+  key: 'projectOpened' | 'preGeneration' | 'afterServerGeneration' | 'preSyncPull' | 'beforeImport' | 'manualSave' | 'afterPrompt' | 'afterFailure' | 'afterConnector' | 'afterConnectorUnnamed';
   values?: Record<string, string>;
 }
+
+/**
+ * Set on every pin the person makes. Save does not pin: the project's last save is kept by
+ * `pruneUnpinned` instead. A pin without it was made by an earlier Save, which pinned each save
+ * until the next; `releaseSavePin` takes it off.
+ */
+export type PinnedBy = 'user';
 
 // Full checkpoint with file contents (only used during create/restore)
 export interface Checkpoint {
@@ -41,6 +50,7 @@ export interface Checkpoint {
   projectId: string;
   kind: CheckpointKind;
   pinned?: boolean;
+  pinnedBy?: PinnedBy;
   baseRevisionId?: string | null;
   /**
    * Backend records and covered project settings. Absent on checkpoints written before this
@@ -48,6 +58,10 @@ export interface Checkpoint {
    * a restore leaves the project's backend alone rather than treating "nothing" as "empty".
    */
   backend?: CheckpointBackendSnapshot;
+  /** Bytes the checkpoint takes in storage, set when it is written. */
+  size?: number;
+  /** What changed since the checkpoint before it; absent on a project's first. */
+  changes?: CheckpointChanges;
 }
 
 // Lightweight metadata for listing (kept in RAM)
@@ -59,7 +73,10 @@ export interface CheckpointMetadata {
   projectId: string;
   kind: CheckpointKind;
   pinned?: boolean;
+  pinnedBy?: PinnedBy;
   baseRevisionId?: string | null;
+  size?: number;
+  changes?: CheckpointChanges;
 }
 
 // Serializable checkpoint format for storage
@@ -73,8 +90,11 @@ interface StoredCheckpoint {
   projectId: string;
   kind?: CheckpointKind;
   pinned?: boolean;
+  pinnedBy?: PinnedBy;
   baseRevisionId?: string | null;
   backend?: CheckpointBackendSnapshot;
+  size?: number;
+  changes?: CheckpointChanges;
 }
 
 // Compressed checkpoint format — lz-string UTF-16 encoded files+directories+backend
@@ -86,7 +106,10 @@ interface StoredCheckpointCompressed {
   projectId: string;
   kind?: CheckpointKind;
   pinned?: boolean;
+  pinnedBy?: PinnedBy;
   baseRevisionId?: string | null;
+  size?: number;
+  changes?: CheckpointChanges;
   compressed: true;
   compressedData: string; // lz-string UTF-16 compressed JSON of { files, directories, backend }
 }
@@ -98,20 +121,77 @@ interface CreateCheckpointOptions {
   /** Set when the app names the checkpoint itself, so the panel can word it in the viewer's language. */
   label?: CheckpointLabel;
   baseRevisionId?: string | null;
-  /** Set at create so prune cannot eat a user save before a later pin. */
+  /** Pinned from the start, with no `pinnedBy`: how an earlier Save left each save. */
   pinned?: boolean;
+  /** A checkpoint of this project to write over, keeping its id: one burst of changes, one checkpoint. */
+  replaces?: string;
 }
 
-export const MAX_UNPINNED_PER_PROJECT = 5;
+/** The choices in Settings → Data for how many unpinned automatic checkpoints a project keeps. */
+export const CHECKPOINT_LIMITS = [5, 10, 20, 50] as const;
+export const DEFAULT_UNPINNED_PER_PROJECT = 10;
+export const SAVE_LIMITS = [3, 5, 10, 20] as const;
+export const DEFAULT_SAVES_PER_PROJECT = 5;
+
+/**
+ * How many unpinned automatic checkpoints each project keeps, as chosen in this browser, where the
+ * checkpoints live. A lower choice prunes a project the next time it makes one.
+ */
+export function unpinnedLimit(): number {
+  const chosen = configManager.getSettings().checkpointsKept;
+  return chosen !== undefined && (CHECKPOINT_LIMITS as readonly number[]).includes(chosen) ? chosen : DEFAULT_UNPINNED_PER_PROJECT;
+}
+
+/**
+ * How many unpinned saves (`kind: 'manual'`: Save, and the checkpoint before an import) each project
+ * keeps besides its latest save, which is always kept. Counted apart from automatic checkpoints, so
+ * agent runs never push a save out.
+ */
+export function savesLimit(): number {
+  const chosen = configManager.getSettings().savesKept;
+  return chosen !== undefined && (SAVE_LIMITS as readonly number[]).includes(chosen) ? chosen : DEFAULT_SAVES_PER_PROJECT;
+}
 
 let cpCounter = 0;
+
+/** What the list needs of a stored checkpoint, without its files. */
+function metadataOf(record: StoredCheckpointAny): CheckpointMetadata {
+  return {
+    id: record.id,
+    timestamp: record.timestamp,
+    description: record.description,
+    label: record.label,
+    projectId: record.projectId,
+    kind: record.kind || 'auto',
+    pinned: record.pinned ?? false,
+    pinnedBy: record.pinned ? record.pinnedBy : undefined,
+    baseRevisionId: record.baseRevisionId ?? null,
+    size: record.size ?? storedSize(record),
+    changes: record.changes,
+  };
+}
+
+/** Bytes a record takes in storage: its strings are UTF-16, two bytes a character. */
+function storedSize(record: StoredCheckpointAny): number {
+  return 2 * ('compressed' in record && record.compressed ? record.compressedData.length : JSON.stringify(record).length);
+}
+
+/** The bigger a checkpoint, the longer reading it back takes. Past this, a change count is skipped. */
+const MAX_BASE_READ = 2 * 1024 * 1024;
+/** File indexes of the checkpoints made last, which the next one in their project is compared with. */
+const INDEXES_KEPT = 3;
 
 class CheckpointManager {
   // LAZY LOADING: Only store metadata in RAM, not full checkpoint data
   private checkpointMetadata: Map<string, CheckpointMetadata> = new Map();
+  /** Projects whose metadata is in `checkpointMetadata`, including those with no checkpoints. */
+  private loadedProjects = new Set<string>();
   private currentCheckpoint: string | null = null;
   private storeName = 'checkpoints';
+  /** Each checkpoint's metadata without its files (IndexedDB v9), so listing reads no snapshot. */
+  private metaStoreName = 'checkpointMeta';
   private isInitialized = false;
+  private fileIndexes = new Map<string, FileIndex>();
 
   /**
    * Convert ArrayBuffer to base64 string
@@ -148,7 +228,6 @@ class CheckpointManager {
     const activeVFS = getActiveVFS();
     await activeVFS.init();
     this.isInitialized = true;
-    await this.loadCheckpointMetadataFromDB();
   }
 
   /**
@@ -160,40 +239,61 @@ class CheckpointManager {
   }
 
   /**
-   * LAZY LOADING: Only load checkpoint metadata into RAM, not file contents.
-   * Full checkpoint data stays in IndexedDB and is loaded on-demand during restore.
+   * Load one project's checkpoint metadata into RAM, once.
+   *
+   * IndexedDB cannot read part of a record, and every checkpoint record carries a full copy of the
+   * project, so the list comes from the metadata store. Full checkpoint data is read only to restore.
    */
-  private async loadCheckpointMetadataFromDB(): Promise<void> {
+  private async ensureProjectLoaded(projectId: string): Promise<void> {
+    await this.initDB();
+    if (this.loadedProjects.has(projectId)) return;
+
+    const metadata = this.getDB().objectStoreNames.contains(this.metaStoreName)
+      ? await this.readProjectMetadata(projectId)
+      : (await this.request<StoredCheckpointAny[]>(
+          this.getDB().transaction([this.storeName], 'readonly').objectStore(this.storeName).index('projectId').getAll(projectId)
+        )).map(metadataOf);
+
+    for (const meta of metadata) this.checkpointMetadata.set(meta.id, meta);
+    this.loadedProjects.add(projectId);
+  }
+
+  /**
+   * A project's entries in the metadata store, kept in step with its checkpoints: one with no entry
+   * (written before the store existed, or brought in by a backup) is read once and given one, and an
+   * entry whose checkpoint is gone is dropped. Comparing keys reads no snapshot.
+   */
+  private async readProjectMetadata(projectId: string): Promise<CheckpointMetadata[]> {
+    const db = this.getDB();
+    const [entries, keys] = await Promise.all([
+      this.request<CheckpointMetadata[]>(db.transaction([this.metaStoreName], 'readonly').objectStore(this.metaStoreName).index('projectId').getAll(projectId)),
+      this.request<IDBValidKey[]>(db.transaction([this.storeName], 'readonly').objectStore(this.storeName).index('projectId').getAllKeys(projectId)),
+    ]);
+    const present = new Set(keys);
+    // An entry with no size predates sizes; it is read again like a missing one.
+    const listed = entries.filter(meta => present.has(meta.id) && meta.size !== undefined);
+    const stale = entries.filter(meta => !present.has(meta.id)).map(meta => meta.id);
+    const known = new Set(listed.map(meta => meta.id));
+    const added: CheckpointMetadata[] = [];
+    for (const key of keys) {
+      if (known.has(key as string)) continue;
+      const record = await this.request<StoredCheckpointAny | undefined>(db.transaction([this.storeName], 'readonly').objectStore(this.storeName).get(key));
+      if (record) added.push(metadataOf(record));
+    }
+    if (added.length || stale.length) {
+      const tx = db.transaction([this.metaStoreName], 'readwrite');
+      for (const meta of added) tx.objectStore(this.metaStoreName).put(meta);
+      for (const id of stale) tx.objectStore(this.metaStoreName).delete(id);
+      await new Promise<void>((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); });
+    }
+    return [...listed, ...added];
+  }
+
+  private request<T>(request: IDBRequest): Promise<T> {
     return new Promise((resolve, reject) => {
-      const db = this.getDB();
-      const transaction = db.transaction([this.storeName], 'readonly');
-      const store = transaction.objectStore(this.storeName);
-      const request = store.getAll();
-
-      request.onsuccess = () => {
-        const storedCheckpoints = request.result as StoredCheckpointAny[];
-        this.checkpointMetadata.clear();
-
-        for (const stored of storedCheckpoints) {
-          // Only store metadata, NOT file contents
-          const metadata: CheckpointMetadata = {
-            id: stored.id,
-            timestamp: stored.timestamp,
-            description: stored.description,
-            label: stored.label,
-            projectId: stored.projectId,
-            kind: stored.kind || 'auto',
-            pinned: stored.pinned ?? false,
-            baseRevisionId: stored.baseRevisionId ?? null
-          };
-          this.checkpointMetadata.set(stored.id, metadata);
-        }
-
-        resolve();
-      };
-
+      request.onsuccess = () => resolve(request.result as T);
       request.onerror = () => {
-        logger.error('Failed to load checkpoint metadata from DB');
+        logger.error('Failed to read checkpoints from DB');
         reject(request.error);
       };
     });
@@ -248,7 +348,9 @@ class CheckpointManager {
           projectId: stored.projectId,
           kind: stored.kind || 'auto',
           pinned: stored.pinned ?? false,
+          pinnedBy: stored.pinned ? stored.pinnedBy : undefined,
           baseRevisionId: stored.baseRevisionId ?? null,
+          changes: stored.changes,
           files,
           directories,
           backend
@@ -263,10 +365,8 @@ class CheckpointManager {
     });
   }
   
-  /**
-   * Save a checkpoint to IndexedDB
-   */
-  private async saveCheckpointToDB(checkpoint: Checkpoint): Promise<void> {
+  /** Save a checkpoint and its metadata entry to IndexedDB; returns the bytes it takes in storage. */
+  private async saveCheckpointToDB(checkpoint: Checkpoint): Promise<number> {
     await this.initDB();
 
     let record: StoredCheckpoint | StoredCheckpointCompressed;
@@ -287,7 +387,9 @@ class CheckpointManager {
         projectId: checkpoint.projectId,
         kind: checkpoint.kind,
         pinned: checkpoint.pinned ?? false,
+        pinnedBy: checkpoint.pinned ? checkpoint.pinnedBy : undefined,
         baseRevisionId: checkpoint.baseRevisionId ?? null,
+        changes: checkpoint.changes,
         compressed: true,
         compressedData
       };
@@ -299,9 +401,12 @@ class CheckpointManager {
         directories: Array.from(checkpoint.directories),
         kind: checkpoint.kind,
         pinned: checkpoint.pinned ?? false,
+        pinnedBy: checkpoint.pinned ? checkpoint.pinnedBy : undefined,
         baseRevisionId: checkpoint.baseRevisionId ?? null
       };
     }
+    const size = storedSize(record);
+    record.size = size;
 
     return new Promise((resolve, reject) => {
       let db: IDBDatabase;
@@ -311,14 +416,16 @@ class CheckpointManager {
         reject(err);
         return;
       }
-      const transaction = db.transaction([this.storeName], 'readwrite');
-      const store = transaction.objectStore(this.storeName);
-      const request = store.put(record);
+      // The checkpoint and its metadata entry are written together.
+      const stores = db.objectStoreNames.contains(this.metaStoreName) ? [this.storeName, this.metaStoreName] : [this.storeName];
+      const transaction = db.transaction(stores, 'readwrite');
+      transaction.objectStore(this.storeName).put(record);
+      if (stores.length > 1) transaction.objectStore(this.metaStoreName).put(metadataOf(record));
 
-      request.onsuccess = () => resolve();
-      request.onerror = () => {
+      transaction.oncomplete = () => resolve(size);
+      transaction.onerror = () => {
         logger.error('Failed to save checkpoint to DB');
-        reject(request.error);
+        reject(transaction.error);
       };
     });
   }
@@ -331,14 +438,14 @@ class CheckpointManager {
 
     return new Promise((resolve, reject) => {
       const db = this.getDB();
-      const transaction = db.transaction([this.storeName], 'readwrite');
-      const store = transaction.objectStore(this.storeName);
-      const request = store.delete(checkpointId);
+      const stores = db.objectStoreNames.contains(this.metaStoreName) ? [this.storeName, this.metaStoreName] : [this.storeName];
+      const transaction = db.transaction(stores, 'readwrite');
+      for (const name of stores) transaction.objectStore(name).delete(checkpointId);
 
-      request.onsuccess = () => resolve();
-      request.onerror = () => {
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => {
         logger.error('Failed to delete checkpoint from DB');
-        reject(request.error);
+        reject(transaction.error);
       };
     });
   }
@@ -351,10 +458,62 @@ class CheckpointManager {
     description: string,
     options: CreateCheckpointOptions = {}
   ): Promise<Checkpoint> {
-    await this.initDB();
+    // Before the new one is added, so pruning counts the project's older checkpoints too.
+    await this.ensureProjectLoaded(projectId);
     const activeVFS = getActiveVFS();
     await activeVFS.init();
 
+    const { fileContents, directories } = await this.readProjectFiles(projectId);
+
+    const pinned = options.pinned === true;
+
+    const replaced = options.replaces ? this.checkpointMetadata.get(options.replaces) : undefined;
+    const checkpoint: Checkpoint = {
+      id: replaced?.projectId === projectId ? replaced.id : `cp_${Date.now()}_${cpCounter++}`,
+      timestamp: new Date().toISOString(),
+      description,
+      label: options.label,
+      files: fileContents,
+      directories,
+      projectId,
+      kind: options.kind || 'auto',
+      pinned,
+      baseRevisionId: options.baseRevisionId ?? null,
+      backend: await captureBackend(activeVFS, projectId)
+    };
+    const index = indexFiles(fileContents);
+    checkpoint.changes = await this.changesSince(projectId, checkpoint.id, index);
+
+    const metadata: CheckpointMetadata = {
+      id: checkpoint.id,
+      timestamp: checkpoint.timestamp,
+      description: checkpoint.description,
+      label: checkpoint.label,
+      projectId: checkpoint.projectId,
+      kind: checkpoint.kind,
+      pinned,
+      baseRevisionId: checkpoint.baseRevisionId,
+      changes: checkpoint.changes,
+    };
+    this.checkpointMetadata.set(checkpoint.id, metadata);
+    this.currentCheckpoint = checkpoint.id;
+
+    metadata.size = await this.saveCheckpointToDB(checkpoint);
+    this.keepIndex(checkpoint.id, index);
+    await this.pruneUnpinned(projectId);
+
+    return checkpoint;
+  }
+
+  /**
+   * What changed since the project's newest checkpoint other than `id` (which a replace writes over,
+   * so a burst is compared with what came before it). Undefined for a project's first checkpoint,
+   * and when the one before it is not in memory and too big to read back quickly.
+   */
+  /** The project's files as a checkpoint holds them: text as strings, binary data as base64. */
+  private async readProjectFiles(projectId: string): Promise<{ fileContents: Map<string, string | CheckpointFileContent>; directories: Set<string> }> {
+    const activeVFS = getActiveVFS();
+    await activeVFS.init();
     const files = await activeVFS.listDirectory(projectId, '/');
     const fileContents = new Map<string, string | CheckpointFileContent>();
     const directories = new Set<string>();
@@ -393,50 +552,77 @@ class CheckpointManager {
         }
       }
     }
+    return { fileContents, directories };
+  }
 
-    const pinned = options.pinned === true;
+  /**
+   * The checkpoint the project's files came from, and what has changed in them since: the one made
+   * or restored last in this page, or else the project's newest. Null when the project has none, or
+   * when that checkpoint is not in memory and too big to read back (`MAX_BASE_READ`).
+   */
+  async compareWithFiles(projectId: string): Promise<{ id: string; changes: CheckpointChanges } | null> {
+    await this.ensureProjectLoaded(projectId);
+    const current = this.currentCheckpoint ? this.checkpointMetadata.get(this.currentCheckpoint) : undefined;
+    let base = current?.projectId === projectId ? current : undefined;
+    if (!base) {
+      for (const meta of this.checkpointMetadata.values()) {
+        if (meta.projectId !== projectId) continue;
+        if (!base || meta.timestamp > base.timestamp || (meta.timestamp === base.timestamp && meta.id > base.id)) base = meta;
+      }
+    }
+    if (!base) return null;
+    let then = this.fileIndexes.get(base.id);
+    if (!then) {
+      if ((base.size ?? Infinity) > MAX_BASE_READ) return null;
+      const full = await this.loadSingleCheckpointFromDB(base.id).catch(() => null);
+      if (!full) return null;
+      then = indexFiles(full.files);
+      this.keepIndex(base.id, then);
+    }
+    const { fileContents } = await this.readProjectFiles(projectId);
+    return { id: base.id, changes: compareFiles(then, indexFiles(fileContents)) };
+  }
 
-    const checkpoint: Checkpoint = {
-      id: `cp_${Date.now()}_${cpCounter++}`,
-      timestamp: new Date().toISOString(),
-      description,
-      label: options.label,
-      files: fileContents,
-      directories,
-      projectId,
-      kind: options.kind || 'auto',
-      pinned,
-      baseRevisionId: options.baseRevisionId ?? null,
-      backend: await captureBackend(activeVFS, projectId)
-    };
+  private async changesSince(projectId: string, id: string, index: FileIndex): Promise<CheckpointChanges | undefined> {
+    let base: CheckpointMetadata | undefined;
+    for (const meta of this.checkpointMetadata.values()) {
+      if (meta.projectId !== projectId || meta.id === id) continue;
+      if (!base || meta.timestamp > base.timestamp || (meta.timestamp === base.timestamp && meta.id > base.id)) base = meta;
+    }
+    if (!base) return undefined;
+    let before = this.fileIndexes.get(base.id);
+    if (!before) {
+      if ((base.size ?? Infinity) > MAX_BASE_READ) return undefined;
+      const full = await this.loadSingleCheckpointFromDB(base.id).catch(() => null);
+      if (!full) return undefined;
+      before = indexFiles(full.files);
+    }
+    return compareFiles(before, index);
+  }
 
-    const metadata: CheckpointMetadata = {
-      id: checkpoint.id,
-      timestamp: checkpoint.timestamp,
-      description: checkpoint.description,
-      label: checkpoint.label,
-      projectId: checkpoint.projectId,
-      kind: checkpoint.kind,
-      pinned,
-      baseRevisionId: checkpoint.baseRevisionId
-    };
-    this.checkpointMetadata.set(checkpoint.id, metadata);
-    this.currentCheckpoint = checkpoint.id;
-
-    await this.saveCheckpointToDB(checkpoint);
-    await this.pruneUnpinned(projectId);
-
-    return checkpoint;
+  private keepIndex(id: string, index: FileIndex): void {
+    this.fileIndexes.delete(id);
+    this.fileIndexes.set(id, index);
+    while (this.fileIndexes.size > INDEXES_KEPT) this.fileIndexes.delete(this.fileIndexes.keys().next().value!);
   }
 
   private async pruneUnpinned(projectId: string): Promise<void> {
+    // The project's last save is what Discard Changes goes back to, and before the first Save it is
+    // an unpinned "Project opened" checkpoint, so it is left out.
+    let saved: string | null = null;
+    try {
+      saved = (await getActiveVFS().getProject(projectId))?.lastSavedCheckpointId ?? null;
+    } catch { /* no project record: nothing is anyone's save */ }
     const unpinned = Array.from(this.checkpointMetadata.values())
-      .filter(cp => cp.projectId === projectId && !cp.pinned)
+      .filter(cp => cp.projectId === projectId && !cp.pinned && cp.id !== saved)
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-    if (unpinned.length <= MAX_UNPINNED_PER_PROJECT) return;
-
-    const toDelete = unpinned.slice(0, unpinned.length - MAX_UNPINNED_PER_PROJECT);
+    // Saves and automatic checkpoints are counted apart, each against its own limit.
+    const overflow = (pool: CheckpointMetadata[], limit: number) => pool.slice(0, Math.max(0, pool.length - limit));
+    const toDelete = [
+      ...overflow(unpinned.filter(cp => cp.kind === 'manual'), savesLimit()),
+      ...overflow(unpinned.filter(cp => cp.kind !== 'manual'), unpinnedLimit()),
+    ];
     for (const cp of toDelete) {
       this.checkpointMetadata.delete(cp.id);
       await this.deleteCheckpointFromDB(cp.id);
@@ -620,11 +806,17 @@ class CheckpointManager {
         await restoreBackend(activeVFS, checkpoint.backend, checkpoint.projectId);
       }
 
+      // A restore changes the files as an edit does, so it is recorded and pushed as one. Left in
+      // this browser, a server run starts from the server's older copy and a reload pulls it back.
+      await activeVFS.updateProject(await activeVFS.getProject(checkpoint.projectId));
+      activeVFS.scheduleAutoSync(checkpoint.projectId);
+
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('filesChanged'));
       }
 
       this.currentCheckpoint = checkpointId;
+      this.keepIndex(checkpointId, indexFiles(checkpoint.files));
       return true;
     } catch (error) {
       logger.error('Failed to restore checkpoint:', error);
@@ -636,14 +828,7 @@ class CheckpointManager {
    * Get all checkpoint metadata for a project (lightweight - no file contents)
    */
   async getCheckpoints(projectId: string): Promise<CheckpointMetadata[]> {
-    await this.initDB();
-
-    // If we have no metadata for this project, reload from IDB — another project's
-    // data may have been loaded and this one was never fetched or was unloaded.
-    const hasAny = Array.from(this.checkpointMetadata.values()).some(cp => cp.projectId === projectId);
-    if (!hasAny) {
-      await this.loadCheckpointMetadataFromDB();
-    }
+    await this.ensureProjectLoaded(projectId);
 
     return Array.from(this.checkpointMetadata.values())
       .filter(cp => cp.projectId === projectId)
@@ -667,9 +852,14 @@ class CheckpointManager {
     }
 
     await this.initDB();
+    if (this.checkpointMetadata.has(checkpointId)) return true;
 
-    // Check metadata (which is always loaded)
-    return this.checkpointMetadata.has(checkpointId);
+    // Its project may not be loaded: ask for the key alone, which reads no snapshot.
+    return new Promise((resolve, reject) => {
+      const request = this.getDB().transaction([this.storeName], 'readonly').objectStore(this.storeName).getKey(checkpointId);
+      request.onsuccess = () => resolve(request.result !== undefined);
+      request.onerror = () => reject(request.error);
+    });
   }
 
   async pinCheckpoint(checkpointId: string): Promise<boolean> {
@@ -680,19 +870,77 @@ class CheckpointManager {
     return this.setPinned(checkpointId, false);
   }
 
+  /**
+   * Save's step past the previous save: take off a pin an earlier Save put on it, leaving one the
+   * person made.
+   */
+  async releaseSavePin(checkpointId: string): Promise<boolean> {
+    await this.initDB();
+    const full = await this.loadSingleCheckpointFromDB(checkpointId);
+    if (!full) return false;
+    if (full.pinnedBy === 'user') return true;
+    return this.setPinned(checkpointId, false);
+  }
+
+  /**
+   * Name a checkpoint. The name is the person's own text, so it is stored as the description and
+   * shown as typed, in place of the app's translated label. A named checkpoint is kept, so pruning
+   * never takes one the person named.
+   */
+  async renameCheckpoint(checkpointId: string, name: string): Promise<boolean> {
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    await this.initDB();
+    const full = await this.loadSingleCheckpointFromDB(checkpointId);
+    if (!full) return false;
+    await this.ensureProjectLoaded(full.projectId);
+    const meta = this.checkpointMetadata.get(checkpointId);
+    if (!meta) return false;
+
+    for (const record of [full, meta]) {
+      record.description = trimmed;
+      record.label = undefined;
+      record.pinned = true;
+      record.pinnedBy = 'user';
+    }
+    await this.saveCheckpointToDB(full);
+    return true;
+  }
+
+  /**
+   * Delete one checkpoint, pinned or not. Not the project's current save, which Discard Changes
+   * goes back to. Anything else pointing at it (an Undo step, a chat turn's restore) already
+   * reports a checkpoint that no longer exists.
+   */
+  async deleteCheckpoint(checkpointId: string): Promise<boolean> {
+    await this.initDB();
+    const full = await this.loadSingleCheckpointFromDB(checkpointId);
+    if (!full) return false;
+    try {
+      if ((await getActiveVFS().getProject(full.projectId))?.lastSavedCheckpointId === checkpointId) return false;
+    } catch { /* no project record: nothing depends on it */ }
+
+    await this.deleteCheckpointFromDB(checkpointId);
+    this.checkpointMetadata.delete(checkpointId);
+    return true;
+  }
+
   private async setPinned(checkpointId: string, pinned: boolean): Promise<boolean> {
     await this.initDB();
+
+    const full = await this.loadSingleCheckpointFromDB(checkpointId);
+    if (!full) return false;
+    await this.ensureProjectLoaded(full.projectId);
 
     const meta = this.checkpointMetadata.get(checkpointId);
     if (!meta) return false;
 
     meta.pinned = pinned;
+    meta.pinnedBy = pinned ? 'user' : undefined;
     this.checkpointMetadata.set(checkpointId, meta);
 
-    const full = await this.loadSingleCheckpointFromDB(checkpointId);
-    if (!full) return false;
-
     full.pinned = pinned;
+    full.pinnedBy = meta.pinnedBy;
     await this.saveCheckpointToDB(full);
 
     if (!pinned) {
@@ -706,7 +954,7 @@ class CheckpointManager {
    * Clear all non-pinned checkpoints for a project
    */
   async clearCheckpoints(projectId: string): Promise<void> {
-    await this.initDB();
+    await this.ensureProjectLoaded(projectId);
 
     const toDelete: string[] = [];
     for (const [id, meta] of this.checkpointMetadata) {
@@ -730,7 +978,7 @@ class CheckpointManager {
    * Called when conversation is cleared.
    */
   async clearAutoCheckpoints(projectId: string): Promise<void> {
-    await this.initDB();
+    await this.ensureProjectLoaded(projectId);
 
     const toDelete: string[] = [];
     for (const [id, meta] of this.checkpointMetadata) {
@@ -759,6 +1007,8 @@ class CheckpointManager {
    * This is called when leaving a project to free up memory
    */
   unloadProject(projectId: string): void {
+    // Read again on the next open, so checkpoints written meanwhile (a run in another tab) show.
+    this.loadedProjects.delete(projectId);
     let unloadedCount = 0;
     for (const [id, meta] of this.checkpointMetadata) {
       if (meta.projectId === projectId) {
@@ -775,11 +1025,7 @@ class CheckpointManager {
       }
     }
 
-    // Force metadata reload on next operation so checkpoints created
-    // while the workspace was unmounted (e.g. during background generation)
-    // are visible when the project is re-opened
     if (unloadedCount > 0) {
-      this.isInitialized = false;
       logger.debug(`[CheckpointManager] Unloaded ${unloadedCount} checkpoint metadata for project ${projectId} from memory`);
     }
   }

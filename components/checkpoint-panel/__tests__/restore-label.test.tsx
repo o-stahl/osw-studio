@@ -18,8 +18,9 @@ const checkpoints: CheckpointMetadata[] = [{
   description: 'Before import: stored english', label: { key: 'beforeImport', values: { name: 'site.zip' } },
 }];
 vi.mock('@/lib/vfs/checkpoint', () => ({
-  checkpointManager: { getCheckpoints: async () => checkpoints, pinCheckpoint: vi.fn(), unpinCheckpoint: vi.fn() },
-  MAX_UNPINNED_PER_PROJECT: 5,
+  checkpointManager: { getCheckpoints: async () => checkpoints, pinCheckpoint: vi.fn(), unpinCheckpoint: vi.fn(), compareWithFiles: async () => null },
+  unpinnedLimit: () => 7,
+  savesLimit: () => 4,
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -61,19 +62,19 @@ describe('CheckpointPanel pin tooltip', () => {
   it('says how many newer checkpoints take an unpinned one away', async () => {
     // The tooltip places itself with a ResizeObserver, which jsdom does not have.
     vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
-    checkpoints.push({ id: 'cp2', projectId: 'p1', timestamp: new Date().toISOString(), kind: 'manual', description: 'Kept', pinned: true });
+    checkpoints.push({ id: 'cp2', projectId: 'p1', timestamp: new Date().toISOString(), kind: 'auto', description: 'Kept', pinned: true });
     try {
       await act(async () => {
         root.render(withMessages(<CheckpointPanel projectId="p1" events={[]} onRestore={() => {}} onScrollToTurn={() => {}} />));
       });
       await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
-      const unpin = [...container.querySelectorAll('button')].find((b) => b.textContent === en.workspace.unpin)!;
+      const unpin = [...container.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === en.workspace.unpin)!;
       await act(async () => { unpin.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' })); });
       await act(async () => { await new Promise((r) => setTimeout(r, 800)); });
-      // The message with the count the panel keeps (5, mocked above): without it the tooltip shows
-      // the placeholder in a production build and the key path in this one.
+      // The message with the count the project keeps, the setting's (7, mocked above): without it the
+      // tooltip shows the placeholder in a production build and the key path in this one.
       const t = createTranslator({ locale: 'en', messages: en });
-      expect(document.querySelector('[data-slot="tooltip-content"]')?.textContent).toBe(t('checkpoints.tips.unpin', { count: 5 }));
+      expect(document.querySelector('[data-slot="tooltip-content"]')?.textContent).toBe(t('checkpoints.tips.unpin', { count: 7 }));
     } finally {
       checkpoints.pop();
       vi.unstubAllGlobals();

@@ -83,3 +83,61 @@ describe('tail', () => {
     expect(r.stderr).toContain("unsupported option '-z'");
   });
 });
+
+// Checked against the system's tail on a file ending in a newline, as most files do.
+describe('tail counts as tail does', () => {
+  const ENDED = { path: '/e.txt', content: 'l1\nl2\nl3\n', mimeType: 'text/plain' };
+
+  it('does not count the final newline as a line', async () => {
+    mockVfs.readFile.mockResolvedValueOnce(ENDED);
+    expect((await run(['tail', '-n', '2', '/e.txt'])).stdout).toBe('l2\nl3\n');
+  });
+
+  it('prints nothing for -n 0 or -c 0', async () => {
+    mockVfs.readFile.mockResolvedValueOnce(ENDED);
+    expect((await run(['tail', '-n', '0', '/e.txt'])).stdout).toBe('');
+    expect((await run(['tail', '-c', '0'], 'abc')).stdout).toBe('');
+  });
+
+  it('starts at a line with -n +N', async () => {
+    mockVfs.readFile.mockResolvedValueOnce(ENDED);
+    expect((await run(['tail', '-n', '+2', '/e.txt'])).stdout).toBe('l2\nl3\n');
+  });
+
+  it('starts at a character with -c +N', async () => {
+    expect((await run(['tail', '-c', '+3'], 'abcdef')).stdout).toBe('cdef');
+  });
+});
+
+describe('several files', () => {
+  const FILES: Record<string, string> = { '/a.txt': 'a1\na2\na3', '/b.txt': 'b1\nb2\nb3' };
+  const byPath = (_p: string, path: string) =>
+    path in FILES ? Promise.resolve({ path, content: FILES[path], mimeType: 'text/plain' }) : Promise.reject(new Error('File not found'));
+
+  it('head prints each file under its own header, in order', async () => {
+    mockVfs.readFile.mockImplementation(byPath);
+    const r = await run(['head', '-n', '1', '/a.txt', '/b.txt']);
+
+    expect(r.success).toBe(true);
+    expect(r.stdout).toBe('==> /a.txt <==\na1\n\n==> /b.txt <==\nb1');
+  });
+
+  it('tail does the same from the end', async () => {
+    mockVfs.readFile.mockImplementation(byPath);
+    expect((await run(['tail', '-n', '1', '/a.txt', '/b.txt'])).stdout).toBe('==> /a.txt <==\na3\n\n==> /b.txt <==\nb3');
+  });
+
+  it('reports a missing file and still prints the others', async () => {
+    mockVfs.readFile.mockImplementation(byPath);
+    const r = await run(['head', '-n', '1', '/a.txt', '/nope.txt', '/b.txt']);
+
+    expect(r.success).toBe(false);
+    expect(r.stdout).toBe('==> /a.txt <==\na1\n\n==> /b.txt <==\nb1');
+    expect(r.stderr).toContain('head: /nope.txt: File not found');
+  });
+
+  it('one file still prints without a header', async () => {
+    mockVfs.readFile.mockImplementation(byPath);
+    expect((await run(['head', '-n', '2', '/a.txt'])).stdout).toBe('a1\na2');
+  });
+});

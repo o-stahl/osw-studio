@@ -1239,6 +1239,10 @@ export const CanvasPanel = forwardRef<CanvasPanelHandle, CanvasPanelProps>(funct
             <div ref={worldRef} className="absolute left-0 top-0" style={{ transformOrigin: '0 0' }}>
               {boards.map((b) => {
                 const tier = engine?.tierOf(b.id) ?? 'none';
+                // Until a picture arrives the board is the app's surface, not a white page, so a dark
+                // studio does not flash white boards on open. A rendered page keeps the white base a
+                // page with no background of its own has in a browser.
+                const blank = tier === 'placeholder' || tier === 'none' || !!engine?.isBooting(b.id);
                 const title = pages.find((p) => p.file === b.page)?.title ?? b.page;
                 return (
                   <div key={b.id} className="absolute" style={{ left: b.x, top: b.y, width: b.w }} data-board={b.id} data-tier={tier}>
@@ -1251,14 +1255,14 @@ export const CanvasPanel = forwardRef<CanvasPanelHandle, CanvasPanelProps>(funct
                         {agentPages.has(b.page) && <span className="shrink-0 font-medium text-primary" data-agent-writing="">{t('agentWriting')}</span>}
                       </div>
                     )}
-                    <div className="relative overflow-hidden bg-white"
+                    <div className={cn('relative overflow-hidden', blank ? 'bg-muted' : 'bg-white')}
                       style={{ height: b.h, boxShadow: agentPages.has(b.page) ? '0 0 0 calc(3px / var(--z, 1)) var(--primary)' : '0 0 0 calc(1px / var(--z, 1)) rgb(0 0 0 / 0.08)' }}>
-                      {(tier === 'placeholder' || tier === 'none') && (
-                        <div className="absolute inset-0" style={{ background: 'repeating-linear-gradient(180deg, rgb(0 0 0 / 0.035) 0 calc(48px), transparent calc(48px) calc(96px))' }} />
+                      {blank && (
+                        <div className="absolute inset-0 bg-[repeating-linear-gradient(180deg,color-mix(in_oklab,var(--foreground)_4%,transparent)_0_48px,transparent_48px_96px)]" />
                       )}
                       <div ref={slotRef(b.id)} className="absolute inset-0" />
                       <div className={cn('absolute inset-0', (tier === 'live' && tool === 'interact') || editing?.board === b.id ? 'pointer-events-none' : '')} data-glass="" />
-                      <div className="absolute left-0 right-0 border-t border-dashed pointer-events-none" style={{ top: b.devH, borderColor: 'rgb(0 0 0 / 0.12)', borderTopWidth: 'calc(1px / var(--z, 1))' }} />
+                      <div className={cn('absolute left-0 right-0 border-t border-dashed pointer-events-none', blank ? 'border-foreground/15' : 'border-black/12')} style={{ top: b.devH, borderTopWidth: 'calc(1px / var(--z, 1))' }} />
                     </div>
                   </div>
                 );

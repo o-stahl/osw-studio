@@ -20,7 +20,7 @@ import type { ScriptRuntime } from '@/lib/scripting/types';
 import { classifyGateKey, needsApproval, capabilityLabel, sqliteChangesData, type ApprovalRequest, type ApprovalOutcome } from './permissions';
 import { configManager } from '@/lib/config/storage';
 import { apiFetch } from '@/lib/api/backend-status';
-import { readWorkspaceCookie } from '@/lib/web/workspace-cookie';
+import { pageWorkspace } from '@/lib/web/workspace-cookie';
 
 export { parseBashCommand, splitNewlineCommands };
 
@@ -714,7 +714,7 @@ async function executeShellSegment(
   if (serverCommands.includes(command) && deploymentId) {
     try {
       // The route is workspace-scoped; without a selected workspace there is nowhere to send it.
-      const workspaceId = process.env.NEXT_PUBLIC_SERVER_MODE === 'true' ? readWorkspaceCookie() : undefined;
+      const workspaceId = process.env.NEXT_PUBLIC_SERVER_MODE === 'true' ? pageWorkspace() : undefined;
       if (!workspaceId) return `Error: ${command} needs a workspace selected in Server Mode`; // i18n-ignore: returned to the agent
       const response = await apiFetch(`/api/w/${encodeURIComponent(workspaceId)}/bash/execute`, {
         method: 'POST',

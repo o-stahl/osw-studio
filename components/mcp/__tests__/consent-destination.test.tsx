@@ -17,7 +17,7 @@ import en from '@/messages/en.json';
 let container: HTMLDivElement;
 let root: Root;
 
-function mount(redirectUri: string, grantable: McpScope[] = ['projects:read']) {
+function mount(redirectUri: string, grantable: McpScope[] = ['projects:read'], accountEmail: string | null = 'me@example.test') {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -30,7 +30,7 @@ function mount(redirectUri: string, grantable: McpScope[] = ['projects:read']) {
         state=""
         codeChallenge="abc"
         resource=""
-        accountEmail="me@example.test"
+        accountEmail={accountEmail}
         workspaces={[{ id: 'w1', name: 'Mine', role: 'owner' }]}
         requestedScopes={[]}
         grantableByRole={{ w1: grantable }}
@@ -52,6 +52,20 @@ describe('the consent screen names where approval goes', () => {
     mount('http://localhost:47100/callback');
     expect(container.textContent).toContain('localhost:47100');
     expect(container.textContent).toContain('this machine');
+  });
+});
+
+describe('the account the screen names', () => {
+  it('is the signed-in account', () => {
+    mount('http://localhost:47100/callback');
+    expect(container.textContent).toContain('Signed in as me@example.test.');
+  });
+
+  // Desktop has no sign-in: its built-in account's address would name nobody.
+  it('is left out where nobody signs in, keeping what the connection covers', () => {
+    mount('http://localhost:47100/callback', ['projects:read'], null);
+    expect(container.textContent).not.toContain('Signed in');
+    expect(container.textContent).toContain(en.mcpConsent.coverage);
   });
 });
 

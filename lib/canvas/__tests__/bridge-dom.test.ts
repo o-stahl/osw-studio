@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterEach, afterAll } from 'vitest';
 import { generateNavigationScript } from '@/lib/preview/navigation-script';
 import { canvasBridgeJs, type CanvasFrameMode } from '../bridge';
 
@@ -8,6 +8,23 @@ import { canvasBridgeJs, type CanvasFrameMode } from '../bridge';
  * the preview's wiring tests run theirs: a stand-in window whose parent collects what is posted.
  * jsdom does no layout, so boxes are zero; picking stubs `elementFromPoint`.
  */
+
+// The bridge schedules reports and settle checks up to 1.5 s out. Each test's are cleared when it
+// ends: under a loaded run one could otherwise fire after jsdom is torn down, as an uncaught error.
+const timers = new Set<Parameters<typeof clearTimeout>[0]>();
+const realSetTimeout = globalThis.setTimeout;
+beforeAll(() => {
+  globalThis.setTimeout = ((handler: TimerHandler, ms?: number, ...rest: unknown[]) => {
+    const id = realSetTimeout(handler as () => void, ms, ...rest);
+    timers.add(id);
+    return id;
+  }) as typeof setTimeout;
+});
+afterEach(() => {
+  for (const id of timers) clearTimeout(id);
+  timers.clear();
+});
+afterAll(() => { globalThis.setTimeout = realSetTimeout; });
 
 interface Posted { type?: string; [key: string]: unknown }
 

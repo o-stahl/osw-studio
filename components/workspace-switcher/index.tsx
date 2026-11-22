@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { Tip } from '@/components/ui/tooltip';
-import { writeWorkspaceCookie } from '@/lib/web/workspace-cookie';
+import { enterWorkspace } from '@/lib/web/workspace-cookie';
 
 interface WorkspaceInfo {
   id: string;
@@ -69,12 +69,11 @@ export function WorkspaceSwitcher({ workspaceId }: WorkspaceSwitcherProps) {
   const handleSwitch = (newWorkspaceId: string) => {
     const viewMatch = pathname?.match(/\/w\/[^/]+\/(.+)/);
     const currentView = viewMatch?.[1] || 'projects';
-    writeWorkspaceCookie(newWorkspaceId);
     const ws = workspaces.find(w => w.id === newWorkspaceId);
     if (ws) {
       try { localStorage.setItem('osw-workspace-name', ws.name); } catch {}
     }
-    router.push(`/w/${newWorkspaceId}/${currentView}`);
+    enterWorkspace(newWorkspaceId, `/w/${newWorkspaceId}/${currentView}`);
   };
 
   // While loading, show cached name if available (prevents flash)

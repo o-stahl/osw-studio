@@ -63,6 +63,9 @@ async function startNextServer(host: string = 'localhost'): Promise<number> {
   process.env.HOSTNAME = host;
   process.env.NEXT_PUBLIC_APP_URL = `http://${host}:${port}`;
   process.env.OSW_DESKTOP = 'true';
+  // The MCP connector is on: a client still needs the person to approve it in the app, and this
+  // server answers only loopback hosts and same-origin pages. MCP_ENABLED=false turns it off.
+  if (process.env.MCP_ENABLED === undefined) process.env.MCP_ENABLED = 'true';
 
   // Published sites on a second port, a different origin from the studio (see site-proxy.ts).
   const sitePort = await chooseSitePort(port, async (candidate) => (await checkPort(candidate, host)) !== false);

@@ -131,7 +131,7 @@ export interface BuildResult {
 export interface SSEEvent {
   id: number;
   event: string;
-  data: Record<string, unknown> & { sourceProjectId: string; sourceTaskId?: string };
+  data: Record<string, unknown> & { sourceProjectId: string; sourceTaskId?: string; sourceEventId?: number };
   buffered: boolean; // false for delta events (not stored in replay buffer)
 }
 

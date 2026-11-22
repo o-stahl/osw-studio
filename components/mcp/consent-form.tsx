@@ -20,7 +20,8 @@ interface ConsentFormProps {
   state: string;
   codeChallenge: string;
   resource: string;
-  accountEmail: string;
+  /** Null on desktop, where nobody signs in. */
+  accountEmail: string | null;
   workspaces: { id: string; name: string; role: 'owner' | 'editor' | 'viewer' }[];
   requestedScopes: McpScope[];
   grantableByRole: Record<string, McpScope[]>;
@@ -104,7 +105,7 @@ export function ConsentForm(props: ConsentFormProps) {
           <Logo className="h-8 w-8" />
           <h1 className="text-xl font-semibold">{t('title', { client: props.clientName })}</h1>
           <p className="text-sm text-muted-foreground">
-            {t('signedInAs', { email: props.accountEmail })}
+            {props.accountEmail ? t('signedInAs', { email: props.accountEmail }) : t('coverage')}
           </p>
           {/* The name above is chosen by whoever registered the client, and registration is open,
               so it proves nothing. Where the approval is sent does: a client on this machine comes

@@ -15,7 +15,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { verifySession, maybeRefreshSession, sessionCookieName, sessionCookieOptions, clearSessionOnResponse } from '@/lib/auth/session';
-import { clearWorkspaceOnResponse, workspaceFromRequest } from '@/lib/web/workspace-cookie';
+import { clearWorkspaceOnResponse, isWorkspaceId, setWorkspaceOnResponse, workspaceFromRequest } from '@/lib/web/workspace-cookie';
 import type { SessionData } from '@/lib/auth/session';
 import { pendingMcpCookieName, pendingMcpCookieOptions, pendingAuthorizationIsWellFormed } from '@/lib/mcp/pending';
 import { isForeignApiRequest } from '@/lib/web/origin-guard';
@@ -35,6 +35,24 @@ async function nextWithRefreshedSession(session: SessionData): Promise<NextRespo
 
 // Views that have moved from /admin/{view} to /w/{workspaceId}/{view}
 const WORKSPACE_VIEWS = ['projects', 'dashboard', 'deployments', 'settings', 'skills', 'templates', 'docs'];
+
+/**
+ * Select the workspace a `/w/{id}` page names. The browser picks its local project database, and the
+ * workspace its API calls go to, from the cookie, so a link into a workspace other than the selected
+ * one would show this URL over the other workspace's projects and sync them here. Membership is not
+ * checked here: the workspace layout and every API route do that, and a refused workspace redirects
+ * to one the user is in, which selects that one in turn. A prefetch selects nothing: a cookie set on
+ * its response would take effect for a link the user never opened.
+ */
+function selectPathWorkspace(request: NextRequest, response: NextResponse): NextResponse {
+  const purpose = `${request.headers.get('sec-purpose') ?? ''} ${request.headers.get('purpose') ?? ''}`;
+  if (request.headers.has('next-router-prefetch') || purpose.includes('prefetch')) return response;
+  const workspaceId = request.nextUrl.pathname.split('/')[2];
+  if (isWorkspaceId(workspaceId) && workspaceId !== workspaceFromRequest(request)) {
+    setWorkspaceOnResponse(response, workspaceId);
+  }
+  return response;
+}
 
 function loginRedirect(request: NextRequest): NextResponse {
   const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL;
@@ -149,7 +167,7 @@ export async function middleware(request: NextRequest) {
       return response;
     }
 
-    return nextWithRefreshedSession(session);
+    return selectPathWorkspace(request, await nextWithRefreshedSession(session));
   }
 
   // ============================================

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -12,6 +12,8 @@ import { AboutModal } from '@/components/about-modal';
 import { Section, SectionHeader, SectionBody } from '@/components/ui/section';
 import { SettingRow } from '@/components/ui/setting-row';
 import { Tip } from '@/components/ui/tooltip';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { CHECKPOINT_LIMITS, DEFAULT_SAVES_PER_PROJECT, DEFAULT_UNPINNED_PER_PROJECT, SAVE_LIMITS, savesLimit, unpinnedLimit } from '@/lib/vfs/checkpoint';
 
 export function DataPane() {
   const tc = useTranslations('common');
@@ -21,6 +23,10 @@ export function DataPane() {
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
+  // The choice lives in this browser, which the server render cannot read: the default until mounted.
+  const [checkpointsKept, setCheckpointsKept] = useState<number>(DEFAULT_UNPINNED_PER_PROJECT);
+  const [savesKept, setSavesKept] = useState<number>(DEFAULT_SAVES_PER_PROJECT);
+  useEffect(() => { setCheckpointsKept(unpinnedLimit()); setSavesKept(savesLimit()); }, []);
   const [importStage, setImportStage] = useState<BackupImportStage | 'checking' | null>(null);
   const [aboutModalOpen, setAboutModalOpen] = useState(false);
 
@@ -104,6 +110,40 @@ export function DataPane() {
                 {isExporting ? t('exporting') : tc('actions.export')}
               </Button>
             </Tip>
+          </SettingRow>
+
+          <SettingRow title={t('checkpointsKept')} description={t('checkpointsKeptDesc')}>
+            <ToggleGroup
+              type="single"
+              aria-label={t('checkpointsKept')}
+              value={String(checkpointsKept)}
+              onValueChange={(value: string) => {
+                if (!value) return;
+                configManager.setSetting('checkpointsKept', Number(value));
+                setCheckpointsKept(Number(value));
+              }}
+            >
+              {CHECKPOINT_LIMITS.map((n) => (
+                <ToggleGroupItem key={n} value={String(n)}>{n}</ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </SettingRow>
+
+          <SettingRow title={t('savesKept')} description={t('savesKeptDesc')}>
+            <ToggleGroup
+              type="single"
+              aria-label={t('savesKept')}
+              value={String(savesKept)}
+              onValueChange={(value: string) => {
+                if (!value) return;
+                configManager.setSetting('savesKept', Number(value));
+                setSavesKept(Number(value));
+              }}
+            >
+              {SAVE_LIMITS.map((n) => (
+                <ToggleGroupItem key={n} value={String(n)}>{n}</ToggleGroupItem>
+              ))}
+            </ToggleGroup>
           </SettingRow>
 
           <SettingRow title={t('importData')} description={t('importDesc')}>

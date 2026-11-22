@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Logo } from '@/components/ui/logo';
 import { LanguagePill } from '@/components/language-menu';
-import { writeWorkspaceCookie } from '@/lib/web/workspace-cookie';
+import { enterWorkspace } from '@/lib/web/workspace-cookie';
 import { sanitizeRedirect } from '@/lib/auth/safe-redirect';
 
 /**
@@ -79,16 +79,13 @@ function LoginForm() {
 
       // Login successful - redirect to workspace or admin area
       if (next) {
-        if (data.defaultWorkspaceId) {
-          writeWorkspaceCookie(data.defaultWorkspaceId);
-        }
-        router.push(next);
+        if (data.defaultWorkspaceId) enterWorkspace(data.defaultWorkspaceId, next);
+        else router.push(next);
         return;
       }
       if (data.defaultWorkspaceId) {
-        writeWorkspaceCookie(data.defaultWorkspaceId);
         if (data.defaultWorkspaceName) localStorage.setItem('osw-workspace-name', data.defaultWorkspaceName);
-        router.push(`/w/${data.defaultWorkspaceId}/projects`);
+        enterWorkspace(data.defaultWorkspaceId, `/w/${data.defaultWorkspaceId}/projects`);
       } else {
         router.push('/admin');
       }

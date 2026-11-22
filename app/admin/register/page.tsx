@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { Logo } from '@/components/ui/logo';
 import { LanguagePill } from '@/components/language-menu';
 import { Tip } from '@/components/ui/tooltip';
-import { writeWorkspaceCookie } from '@/lib/web/workspace-cookie';
+import { enterWorkspace } from '@/lib/web/workspace-cookie';
 
 export default function RegisterPage() {
   const tc = useTranslations('common');
@@ -54,9 +54,8 @@ export default function RegisterPage() {
 
       // Registration successful - redirect to workspace or admin area
       if (data.defaultWorkspaceId) {
-        writeWorkspaceCookie(data.defaultWorkspaceId);
         if (data.defaultWorkspaceName) localStorage.setItem('osw-workspace-name', data.defaultWorkspaceName);
-        router.push(`/w/${data.defaultWorkspaceId}/projects`);
+        enterWorkspace(data.defaultWorkspaceId, `/w/${data.defaultWorkspaceId}/projects`);
       } else {
         router.push('/admin');
       }

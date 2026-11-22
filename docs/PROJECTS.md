@@ -154,16 +154,22 @@ Press `Ctrl+S` (Windows/Linux) or `Cmd+S` (Mac) to save your project.
 
 ### Checkpoints
 
-OSW Studio creates checkpoints automatically after AI makes changes:
+OSW Studio creates checkpoints automatically before and after AI makes changes:
 
-- **Auto-checkpoints** are created during AI operations (last 5 kept per project)
-- **Manual saves** (Cmd/Ctrl+S) persist across refreshes and are never evicted
-- **Pinned checkpoints** — pin any checkpoint to prevent it from being pruned. Great for bookmarking a known-good state before experimenting
+- **Auto-checkpoints**: each project keeps its 10 newest unpinned ones. Change the number (5, 10, 20 or 50) in **Settings → Data**; a lower number applies the next time the project makes a checkpoint
+- **Your latest save** (Cmd/Ctrl+S) is what **Discard Changes** goes back to. It is locked and never removed
+- **Earlier saves** are kept apart from auto-checkpoints, so agent runs never push them out: each project keeps its 5 newest, including checkpoints made before an import. Change the number (3, 5, 10 or 20) in **Settings → Data**, or pin a save to keep it
+- **Pinned and named checkpoints** are kept until you unpin or delete them. Name a checkpoint from its menu to bookmark a known-good state before experimenting
+- **Changes from an MCP client** make one checkpoint per burst of edits, named after the client
 
 **How to restore:**
 1. Open the **Checkpoints Panel** in the workspace
-2. Browse auto-checkpoints, manual saves, and pinned checkpoints
-3. Click any checkpoint to restore your project to that state
+2. Browse auto-checkpoints, saves, and pinned checkpoints
+3. Click **Restore** on a checkpoint to return your project to that state. In Server Mode the restored files are synced to the server too
+
+Each checkpoint shows the files and lines changed since the one before it and the space it takes. Delete one from its menu, or click **Select** to delete several at once. Your last save cannot be deleted.
+
+Checkpoints are stored in this browser. Clearing site data removes them.
 
 ---
 

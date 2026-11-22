@@ -184,6 +184,47 @@ describe('orchestrator slice — what the end-of-run pull marks', () => {
     await failedRun({ '/index.html': '<h1>hi</h1>' });
     expect(markDirty).toHaveBeenCalled();
   });
+
+  /**
+   * A page load picks up the latest finished run for half an hour. Its result is new only when the
+   * server's copy differs from this browser's; otherwise an earlier tab or load already took it in,
+   * and another checkpoint of the same files would push real history out of the list.
+   */
+  describe('a run picked up on page load', () => {
+    async function reload(serverFiles: Record<string, string>) {
+      pullProjectWithFiles.mockResolvedValueOnce({
+        success: true,
+        project: { id: 'p1', name: 'Site', updatedAt: now.toISOString(), revision: 5 },
+        files: Object.entries(serverFiles).map(([path, content]) => ({ path, content })),
+      } as never);
+      vi.stubEnv('NEXT_PUBLIC_SERVER_MODE', 'true');
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ tasks: [{ taskId: 't1', projectId: 'p1', status: 'completed', startedAt: 1 }] }),
+      }));
+      try {
+        store.setState({ connectSSE: vi.fn(), disconnectSSE: vi.fn() } as never);
+        await store.getState().reattachServerTasks();
+      } finally {
+        vi.unstubAllGlobals();
+        vi.unstubAllEnvs();
+      }
+    }
+
+    it('makes no checkpoint when this browser already has the run\'s files', async () => {
+      await reload({ '/index.html': '<h1>hi</h1>' });
+      const { checkpointManager } = await import('@/lib/vfs/checkpoint');
+      expect(pullProjectWithFiles).toHaveBeenCalledWith('p1');
+      expect(checkpointManager.createCheckpoint).not.toHaveBeenCalled();
+    });
+
+    it('ends on a checkpoint when the run finished with no tab to take it in', async () => {
+      await reload({ '/index.html': '<h1>written while away</h1>' });
+      const { checkpointManager } = await import('@/lib/vfs/checkpoint');
+      expect(local.get('/index.html')).toBe('<h1>written while away</h1>');
+      expect(checkpointManager.createCheckpoint).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 /**

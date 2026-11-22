@@ -34,7 +34,7 @@ vi.mock('@/lib/utils', () => ({
 }));
 
 vi.mock('@/lib/api/backend-status', () => ({ apiFetch: h.apiFetch }));
-vi.mock('@/lib/web/workspace-cookie', () => ({ readWorkspaceCookie: () => h.workspace }));
+vi.mock('@/lib/web/workspace-cookie', () => ({ pageWorkspace: () => h.workspace }));
 
 function bashToolCall(command: string) {
   return { id: 'tc-1', type: 'function' as const, function: { name: 'bash', arguments: JSON.stringify({ command }) } };

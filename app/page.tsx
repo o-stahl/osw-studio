@@ -7,7 +7,7 @@ import { StudioApp } from '@/components/studio-app';
 import { SignInRelay } from '@/components/sign-in-relay';
 import { isRelayedReturn } from '@/lib/auth/provider-sign-in';
 import { REPO_URL } from '@/lib/constants/links';
-import { writeWorkspaceCookie } from '@/lib/web/workspace-cookie';
+import { enterWorkspace } from '@/lib/web/workspace-cookie';
 
 /**
  * Root page
@@ -45,9 +45,8 @@ export default function Home() {
         .then(async r => {
           const data = await r.json().catch(() => ({}));
           if (r.ok && data.workspaceId) {
-            writeWorkspaceCookie(data.workspaceId);
             // The query carries a provider sign-in's return, which the workspace page finishes.
-            router.replace(`/w/${data.workspaceId}/projects${window.location.search}`);
+            enterWorkspace(data.workspaceId, `/w/${data.workspaceId}/projects${window.location.search}`, { replace: true });
           } else {
             setBootError({ message: data.error, status: r.status });
             if (data.detail) setBootDetail(data.detail);

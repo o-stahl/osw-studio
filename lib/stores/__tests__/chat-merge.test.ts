@@ -27,4 +27,31 @@ describe('mergeChatEvents', () => {
     const merged = mergeChatEvents([ev('a', 'iteration'), ev('b', 'iteration')], [ev('c', 'iteration'), ev('d', 'iteration')], 3);
     expect(merged.map(e => e.id)).toEqual(['b', 'c', 'd']);
   });
+
+  /**
+   * A page load replays every recent run's buffered events. Each carries the id the server gave it,
+   * and the stored copy carries the same one, even after this tab filled it in or folded the
+   * server's copy of a prompt into its own message.
+   */
+  describe('events the server replays after a reload', () => {
+    const sse = (task: string, id: number, extra: Record<string, unknown> = {}) => ({ sourceTaskId: task, sourceEventId: id, ...extra });
+
+    it('match their stored copy though this tab has filled it in since', () => {
+      const stored = [ev('local-1', 'toolCalls', sse('t1', 5, { toolCalls: [{ id: 'c1', arguments: '{"command":"echo hi"}' }] }))];
+      const replayed = [ev('new-1', 'toolCalls', sse('t1', 5, { toolCalls: [{ id: 'c1', arguments: '' }] }))];
+      expect(mergeChatEvents(stored, replayed, 100).map(e => e.id)).toEqual(['local-1']);
+    });
+
+    it('match the prompt the server\'s copy was folded into, though its text differs', () => {
+      const stored = [ev('local-u', 'conversation_message', sse('t1', 3, { message: { role: 'user', content: 'Run 1' } }))];
+      const replayed = [ev('new-u', 'conversation_message', sse('t1', 3, { message: { role: 'user', content: [{ type: 'text', text: 'Run 1' }] } }))];
+      expect(mergeChatEvents(stored, replayed, 100).map(e => e.id)).toEqual(['local-u']);
+    });
+
+    it('keep an event of another run that happens to have the same id, as after a server restart', () => {
+      const stored = [ev('old', 'toolCalls', sse('t1', 5))];
+      const replayed = [ev('new', 'toolCalls', sse('t2', 5))];
+      expect(mergeChatEvents(stored, replayed, 100).map(e => e.id)).toEqual(['old', 'new']);
+    });
+  });
 });

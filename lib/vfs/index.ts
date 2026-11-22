@@ -20,7 +20,7 @@ import { getRuntimeConfig } from '@/lib/runtimes/registry';
 import { compileStaticSite } from '@/lib/publishing/compile-static-site';
 import { arrayBufferToBase64, base64ToArrayBuffer } from './binary-encoding';
 import { apiFetch } from '@/lib/api/backend-status';
-import { readWorkspaceCookie } from '@/lib/web/workspace-cookie';
+import { pageWorkspace } from '@/lib/web/workspace-cookie';
 
 /**
  * A VirtualFile prepared for JSON export. Binary content is base64-encoded and
@@ -57,23 +57,55 @@ export class VirtualFileSystem {
   private generatedFiles: Map<string, VirtualFile> = new Map();
   private syncTimeouts: Map<string, NodeJS.Timeout> = new Map(); // Debounce sync calls
 
+  /** Chosen here rather than passed in, so it can follow the workspace cookie. */
+  private readonly ownsAdapter: boolean;
+
   constructor(adapter?: StorageAdapter) {
+    this.ownsAdapter = !adapter;
     this.adapter = adapter ?? createClientAdapter();
   }
 
   async init(): Promise<void> {
     if (!this.initialized) {
       if (!this.initPromise) {
+        // The module loads with the first page that imports it, which can be the login page before
+        // the workspace cookie exists; the database is the one named when it is first opened.
+        if (this.ownsAdapter) this.adapter = createClientAdapter();
         this.initPromise = (async () => {
           await this.adapter.init();
           await this.mountTransientSkills();
           this.initialized = true;
+          // After start-up, not on the way to the first screen.
+          if (typeof window !== 'undefined') setTimeout(() => { void this.sweepHistoryOnce(); }, 10_000);
         })();
       }
       await this.initPromise;
     } else {
       // Already initialized — re-check adapter connection (handles HMR / connection loss)
       await this.adapter.init();
+    }
+  }
+
+  /**
+   * Remove the history of projects deleted before deleting took it with them, once per browser
+   * and database (see `IndexedDBAdapter.sweepOrphanedHistory`). Returns how many records went,
+   * or null when it had already run or could not.
+   */
+  async sweepHistoryOnce(): Promise<number | null> {
+    if (!(this.adapter instanceof IndexedDBAdapter)) return null;
+    const key = `osw-history-swept:${this.adapter.name}`;
+    try {
+      if (localStorage.getItem(key)) return null;
+    } catch {
+      return null;
+    }
+    try {
+      const removed = await this.adapter.sweepOrphanedHistory();
+      try { localStorage.setItem(key, new Date().toISOString()); } catch { /* runs again next time */ }
+      return removed;
+    } catch (error) {
+      logger.warn('[VFS] History sweep failed:', error);
+      return null;
     }
   }
 
@@ -370,9 +402,9 @@ export class VirtualFileSystem {
       } else {
         // Client side: fetch schema from API
         try {
-          // Use workspace-scoped URL if in server mode with a workspace cookie
+          // Use the workspace-scoped URL in server mode, for the workspace this page works in
           const isServerMode = process.env.NEXT_PUBLIC_SERVER_MODE === 'true';
-          const workspaceId = isServerMode ? readWorkspaceCookie() : undefined;
+          const workspaceId = isServerMode ? pageWorkspace() : undefined;
           const ctxUrl = workspaceId
             ? `/api/w/${workspaceId}/admin/deployments/${deploymentId}/server-context`
             : `/api/admin/deployments/${deploymentId}/server-context`;

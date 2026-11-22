@@ -16,6 +16,8 @@ const replace = vi.fn();
 const router = { replace, push: vi.fn() };
 vi.mock('next/navigation', () => ({ useRouter: () => router }));
 vi.mock('@/components/studio-app', () => ({ StudioApp: () => <div data-studio /> }));
+const enterWorkspace = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/web/workspace-cookie', async (actual) => ({ ...(await actual<object>()), enterWorkspace }));
 
 import Home from '../page';
 
@@ -26,6 +28,7 @@ let root: Root;
 
 beforeEach(() => {
   replace.mockClear();
+  enterWorkspace.mockClear();
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -63,8 +66,9 @@ describe('root page boot in Server Mode', () => {
     const fetchMock = desktopInit(200, { workspaceId: 'ws1' });
     await render();
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/desktop-init', { method: 'POST' });
-    expect(replace).toHaveBeenCalledWith('/w/ws1/projects?code=abc&state=xyz');
-    expect(document.cookie).toContain('osw_workspace=ws1');
+    // A fresh load, so nothing this page loaded first holds on to a database named before the cookie.
+    expect(enterWorkspace).toHaveBeenCalledWith('ws1', '/w/ws1/projects?code=abc&state=xyz', { replace: true });
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it('shows the server\'s own error and detail when the bootstrap fails', async () => {

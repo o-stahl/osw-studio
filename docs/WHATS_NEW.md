@@ -6,6 +6,27 @@ Welcome to OSW Studio! This page highlights the latest features and updates.
 
 ---
 
+## v1.112.0 - Checkpoint Improvements (2026-11-23)
+
+Agent runs no longer push out your saves, each checkpoint shows the files and lines it changed and its size, and you can now rename checkpoints and delete several at once. The desktop app also has the MCP connector on, and in Server Mode, Discard Changes and checkpoint restores now reach the server.
+
+### Checkpoints
+- **Saves kept apart**: your latest save is locked, and each project keeps the 5 saves before it (3 to 20 in Settings → Data)
+- **More automatic checkpoints**: each project keeps 10 by default, up from 5 (5 to 50 in Settings → Data)
+- **Current**: the checkpoint your files still match is marked, and once you edit it shows what changed since
+- **Renaming and deleting**: rename a checkpoint from its menu, or delete several at once with Select
+- **Fewer from MCP**: a burst of edits from an MCP client now makes one checkpoint
+
+### Desktop
+- **MCP connector**: on in the desktop app, so Claude Code or another client can connect once you approve it
+
+### Fixes
+- **Discard in Server Mode**: Discard Changes, restoring a checkpoint and Undo now reach the server, where the next run or a reload used to bring the old files back
+- **Signing in**: a project made right after signing in to a server is kept; it wasn't synced and was gone on reload
+- **Security updates**: Next.js, Handlebars, undici, Nodemailer and the MCP SDK are updated for published security advisories
+
+---
+
 ## v1.111.0 - The Canvas Panel (2026-11-18)
 
 You can now see every page of a project side by side at phone, tablet and desktop widths in the new Canvas panel, and in static and Handlebars projects select, restyle, rearrange and add elements there. Every change is written into the project's own HTML and CSS, the same files the agent works on, and the agent can now look at a rendered page and restyle an element itself. Bundled projects such as React and Vue show on Canvas without editing, and the phone layout has no Canvas.

@@ -1,5 +1,6 @@
 import { vfs } from '@/lib/vfs';
 import { checkpointManager } from '@/lib/vfs/checkpoint';
+import { saveManager } from '@/lib/vfs/save-manager';
 
 /**
  * The starting-point checkpoint a project gets on its first open, so the user can always roll
@@ -17,5 +18,7 @@ export async function createOpenCheckpoint(projectId: string): Promise<string> {
   opened.lastSavedCheckpointId = cp.id;
   opened.lastSavedAt = opened.updatedAt;
   await vfs.updateProject(opened, { preserveUpdatedAt: true });
+  // The open read the saved id before this existed; Discard and the panel ask the save manager.
+  saveManager.setSavedCheckpointId(projectId, cp.id);
   return cp.id;
 }

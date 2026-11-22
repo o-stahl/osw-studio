@@ -26,6 +26,11 @@ const MAX_AGE = 60 * 60 * 24 * 365;
 const WORKSPACE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const valid = (value: string | undefined) => (value && WORKSPACE_ID.test(value) ? value : undefined);
 
+/** Whether a value is shaped like a workspace id, and so safe to store in the cookie. */
+export function isWorkspaceId(value: string | undefined): value is string {
+  return !!valid(value);
+}
+
 /** The workspace id in a `Cookie` header or `document.cookie`, or undefined. */
 export function workspaceFromCookieString(cookies: string): string | undefined {
   const read = (name: string) => valid(cookies.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`))?.[1]);
@@ -43,6 +48,17 @@ export function readWorkspaceCookie(): string | undefined {
   return workspaceFromCookieString(document.cookie);
 }
 
+/**
+ * Browser: the workspace this page works in. The `/w/{id}` in its address, since the cookie is shared
+ * by every tab and another tab may have selected another workspace since this page loaded; the
+ * selected workspace on a page outside any.
+ */
+export function pageWorkspace(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const [, first, id] = window.location.pathname.split('/');
+  return (first === 'w' && valid(id)) || readWorkspaceCookie();
+}
+
 /** Browser: select a workspace. On HTTPS the old name is cleared, so it stops being read. */
 export function writeWorkspaceCookie(workspaceId: string): void {
   if (typeof document === 'undefined') return;
@@ -52,6 +68,20 @@ export function writeWorkspaceCookie(workspaceId: string): void {
   } else {
     document.cookie = `${WORKSPACE_COOKIE}=${workspaceId}; Path=/; Max-Age=${MAX_AGE}; SameSite=Lax`;
   }
+}
+
+/**
+ * Browser: select a workspace and open `url` as a fresh page load.
+ *
+ * The local project database is picked from this cookie when the VFS first opens it, and the stores
+ * holding a workspace's projects, chats and checkpoints live for the life of the page. A client-side
+ * navigation after changing the cookie keeps all of that, so a project created next is written to
+ * whichever database the page opened before (on the login page, the unscoped one) and never syncs.
+ */
+export function enterWorkspace(workspaceId: string, url: string, { replace = false } = {}): void {
+  writeWorkspaceCookie(workspaceId);
+  if (replace) window.location.replace(url);
+  else window.location.assign(url);
 }
 
 type CookieResponse = { cookies: { set(name: string, value: string, options: object): unknown; delete(name: string): unknown } };

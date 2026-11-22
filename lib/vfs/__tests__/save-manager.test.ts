@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   createCheckpoint: vi.fn(),
-  unpinCheckpoint: vi.fn(),
+  releaseSavePin: vi.fn(),
   checkpointExists: vi.fn(),
   restoreCheckpoint: vi.fn(),
   getProject: vi.fn(),
@@ -18,7 +18,7 @@ vi.mock('@/lib/utils', () => ({
 vi.mock('../checkpoint', () => ({
   checkpointManager: {
     createCheckpoint: mocks.createCheckpoint,
-    unpinCheckpoint: mocks.unpinCheckpoint,
+    releaseSavePin: mocks.releaseSavePin,
     checkpointExists: mocks.checkpointExists,
     restoreCheckpoint: mocks.restoreCheckpoint,
   },
@@ -44,26 +44,28 @@ describe('saveManager.save', () => {
       id: 'cp_new',
       timestamp: '2026-09-20T12:00:00.000Z',
     });
-    mocks.unpinCheckpoint.mockResolvedValue(true);
+    mocks.releaseSavePin.mockResolvedValue(true);
     mocks.getProject.mockResolvedValue({
       id: PROJECT,
       lastSavedCheckpointId: 'cp_old',
     });
   });
 
-  it('pins the new save at create and unpins the previous save after the pointer moves', async () => {
+  it('makes the save unpinned and takes an earlier Save\'s pin off the previous save after the pointer moves', async () => {
     await saveManager.save(PROJECT, 'Manual save');
 
     expect(mocks.createCheckpoint).toHaveBeenCalledWith(
       PROJECT,
       'Manual save',
-      expect.objectContaining({ kind: 'manual', pinned: true, baseRevisionId: 'cp_old' }),
+      expect.objectContaining({ kind: 'manual', baseRevisionId: 'cp_old' }),
     );
+    // Pruning keeps the last save; a pin is only ever the person's.
+    expect(mocks.createCheckpoint.mock.calls[0][2]).not.toHaveProperty('pinned');
     expect(mocks.updateProject).toHaveBeenCalled();
     const written = mocks.updateProject.mock.calls[0][0];
     expect(written.lastSavedCheckpointId).toBe('cp_new');
     expect(mocks.updateProject.mock.calls[1][1]).toEqual({ preserveUpdatedAt: true });
-    expect(mocks.unpinCheckpoint).toHaveBeenCalledWith('cp_old');
+    expect(mocks.releaseSavePin).toHaveBeenCalledWith('cp_old');
   });
 
   it('records lastSavedAt from the stamped updatedAt so a later open can see a draft', async () => {
@@ -77,20 +79,21 @@ describe('saveManager.save', () => {
     expect(mocks.updateProject.mock.calls[1][0].lastSavedAt).toEqual(new Date('2026-09-20T12:00:01.000Z'));
   });
 
-  it('on discard, sets updatedAt back to lastSavedAt so the restored save is not a new draft', async () => {
-    const savedAt = new Date('2026-09-20T12:00:00.000Z');
+  it('on discard, moves the saved baseline up to the restore so the project reads as saved', async () => {
+    // The restore stamps updatedAt as a change so it syncs (end to end in sync-end-state.test.ts).
+    const restoredAt = new Date('2026-09-20T12:05:00.000Z');
     mocks.getProject.mockResolvedValue({
       id: PROJECT,
       lastSavedCheckpointId: 'cp_new',
-      lastSavedAt: savedAt,
-      updatedAt: new Date('2026-09-20T12:05:00.000Z'),
+      lastSavedAt: new Date('2026-09-20T12:00:00.000Z'),
+      updatedAt: restoredAt,
     });
     mocks.checkpointExists.mockResolvedValue(true);
     mocks.restoreCheckpoint.mockResolvedValue(true);
 
     expect(await saveManager.restoreLastSaved(PROJECT)).toBe(true);
     expect(mocks.updateProject).toHaveBeenCalledWith(
-      expect.objectContaining({ updatedAt: savedAt, lastSavedAt: savedAt }),
+      expect.objectContaining({ updatedAt: restoredAt, lastSavedAt: restoredAt }),
       { preserveUpdatedAt: true },
     );
   });
@@ -100,11 +103,38 @@ describe('saveManager.save', () => {
 
     await saveManager.save(PROJECT);
 
-    expect(mocks.unpinCheckpoint).not.toHaveBeenCalled();
+    expect(mocks.releaseSavePin).not.toHaveBeenCalled();
     expect(mocks.createCheckpoint).toHaveBeenCalledWith(
       PROJECT,
       expect.any(String),
-      expect.objectContaining({ pinned: true, baseRevisionId: null }),
+      expect.objectContaining({ kind: 'manual', baseRevisionId: null }),
     );
+  });
+});
+
+/**
+ * The header reads the workspace store's flag, which a finished server run sets on its own. The
+ * save manager may never have seen that change, and Discard back to the save has to clear it anyway.
+ */
+describe('saveManager.markClean', () => {
+  it('tells its listeners the project is clean even when it had not marked it dirty', () => {
+    const heard: { projectId: string; dirty: boolean }[] = [];
+    const stop = saveManager.subscribe((event) => heard.push(event));
+    saveManager.markClean('never-dirty');
+    stop();
+    expect(heard).toEqual([{ projectId: 'never-dirty', dirty: false }]);
+  });
+});
+
+describe('saveManager.markDirty', () => {
+  it('tells its listeners once, however many edits follow', () => {
+    const heard: { projectId: string; dirty: boolean }[] = [];
+    const stop = saveManager.subscribe((event) => heard.push(event));
+    saveManager.markDirty('edited');
+    saveManager.markDirty('edited');
+    saveManager.markDirty('edited');
+    stop();
+    saveManager.markClean('edited');
+    expect(heard).toEqual([{ projectId: 'edited', dirty: true }]);
   });
 });

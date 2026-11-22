@@ -50,3 +50,23 @@ describe('McpPane hydration', () => {
     expect(container.textContent).toContain(`${window.location.origin}/api/mcp`);
   });
 });
+
+describe('McpPane intro', () => {
+  const render = () => renderToString(withMessages(<McpPane workspaceId="ws" />));
+
+  it('names the variable that turns the connector on for a server', () => {
+    expect(render()).toContain('MCP_ENABLED=true');
+  });
+
+  // The desktop app has the connector on, and its user has no environment to set.
+  it('leaves the variable out on the desktop app', () => {
+    vi.stubEnv('NEXT_PUBLIC_DESKTOP', 'true');
+    try {
+      const html = render();
+      expect(html).not.toContain('MCP_ENABLED');
+      expect(html).toContain('Setup guide');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});

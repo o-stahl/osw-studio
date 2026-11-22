@@ -52,6 +52,14 @@ describe('createOpenCheckpoint', () => {
     expect(store.project).toMatchObject({ revision: 7, lastSavedCheckpointId: 'cp1' });
   });
 
+  // Discard Changes, the header's saved state and the Checkpoints panel all ask the save manager
+  // which checkpoint is the save. Left unset, Discard back to this checkpoint read as unsaved.
+  it('tells the save manager it is the save', async () => {
+    const { saveManager } = await import('@/lib/vfs/save-manager');
+    await createOpenCheckpoint('p1');
+    expect(saveManager.getSavedCheckpointId('p1')).toBe('cp1');
+  });
+
   it('writes nothing when the checkpoint cannot be created', async () => {
     checkpoints.createCheckpoint.mockRejectedValue(new Error('quota'));
     await expect(createOpenCheckpoint('p1')).rejects.toThrow('quota');

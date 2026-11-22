@@ -155,7 +155,8 @@ export function McpPane({ workspaceId }: { workspaceId?: string }) {
       <SectionHeader icon={Plug} title="MCP" />
       <SectionBody>
         <p className="text-xs text-muted-foreground pt-3">
-          {t.rich('mcpIntro', {
+          {/* The desktop app has the connector on; the variable is for a server's operator. */}
+          {t.rich(process.env.NEXT_PUBLIC_DESKTOP === 'true' ? 'mcpIntroDesktop' : 'mcpIntro', {
             code: chunks => (
               <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{chunks}</code>
             ),

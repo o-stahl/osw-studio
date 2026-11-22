@@ -18,6 +18,15 @@ describe('SSEEventBus', () => {
       expect(buffer[1].id).toBe(2);
     });
 
+    // A client reloading gets the buffer again and tells those events from new ones by this.
+    it('carries each event\'s id in its data, the same live and in the buffer', () => {
+      const heard: Record<string, unknown>[] = [];
+      bus.addListener('s1', (e) => heard.push(e.data));
+      bus.emit('task-1', 'proj-1', 'test', { x: 1 }, 's1');
+      expect(heard[0].sourceEventId).toBe(1);
+      expect(bus.getBuffer('task-1')[0].data.sourceEventId).toBe(1);
+    });
+
     it('tags events with sourceProjectId', () => {
       bus.emit('task-1', 'proj-1', 'test', { x: 1 });
       const buffer = bus.getBuffer('task-1');

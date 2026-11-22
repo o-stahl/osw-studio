@@ -89,6 +89,7 @@ const mockVfs = {
   createDirectory: vi.fn(),
   createFile: vi.fn(),
   updateFile: vi.fn(),
+  scheduleAutoSync: vi.fn(),
 };
 
 vi.mock('@/lib/vfs', () => ({
@@ -351,15 +352,16 @@ describe('checkpoint backend coverage', () => {
       expect(project.settings.databaseSchema).toBeUndefined();
     });
 
-    it('leaves the project record alone when no covered setting differs', async () => {
+    it('leaves the settings alone when no covered setting differs', async () => {
+      const before = structuredClone(project.settings);
       const cp = await checkpointManager.createCheckpoint(PROJECT_ID, 'Snapshot');
       updateProject.mockClear();
 
       await checkpointManager.restoreCheckpoint(cp.id);
 
-      // updateProject bumps updatedAt, which sync reads as "Local newer" — a restore that
-      // changed no setting must not make the project look edited.
-      expect(updateProject).not.toHaveBeenCalled();
+      // The restore is recorded as a change so it syncs; what it writes keeps the settings as they were.
+      expect(updateProject).toHaveBeenCalled();
+      for (const [written] of updateProject.mock.calls) expect(written.settings).toEqual(before);
     });
 
     it('leaves a runtime alone when the checkpoint carries none', async () => {

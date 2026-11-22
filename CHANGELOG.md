@@ -1,5 +1,39 @@
 # Changelog
 
+## v1.112.0 - 2026-11-23
+
+### Checkpoints
+- **Saves and automatic checkpoints are pruned against separate limits**: `pruneUnpinned` counts `kind: 'manual'` checkpoints (Save, before import) against `savesLimit` (`savesKept`: 3, 5, 10 or 20, default 5) and automatic ones against `unpinnedLimit` (`checkpointsKept`: 5, 10, 20 or 50, default 10), both in Settings → Data, and never prunes `lastSavedCheckpointId`. Replaces `MAX_UNPINNED_PER_PROJECT` (5). Agent runs pruned older saves.
+- **Save no longer pins its checkpoint**: the Checkpoints panel shows the latest save locked at the top instead. Pins carry `pinnedBy: 'user'`; `releaseSavePin` removes only the pin an earlier Save left.
+- **Checkpoints can be named and deleted, one or several at once**: `renameCheckpoint` stores the name as `description` and pins it; `deleteCheckpoint` refuses the current save. Select in the panel header picks rows for `handleDeleteSelected`.
+- **Checkpoint records carry their size and changes**: `size` and `changes` (`files`, `added`, `removed`) from `indexFiles`/`compareFiles` (`lib/vfs/checkpoint-changes.ts`) against the previous checkpoint, read back up to `MAX_BASE_READ` (2 MB). IndexedDB v9 adds `checkpointMeta`, so listing reads no snapshot.
+- **The Checkpoints panel marks the checkpoint the files came from**: `compareWithFiles` compares the files with the checkpoint made or restored last (the newest after a reload) on load and after `filesChanged`; its row reads Current or "Edited since". The `currentCheckpointId` prop is removed.
+- **Checkpoint restores are pushed to the server, and Discard clears the unsaved mark**: `restoreCheckpoint` stamps `updatedAt` and calls `scheduleAutoSync`; `restoreLastSaved` moves `lastSavedAt` up, and `markClean` always notifies. Restores stayed in the browser, and Discard after a server run left the header offering Save.
+- **Opening a project reads only its own checkpoints**: `ensureProjectLoaded` reads through the `projectId` index. Every project's snapshots were read on each open, and an open during that read wrote a duplicate "Project opened" checkpoint.
+- **Checkpoints, chats and conversations of deleted projects are deleted once**: `vfs.sweepHistoryOnce` runs `sweepOrphanedHistory` once per database (`osw-history-swept:<db>` in localStorage). Projects deleted before 1.111.1 left them in IndexedDB.
+- **An open IndexedDB connection closes for an upgrade**: `IndexedDBAdapter` closes on `versionchange` and reconnects on its next `init`. An open tab held a newer version's tab at a blank screen.
+
+### Agent and MCP
+- **An MCP client's burst of changes is one checkpoint**: `handleMcpProjectChanged` pulls through `queueMcpPull`, one at a time per project, and checkpoints only when files or backend features changed (`pullBackendFeatures` returns `changed`), labelled `afterConnector` and replacing the client's checkpoint from the last 60 s (`CONNECTOR_BURST_MS`). Each write added a checkpoint and marked the project unsaved.
+- **A server run reattached on page load checkpoints only what it changed**: `reattachServerTasks` passes `onlyIfChanged`. Each reload after a run added an "After server generation" checkpoint.
+- **The desktop app serves the MCP connector**: `startNextServer` (`desktop/electron/main.ts`) sets `MCP_ENABLED=true` unless set; the consent screen names no account there.
+
+### Security
+- **Dependencies are updated for security advisories**: `next` 16.4.6, `handlebars` 4.7.10, `undici` 7.30.2, `@modelcontextprotocol/server` and `client` 2.4.0, `zod` 4.6.7 and `nodemailer` 10.4.0 (needs Node 20).
+
+### Fixes
+- **Replayed server events are matched by their server id**: `SSEEventBus` adds `sourceEventId`; `mergeChatEvents` and `addDebugEvent` (`holdsServerEvent`) skip events already held. A reload showed each recent run twice.
+- **Signing in opens the workspace as a fresh page load**: login, registration, the desktop bootstrap and the workspace switcher use `enterWorkspace` (`lib/web/workspace-cookie.ts`). A project made right after signing in was written to `osw-studio-db` and lost on reload.
+- **A `/w/{id}` page selects that workspace**: `selectPathWorkspace` (`middleware.ts`) sets the cookie from the path, except on prefetches, and `sqlite3` and the server context use `pageWorkspace`. A link into another workspace synced the selected one's projects into it.
+- **`head` and `tail` read every file given**: `headOrTail` (`lib/vfs/shell/commands/head-tail-shared.ts`) prints each under `==> path <==`. Only the last path was read.
+- **`tail` counts as GNU `tail` does**: a final newline ends the last line, `-n 0` prints nothing and `-n +N` starts at line N. `tail -n 2` printed one line of a file ending in a newline.
+- **The "local work is kept" warning shows once per project**: `markSyncNeedsRetry` gives the toast the id `sync-kept-{projectId}`. Each repeat added another toast that stayed until dismissed.
+- **Canvas artboards use the surface colour while loading**: placeholders in `components/canvas/canvas-panel.tsx` are `bg-muted`. They were white on the dark theme.
+
+### Tests
+- **Coverage for checkpoints, MCP pulls and workspace selection**: new `orchestrator-mcp-checkpoints.test.ts`, `orchestrator-mcp-pulls.test.ts`, `orchestrator-replay-open-chat.test.ts`, `row-actions.test.tsx`, `size-and-select.test.tsx`, `data-pane-checkpoints.test.tsx`, `auto-sync-kept-toast.test.ts`, `workspace-database.test.ts`, `orphaned-history.test.ts`, `page-workspace.test.ts` and `middleware-workspace-cookie.test.ts`.
+- **`bridge-dom.test.ts` clears the timers each test starts**: the canvas bridge's timers of up to 1.5 s fired after jsdom's teardown under full-suite load, failing `npm run test` while every test passed.
+
 ## v1.111.2 - 2026-11-20
 
 ### Fixes

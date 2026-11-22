@@ -3,6 +3,9 @@ import type { DebugEvent } from './types';
 /** What identifies an event the server sent again, whose local id is new each time it arrives. */
 function replayKey(event: DebugEvent): string | null {
   const data = event.data;
+  // The server's own id for the event, with its run, since ids start over when the server restarts.
+  // The stored copy keeps it however this tab has changed the event since.
+  if (data?.sourceTaskId && data?.sourceEventId !== undefined) return `sse:${data.sourceTaskId}:${data.sourceEventId}`;
   if (event.event === 'conversation_message' && data?.message?.role === 'user') {
     return `user:${JSON.stringify(data.message.content)}`;
   }

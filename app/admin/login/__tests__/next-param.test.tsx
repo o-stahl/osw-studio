@@ -17,6 +17,8 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(nav.query),
 }));
 vi.mock('@/components/language-menu', () => ({ LanguagePill: () => null }));
+const enterWorkspace = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/web/workspace-cookie', async (actual) => ({ ...(await actual<object>()), enterWorkspace }));
 
 import LoginPage from '../page';
 
@@ -27,6 +29,7 @@ beforeEach(() => {
   (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   nav.push.mockClear();
   nav.replace.mockClear();
+  enterWorkspace.mockClear();
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const body = url === '/api/auth/setup-status'
       ? { needsSetup: false, registrationOpen: false }
@@ -65,7 +68,7 @@ async function signInWith(query: string) {
 describe('the ?next= destination after signing in', () => {
   it('is honoured for a path on this server', async () => {
     await signInWith('next=/w/x/projects');
-    expect(nav.push).toHaveBeenCalledWith('/w/x/projects');
+    expect(enterWorkspace).toHaveBeenCalledWith('ws-default', '/w/x/projects');
   });
 
   it.each([
@@ -73,7 +76,17 @@ describe('the ?next= destination after signing in', () => {
     ['a tab between slashes (%09)', '/\t/evil.com'],
   ])('falls back to the default workspace for %s', async (_label, next) => {
     await signInWith(new URLSearchParams({ next }).toString());
-    expect(nav.push).toHaveBeenCalledTimes(1);
-    expect(nav.push).toHaveBeenCalledWith('/w/ws-default/projects');
+    expect(enterWorkspace).toHaveBeenCalledTimes(1);
+    expect(enterWorkspace).toHaveBeenCalledWith('ws-default', '/w/ws-default/projects');
+  });
+});
+
+describe('the page signing in leads to', () => {
+  // A client-side navigation would keep the VFS this page may have opened before the workspace was
+  // selected, and the next project made would land in the unscoped local database.
+  it('is a fresh load of the workspace, not a client-side navigation', async () => {
+    await signInWith('');
+    expect(enterWorkspace).toHaveBeenCalledWith('ws-default', '/w/ws-default/projects');
+    expect(nav.push).not.toHaveBeenCalled();
   });
 });

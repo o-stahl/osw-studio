@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
+import { compareFiles, indexFiles } from '../checkpoint-changes';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 
@@ -21,6 +22,10 @@ async function openTestDB(): Promise<IDBDatabase> {
         const store = db.createObjectStore('checkpoints', { keyPath: 'id' });
         store.createIndex('projectId', 'projectId', { unique: false });
         store.createIndex('timestamp', 'timestamp', { unique: false });
+      }
+      // As the app's own database has it since v9: each checkpoint's metadata, without its files.
+      if (!db.objectStoreNames.contains('checkpointMeta')) {
+        db.createObjectStore('checkpointMeta', { keyPath: 'id' }).createIndex('projectId', 'projectId', { unique: false });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -73,6 +78,7 @@ const mockVfs = {
   updateFile: vi.fn().mockImplementation(async (_pid: string, path: string, content: string | ArrayBuffer) => {
     updatedFiles.push({ path, content });
   }),
+  scheduleAutoSync: vi.fn(),
 };
 
 vi.mock('@/lib/vfs', () => ({
@@ -83,6 +89,10 @@ vi.mock('@/lib/vfs', () => ({
 vi.mock('@/lib/vfs/adapters/indexeddb-adapter', () => ({
   IndexedDBAdapter: class {},
 }));
+
+// The browser's settings, which hold how many unpinned checkpoints a project keeps.
+const settings = vi.hoisted(() => ({ value: {} as { checkpointsKept?: number; savesKept?: number } }));
+vi.mock('@/lib/config/storage', () => ({ configManager: { getSettings: () => settings.value } }));
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -121,6 +131,7 @@ describe('CheckpointManager', () => {
 
   afterEach(() => {
     if (testDb) testDb.close();
+    settings.value = {};
   });
 
   // ── createCheckpoint ───────────────────────────────────────────────
@@ -407,22 +418,46 @@ describe('CheckpointManager', () => {
   // ── Pruning ────────────────────────────────────────────────────────
 
   describe('pruning', () => {
-    it('keeps at most 5 unpinned checkpoints per project', async () => {
+    it('keeps 10 unpinned checkpoints per project by default, the newest', async () => {
       setProjectFiles([{ path: '/a.txt', content: 'a' }]);
 
-      for (let i = 0; i < 8; i++) {
-        await new Promise(r => setTimeout(r, 5));
+      for (let i = 0; i < 13; i++) {
+        await new Promise(r => setTimeout(r, 2));
         await checkpointManager.createCheckpoint('proj1', `CP${i}`);
       }
 
       const cps = await checkpointManager.getCheckpoints('proj1');
-      expect(cps).toHaveLength(5);
-      // Should keep the 5 newest
-      expect(cps[0].description).toBe('CP7');
-      expect(cps[4].description).toBe('CP3');
+      expect(cps).toHaveLength(10);
+      expect(cps[0].description).toBe('CP12');
+      expect(cps[9].description).toBe('CP3');
     });
 
-    it('does not prune a checkpoint pinned at create, so a user save survives later autos', async () => {
+    it('keeps the number chosen in settings', async () => {
+      settings.value = { checkpointsKept: 5 };
+      try {
+        setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+        for (let i = 0; i < 8; i++) {
+          await new Promise(r => setTimeout(r, 2));
+          await checkpointManager.createCheckpoint('proj1', `CP${i}`);
+        }
+        const cps = await checkpointManager.getCheckpoints('proj1');
+        expect(cps).toHaveLength(5);
+        expect(cps[4].description).toBe('CP3');
+      } finally {
+        settings.value = {};
+      }
+    });
+
+    it('falls back to the default for a number it does not offer', async () => {
+      const { unpinnedLimit } = await import('../checkpoint');
+      settings.value = { checkpointsKept: 3 };
+      expect(unpinnedLimit()).toBe(10);
+      settings.value = { checkpointsKept: 50 };
+      expect(unpinnedLimit()).toBe(50);
+      settings.value = {};
+    });
+
+    it('does not prune a checkpoint pinned at create', async () => {
       setProjectFiles([{ path: '/a.txt', content: 'a' }]);
 
       const saved = await checkpointManager.createCheckpoint('proj1', 'Manual save', { kind: 'manual', pinned: true });
@@ -437,7 +472,29 @@ describe('CheckpointManager', () => {
       expect(cps.find(c => c.description === 'Manual save')).toBeDefined();
     });
 
+    // Discard Changes goes back to the project's last save. Before the first Save that is the
+    // unpinned "Project opened" checkpoint, and two runs used to prune it, leaving Discard nothing.
+    it('does not prune the checkpoint the project records as its last save', async () => {
+      settings.value = { checkpointsKept: 5 };
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      const opened = await checkpointManager.createCheckpoint('proj1', 'Project opened');
+      mockVfs.getProject.mockImplementation(async (id: string) => ({ id, name: id, settings: {}, lastSavedCheckpointId: opened.id }));
+      try {
+        for (let i = 0; i < 8; i++) {
+          await new Promise(r => setTimeout(r, 5));
+          await checkpointManager.createCheckpoint('proj1', `CP${i}`);
+        }
+        const cps = await checkpointManager.getCheckpoints('proj1');
+        expect(cps.map(c => c.id)).toContain(opened.id);
+        // The cap still holds for the rest.
+        expect(cps.filter(c => c.id !== opened.id)).toHaveLength(5);
+      } finally {
+        mockVfs.getProject.mockImplementation(async (id: string) => ({ id, name: id, settings: {} }));
+      }
+    });
+
     it('does not prune pinned checkpoints', async () => {
+      settings.value = { checkpointsKept: 5 };
       setProjectFiles([{ path: '/a.txt', content: 'a' }]);
 
       const pinned = await checkpointManager.createCheckpoint('proj1', 'Pinned');
@@ -454,7 +511,68 @@ describe('CheckpointManager', () => {
       expect(cps.find(c => c.description === 'Pinned')).toBeDefined();
     });
 
+    /**
+     * Saves (Save, and the checkpoint before an import) are counted apart from automatic ones, so a
+     * run of agent turns never pushes out a save, and the project's latest save is kept on top.
+     */
+    describe('saves', () => {
+      const wait = () => new Promise(r => setTimeout(r, 3));
+      const make = async (description: string, kind: 'manual' | 'auto' = 'auto') => {
+        await wait();
+        return checkpointManager.createCheckpoint('proj1', description, { kind });
+      };
+      afterEach(() => {
+        settings.value = {};
+        mockVfs.getProject.mockImplementation(async (id: string) => ({ id, name: id, settings: {} }));
+      });
+
+      it('are never pushed out by automatic checkpoints', async () => {
+        settings.value = { checkpointsKept: 5, savesKept: 3 };
+        setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+        await make('Save 1', 'manual');
+        await make('Save 2', 'manual');
+        for (let i = 0; i < 12; i++) await make(`Run ${i}`);
+
+        const cps = await checkpointManager.getCheckpoints('proj1');
+        expect(cps.filter(c => c.kind === 'manual').map(c => c.description)).toEqual(['Save 2', 'Save 1']);
+        expect(cps.filter(c => c.kind !== 'manual')).toHaveLength(5);
+      });
+
+      it('keep the number chosen for saves, besides the latest save', async () => {
+        settings.value = { checkpointsKept: 5, savesKept: 3 };
+        setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+        const saves: { id: string }[] = [];
+        for (let i = 1; i <= 5; i++) saves.push(await make(`Save ${i}`, 'manual'));
+        mockVfs.getProject.mockImplementation(async (id: string) => ({ id, name: id, settings: {}, lastSavedCheckpointId: saves[4].id }));
+        await make('Before import: site.zip', 'manual');
+
+        const kept = (await checkpointManager.getCheckpoints('proj1')).map(c => c.description);
+        // The latest save, plus the three newest other saves; the import counts as one of them.
+        expect(kept).toEqual(['Before import: site.zip', 'Save 5', 'Save 4', 'Save 3']);
+      });
+
+      it('do not take room from automatic checkpoints', async () => {
+        settings.value = { checkpointsKept: 5, savesKept: 20 };
+        setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+        for (let i = 0; i < 6; i++) await make(`Save ${i}`, 'manual');
+        for (let i = 0; i < 6; i++) await make(`Run ${i}`);
+
+        const cps = await checkpointManager.getCheckpoints('proj1');
+        expect(cps.filter(c => c.kind === 'manual')).toHaveLength(6);
+        expect(cps.filter(c => c.kind !== 'manual').map(c => c.description)).toEqual(['Run 5', 'Run 4', 'Run 3', 'Run 2', 'Run 1']);
+      });
+
+      it('fall back to 5 for a number not offered', async () => {
+        const { savesLimit } = await import('../checkpoint');
+        settings.value = { savesKept: 7 };
+        expect(savesLimit()).toBe(5);
+        settings.value = { savesKept: 3 };
+        expect(savesLimit()).toBe(3);
+      });
+    });
+
     it('does not prune across projects', async () => {
+      settings.value = { checkpointsKept: 5 };
       setProjectFiles([{ path: '/a.txt', content: 'a' }]);
 
       for (let i = 0; i < 6; i++) {
@@ -472,6 +590,208 @@ describe('CheckpointManager', () => {
   });
 
   // ── Pin / Unpin ────────────────────────────────────────────────────
+
+  /**
+   * An earlier Save pinned each save until the next one, with no record of who pinned it. The next
+   * Save takes that pin off; a pin the person made stays, or keeping a version is impossible.
+   */
+  describe('a save an earlier Save pinned', () => {
+    async function aSave() {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      return checkpointManager.createCheckpoint('proj1', 'Manual save', { kind: 'manual', pinned: true });
+    }
+
+    it('is unpinned when the next Save comes', async () => {
+      const save = await aSave();
+      await checkpointManager.releaseSavePin(save.id);
+      expect((await checkpointManager.getCheckpoints('proj1'))[0].pinned).toBe(false);
+    });
+
+    it('stays pinned through the next Save once the person pins it', async () => {
+      const save = await aSave();
+      await checkpointManager.pinCheckpoint(save.id);
+      await checkpointManager.releaseSavePin(save.id);
+      const [cp] = await checkpointManager.getCheckpoints('proj1');
+      expect(cp.pinned).toBe(true);
+      expect(cp.pinnedBy).toBe('user');
+    });
+
+    it('remembers who pinned it in a new page', async () => {
+      const save = await aSave();
+      await checkpointManager.pinCheckpoint(save.id);
+      vi.resetModules();
+      const page = (await import('../checkpoint')).checkpointManager;
+      expect((await page.getCheckpoints('proj1'))[0].pinnedBy).toBe('user');
+    });
+
+    it('forgets who pinned it once unpinned', async () => {
+      const save = await aSave();
+      await checkpointManager.pinCheckpoint(save.id);
+      await checkpointManager.unpinCheckpoint(save.id);
+      const [cp] = await checkpointManager.getCheckpoints('proj1');
+      expect(cp.pinned).toBe(false);
+      expect(cp.pinnedBy).toBeUndefined();
+    });
+  });
+
+  /**
+   * IndexedDB returns a record whole, so listing checkpoints from their own store read every
+   * project file copy they hold: tens of megabytes at the higher limits. The list comes from a
+   * store of metadata instead, and the snapshot is read only to restore.
+   */
+  describe('the metadata store', () => {
+    const putRaw = (store: string, record: Record<string, unknown>) => new Promise<void>((resolve, reject) => {
+      const tx = testDb.transaction(store, 'readwrite');
+      tx.objectStore(store).put(record);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    const keysOf = (store: string) => new Promise<IDBValidKey[]>((resolve) => {
+      const request = testDb.transaction(store).objectStore(store).getAllKeys();
+      request.onsuccess = () => resolve(request.result);
+    });
+
+    it('lists a project\'s checkpoints without reading their snapshots', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      await checkpointManager.createCheckpoint('proj1', 'One');
+      vi.resetModules();
+      const page = (await import('../checkpoint')).checkpointManager;
+      const { IDBIndex, IDBObjectStore } = await import('fake-indexeddb');
+      const indexReads = vi.spyOn(IDBIndex.prototype, 'getAll');
+      const storeGets = vi.spyOn(IDBObjectStore.prototype, 'get');
+
+      expect((await page.getCheckpoints('proj1')).map(c => c.description)).toEqual(['One']);
+
+      const snapshotReads = [...indexReads.mock.contexts, ...storeGets.mock.contexts]
+        .filter((ctx) => ((ctx as IDBIndex).objectStore ?? ctx as IDBObjectStore).name === 'checkpoints');
+      expect(snapshotReads).toHaveLength(0);
+      indexReads.mockRestore();
+      storeGets.mockRestore();
+    });
+
+    it('lists a checkpoint written before the store existed, and gives it metadata', async () => {
+      await putRaw('checkpoints', {
+        id: 'cp_1_0', projectId: 'proj1', timestamp: '2026-11-01T00:00:00.000Z', description: 'From an older version',
+        kind: 'auto', pinned: true, files: [], directories: [],
+      });
+
+      const [cp] = await checkpointManager.getCheckpoints('proj1');
+      expect(cp).toMatchObject({ id: 'cp_1_0', description: 'From an older version', pinned: true });
+      expect(await keysOf('checkpointMeta')).toEqual(['cp_1_0']);
+    });
+
+    it('does not list metadata whose checkpoint is gone', async () => {
+      await putRaw('checkpointMeta', { id: 'cp_2_0', projectId: 'proj1', timestamp: '2026-11-01T00:00:00.000Z', description: 'Stale', kind: 'auto' });
+
+      expect(await checkpointManager.getCheckpoints('proj1')).toEqual([]);
+      expect(await keysOf('checkpointMeta')).toEqual([]);
+    });
+
+    it('keeps the metadata in step with a pin, a name and a delete', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      const a = await checkpointManager.createCheckpoint('proj1', 'A');
+      await new Promise(r => setTimeout(r, 2));
+      const b = await checkpointManager.createCheckpoint('proj1', 'B');
+      await checkpointManager.pinCheckpoint(a.id);
+      await checkpointManager.renameCheckpoint(a.id, 'Named');
+      await checkpointManager.deleteCheckpoint(b.id);
+      expect(await keysOf('checkpointMeta')).toEqual([a.id]);
+
+      vi.resetModules();
+      const page = (await import('../checkpoint')).checkpointManager;
+      expect(await page.getCheckpoints('proj1')).toMatchObject([{ id: a.id, description: 'Named', pinned: true, pinnedBy: 'user' }]);
+      expect(await keysOf('checkpointMeta')).toEqual([a.id]);
+    });
+  });
+
+  describe('naming a checkpoint', () => {
+    it('shows the name as typed, in place of the app\'s own label, and keeps it', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      const cp = await checkpointManager.createCheckpoint('proj1', 'Pre-generation snapshot', { label: { key: 'preGeneration' } });
+
+      expect(await checkpointManager.renameCheckpoint(cp.id, '  v1.0 Stable Release  ')).toBe(true);
+
+      const [named] = await checkpointManager.getCheckpoints('proj1');
+      expect(named.description).toBe('v1.0 Stable Release');
+      expect(named.label).toBeUndefined();
+      expect(named.pinned).toBe(true);
+      expect(named.pinnedBy).toBe('user');
+    });
+
+    it('keeps the name in a new page', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      const cp = await checkpointManager.createCheckpoint('proj1', 'Project opened', { label: { key: 'projectOpened' } });
+      await checkpointManager.renameCheckpoint(cp.id, 'Before the redesign');
+      vi.resetModules();
+      const page = (await import('../checkpoint')).checkpointManager;
+      const [named] = await page.getCheckpoints('proj1');
+      expect(named.description).toBe('Before the redesign');
+      expect(named.label).toBeUndefined();
+    });
+
+    it('refuses a blank name and leaves the checkpoint as it was', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      const cp = await checkpointManager.createCheckpoint('proj1', 'Project opened', { label: { key: 'projectOpened' } });
+      expect(await checkpointManager.renameCheckpoint(cp.id, '   ')).toBe(false);
+      const [same] = await checkpointManager.getCheckpoints('proj1');
+      expect(same.label).toEqual({ key: 'projectOpened' });
+      expect(same.pinned).toBe(false);
+    });
+
+    it('keeps a named save through the next Save', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      const save = await checkpointManager.createCheckpoint('proj1', 'Manual save', { kind: 'manual', pinned: true });
+      await checkpointManager.renameCheckpoint(save.id, 'v1.1 search');
+      await checkpointManager.releaseSavePin(save.id);
+      expect((await checkpointManager.getCheckpoints('proj1'))[0].pinned).toBe(true);
+    });
+  });
+
+  describe('deleting a checkpoint', () => {
+    it('removes it from the list and from storage', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      const a = await checkpointManager.createCheckpoint('proj1', 'A');
+      await new Promise(r => setTimeout(r, 2));
+      const b = await checkpointManager.createCheckpoint('proj1', 'B');
+
+      expect(await checkpointManager.deleteCheckpoint(a.id)).toBe(true);
+
+      expect((await checkpointManager.getCheckpoints('proj1')).map(c => c.id)).toEqual([b.id]);
+      expect(await checkpointManager.checkpointExists(a.id)).toBe(false);
+      vi.resetModules();
+      const page = (await import('../checkpoint')).checkpointManager;
+      expect((await page.getCheckpoints('proj1')).map(c => c.id)).toEqual([b.id]);
+    });
+
+    it('deletes a pinned one too', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      const kept = await checkpointManager.createCheckpoint('proj1', 'Kept');
+      await checkpointManager.pinCheckpoint(kept.id);
+      expect(await checkpointManager.deleteCheckpoint(kept.id)).toBe(true);
+      expect(await checkpointManager.getCheckpoints('proj1')).toEqual([]);
+    });
+
+    // Discard Changes goes back to the project's last save.
+    it('refuses the project\'s current save', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      const save = await checkpointManager.createCheckpoint('proj1', 'Manual save', { kind: 'manual' });
+      mockVfs.getProject.mockImplementation(async (id: string) => ({ id, name: id, settings: {}, lastSavedCheckpointId: save.id }));
+      try {
+        expect(await checkpointManager.deleteCheckpoint(save.id)).toBe(false);
+        expect(await checkpointManager.checkpointExists(save.id)).toBe(true);
+      } finally {
+        mockVfs.getProject.mockImplementation(async (id: string) => ({ id, name: id, settings: {} }));
+      }
+    });
+
+    it('forgets it as the current checkpoint', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      const cp = await checkpointManager.createCheckpoint('proj1', 'Latest');
+      expect(checkpointManager.getCurrentCheckpoint()?.id).toBe(cp.id);
+      await checkpointManager.deleteCheckpoint(cp.id);
+      expect(checkpointManager.getCurrentCheckpoint()).toBeNull();
+    });
+  });
 
   describe('pin / unpin', () => {
     it('pins a checkpoint', async () => {
@@ -610,6 +930,346 @@ describe('CheckpointManager', () => {
       checkpointManager.unloadProject('proj1');
 
       expect(checkpointManager.getCurrentCheckpoint()).toBeNull();
+    });
+  });
+
+  // ── Loading ────────────────────────────────────────────────────────
+
+  /**
+   * IndexedDB returns a record whole, snapshot included, and the store holds every project's
+   * history. Opening a project reads its own checkpoints and nothing else.
+   */
+  describe('loading a project in a new page', () => {
+    async function freshPage() {
+      vi.resetModules();
+      return (await import('../checkpoint')).checkpointManager;
+    }
+
+    async function seed(projectId: string, count: number) {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      const ids: string[] = [];
+      for (let i = 0; i < count; i++) ids.push((await checkpointManager.createCheckpoint(projectId, `${projectId} ${i}`)).id);
+      return ids;
+    }
+
+    it('reads only that project\'s records', async () => {
+      await seed('proj1', 2);
+      await seed('proj2', 3);
+      const page = await freshPage();
+      const { IDBObjectStore, IDBIndex } = await import('fake-indexeddb');
+      const storeReads = vi.spyOn(IDBObjectStore.prototype, 'getAll');
+      const indexReads = vi.spyOn(IDBIndex.prototype, 'getAll');
+
+      expect(await page.getCheckpoints('proj1')).toHaveLength(2);
+
+      expect(storeReads).not.toHaveBeenCalled();
+      expect(indexReads.mock.calls.map((call) => call[0])).toEqual(['proj1']);
+      storeReads.mockRestore();
+      indexReads.mockRestore();
+    });
+
+    it('reads a project with no checkpoints once, not on every list', async () => {
+      await seed('proj2', 1);
+      const page = await freshPage();
+      const { IDBIndex } = await import('fake-indexeddb');
+      const indexReads = vi.spyOn(IDBIndex.prototype, 'getAll');
+
+      expect(await page.getCheckpoints('empty')).toEqual([]);
+      expect(await page.getCheckpoints('empty')).toEqual([]);
+
+      expect(indexReads).toHaveBeenCalledTimes(1);
+      indexReads.mockRestore();
+    });
+
+    it('finds a saved checkpoint before its project is listed', async () => {
+      const [id] = await seed('proj1', 1);
+      const page = await freshPage();
+
+      expect(await page.checkpointExists(id)).toBe(true);
+      expect(await page.checkpointExists('cp_0_missing')).toBe(false);
+    });
+
+    it('finds a saved checkpoint while another call is still reading', async () => {
+      // On open, the workspace asks whether the saved checkpoint exists while the checkpoints
+      // panel lists another project. A "no" there writes a new "Project opened" checkpoint.
+      const [id] = await seed('proj1', 1);
+      await seed('proj2', 2);
+      const page = await freshPage();
+
+      const listing = page.getCheckpoints('proj2');
+      // Arrive once the first call is under way, as the workspace's check does.
+      for (let i = 0; i < 3; i++) await Promise.resolve();
+      const exists = await page.checkpointExists(id);
+      await listing;
+
+      expect(exists).toBe(true);
+    });
+
+    it('keeps a checkpoint made while another call is still reading', async () => {
+      await seed('proj1', 1);
+      const page = await freshPage();
+
+      const [, made] = await Promise.all([page.getCheckpoints('proj2'), page.createCheckpoint('proj1', 'during the read')]);
+
+      expect((await page.getCheckpoints('proj1')).map((c) => c.id)).toContain(made.id);
+    });
+
+    it('prunes against the checkpoints already stored, not only this page\'s', async () => {
+      const MAX_UNPINNED = (await import('../checkpoint')).unpinnedLimit();
+      await seed('proj1', MAX_UNPINNED);
+      const page = await freshPage();
+
+      await page.createCheckpoint('proj1', 'one more');
+
+      expect(await page.getCheckpoints('proj1')).toHaveLength(MAX_UNPINNED);
+    });
+
+    it('pins a checkpoint whose project was not listed yet', async () => {
+      const [id] = await seed('proj1', 1);
+      const page = await freshPage();
+
+      expect(await page.pinCheckpoint(id)).toBe(true);
+      expect((await page.getCheckpoints('proj1'))[0].pinned).toBe(true);
+    });
+
+    it('reads the project again after it is unloaded, so checkpoints written meanwhile show', async () => {
+      await seed('proj1', 1);
+      expect(await checkpointManager.getCheckpoints('proj1')).toHaveLength(1);
+
+      // Written by another tab: straight into the store, past this manager. A millisecond apart,
+      // because each page numbers its checkpoints from 0 and the id is the time plus that number.
+      const other = await freshPage();
+      await new Promise(r => setTimeout(r, 2));
+      await other.createCheckpoint('proj1', 'from another tab');
+      checkpointManager.unloadProject('proj1');
+
+      expect(await checkpointManager.getCheckpoints('proj1')).toHaveLength(2);
+    });
+  });
+
+  // ── Size and changes ───────────────────────────────────────────────
+
+  /**
+   * Each row in the panel says how much the checkpoint takes in this browser and how much changed
+   * since the checkpoint before it. Both are worked out when it is written and kept in its metadata,
+   * so listing still reads no snapshot.
+   */
+  describe('size and changes', () => {
+    const tick = () => new Promise(r => setTimeout(r, 2));
+    const storedRecord = (id: string) => new Promise<{ compressedData: string; size?: number; changes?: unknown }>((resolve) => {
+      const req = testDb.transaction(['checkpoints'], 'readonly').objectStore('checkpoints').get(id);
+      req.onsuccess = () => resolve(req.result);
+    });
+    async function freshPage() {
+      vi.resetModules();
+      return (await import('../checkpoint')).checkpointManager;
+    }
+
+    it('records the space a checkpoint takes in storage', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'hello\nworld' }]);
+      const cp = await checkpointManager.createCheckpoint('proj1', 'A');
+
+      const [listed] = await checkpointManager.getCheckpoints('proj1');
+      // UTF-16: two bytes for each character stored.
+      expect(listed.size).toBe((await storedRecord(cp.id)).compressedData.length * 2);
+      const [inNewPage] = await (await freshPage()).getCheckpoints('proj1');
+      expect(inNewPage.size).toBe(listed.size);
+    });
+
+    it('says nothing about changes on a project\'s first checkpoint', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      await checkpointManager.createCheckpoint('proj1', 'A');
+      expect((await checkpointManager.getCheckpoints('proj1'))[0].changes).toBeUndefined();
+    });
+
+    it('counts the files and lines changed since the checkpoint before it', async () => {
+      setProjectFiles([
+        { path: '/index.html', content: 'one\ntwo\nthree' },
+        { path: '/gone.txt', content: 'x\ny' },
+        { path: '/same.txt', content: 'untouched' },
+      ]);
+      await checkpointManager.createCheckpoint('proj1', 'A');
+      await tick();
+      setProjectFiles([
+        { path: '/index.html', content: 'one\nTWO\nthree\nfour' },
+        { path: '/new.css', content: 'a{}' },
+        { path: '/same.txt', content: 'untouched' },
+      ]);
+      await checkpointManager.createCheckpoint('proj1', 'B');
+
+      const [b] = await checkpointManager.getCheckpoints('proj1');
+      // index.html: TWO and four in, two out. new.css: one line in. gone.txt: two lines out.
+      expect(b.changes).toEqual({ files: 3, added: 3, removed: 3 });
+    });
+
+    it('does not count a file\'s final newline as a line', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      await checkpointManager.createCheckpoint('proj1', 'A');
+      await tick();
+      setProjectFiles([{ path: '/b.txt', content: 'one\ntwo\n' }]);
+      await checkpointManager.createCheckpoint('proj1', 'B');
+      // b.txt in with its two lines, a.txt out with its one.
+      expect((await checkpointManager.getCheckpoints('proj1'))[0].changes).toEqual({ files: 2, added: 2, removed: 1 });
+    });
+
+    it('records no change when nothing changed', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      await checkpointManager.createCheckpoint('proj1', 'A');
+      await tick();
+      await checkpointManager.createCheckpoint('proj1', 'B');
+      expect((await checkpointManager.getCheckpoints('proj1'))[0].changes).toEqual({ files: 0, added: 0, removed: 0 });
+    });
+
+    it('counts a changed image as a file, with no lines', async () => {
+      const image = (bytes: number[]) => new Uint8Array(bytes).buffer;
+      projectFiles = [{ path: '/logo.png', content: image([1, 2, 3]) }, { path: '/a.txt', content: 'a' }];
+      await checkpointManager.createCheckpoint('proj1', 'A');
+      await tick();
+      projectFiles = [{ path: '/logo.png', content: image([1, 2, 4]) }, { path: '/a.txt', content: 'a' }];
+      await checkpointManager.createCheckpoint('proj1', 'B');
+      expect((await checkpointManager.getCheckpoints('proj1'))[0].changes).toEqual({ files: 1, added: 0, removed: 0 });
+    });
+
+    it('notices an edit at the very end of a large binary file of the same length', () => {
+      // Past a million characters the fingerprint samples with a stride, which steps over this one.
+      const data = 'A'.repeat(3_000_000);
+      const edited = data.slice(0, -1) + 'B';
+      const before = indexFiles(new Map([['/photo.jpg', { data, encoding: 'base64' as const }]]));
+      const after = indexFiles(new Map([['/photo.jpg', { data: edited, encoding: 'base64' as const }]]));
+      expect(compareFiles(before, after)).toEqual({ files: 1, added: 0, removed: 0 });
+    });
+
+    it('compares with the checkpoint before it in a new page too', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      await checkpointManager.createCheckpoint('proj1', 'A');
+      const page = await freshPage();
+      await tick();
+      setProjectFiles([{ path: '/a.txt', content: 'b' }]);
+      await page.createCheckpoint('proj1', 'B');
+      expect((await page.getCheckpoints('proj1'))[0].changes).toEqual({ files: 1, added: 1, removed: 1 });
+    });
+
+    it('keeps its changes through a pin and a rename', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      await checkpointManager.createCheckpoint('proj1', 'A');
+      await tick();
+      setProjectFiles([{ path: '/a.txt', content: 'b' }]);
+      const b = await checkpointManager.createCheckpoint('proj1', 'B');
+      await checkpointManager.pinCheckpoint(b.id);
+      await checkpointManager.renameCheckpoint(b.id, 'Named');
+
+      const [listed] = await (await freshPage()).getCheckpoints('proj1');
+      expect(listed.changes).toEqual({ files: 1, added: 1, removed: 1 });
+      expect(listed.size).toBeGreaterThan(0);
+    });
+
+    it('gives a checkpoint written before sizes were recorded its size when its project loads', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      const cp = await checkpointManager.createCheckpoint('proj1', 'A');
+      // As a metadata entry from before: no size.
+      await new Promise<void>((resolve) => {
+        const tx = testDb.transaction(['checkpointMeta'], 'readwrite');
+        const store = tx.objectStore('checkpointMeta');
+        store.get(cp.id).onsuccess = (e) => {
+          const meta = (e.target as IDBRequest).result;
+          delete meta.size;
+          store.put(meta);
+        };
+        tx.oncomplete = () => resolve();
+      });
+
+      const [listed] = await (await freshPage()).getCheckpoints('proj1');
+      expect(listed.size).toBe((await storedRecord(cp.id)).compressedData.length * 2);
+    });
+  });
+
+  // ── Replacing ──────────────────────────────────────────────────────
+
+  /** A burst of changes from one connector is one checkpoint, written over as the burst goes on. */
+  describe('comparing with the files', () => {
+    const tick = () => new Promise(r => setTimeout(r, 2));
+    async function freshPage() {
+      vi.resetModules();
+      return (await import('../checkpoint')).checkpointManager;
+    }
+
+    it('finds the files the same as the checkpoint just made', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      const cp = await checkpointManager.createCheckpoint('proj1', 'A');
+      expect(await checkpointManager.compareWithFiles('proj1')).toEqual({ id: cp.id, changes: { files: 0, added: 0, removed: 0 } });
+    });
+
+    it('says what was edited since', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      const cp = await checkpointManager.createCheckpoint('proj1', 'A');
+      setProjectFiles([{ path: '/a.txt', content: 'b' }, { path: '/new.txt', content: 'one\ntwo\n' }]);
+      expect(await checkpointManager.compareWithFiles('proj1')).toEqual({ id: cp.id, changes: { files: 2, added: 3, removed: 1 } });
+    });
+
+    it('goes by the checkpoint restored last, not the newest', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      const older = await checkpointManager.createCheckpoint('proj1', 'A');
+      await tick();
+      setProjectFiles([{ path: '/a.txt', content: 'b' }]);
+      await checkpointManager.createCheckpoint('proj1', 'B');
+      await checkpointManager.restoreCheckpoint(older.id);
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      expect(await checkpointManager.compareWithFiles('proj1')).toEqual({ id: older.id, changes: { files: 0, added: 0, removed: 0 } });
+    });
+
+    it('goes by the newest in a new page, reading it back', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      await checkpointManager.createCheckpoint('proj1', 'A');
+      await tick();
+      const newest = await checkpointManager.createCheckpoint('proj1', 'B');
+      const page = await freshPage();
+      expect(await page.compareWithFiles('proj1')).toEqual({ id: newest.id, changes: { files: 0, added: 0, removed: 0 } });
+    });
+
+    it('stays within the project when another one made the last checkpoint', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      const mine = await checkpointManager.createCheckpoint('proj1', 'A');
+      await checkpointManager.createCheckpoint('proj2', 'Elsewhere');
+      expect((await checkpointManager.compareWithFiles('proj1'))?.id).toBe(mine.id);
+    });
+
+    it('has nothing to compare with in a project without checkpoints', async () => {
+      expect(await checkpointManager.compareWithFiles('proj1')).toBeNull();
+    });
+  });
+
+  describe('replacing a checkpoint', () => {
+    const tick = () => new Promise(r => setTimeout(r, 2));
+
+    it('writes over it, keeping its id and place, with the new files and time', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'start' }]);
+      await checkpointManager.createCheckpoint('proj1', 'Base');
+      await tick();
+      setProjectFiles([{ path: '/a.txt', content: 'start' }, { path: '/c.txt', content: 'c' }]);
+      const burst = await checkpointManager.createCheckpoint('proj1', 'Connector');
+      await tick();
+      setProjectFiles([{ path: '/a.txt', content: 'start' }, { path: '/c.txt', content: 'c' }, { path: '/b.txt', content: 'b' }]);
+
+      const again = await checkpointManager.createCheckpoint('proj1', 'Connector', { replaces: burst.id });
+
+      expect(again.id).toBe(burst.id);
+      expect(again.timestamp > burst.timestamp).toBe(true);
+      const list = await checkpointManager.getCheckpoints('proj1');
+      expect(list.map(c => c.description)).toEqual(['Connector', 'Base']);
+      // Changes cover the whole burst, c.txt and b.txt: against Base, not against the first write.
+      expect(list[0].changes).toEqual({ files: 2, added: 2, removed: 0 });
+      resetTrackingArrays();
+      setProjectFiles([]);
+      await checkpointManager.restoreCheckpoint(burst.id);
+      expect(createdFiles.map(f => f.content).sort()).toEqual(['b', 'c', 'start']);
+    });
+
+    it('makes a new checkpoint when the one named belongs to another project', async () => {
+      setProjectFiles([{ path: '/a.txt', content: 'a' }]);
+      const other = await checkpointManager.createCheckpoint('proj2', 'Other');
+      const made = await checkpointManager.createCheckpoint('proj1', 'Mine', { replaces: other.id });
+      expect(made.id).not.toBe(other.id);
+      expect(await checkpointManager.getCheckpoints('proj2')).toHaveLength(1);
     });
   });
 

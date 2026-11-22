@@ -239,3 +239,47 @@ describe('syncing backend features around a server run', () => {
     expect(names(await server.listEdgeFunctions(projectId))).toEqual(['mine']);
   });
 });
+
+// A pull after a connector's change ends on a checkpoint only if it changed something here.
+describe('what a backend pull reports it changed', () => {
+  it('reports a function the server added', async () => {
+    await server.createEdgeFunction(edge('theirs'));
+    expect(await sync()).toMatchObject({ success: true, changed: true });
+  });
+
+  it('reports a server edit it took', async () => {
+    const hello = edge('hello', 'return "old"');
+    await local().createEdgeFunction(hello);
+    await pushAll();
+    await sync();
+    const [onServer] = await server.listEdgeFunctions(projectId);
+    await server.updateEdgeFunction({ ...onServer, code: 'return "server"', updatedAt: T1 });
+
+    expect(await sync()).toMatchObject({ success: true, changed: true });
+  });
+
+  it('reports a deletion the server made', async () => {
+    const gone = edge('gone');
+    await local().createEdgeFunction(gone);
+    await pushAll();
+    await sync();
+    await server.deleteEdgeFunction(gone.id);
+
+    expect(await sync()).toMatchObject({ success: true, changed: true });
+    expect(await local().listEdgeFunctions(projectId)).toEqual([]);
+  });
+
+  it('reports nothing when both sides already match', async () => {
+    await local().createEdgeFunction(edge('hello'));
+    await local().createSecret(secret('KEY', 'v1'));
+    await pushAll();
+    await sync();
+
+    expect(await sync()).toMatchObject({ success: true, changed: false });
+  });
+
+  it('reports nothing when only the browser had something, which it pushed', async () => {
+    await local().createEdgeFunction(edge('mine'));
+    expect(await sync()).toMatchObject({ success: true, changed: false });
+  });
+});

@@ -315,7 +315,8 @@ export async function markSyncNeedsRetry(
     const message = options?.reason === 'conflict'
       ? translator()('sync.conflictKept', { name })
       : translator()('sync.failedKept', { name });
-    toast.warning(message, { duration: Infinity });
+    // Keyed by project: it stays until dismissed, so a repeat replaces it instead of stacking.
+    toast.warning(message, { id: `sync-kept-${projectId}`, duration: Infinity });
   }
   syncRetries.delete(projectId);
 }

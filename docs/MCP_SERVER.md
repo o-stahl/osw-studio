@@ -8,8 +8,8 @@ OSW Studio can expose its own MCP (Model Context Protocol) server, so a client l
 
 ## Requirements
 
-- **Server Mode.** The connector works against the workspaces and projects stored on the server. See [Server Mode](?doc=server-mode).
-- **`MCP_ENABLED=true`** in the instance's environment. Without it the endpoint returns 404, as though the route does not exist. The flag does nothing on its own: an instance not in Server Mode returns 404 whether or not it is set.
+- **Server Mode or the desktop app.** The connector works against the workspaces and projects stored on the server. See [Server Mode](?doc=server-mode).
+- **`MCP_ENABLED=true`** in a Server Mode instance's environment. Without it the endpoint returns 404, as though the route does not exist. The flag does nothing on its own: an instance not in Server Mode returns 404 whether or not it is set. The desktop app has the connector on; launched with `MCP_ENABLED=false`, it is off.
 - **An account with access to the workspace** you want to connect. What you can grant depends on your role in that workspace.
 
 ---
@@ -48,7 +48,7 @@ Running the studio locally, the URL is whatever you serve on:
 }
 ```
 
-The desktop app serves on port `30011` by default, so use `http://localhost:30011/api/mcp` for that.
+The desktop app serves on port `30011` by default, so use `http://localhost:30011/api/mcp` for that. It has no sign-in, so its consent screen opens straight away in your browser.
 
 The URL has to be reachable **from wherever the client runs**. A `localhost` URL only works for a client on the same machine; to connect from elsewhere, publish the instance on a hostname the client can reach. See [VPS Deployment](?doc=vps-deployment).
 
@@ -61,7 +61,7 @@ You do not create an API key by hand:
 
 The consent screen shows the client's own name, so you can tell one connector from another when you have several.
 
-You have to be signed in to approve. If you are not, you are sent to sign in and returned to the consent screen afterwards, with the client's request intact — including on a hosted instance, where signing in happens on the account site rather than on the instance itself. The request is held for ten minutes; leave it longer than that and the client has to ask again.
+On a server you have to be signed in to approve; the desktop app has no sign-in. If you are not signed in, you are sent to sign in and returned to the consent screen afterwards, with the client's request intact, including on a hosted instance, where signing in happens on the account site rather than on the instance itself. The request is held for ten minutes; leave it longer than that and the client has to ask again.
 
 ### What a grant covers
 
@@ -315,7 +315,7 @@ DELETE /api/mcp/grants?id=<id>  # revoke one
 ## Troubleshooting
 
 **The client gets a 404, or registration fails with a 404.**
-The endpoint is off. Set `MCP_ENABLED=true` and restart the instance. A 404 is also what you get when the build does not include the connector at all.
+The endpoint is off. Set `MCP_ENABLED=true` and restart the instance. On the desktop app, check that it was not launched with `MCP_ENABLED=false`. A 404 is also what you get when the build does not include the connector at all.
 
 **The client gets a 401 and never recovers.**
 The grant was revoked or the token expired. Revoking happens on Disconnect, and also when the account loses access to the grant's workspace or is deactivated. Remove the server from your client and add it again so it runs through consent afresh.

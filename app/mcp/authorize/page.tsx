@@ -120,7 +120,7 @@ export default async function AuthorizePage({ searchParams }: PageProps) {
       state={state}
       codeChallenge={codeChallenge}
       resource={resource}
-      accountEmail={session!.email}
+      accountEmail={process.env.OSW_DESKTOP === 'true' ? null : session!.email}
       workspaces={options}
       requestedScopes={asked}
       grantableByRole={Object.fromEntries(options.map(w => [w.id, grantableScopes(w.role)]))}

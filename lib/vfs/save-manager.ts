@@ -29,26 +29,21 @@ class SaveManager {
     }
   }
 
-  private setDirty(projectId: string, dirty: boolean): void {
-    const isDirty = this.dirtyProjects.has(projectId);
-    if (dirty && !isDirty) {
-      this.dirtyProjects.add(projectId);
-      this.emit(projectId);
-    } else if (!dirty && isDirty) {
-      this.dirtyProjects.delete(projectId);
-      this.emit(projectId);
-    }
-  }
-
   markDirty(projectId: string): void {
-    if (this.isDirtySuppressed(projectId)) {
+    if (this.isDirtySuppressed(projectId) || this.dirtyProjects.has(projectId)) {
       return;
     }
-    this.setDirty(projectId, true);
+    this.dirtyProjects.add(projectId);
+    this.emit(projectId);
   }
 
+  /**
+   * Always tells the listeners, changed or not: the workspace's own flag, which the header shows, is
+   * also set by a finished server run that never passes through here, and has to be cleared too.
+   */
   markClean(projectId: string): void {
-    this.setDirty(projectId, false);
+    this.dirtyProjects.delete(projectId);
+    this.emit(projectId);
   }
 
   isDirty(projectId: string): boolean {
@@ -92,7 +87,6 @@ class SaveManager {
       kind: 'manual',
       // The time is read from the checkpoint's own timestamp when shown, in the viewer's format.
       label: description ? undefined : { key: 'manualSave' },
-      pinned: true,
       baseRevisionId: previousSavedId
     });
 
@@ -102,7 +96,8 @@ class SaveManager {
     await activeVFS.updateProject(project, { preserveUpdatedAt: true });
 
     if (previousSavedId && previousSavedId !== checkpoint.id) {
-      await checkpointManager.unpinCheckpoint(previousSavedId);
+      // The previous save is now an ordinary checkpoint; one an earlier Save pinned is unpinned.
+      await checkpointManager.releaseSavePin(previousSavedId);
     }
 
     activeVFS.scheduleAutoSync(projectId);
@@ -139,14 +134,19 @@ class SaveManager {
     });
 
     if (restored) {
+      // The restore is stamped as a change so it syncs; the files are the save's again, so the
+      // saved baseline moves up to it and the project reads as saved.
       const after = await activeVFS.getProject(projectId);
-      if (after.lastSavedAt) {
-        after.updatedAt = after.lastSavedAt;
-        await activeVFS.updateProject(after, { preserveUpdatedAt: true });
-      }
+      after.lastSavedAt = after.updatedAt;
+      await activeVFS.updateProject(after, { preserveUpdatedAt: true });
       this.markClean(projectId);
     }
     return restored;
+  }
+
+  /** Record a save made other than by `save`: the checkpoint a project gets on its first open. */
+  setSavedCheckpointId(projectId: string, checkpointId: string): void {
+    this.manualCheckpoints.set(projectId, checkpointId);
   }
 
   getSavedCheckpointId(projectId: string): string | null {

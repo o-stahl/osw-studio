@@ -11,7 +11,7 @@ import { StorageAdapter } from './types';
 import { FALLBACK_RUNTIME, normalizeProjectSettings, settingsNeedNormalizing } from '../project-settings';
 
 const DEFAULT_DB_NAME = 'osw-studio-db';
-const DB_VERSION = 8; // v8: repair malformed project settings and fill in a missing runtime
+const DB_VERSION = 9; // v9: checkpointMeta, each checkpoint's metadata without its files
 
 export class IndexedDBAdapter implements StorageAdapter {
   private db: IDBDatabase | null = null;
@@ -22,6 +22,10 @@ export class IndexedDBAdapter implements StorageAdapter {
     this.dbName = dbName || DEFAULT_DB_NAME;
   }
 
+  get name(): string {
+    return this.dbName;
+  }
+
   async init(): Promise<void> {
     // Re-init if the connection was lost (e.g., close() called, HMR, or browser eviction)
     if (this.initPromise && this.db) return this.initPromise;
@@ -30,7 +34,18 @@ export class IndexedDBAdapter implements StorageAdapter {
 
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
-        this.db = request.result;
+        const db = request.result;
+        this.db = db;
+        // A newer version of the app upgrades this database only once every connection is closed,
+        // so a tab left open on this one would hold a new tab at a blank screen. It lets go, and
+        // reconnects on its next init.
+        db.onversionchange = () => {
+          db.close();
+          if (this.db === db) {
+            this.db = null;
+            this.initPromise = null;
+          }
+        };
         resolve();
       };
 
@@ -113,6 +128,12 @@ export class IndexedDBAdapter implements StorageAdapter {
           const secretsStore = db.createObjectStore('secrets', { keyPath: 'id' });
           secretsStore.createIndex('projectId', 'projectId', { unique: false });
           secretsStore.createIndex('projectIdName', ['projectId', 'name'], { unique: true });
+        }
+
+        // v9: checkpoint metadata, so a project's checkpoint list reads no file snapshot. Filled in
+        // lazily by the checkpoint manager, project by project, so upgrading reads no checkpoint.
+        if (!db.objectStoreNames.contains('checkpointMeta')) {
+          db.createObjectStore('checkpointMeta', { keyPath: 'id' }).createIndex('projectId', 'projectId', { unique: false });
         }
 
         // Scheduled Functions (project-scoped backend features)
@@ -269,7 +290,7 @@ export class IndexedDBAdapter implements StorageAdapter {
     const scheduledFunctionIds = scheduledFunctions.map(f => f.id);
 
     // Phase 2 (write): Delete all items in a single multi-store transaction for atomicity
-    const history = ['checkpoints', 'debugEvents', 'conversations'].filter(name => db.objectStoreNames.contains(name));
+    const history = ['checkpoints', 'checkpointMeta', 'debugEvents', 'conversations'].filter(name => db.objectStoreNames.contains(name));
     const storeNames = ['projects', 'files', 'fileTree', 'edgeFunctions', 'serverFunctions', 'secrets', 'scheduledFunctions', ...history];
     const tx = db.transaction(storeNames, 'readwrite');
 
@@ -303,6 +324,44 @@ export class IndexedDBAdapter implements StorageAdapter {
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
     });
+  }
+
+  /**
+   * Delete the checkpoints, chat and conversations of projects that no longer exist, and return how
+   * many records went: what projects deleted before `deleteProject` took their history with them
+   * left behind, often gigabytes of checkpoints that nothing reads.
+   *
+   * Key cursors only, so nothing is read that is kept. The project list is read in the same
+   * transaction as the deletes, so a project created meanwhile cannot lose its history to it.
+   */
+  async sweepOrphanedHistory(): Promise<number> {
+    const db = this.getDB();
+    const history = ['checkpoints', 'checkpointMeta', 'debugEvents', 'conversations'].filter(name => db.objectStoreNames.contains(name));
+    if (history.length === 0) return 0;
+    const tx = db.transaction(['projects', ...history], 'readwrite');
+    let removed = 0;
+    const projectKeys = tx.objectStore('projects').getAllKeys();
+    projectKeys.onsuccess = () => {
+      const existing = new Set(projectKeys.result);
+      for (const name of history) {
+        const store = tx.objectStore(name);
+        store.index('projectId').openKeyCursor().onsuccess = (event) => {
+          const cursor = (event.target as IDBRequest<IDBCursor | null>).result;
+          if (!cursor) return;
+          if (!existing.has(cursor.key)) {
+            store.delete(cursor.primaryKey);
+            removed++;
+          }
+          cursor.continue();
+        };
+      }
+    };
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
+    });
+    return removed;
   }
 
   async listProjects(fields?: string[]): Promise<Project[]> {

@@ -84,18 +84,21 @@ The application itself is **free and open source** (MIT license). However:
 ### How do checkpoints work?
 
 **Auto-checkpoints**:
-- Created after every AI operation
-- Last 5 kept per project — older ones are automatically pruned
+- Created before and after every AI run, and when a project is first opened. Changes from an MCP client make one checkpoint per burst of edits
+- Each project keeps its 10 newest unpinned automatic checkpoints; older ones are removed. Agent runs never remove a save. Change the number (5, 10, 20 or 50) in **Settings → Data**
 
-**Manual save** (Cmd/Ctrl+S):
-- Permanent save that persists across refreshes
-- All saves are kept in the **Checkpoints Panel** so you can browse and restore any of them
+**Save** (Cmd/Ctrl+S):
+- Your latest save is what **Discard Changes** goes back to. It is locked, shown at the top of the **Checkpoints Panel**, and never removed
+- Each project also keeps its 5 newest earlier saves, counted apart from automatic checkpoints; the checkpoint made before an import counts as a save. Change the number (3, 5, 10 or 20) in **Settings → Data**, or pin a save to keep it for good
 
-**Pinned checkpoints**:
-- Pin any checkpoint to prevent it from being pruned
-- Useful for bookmarking a known-good state before experimenting
+**Pinned and named checkpoints**:
+- Pin any checkpoint to keep it, or give it a name from its menu, which also keeps it
+- Delete one you no longer need from the same menu. Your last save cannot be deleted
+- To delete several, click **Select** at the top of the panel, tick them and delete them together
 
-**Best practice**: Pin a checkpoint before trying something risky, and save often
+Each checkpoint shows how many files and lines changed since the one before it, and how much space it takes. The bottom of the panel shows the total.
+
+**Best practice**: Name a checkpoint before trying something risky, and save often
 
 ### Can I work offline?
 
@@ -112,7 +115,7 @@ The application itself is **free and open source** (MIT license). However:
 
 ### Can I connect Claude Code or another MCP client?
 
-**Yes, in Server Mode.** Set `MCP_ENABLED=true`, then add the instance's `/api/mcp` URL from **Settings → MCP**. The connector can edit files, backend functions and tables, publish and unpublish deployments, and read analytics. It cannot delete a project or a deployment, manage members, or change API keys. See **[MCP Server](?doc=mcp-server)**.
+**Yes, in Server Mode and the desktop app.** On a server, set `MCP_ENABLED=true`; the desktop app has it on. Then add the instance's `/api/mcp` URL from **Settings → MCP**. The connector can edit files, backend functions and tables, publish and unpublish deployments, and read analytics. It cannot delete a project or a deployment, manage members, or change API keys. See **[MCP Server](?doc=mcp-server)**.
 
 ### Can I collaborate with others?
 

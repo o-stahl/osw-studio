@@ -22,7 +22,8 @@ export class SSEEventBus {
     const sseEvent: SSEEvent = {
       id,
       event,
-      data: { ...data, sourceProjectId: projectId, sourceTaskId: taskId },
+      // The id travels in the data too, so a client can tell a replayed event from a new one.
+      data: { ...data, sourceProjectId: projectId, sourceTaskId: taskId, sourceEventId: id },
       buffered: !isDelta,
     };
 

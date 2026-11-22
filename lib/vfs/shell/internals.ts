@@ -11,7 +11,10 @@ interface HeadTailArgs {
   count: number;
   /** `-c` counts characters; otherwise lines. */
   bytes: boolean;
-  filePath: string;
+  /** Every path named, in order. */
+  filePaths: string[];
+  /** `tail -n +N`: from line (or character) N on, rather than the last N. */
+  fromStart: boolean;
 }
 
 /**
@@ -25,12 +28,13 @@ interface HeadTailArgs {
 export function parseHeadTailArgs(args: string[], cmd: string): HeadTailArgs | { error: string } {
   let count: number | null = null;
   let bytes = false;
-  let filePath = '';
+  let fromStart = false;
+  const filePaths: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (!a.startsWith('-')) {
-      filePath = a;
+      filePaths.push(a);
       continue;
     }
     const flag = a === '-n' || a === '-c' ? a : a.slice(0, 2);
@@ -44,6 +48,7 @@ export function parseHeadTailArgs(args: string[], cmd: string): HeadTailArgs | {
       }
       count = parsed;
       bytes = flag === '-c';
+      fromStart = (raw ?? '').startsWith('+');
       continue;
     }
     if (/^-\d+$/.test(a)) {
@@ -53,7 +58,7 @@ export function parseHeadTailArgs(args: string[], cmd: string): HeadTailArgs | {
     return { error: `${cmd}: unsupported option '${a}' (supported: -n, -c)` };
   }
 
-  return { count: count ?? 10, bytes, filePath };
+  return { count: count ?? 10, bytes, filePaths, fromStart };
 }
 
 /**

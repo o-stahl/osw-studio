@@ -386,3 +386,75 @@ describe('a genuine local edit', () => {
     expect(await serverSyncSays(id)).toBe('synced');
   });
 });
+
+/**
+ * A restore changes the files, so the server has to end up with them too. A server run starts from
+ * the server's copy and a page load pulls it when it reads as newer, so a restore that stays in
+ * this browser is undone by the next run or reload.
+ */
+describe('a restore', () => {
+  const SAVED = '<h1>hi</h1>';
+  const LATER = '<h1>edited after the save</h1>';
+  const serverHas = async (id: string) => (await adapter.getFile(id, '/index.html'))?.content;
+
+  async function saveThenEdit(name: string) {
+    const id = await createAndPush(name);
+    vi.setSystemTime(new Date('2026-07-31T10:00:20.000Z'));
+    await saveManager.save(id);
+    await vfs.flushSyncTimeout(id);
+    vi.setSystemTime(new Date('2026-07-31T10:00:30.000Z'));
+    await vfs.updateFile(id, '/index.html', LATER);
+    await autoSyncProject(id, false);
+    expect(await serverHas(id)).toBe(LATER);
+    vi.setSystemTime(new Date('2026-07-31T10:00:40.000Z'));
+    return id;
+  }
+
+  it('Discard sends the saved files to the server before a run starts', async () => {
+    const id = await saveThenEdit('Discarded');
+
+    expect(await saveManager.restoreLastSaved(id)).toBe(true);
+    // What a server run does before it starts.
+    await vfs.flushSyncTimeout(id);
+
+    expect((await vfs.readFile(id, '/index.html')).content).toBe(SAVED);
+    expect(await serverHas(id)).toBe(SAVED);
+  });
+
+  it('Discard leaves the project reading as saved, and a reload pulls nothing back', async () => {
+    const id = await saveThenEdit('Discarded clean');
+
+    await saveManager.restoreLastSaved(id);
+    await vfs.flushSyncTimeout(id);
+
+    // The workspace's own test on open: changed since the save means unsaved.
+    const project = (await vfs.getProject(id))!;
+    expect(new Date(project.updatedAt).getTime()).toBeLessThanOrEqual(new Date(project.lastSavedAt!).getTime());
+    const { checkServerUpdates } = await import('../auto-sync');
+    expect(await checkServerUpdates(id)).toBe(false);
+    expect(await serverSyncSays(id)).toBe('synced');
+  });
+
+  it('restoring an earlier checkpoint sends its files to the server', async () => {
+    const id = await createAndPush('Restored');
+    const { checkpointManager } = await import('../checkpoint');
+    const before = await checkpointManager.createCheckpoint(id, 'before the edit');
+    vi.setSystemTime(new Date('2026-07-31T10:00:30.000Z'));
+    await vfs.updateFile(id, '/index.html', LATER);
+    await autoSyncProject(id, false);
+
+    vi.setSystemTime(new Date('2026-07-31T10:00:40.000Z'));
+    await saveManager.runWithSuppressedDirty(id, () => checkpointManager.restoreCheckpoint(before.id));
+    await vfs.flushSyncTimeout(id);
+
+    expect(await serverHas(id)).toBe(SAVED);
+  });
+
+  it('is still sent after a failed push, because it reads as a local change', async () => {
+    const id = await saveThenEdit('Offline');
+
+    await saveManager.restoreLastSaved(id);
+
+    expect(await serverSyncSays(id)).toBe('local-newer');
+  });
+});
