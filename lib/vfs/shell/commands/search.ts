@@ -35,7 +35,7 @@ export async function searchCommand(env: ShellEnv): Promise<ShellResult> {
 
   const auth = provider === 'searxng'
     ? { searxngUrl: configManager.getSearxngUrl() || undefined }
-    : provider === 'duckduckgo' || provider === 'keenable'
+    : provider === 'duckduckgo'
       ? {}
       : { key: configManager.getWebSearchKey(provider) || undefined };
 

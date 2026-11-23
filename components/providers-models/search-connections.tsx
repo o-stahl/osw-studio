@@ -36,18 +36,22 @@ import { cn } from '@/lib/utils';
 interface SearchProviderMeta {
   id: SearchProviderId;
   name: string;
-  auth: 'none' | 'key' | 'url';
+  /** `optional-key`: works without a key; a key, when saved, is sent instead. */
+  auth: 'none' | 'key' | 'optional-key' | 'url';
   /** Message key of an optional reliability caveat shown in the picker and on the active card. */
   warn?: 'searchWarnDuckduckgo';
+  /** Marked as the suggested choice in the picker. */
+  recommended?: true;
 }
 
+// Alphabetical; the suggested provider is marked instead of listed first.
 const SEARCH_PROVIDERS: SearchProviderMeta[] = [
-  { id: 'duckduckgo', name: 'DuckDuckGo', auth: 'none', warn: 'searchWarnDuckduckgo' },
-  { id: 'tavily', name: 'Tavily', auth: 'key' },
-  { id: 'firecrawl', name: 'Firecrawl', auth: 'key' },
   { id: 'brave', name: 'Brave', auth: 'key' },
+  { id: 'duckduckgo', name: 'DuckDuckGo', auth: 'none', warn: 'searchWarnDuckduckgo' },
+  { id: 'firecrawl', name: 'Firecrawl', auth: 'key' },
+  { id: 'keenable', name: 'Keenable', auth: 'optional-key', recommended: true },
   { id: 'searxng', name: 'SearXNG', auth: 'url' },
-  { id: 'keenable', name: 'Keenable', auth: 'none' },
+  { id: 'tavily', name: 'Tavily', auth: 'key' },
 ];
 
 function getMeta(id: SearchProviderId): SearchProviderMeta {
@@ -56,14 +60,15 @@ function getMeta(id: SearchProviderId): SearchProviderMeta {
 
 /** True when a provider is connected. Read inside effects/handlers only. */
 function isSearchConnected(id: SearchProviderId): boolean {
-  if (id === 'duckduckgo' || id === 'keenable') return configManager.getWebSearchProvider() === id;
+  if (id === 'duckduckgo') return configManager.getWebSearchProvider() === id;
   if (id === 'searxng') return !!configManager.getSearxngUrl();
+  if (id === 'keenable' && configManager.getWebSearchProvider() === id) return true;
   return !!configManager.getWebSearchKey(id);
 }
 
 /** Masked credential shown on a connected card, when applicable. */
 function searchCred(id: SearchProviderId): string {
-  if (id === 'duckduckgo' || id === 'keenable') return '';
+  if (id === 'duckduckgo') return '';
   if (id === 'searxng') return configManager.getSearxngUrl() ?? '';
   const key = configManager.getWebSearchKey(id);
   return key ? `···${key.slice(-4)}` : '';
@@ -174,6 +179,11 @@ function ChooseBody({ onChoose }: { onChoose: (id: SearchProviderId) => void }) 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold text-sm">{p.name}</span>
+              {p.recommended && (
+                <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                  {t('searchRecommended')}
+                </span>
+              )}
             </div>
             <div className="text-xs text-muted-foreground mt-0.5">{t(`searchHelp.${p.id}`)}</div>
             {p.warn && (
@@ -208,20 +218,22 @@ function ConfigureBody({ id, onSaved, onBack }: ConfigureBodyProps) {
   const [value, setValue] = useState(() =>
     id === 'searxng'
       ? configManager.getSearxngUrl() ?? ''
-      : id === 'duckduckgo' || id === 'keenable' ? '' : configManager.getWebSearchKey(id) ?? ''
+      : id === 'duckduckgo' ? '' : configManager.getWebSearchKey(id) ?? ''
   );
   const [showKey, setShowKey] = useState(false);
+  const needsValue = meta.auth === 'key' || meta.auth === 'url';
 
   const handleSave = () => {
     const trimmed = value.trim();
-    if (meta.auth !== 'none' && !trimmed) return;
+    if (needsValue && !trimmed) return;
     if (id === 'searxng') {
       configManager.setSearxngUrl(trimmed);
-    } else if (id !== 'duckduckgo' && id !== 'keenable') {
+    } else if (id !== 'duckduckgo') {
       configManager.setWebSearchKey(id, trimmed);
     }
-    // First connected provider becomes the active one.
-    if (!configManager.getWebSearchProvider()) {
+    // First connected provider becomes the active one. Without a key, an optional-key
+    // provider is connected only while active, so saving it keyless makes it active.
+    if (!configManager.getWebSearchProvider() || (meta.auth === 'optional-key' && !trimmed)) {
       configManager.setWebSearchProvider(id);
     }
     toast.success(t('saved'));
@@ -232,9 +244,13 @@ function ConfigureBody({ id, onSaved, onBack }: ConfigureBodyProps) {
     <div className="px-[18px] py-4 space-y-4">
       <p className="text-xs text-muted-foreground">{t(`searchHelp.${id}`)}</p>
 
-      {meta.auth === 'key' ? (
+      {meta.auth === 'key' || meta.auth === 'optional-key' ? (
         <div>
-          <Label htmlFor="search-key">{tsx('providerApiKey', { provider: meta.name })}</Label>
+          <Label htmlFor="search-key">
+            {meta.auth === 'optional-key'
+              ? t('searchApiKeyOptional', { provider: meta.name })
+              : tsx('providerApiKey', { provider: meta.name })}
+          </Label>
           <div className="flex gap-2 mt-2">
             <div className="relative flex-1">
               <Input
@@ -242,7 +258,7 @@ function ConfigureBody({ id, onSaved, onBack }: ConfigureBodyProps) {
                 type={showKey ? 'text' : 'password'}
                 value={value}
                 onChange={(e) => { setValue(e.target.value); }}
-                onKeyDown={(e) => { if (e.key === 'Enter' && value.trim()) handleSave(); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && (value.trim() || !needsValue)) handleSave(); }}
                 placeholder={t('apiKeyPlaceholder')}
                 className="pr-10"
               />
@@ -283,8 +299,8 @@ function ConfigureBody({ id, onSaved, onBack }: ConfigureBodyProps) {
         <Button variant="ghost" size="sm" onClick={onBack}>
           {tc('actions.back')}
         </Button>
-        <Tip label={meta.auth !== 'none' && !value.trim() ? (meta.auth === 'url' ? t('tips.urlFirst') : t('tips.keyFirst')) : undefined}>
-          <Button size="sm" onClick={handleSave} disabled={meta.auth !== 'none' && !value.trim()}>
+        <Tip label={needsValue && !value.trim() ? (meta.auth === 'url' ? t('tips.urlFirst') : t('tips.keyFirst')) : undefined}>
+          <Button size="sm" onClick={handleSave} disabled={needsValue && !value.trim()}>
             {tc('actions.save')}
           </Button>
         </Tip>
@@ -337,7 +353,7 @@ export function SearchConnectionsSection() {
     const meta = getMeta(id);
     if (id === 'searxng') {
       configManager.setSearxngUrl('');
-    } else if (id !== 'duckduckgo' && id !== 'keenable') {
+    } else if (id !== 'duckduckgo') {
       configManager.setWebSearchKey(id, '');
     }
     // If the disconnected provider was active, reassign to another connected one.
@@ -365,7 +381,10 @@ export function SearchConnectionsSection() {
   } else if (drawerMode === 'configure' && selectedId) {
     drawerLabel = `← ${tc('actions.back')}`;
     drawerTitle = getMeta(selectedId).name;
-    drawerScope = getMeta(selectedId).auth === 'url' ? t('searchScopeUrl') : t('searchScopeKey');
+    const auth = getMeta(selectedId).auth;
+    drawerScope = auth === 'url'
+      ? t('searchScopeUrl')
+      : auth === 'optional-key' ? t('searchScopeOptionalKey') : t('searchScopeKey');
   }
 
   return (

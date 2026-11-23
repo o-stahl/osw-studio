@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Web search
+- **Keenable is a web search provider with an optional key**: `providers/keenable.ts` calls `/v1/search/public` (`X-Keenable-Title`) keyless, or `/v1/search` (`X-API-Key`) with `webSearch.keys.keenable`. Connections auth `optional-key`; a keyless save makes it active.
+- **The search provider picker is alphabetical and marks Keenable as recommended**: `SEARCH_PROVIDERS` order sets the picker, the connected cards and which provider becomes active after a disconnect; `recommended` shows `connections.searchRecommended`. Nothing connects by default.
+
 ## v1.112.0 - 2026-11-23
 
 ### Checkpoints

@@ -2098,7 +2098,10 @@
     "setAsActive": "Set as active",
     "searchPickProvider": "Pick a web search provider to connect.",
     "searchScopeUrl": "Self-hosted instance URL.",
+    "searchRecommended": "Recommended",
+    "searchApiKeyOptional": "{provider} API key (optional)",
     "searchScopeKey": "API key.",
+    "searchScopeOptionalKey": "Optional API key.",
     "isActive": "{name} is active",
     "extraHeaders": "Extra headers",
     "hideHeaderValues": "Hide header values",
@@ -2128,7 +2131,7 @@
       "firecrawl": "1,000 credits/month free.",
       "brave": "Paid: $5 monthly credit, card required.",
       "searxng": "Point at your own SearXNG instance (JSON API must be enabled).",
-      "keenable": "Keyless web search from Keenable's own index. Shared per-IP limit; Keenable logs queries."
+      "keenable": "Keenable's own search index. Works without a key on a per-IP limit shared by everyone on the same address; a free key (100,000 searches/month) gives you your own limit. Keenable logs queries."
     },
     "searchWarnDuckduckgo": "Best-effort and unofficial: searches may be rate-limited or blocked, especially on shared or hosted instances where every user shares one address. Add a key-based provider for heavier use.",
     "tips": {

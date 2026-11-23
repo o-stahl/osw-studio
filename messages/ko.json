@@ -2094,8 +2094,11 @@
     "searchBestEffort": "최선을 다하지만 요청 수가 제한될 수 있어요",
     "setAsActive": "활성으로 설정",
     "searchPickProvider": "연결할 웹 검색 제공자를 고르세요.",
+    "searchRecommended": "추천",
+    "searchApiKeyOptional": "{provider} API 키 (선택)",
     "searchScopeUrl": "자체 호스팅 인스턴스 URL.",
     "searchScopeKey": "API 키.",
+    "searchScopeOptionalKey": "API 키 (선택).",
     "isActive": "{name}이(가) 활성 상태예요",
     "extraHeaders": "추가 헤더",
     "hideHeaderValues": "헤더 값 숨기기",
@@ -2125,7 +2128,7 @@
       "firecrawl": "한 달에 1,000 크레딧이 무료예요.",
       "brave": "유료: 매달 $5 크레딧이 있고 카드가 필요해요.",
       "searxng": "직접 운영하는 SearXNG 인스턴스를 지정하세요 (JSON API가 켜져 있어야 해요).",
-      "keenable": "API 키 없이 Keenable 자체 인덱스로 웹을 검색해요. IP별 공용 한도가 있고, Keenable은 검색어를 기록해요."
+      "keenable": "Keenable 자체 검색 인덱스예요. 키 없이도 쓸 수 있지만 같은 주소를 쓰는 모든 사용자가 IP별 한도를 같이 써요. 무료 키(한 달에 검색 100,000번)를 쓰면 한도를 따로 받아요. Keenable은 검색어를 기록해요."
     },
     "searchWarnDuckduckgo": "비공식이라 최선을 다하는 수준이에요. 특히 모든 사용자가 한 주소를 같이 쓰는 공용 또는 호스팅 인스턴스에서는 검색 요청이 제한되거나 막힐 수 있어요. 많이 쓴다면 키 기반 제공자를 추가하세요.",
     "tips": {

@@ -1918,7 +1918,7 @@ export const createOrchestratorSlice: StateCreator<CombinedState, [], [], Orches
     const webSearch = wsProvider
       ? {
           provider: wsProvider,
-          key: (wsProvider === 'tavily' || wsProvider === 'firecrawl' || wsProvider === 'brave')
+          key: (wsProvider !== 'duckduckgo' && wsProvider !== 'searxng')
             ? (configManager.getWebSearchKey(wsProvider) || undefined)
             : undefined,
           searxngUrl: wsProvider === 'searxng' ? (configManager.getSearxngUrl() || undefined) : undefined,

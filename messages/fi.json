@@ -2094,8 +2094,11 @@
     "searchBestEffort": "Parhaansa mukaan — saattaa olla rajoitettu",
     "setAsActive": "Aseta aktiiviseksi",
     "searchPickProvider": "Valitse yhdistettävä verkkohakupalvelu.",
+    "searchRecommended": "Suositeltu",
+    "searchApiKeyOptional": "{provider}-palvelun API-avain (valinnainen)",
     "searchScopeUrl": "Oman instanssin osoite.",
     "searchScopeKey": "API-avain.",
+    "searchScopeOptionalKey": "Valinnainen API-avain.",
     "isActive": "{name} on aktiivinen",
     "extraHeaders": "Lisäotsakkeet",
     "hideHeaderValues": "Piilota otsakkeiden arvot",
@@ -2125,7 +2128,7 @@
       "firecrawl": "1 000 krediittiä kuukaudessa ilmaiseksi.",
       "brave": "Maksullinen: 5 $ kuukausikrediitti, kortti vaaditaan.",
       "searxng": "Osoita omaan SearXNG-instanssiisi (JSON API:n on oltava käytössä).",
-      "keenable": "Avaimeton verkkohaku Keenablen omasta indeksistä. Jaettu IP-kohtainen raja; Keenable kirjaa haut."
+      "keenable": "Keenablen oma hakuindeksi. Toimii ilman avainta IP-kohtaisella rajalla, jonka kaikki samasta osoitteesta hakevat jakavat; ilmainen avain (100 000 hakua kuukaudessa) antaa oman rajan. Keenable kirjaa haut."
     },
     "searchWarnDuckduckgo": "Epävirallinen ja parhaansa mukaan toimiva: hakuja voidaan rajoittaa tai estää, etenkin jaetuilla tai palveluna ajetuilla instansseilla, joissa kaikki käyttäjät jakavat yhden osoitteen. Lisää avaimella toimiva palveluntarjoaja runsaampaan käyttöön.",
     "tips": {

@@ -52,8 +52,11 @@ describe('permissions config', () => {
     expect(configManager.isWebSearchConfigured()).toBe(true);
   });
 
-  it('keenable is configured without credentials', () => {
+  it('keenable is configured without credentials and keeps an optional key', () => {
     configManager.setWebSearchProvider('keenable');
+    expect(configManager.isWebSearchConfigured()).toBe(true);
+    configManager.setWebSearchKey('keenable', 'kn-x');
+    expect(configManager.getWebSearchKey('keenable')).toBe('kn-x');
     expect(configManager.isWebSearchConfigured()).toBe(true);
   });
 
