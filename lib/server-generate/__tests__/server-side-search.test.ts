@@ -52,6 +52,23 @@ describe('runServerSideSearch', () => {
     expect(r.stdout).toContain('2. Second');
   });
 
+  it('sends a Keenable key from the client config to the keyed endpoint', async () => {
+    const { keenable } = await vi.importActual<typeof import('@/lib/web-search/providers/keenable')>('@/lib/web-search/providers/keenable');
+    mocks.getWebSearchProvider.mockReturnValue(keenable);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ results: [{ title: 'K', url: 'https://k.example', snippet: 'k' }] })),
+    );
+    try {
+      const r = await runServerSideSearch(['hello'], { provider: 'keenable', key: 'kn-x' } as ServerWebSearchConfig);
+      const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://api.keenable.ai/v1/search');
+      expect((init.headers as Record<string, string>)['X-API-Key']).toBe('kn-x');
+      expect(r.stdout).toContain('1. K');
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('reports "No results." when the provider returns an empty list', async () => {
     mocks.getWebSearchProvider.mockReturnValue({ name: 'Tavily', auth: 'key', search: vi.fn().mockResolvedValue([]) });
     const r = await runServerSideSearch(['nothing here'], keyConfig);

@@ -4,6 +4,7 @@ import { tavily } from '../providers/tavily';
 import { brave } from '../providers/brave';
 import { searxng } from '../providers/searxng';
 import { firecrawl } from '../providers/firecrawl';
+import { keenable } from '../providers/keenable';
 
 vi.mock('ts-duckduckgo-search', () => ({
   searchDuckDuckGo: vi.fn(async () => [
@@ -82,5 +83,48 @@ describe('firecrawl', () => {
   });
   it('returns [] when data missing', () => {
     expect(firecrawl.normalize({})).toEqual([]);
+  });
+});
+
+describe('keenable', () => {
+  it('builds a keyless POST to the public endpoint with the app title header', () => {
+    const { url, init } = keenable.buildRequest('q', { count: 4 }, {});
+    expect(keenable.auth).toBe('none');
+    expect(url).toBe('https://api.keenable.ai/v1/search/public');
+    expect(init.method).toBe('POST');
+    const headers = init.headers as Record<string, string>;
+    expect(headers['X-Keenable-Title']).toBe('OSW Studio');
+    expect(headers).not.toHaveProperty('Authorization');
+    expect(headers).not.toHaveProperty('X-API-Key');
+    expect(JSON.parse(init.body as string)).toEqual({ query: 'q', max_results: 4, snippet_max_length: 1000 });
+  });
+  it('sends a saved key to the keyed endpoint without the public title header', () => {
+    const { url, init } = keenable.buildRequest('q', {}, { key: 'kn-x' });
+    expect(url).toBe('https://api.keenable.ai/v1/search');
+    const headers = init.headers as Record<string, string>;
+    expect(headers['X-API-Key']).toBe('kn-x');
+    expect(headers).not.toHaveProperty('X-Keenable-Title');
+    expect(JSON.parse(init.body as string).max_results).toBe(5);
+  });
+  it('keeps max_results within the 1 to 50 the API accepts', () => {
+    const max = (count: number) => JSON.parse(keenable.buildRequest('q', { count }, {}).init.body as string).max_results;
+    expect(max(100)).toBe(50);
+    expect(max(-3)).toBe(1);
+  });
+  it('normalizes snippet, clips it, and drops url-less rows', () => {
+    const raw = {
+      results: [
+        { title: 'T', url: 'https://x', snippet: 's'.repeat(1500) },
+        { title: '', url: 'https://y', description: '' },
+        { title: 'no url' },
+      ],
+    };
+    expect(keenable.normalize(raw)).toEqual([
+      { title: 'T', url: 'https://x', snippet: 's'.repeat(1000) },
+      { title: 'https://y', url: 'https://y', snippet: '' },
+    ]);
+  });
+  it('returns [] when results missing', () => {
+    expect(keenable.normalize({})).toEqual([]);
   });
 });

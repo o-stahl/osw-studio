@@ -6,7 +6,9 @@ export interface WebSearchResult {
 }
 export interface WebSearchOpts { count?: number; markdown?: boolean; }
 export interface WebSearchAuth { key?: string; searxngUrl?: string; }
-export type WebSearchProviderId = 'duckduckgo' | 'tavily' | 'firecrawl' | 'brave' | 'searxng';
+export type WebSearchProviderId = 'duckduckgo' | 'tavily' | 'firecrawl' | 'brave' | 'searxng' | 'keenable';
+/** Providers that take an API key: required for Tavily, Firecrawl and Brave, optional for Keenable. */
+export type WebSearchKeyProviderId = 'tavily' | 'firecrawl' | 'brave' | 'keenable';
 interface WebSearchProviderBase {
   id: WebSearchProviderId;
   name: string;

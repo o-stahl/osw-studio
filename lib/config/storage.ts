@@ -11,7 +11,7 @@ import {
 } from '@/lib/llm/providers/custom-providers';
 import { UsageInfo } from '@/lib/llm/types';
 import type { ModelTemplate, ModelAssignment } from '@/lib/llm/models/assignment';
-import type { WebSearchProviderId } from '@/lib/web-search/types';
+import type { WebSearchKeyProviderId, WebSearchProviderId } from '@/lib/web-search/types';
 import { BUILT_IN_MODEL_TEMPLATES, isBuiltInTemplateId } from '@/lib/llm/models/registry';
 import { logger } from '@/lib/utils';
 import type { PermissionMode, GateDecision } from '@/lib/llm/permissions';
@@ -97,7 +97,7 @@ export interface AppSettings {
   permissionOverrides?: Record<string, 'ask' | 'allow'>;
   webSearch?: {
     provider?: WebSearchProviderId;
-    keys?: Partial<Record<'tavily' | 'firecrawl' | 'brave', string>>;
+    keys?: Partial<Record<WebSearchKeyProviderId, string>>;
     searxngUrl?: string;
   };
   /** Provider group ids collapsed in the model picker. */
@@ -793,10 +793,10 @@ class ConfigManager {
     if (p === null) { delete ws.provider; } else { ws.provider = p; }
     this.setSetting('webSearch', ws);
   }
-  getWebSearchKey(p: 'tavily' | 'firecrawl' | 'brave'): string | null {
+  getWebSearchKey(p: WebSearchKeyProviderId): string | null {
     return this.getSettings().webSearch?.keys?.[p] ?? null;
   }
-  setWebSearchKey(p: 'tavily' | 'firecrawl' | 'brave', key: string): void {
+  setWebSearchKey(p: WebSearchKeyProviderId, key: string): void {
     const ws = this.getSettings().webSearch ?? {};
     this.setSetting('webSearch', { ...ws, keys: { ...ws.keys, [p]: key } });
   }
@@ -809,7 +809,7 @@ class ConfigManager {
   isWebSearchConfigured(): boolean {
     const ws = this.getSettings().webSearch;
     if (!ws?.provider) return false;
-    if (ws.provider === 'duckduckgo') return true;
+    if (ws.provider === 'duckduckgo' || ws.provider === 'keenable') return true;
     if (ws.provider === 'searxng') return !!ws.searxngUrl;
     return !!ws.keys?.[ws.provider];
   }
