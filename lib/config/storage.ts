@@ -809,7 +809,7 @@ class ConfigManager {
   isWebSearchConfigured(): boolean {
     const ws = this.getSettings().webSearch;
     if (!ws?.provider) return false;
-    if (ws.provider === 'duckduckgo') return true;
+    if (ws.provider === 'duckduckgo' || ws.provider === 'keenable') return true;
     if (ws.provider === 'searxng') return !!ws.searxngUrl;
     return !!ws.keys?.[ws.provider];
   }

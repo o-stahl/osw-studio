@@ -2124,7 +2124,8 @@
       "tavily": "1 000 hakua kuukaudessa ilmaiseksi, korttia ei tarvita.",
       "firecrawl": "1 000 krediittiä kuukaudessa ilmaiseksi.",
       "brave": "Maksullinen: 5 $ kuukausikrediitti, kortti vaaditaan.",
-      "searxng": "Osoita omaan SearXNG-instanssiisi (JSON API:n on oltava käytössä)."
+      "searxng": "Osoita omaan SearXNG-instanssiisi (JSON API:n on oltava käytössä).",
+      "keenable": "Avaimeton verkkohaku Keenablen omasta indeksistä. Jaettu IP-kohtainen raja; Keenable kirjaa haut."
     },
     "searchWarnDuckduckgo": "Epävirallinen ja parhaansa mukaan toimiva: hakuja voidaan rajoittaa tai estää, etenkin jaetuilla tai palveluna ajetuilla instansseilla, joissa kaikki käyttäjät jakavat yhden osoitteen. Lisää avaimella toimiva palveluntarjoaja runsaampaan käyttöön.",
     "tips": {

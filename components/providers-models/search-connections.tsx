@@ -47,6 +47,7 @@ const SEARCH_PROVIDERS: SearchProviderMeta[] = [
   { id: 'firecrawl', name: 'Firecrawl', auth: 'key' },
   { id: 'brave', name: 'Brave', auth: 'key' },
   { id: 'searxng', name: 'SearXNG', auth: 'url' },
+  { id: 'keenable', name: 'Keenable', auth: 'none' },
 ];
 
 function getMeta(id: SearchProviderId): SearchProviderMeta {
@@ -55,14 +56,14 @@ function getMeta(id: SearchProviderId): SearchProviderMeta {
 
 /** True when a provider is connected. Read inside effects/handlers only. */
 function isSearchConnected(id: SearchProviderId): boolean {
-  if (id === 'duckduckgo') return configManager.getWebSearchProvider() === id;
+  if (id === 'duckduckgo' || id === 'keenable') return configManager.getWebSearchProvider() === id;
   if (id === 'searxng') return !!configManager.getSearxngUrl();
   return !!configManager.getWebSearchKey(id);
 }
 
 /** Masked credential shown on a connected card, when applicable. */
 function searchCred(id: SearchProviderId): string {
-  if (id === 'duckduckgo') return '';
+  if (id === 'duckduckgo' || id === 'keenable') return '';
   if (id === 'searxng') return configManager.getSearxngUrl() ?? '';
   const key = configManager.getWebSearchKey(id);
   return key ? `···${key.slice(-4)}` : '';
@@ -207,7 +208,7 @@ function ConfigureBody({ id, onSaved, onBack }: ConfigureBodyProps) {
   const [value, setValue] = useState(() =>
     id === 'searxng'
       ? configManager.getSearxngUrl() ?? ''
-      : id === 'duckduckgo' ? '' : configManager.getWebSearchKey(id) ?? ''
+      : id === 'duckduckgo' || id === 'keenable' ? '' : configManager.getWebSearchKey(id) ?? ''
   );
   const [showKey, setShowKey] = useState(false);
 
@@ -216,7 +217,7 @@ function ConfigureBody({ id, onSaved, onBack }: ConfigureBodyProps) {
     if (meta.auth !== 'none' && !trimmed) return;
     if (id === 'searxng') {
       configManager.setSearxngUrl(trimmed);
-    } else if (id !== 'duckduckgo') {
+    } else if (id !== 'duckduckgo' && id !== 'keenable') {
       configManager.setWebSearchKey(id, trimmed);
     }
     // First connected provider becomes the active one.
@@ -336,7 +337,7 @@ export function SearchConnectionsSection() {
     const meta = getMeta(id);
     if (id === 'searxng') {
       configManager.setSearxngUrl('');
-    } else if (id !== 'duckduckgo') {
+    } else if (id !== 'duckduckgo' && id !== 'keenable') {
       configManager.setWebSearchKey(id, '');
     }
     // If the disconnected provider was active, reassign to another connected one.

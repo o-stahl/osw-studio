@@ -52,6 +52,11 @@ describe('permissions config', () => {
     expect(configManager.isWebSearchConfigured()).toBe(true);
   });
 
+  it('keenable is configured without credentials', () => {
+    configManager.setWebSearchProvider('keenable');
+    expect(configManager.isWebSearchConfigured()).toBe(true);
+  });
+
   it('searxng is configured via url not key', () => {
     configManager.setWebSearchProvider('searxng');
     expect(configManager.isWebSearchConfigured()).toBe(false);

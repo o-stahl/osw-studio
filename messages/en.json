@@ -2127,7 +2127,8 @@
       "tavily": "1,000 searches/month free, no card required.",
       "firecrawl": "1,000 credits/month free.",
       "brave": "Paid: $5 monthly credit, card required.",
-      "searxng": "Point at your own SearXNG instance (JSON API must be enabled)."
+      "searxng": "Point at your own SearXNG instance (JSON API must be enabled).",
+      "keenable": "Keyless web search from Keenable's own index. Shared per-IP limit; Keenable logs queries."
     },
     "searchWarnDuckduckgo": "Best-effort and unofficial: searches may be rate-limited or blocked, especially on shared or hosted instances where every user shares one address. Add a key-based provider for heavier use.",
     "tips": {

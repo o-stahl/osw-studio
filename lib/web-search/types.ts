@@ -6,7 +6,7 @@ export interface WebSearchResult {
 }
 export interface WebSearchOpts { count?: number; markdown?: boolean; }
 export interface WebSearchAuth { key?: string; searxngUrl?: string; }
-export type WebSearchProviderId = 'duckduckgo' | 'tavily' | 'firecrawl' | 'brave' | 'searxng';
+export type WebSearchProviderId = 'duckduckgo' | 'tavily' | 'firecrawl' | 'brave' | 'searxng' | 'keenable';
 interface WebSearchProviderBase {
   id: WebSearchProviderId;
   name: string;
