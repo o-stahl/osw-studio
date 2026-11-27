@@ -109,3 +109,14 @@ describe('ls on a single file path', () => {
     expect((await run('ls /')).stdout).toBe('/bundle.js\n/src/store.ts');
   });
 });
+
+describe('ls -R with several paths', () => {
+  it('recurses into each directory', async () => {
+    const DEEP = { ...SRC, path: '/src/lib/deep.ts', name: 'deep.ts' };
+    const all = [BUNDLE, SRC, DEEP];
+    const parent = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/';
+    mockVfs.listDirectory.mockImplementationOnce(async (_p: string, dir: string) => all.filter(f => parent(f.path) === dir));
+    mockVfs.getAllFilesAndDirectories.mockResolvedValueOnce(all);
+    expect((await run('ls -R /bundle.js /src')).stdout).toBe('/bundle.js\n\n/src:\n/src/lib/deep.ts\n/src/store.ts');
+  });
+});

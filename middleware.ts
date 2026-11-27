@@ -72,6 +72,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.json({ error: 'Cross-origin request refused' }, { status: 403 });
   }
 
+  // Next's own trailing-slash redirect is off (`skipTrailingSlashRedirect`) so a site keeps its
+  // folder addresses; the studio's addresses still lose the slash, as they did.
+  if (pathname.length > 1 && pathname.endsWith('/') && !/^\/(deployments|review)\//.test(pathname)) {
+    // A plain URL: NextURL puts the request's own trailing slash back when it is formatted.
+    const stripped = new URL(request.url);
+    stripped.pathname = pathname.replace(/\/+$/, '') || '/';
+    return NextResponse.redirect(stripped, 308);
+  }
+
   // The demo's bridge page (lib/demo-bridge) answers only the hosted instances, and only they may
   // frame it.
   if (pathname === BRIDGE_PATH && isDemo()) {

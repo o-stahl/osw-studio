@@ -10,6 +10,19 @@ import { logger } from '@/lib/utils';
 import { configManager } from '@/lib/config/storage';
 import type { ModelRef, ResolvedAssignment } from '@/lib/llm/models/assignment';
 
+/** An image the model starts from: a sketch, render or photo it reworks rather than drawing anew. */
+export interface SourceImage {
+  base64: string;    // no data: prefix
+  mimeType: string;  // image/png, image/jpeg, image/webp or image/gif
+}
+
+/** What `generate-image` asks for beside the prompt. */
+export interface ImageRequestOptions {
+  aspectRatio?: string;
+  imageSize?: string;
+  source?: SourceImage;
+}
+
 export interface GenerateImageOptions {
   provider: ProviderId;
   apiKey: string;
@@ -18,6 +31,7 @@ export interface GenerateImageOptions {
   aspectRatio?: string; // e.g. "16:9", "1:1"
   imageSize?: string;   // e.g. "0.5K", "1K", "2K", "4K"
   modalities?: string[]; // model's declared output modalities, e.g. ['image'] or ['image','text']
+  source?: SourceImage;
   /** The run's abort signal, so Stop cancels an image still being generated. */
   signal?: AbortSignal;
 }
@@ -65,6 +79,7 @@ export async function generateImage(opts: GenerateImageOptions): Promise<Generat
       prompt: opts.prompt,
       image_config,
       ...(opts.modalities ? { modalities: opts.modalities } : {}),
+      ...(opts.source ? { source_image: `data:${opts.source.mimeType};base64,${opts.source.base64}` } : {}),
     }),
   });
 

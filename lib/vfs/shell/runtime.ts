@@ -10,6 +10,7 @@ import { VirtualFileSystem } from '../index';
 import { getFileTypeFromPath, type FileType } from '../types';
 import type { ShellContext, ShellResult } from './types';
 import { normalizePath } from './paths';
+import { base64ToArrayBuffer } from '../binary-encoding';
 
 const TRUNCATE_CHARS = 100_000;
 
@@ -22,6 +23,16 @@ export function truncate(out: string): string {
 }
 
 export { normalizePath };
+
+/** Base64 image data written to `path`, its folders made, replacing a file already there. Returns the byte count. */
+export async function writeBase64File(vfs: VirtualFileSystem, projectId: string, path: string, base64: string): Promise<number> {
+  const bytes = base64ToArrayBuffer(base64);
+  const dir = path.slice(0, path.lastIndexOf('/')) || '/';
+  if (dir !== '/') await ensureDirectory(vfs, projectId, dir);
+  if (await vfs.fileExists(projectId, path)) await vfs.updateFile(projectId, path, bytes);
+  else await vfs.createFile(projectId, path, bytes);
+  return bytes.byteLength;
+}
 
 export async function ensureDirectory(vfs: VirtualFileSystem, projectId: string, path: string) {
   if (path === '/' || !path) return;

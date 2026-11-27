@@ -180,7 +180,7 @@ export function sanitizeRenderResult(body: unknown): RenderResult {
       if (!data || data.length > MAX_IMAGE_CHARS || !BASE64.test(data)) return { ok: false, error: 'the tab answered with an unreadable image' };
       const region = (raw.region ?? {}) as Record<string, unknown>;
       images.push({
-        mediaType: 'image/jpeg' as const,
+        mediaType: raw.mediaType === 'image/png' ? 'image/png' as const : 'image/jpeg' as const,
         data,
         width: num(raw.width),
         height: num(raw.height),

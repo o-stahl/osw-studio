@@ -20,7 +20,7 @@ import { RATE_LIMIT_CONFIG } from '@/lib/analytics/rate-limiter';
 import { deploymentReviewDir } from '@/lib/compiler/deployment-review-dir';
 import { resolveReviewAccess } from '@/lib/review/access';
 import { consumeReviewAssetAttempt } from '@/lib/review/read-gate';
-import { resolveReviewFilePath, reviewMimeType } from '@/lib/review/serve-path';
+import { folderSlashRedirect, resolveReviewFilePath, reviewMimeType } from '@/lib/review/serve-path';
 import { logger } from '@/lib/utils';
 import { PRIVATE_HEADERS } from '@/lib/review/responses';
 
@@ -57,6 +57,8 @@ export async function GET(
     // it gets here; containment is inside resolveReviewFilePath.
     const filePath = await resolveReviewFilePath(deploymentReviewDir(deploymentId), pathSegments);
     if (!filePath) return notFound();
+    const toFolder = folderSlashRedirect(request, filePath, pathSegments);
+    if (toFolder) return toFolder;
 
     const content = await fs.readFile(filePath);
 

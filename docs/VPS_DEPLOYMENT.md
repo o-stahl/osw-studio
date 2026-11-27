@@ -238,7 +238,7 @@ pm2 restart osws
 
 ### Serving published sites from their own address
 
-To keep published sites off the studio's address, add a second DNS name for them, give it a certificate, set `SITES_ORIGIN` and `NEXT_PUBLIC_APP_URL`, then rebuild and restart. See [Setting up a sites address](?doc=server-mode#setting-up-a-sites-address). Without it, sites run on the studio's address and the Deployments view shows a warning.
+To keep published sites off the studio's address, add a second DNS name for them, give it a certificate, set `SITES_ORIGIN` and `APP_URL`, then restart. See [Setting up a sites address](?doc=server-mode#setting-up-a-sites-address). Without it, sites run on the studio's address and the Deployments view shows a warning.
 
 ---
 

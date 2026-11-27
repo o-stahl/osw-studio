@@ -111,6 +111,7 @@ These five are the whole list. A scope outside it is ignored rather than granted
 | `canvas_selection` | `projects:read` | The element you have selected on Canvas or in Live Preview: its page, width, position in source (`/index.html:16:5`) and marker, and the `style` command that changes only that element (`restyle`) |
 | `agent_run` | `agent` | Ask the OSW Studio agent to work on a project |
 | `agent_status` | `agent` | How a task is going, and what it has done |
+| `agent_list` | `agent` | Your tasks in the workspace, newest first, by project or only running ones; finished ones are kept for 7 days |
 | `agent_cancel` | `agent` | Stop a running task |
 | `deployments_list` | `deploy` | The deployments in the workspace and their published state |
 | `deployments_url` | `deploy` | Where a deployment is served, and whether a review password gates it |
@@ -281,7 +282,7 @@ Your provider API key lives in your browser's local storage and is never stored 
 
 So before calling these, **have OSW Studio open in a browser** and signed in to the same account. With no tab attached the call returns a message saying so rather than waiting.
 
-Every other tool needs no browser tab, `agent_status` and `agent_cancel` included: once a task exists, its progress and its cancellation are handled on the server, so a client can start a task with a tab open and follow it after the tab is gone.
+Every other tool needs no browser tab, `agent_status`, `agent_list` and `agent_cancel` included: once a task exists, its progress and its cancellation are handled on the server, so a client can start a task with a tab open and follow it after the tab is gone.
 
 ---
 

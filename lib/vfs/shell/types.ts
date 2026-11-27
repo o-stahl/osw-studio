@@ -7,6 +7,7 @@
  */
 
 import type { VirtualFileSystem } from '../index';
+import type { ImageRequestOptions } from '@/lib/llm/image-gen';
 import type { ElementMatcher } from '@/lib/direct-edit/targets';
 import type { RenderJob, RenderResult, ScreenshotImage } from '@/lib/canvas/render-types';
 
@@ -20,13 +21,13 @@ export interface ShellContext {
   onProgress?: (event: string, data?: any) => void;
   /** Generates an image from the project's image model. Absent when no image
    *  model is configured for the project. Injected from ToolExecutionContext. */
-  generateImage?: (prompt: string, opts: { aspectRatio?: string; imageSize?: string }) => Promise<{ base64: string; mimeType: string }>;
+  generateImage?: (prompt: string, opts: ImageRequestOptions) => Promise<{ base64: string; mimeType: string }>;
   /** Conversation-scoped map of path → updatedAt epoch-ms at the agent's last full
    *  read (or whole-chunk write) of that file. Powers the read-before-edit staleness
    *  guard. Absent for direct/test callers, which disables the guard. */
   readVersions?: Map<string, number>;
   /** Delegate a build to the browser (server-side generation only). */
-  onBuildRequested?: () => Promise<{ success: boolean; errors?: string[] }>;
+  onBuildRequested?: () => Promise<{ success: boolean; errors?: string[]; deferred?: boolean }>;
   /** Delegate a web search to the browser (server-side generation only), so the client's
    *  configured provider/key runs it. Returns the command's stdout/stderr/exit. */
   onSearchRequested?: (args: string[]) => Promise<{ stdout: string; stderr: string; exitCode: number }>;

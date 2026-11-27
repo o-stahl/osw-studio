@@ -18,11 +18,11 @@ import { handleImageRequested } from '../image-delegation-handler';
 
 let posts: Array<{ url: string; body: Record<string, unknown> }>;
 
-function stubServer(granted: boolean) {
+function stubServer(granted: boolean, claim: Record<string, unknown> = {}) {
   posts = [];
   vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
     posts.push({ url, body: JSON.parse(String(init.body)) });
-    return new Response(JSON.stringify(url.endsWith('/image-claim') ? { granted } : { ok: true }));
+    return new Response(JSON.stringify(url.endsWith('/image-claim') ? { granted, ...claim } : { ok: true }));
   });
 }
 
@@ -55,6 +55,13 @@ describe('handleImageRequested', () => {
       provider: 'openrouter', apiKey: 'k', model: 'img', prompt: 'a lighthouse',
       aspectRatio: '16:9', imageSize: '1K', modalities: ['image'],
     });
+  });
+
+  it('generates from the source image the claim hands over', async () => {
+    const source = { base64: 'iVBORw0KGgo=', mimeType: 'image/png' };
+    stubServer(true, { source });
+    await handleImageRequested({ taskId: 't1', requestId: 'r1', prompt: 'paint it' });
+    expect(generateImage).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'paint it', source }));
   });
 
   // The paused server run is waiting on this request; an answer saying why lets it move on now

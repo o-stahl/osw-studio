@@ -25,6 +25,8 @@ export interface Project {
       url: string;           // https://huggingface.co/spaces/<repoId>
       isPrivate: boolean;
       lastPublishedAt: string; // ISO timestamp
+      /** What the last publish wrote, so the next one removes only its own files. */
+      publishedPaths?: string[];
     };
   };
   lastSavedCheckpointId?: string | null;

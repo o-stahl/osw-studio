@@ -64,3 +64,13 @@ export async function choosePort(
 export function movedPortWarning(choice: PortChoice): string {
   return `Port ${choice.preferred} was in use, so the desktop server is on ${choice.port} instead. A connector registered at http://localhost:${choice.preferred} will not reach this app until it is restarted on its usual port.`;
 }
+
+/**
+ * Where the app server listens and the address it knows itself by. `APP_URL` is set as well as
+ * `NEXT_PUBLIC_APP_URL`: the app reads it first (lib/web/site-origin.ts), so one inherited from the
+ * shell that started the app would otherwise name another address.
+ */
+export function serverAddressEnv(host: string, port: number): Record<'PORT' | 'HOSTNAME' | 'NEXT_PUBLIC_APP_URL' | 'APP_URL', string> {
+  const url = `http://${host}:${port}`;
+  return { PORT: String(port), HOSTNAME: host, NEXT_PUBLIC_APP_URL: url, APP_URL: url };
+}

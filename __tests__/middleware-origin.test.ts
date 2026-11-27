@@ -162,3 +162,18 @@ describe('what still gets through', () => {
     expect(refused(await call('/api/generate', { host: 'localhost:7860', origin: 'https://otst-osw-studio.hf.space' }))).toBe(false);
   });
 });
+
+describe('a trailing slash', () => {
+  it("is stripped from the studio's addresses, keeping the query", async () => {
+    const res = await call('/admin/?tab=users', { method: 'GET', origin: null });
+    expect(res.status).toBe(308);
+    expect(new URL(res.headers.get('location')!).pathname + new URL(res.headers.get('location')!).search).toBe('/admin?tab=users');
+  });
+
+  it("is left on a site's address, whose folder pages need it", async () => {
+    for (const path of ['/deployments/d1/docs/', '/review/d1/docs/']) {
+      const res = await call(path, { method: 'GET', origin: null });
+      expect(res.headers.get('location') ?? '', path).not.toMatch(/docs$/);
+    }
+  });
+});

@@ -113,6 +113,16 @@ describe('what the server takes from a tab', () => {
     expect(result).toEqual({ ok: true, kind: 'screenshot', width: 375, height: 667, pageHeight: 900, images: [{ mediaType: 'image/jpeg', data: 'QUJD', width: 375, height: 667, region: { x: 0, y: 0, w: 375, h: 667 } }] });
   });
 
+  it('keeps a PNG a saved screenshot asked for, and reads any other type as JPEG', () => {
+    const image = (mediaType: unknown) => ({ mediaType, data: 'QUJD', width: 1, height: 1, region: { x: 0, y: 0, w: 1, h: 1 } });
+    const types = (answer: unknown) => {
+      const result = sanitizeRenderResult(answer);
+      return result.ok && result.kind === 'screenshot' ? result.images.map((i) => i.mediaType) : null;
+    };
+    expect(types({ ok: true, kind: 'screenshot', images: [image('image/png'), image('image/svg+xml'), image(undefined)] }))
+      .toEqual(['image/png', 'image/jpeg', 'image/jpeg']);
+  });
+
   it('refuses an image that is not base64, and an answer that is not a render', () => {
     expect(sanitizeRenderResult({ ok: true, kind: 'screenshot', images: [{ data: '<svg onload=x>' }] })).toEqual({ ok: false, error: 'the tab answered with an unreadable image' });
     expect(sanitizeRenderResult({ ok: true, kind: 'shell' })).toMatchObject({ ok: false });

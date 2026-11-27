@@ -5,6 +5,7 @@ import {
   movedPortWarning,
   DESKTOP_DEFAULT_PORT,
   DESKTOP_FALLBACK_RANGE,
+  serverAddressEnv,
 } from '../server-port';
 
 /**
@@ -68,5 +69,13 @@ describe('choosePort', () => {
     expect(choice.preferred).toBe(31000);
     expect(choice.port).not.toBe(31000);
     expect(choice.movedFromPreferred).toBe(true);
+  });
+});
+
+describe('serverAddressEnv', () => {
+  it('names the address under both names, so an APP_URL inherited from the shell is replaced', () => {
+    const env: NodeJS.ProcessEnv = { APP_URL: 'https://somewhere.else' };
+    Object.assign(env, serverAddressEnv('127.0.0.1', 30011));
+    expect(env).toEqual({ PORT: '30011', HOSTNAME: '127.0.0.1', NEXT_PUBLIC_APP_URL: 'http://127.0.0.1:30011', APP_URL: 'http://127.0.0.1:30011' });
   });
 });

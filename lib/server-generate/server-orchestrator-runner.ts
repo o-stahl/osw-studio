@@ -1,5 +1,6 @@
 // lib/server-generate/server-orchestrator-runner.ts
 import { MultiAgentOrchestrator } from '@/lib/llm/multi-agent-orchestrator';
+import type { ImageRequestOptions } from '@/lib/llm/image-gen';
 import { ServerConfigManager } from './server-config-manager';
 import { serverRunHeaders } from './run-auth';
 import { runWithVFS } from './vfs-context';
@@ -288,7 +289,7 @@ export async function awaitBuildResult(taskId: string, deps: RunnerDeps): Promis
       timeoutId = setTimeout(() => {
         task.pendingBuildResolve = null;
         task.buildDeferred = true;
-        resolve({ success: true, errors: ['Build deferred — client disconnected'] });
+        resolve({ success: false, deferred: true });
       }, 30_000);
     }),
   ]);
@@ -305,21 +306,23 @@ export async function awaitImageResult(
   taskId: string,
   deps: RunnerDeps,
   prompt: string,
-  opts: { aspectRatio?: string; imageSize?: string },
+  opts: ImageRequestOptions,
 ): Promise<ImageDelegationResult> {
   const { taskManager, eventBus } = deps;
   const task = taskManager.getTask(taskId);
   if (!task) return { error: 'task not found' };
 
   const requestId = randomUUID();
+  // The source image goes to the tab that claims the request, not to every tab in the event.
+  const { source, ...options } = opts;
   let timeoutId: ReturnType<typeof setTimeout>;
   const answered = new Promise<ImageDelegationResult>((resolve) => {
     addImageRequest(task, requestId, (r) => {
       clearTimeout(timeoutId);
       resolve(r);
-    });
+    }, source);
   });
-  eventBus.emit(taskId, task.projectId, 'image_requested', { taskId, requestId, prompt, ...opts }, task.sessionId);
+  eventBus.emit(taskId, task.projectId, 'image_requested', { taskId, requestId, prompt, ...options }, task.sessionId);
 
   return Promise.race<ImageDelegationResult>([
     answered,

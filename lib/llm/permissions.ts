@@ -42,6 +42,7 @@ export const GATE_COMMANDS: GateCommand[] = [
   { command: 'uniq', label: 'uniq', keys: ['uniq'] },
   { command: 'tr', label: 'tr', keys: ['tr'] },
   { command: 'echo', label: 'echo', keys: ['echo'] },
+  { command: 'printf', label: 'printf', keys: ['printf'] },
   { command: 'mkdir', label: 'mkdir', keys: ['mkdir'] },
   { command: 'touch', label: 'touch', keys: ['touch'] },
   { command: 'mv', label: 'mv (move)', keys: ['mv'] },

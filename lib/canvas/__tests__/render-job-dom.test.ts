@@ -11,6 +11,7 @@ import { logger } from '@/lib/utils';
 const stubs = vi.hoisted(() => ({
   send: vi.fn<() => Promise<void>>(),
   answer: vi.fn<() => Promise<void>>(),
+  capture: vi.fn<(frame: unknown, opts: { captureWidth: number; captureHeight: number }) => Promise<unknown>>(),
 }));
 vi.mock('@/lib/vfs', () => ({
   vfs: { init: async () => {}, getProject: async () => ({ settings: {} }), getRuntimeDeploymentId: () => 'dep-1' },
@@ -22,7 +23,9 @@ vi.mock('@/lib/preview/preview-shell', () => ({
   sendShellContent: () => stubs.send(),
 }));
 vi.mock('@/lib/preview/function-proxy', () => ({ answerFunctionCall: () => stubs.answer() }));
-vi.mock('@/lib/preview/frame-capture', () => ({ requestFrameCapture: () => Promise.reject(new Error('nothing paints in jsdom')) }));
+vi.mock('@/lib/preview/frame-capture', () => ({
+  requestFrameCapture: (frame: unknown, opts: { captureWidth: number; captureHeight: number }) => stubs.capture(frame, opts),
+}));
 vi.mock('../project-compile', () => ({
   compileForCanvas: async () => ({
     project: {
@@ -43,6 +46,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   stubs.send.mockReset().mockResolvedValue(undefined);
   stubs.answer.mockReset().mockResolvedValue(undefined);
+  stubs.capture.mockReset().mockRejectedValue(new Error('nothing paints in jsdom'));
   vi.spyOn(logger, 'error').mockImplementation(() => {});
 });
 
@@ -154,5 +158,66 @@ describe('a render job whose page fails to load', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(ended).toBe(true);
     expect(await output).toEqual({ stdout: '', stderr: 'inspect: /index.html could not be loaded: NotReadableError: the file could not be read', exitCode: 1 });
+  });
+});
+
+/**
+ * A screenshot saved as a file (`save`): one image, of exactly the region, in the asked format.
+ * jsdom paints nothing, so the capture hands back a stand-in bitmap and the canvas records what was
+ * drawn and encodes a few fixed bytes in the type it is asked for.
+ */
+describe('a screenshot saved as a file', () => {
+  const drawn: number[][] = [];
+  beforeEach(() => {
+    drawn.length = 0;
+    stubs.capture.mockResolvedValue({ close: () => {} });
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => ({
+      fillRect: () => {},
+      drawImage: (_bitmap: unknown, ...box: number[]) => { drawn.push(box); },
+    }) as unknown as CanvasRenderingContext2D);
+    // jsdom's Blob has no arrayBuffer(); the encoder reads only that.
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((done: BlobCallback) => {
+      done({ arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer } as Blob);
+    });
+  });
+
+  /** Start a job, settle its frame at `height`, and answer an inspect with `node`. */
+  async function run(job: Parameters<typeof renderPage>[0], height: number, node?: { box: { x: number; y: number; w: number; h: number } }) {
+    const result = renderPage(job);
+    await vi.advanceTimersByTimeAsync(0);
+    const frame = document.body.querySelector('iframe')!;
+    frame.contentWindow!.addEventListener('message', (event) => {
+      const data = event.data as { type?: string; reqId?: number };
+      if (data.type === 'canvas:inspect') post(frame, { type: 'canvas:inspected', reqId: data.reqId, report: { node: { ...node, hidden: false }, matches: 1 } });
+    });
+    post(frame, { type: 'canvas:settled', height });
+    for (let i = 0; i < 10; i++) await vi.advanceTimersByTimeAsync(0);
+    return result;
+  }
+
+  it('is the whole page as one PNG, painted to its end rather than as far as tiles reach', async () => {
+    // At 3840 px wide a tile is 299 px tall, so six tiles reach about 1,840 px of a 3,000 px page.
+    const result = await run({ kind: 'screenshot', projectId: 'p1', page: '/index.html', width: 3840, full: true, save: 'image/png' }, 3000);
+    expect(result.ok && result.kind === 'screenshot' ? result.images.map(({ mediaType, width, height }) => ({ mediaType, width, height })) : result)
+      .toEqual([{ mediaType: 'image/png', width: 3840, height: 3000 }]);
+    expect(stubs.capture).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ captureWidth: 3840, captureHeight: 3000 }));
+  });
+
+  it('is exactly the element, with none of the room a model gets around it', async () => {
+    const box = { x: 100, y: 200, w: 300, h: 150 };
+    const saved = await run({ kind: 'screenshot', projectId: 'p1', page: '/index.html', width: 1440, target: '.hero', save: 'image/jpeg' }, 900, { box });
+    expect(saved.ok && saved.kind === 'screenshot' ? saved.images.map(({ mediaType, region }) => ({ mediaType, region })) : saved)
+      .toEqual([{ mediaType: 'image/jpeg', region: { x: 100, y: 200, w: 300, h: 150 } }]);
+    expect(drawn.at(-1)).toEqual([100, 200, 300, 150, 0, 0, 300, 150]);
+
+    document.body.querySelectorAll('iframe').forEach((f) => f.remove());
+    const looked = await run({ kind: 'screenshot', projectId: 'p1', page: '/index.html', width: 1440, target: '.hero' }, 900, { box });
+    expect(looked.ok && looked.kind === 'screenshot' ? looked.images[0].region : looked).toEqual({ x: 84, y: 184, w: 332, h: 182 });
+  });
+
+  it('is refused before painting when a side would pass 4096 px', async () => {
+    const result = await run({ kind: 'screenshot', projectId: 'p1', page: '/index.html', width: 1440, full: true, save: 'image/png' }, 5000);
+    expect(result).toEqual({ ok: false, error: 'the image would be 1440×5000 px, and a saved image is at most 4096 px on a side' });
+    expect(stubs.capture).not.toHaveBeenCalled();
   });
 });

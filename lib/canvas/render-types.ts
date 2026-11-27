@@ -19,6 +19,11 @@ export interface RenderJob {
   depth?: number;
   /** `screenshot`: the whole page rather than the first screen. */
   full?: boolean;
+  /**
+   * `screenshot`: one image, in this format, of exactly the target's box (or the first screen, or
+   * with `full` the whole page) to be saved as a file, rather than tiles sized for a model to read.
+   */
+  save?: 'image/png' | 'image/jpeg';
 }
 
 /** An element as `inspect` reports it. */
@@ -72,7 +77,8 @@ export interface InspectReport {
 }
 
 export interface ScreenshotImage {
-  mediaType: 'image/jpeg';
+  /** JPEG for a model to read; a saved image is in the format the job asked for. */
+  mediaType: 'image/jpeg' | 'image/png';
   /** Base64, no data: prefix. */
   data: string;
   /** Pixel size. */

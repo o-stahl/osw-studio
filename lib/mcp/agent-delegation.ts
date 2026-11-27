@@ -14,7 +14,14 @@ import { eventBus } from '@/lib/server-generate/singleton';
  * With no tab attached there is nothing to ask, and the caller is told so rather than left waiting.
  */
 
-const REQUEST_TIMEOUT_MS = 30_000;
+/** How long a tab has to take a request. Nothing runs if none does. */
+const CLAIM_TIMEOUT_MS = 15_000;
+/**
+ * How long the tab that took it has to report the task. Before the task exists the tab pushes the
+ * project and takes a checkpoint, which on a large project runs past a minute; answering "nothing
+ * answered" before then would be wrong, since the task still starts.
+ */
+const START_TIMEOUT_MS = 5 * 60_000;
 
 export interface DelegatedRunResult {
   ok: boolean;
@@ -27,6 +34,8 @@ interface Pending {
   userId: string;
   /** Set once a tab has taken the request, so only one of them runs it. */
   claimedBy?: string;
+  /** Moves the deadline on to the start window once a tab has taken the request. */
+  onClaimed?: () => void;
 }
 
 /**
@@ -57,10 +66,11 @@ export async function requestRunFromClient(input: {
 
   const requestId = randomUUID();
   const result = await new Promise<DelegatedRunResult>((resolve) => {
-    const timer = setTimeout(() => {
+    let timer = setTimeout(() => {
+      // Not taken: deleting the entry makes a late claim fail, so nothing starts after this answer.
       pending.delete(requestId);
-      resolve({ ok: false, error: 'The open tab did not answer within 30 seconds. It may be busy or was closed.' });
-    }, REQUEST_TIMEOUT_MS);
+      resolve({ ok: false, error: 'No open OSW Studio tab took the request within 15 seconds, so nothing was started. The tab may be busy or was closed.' });
+    }, CLAIM_TIMEOUT_MS);
 
     pending.set(requestId, {
       userId: input.userId,
@@ -68,6 +78,16 @@ export async function requestRunFromClient(input: {
         clearTimeout(timer);
         pending.delete(requestId);
         resolve(r);
+      },
+      onClaimed: () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          // Taken but not reported. The entry stays claimed, so no other tab starts a second run;
+          // whether this one did, the task list says.
+          resolve({ ok: false, error: 'An OSW Studio tab took the request but has not reported a task after 5 minutes. The task may still start: check agent_list for this project before asking again.' });
+          // A tab that never reports (closed mid-start) would otherwise leave the entry for good.
+          timer = setTimeout(() => pending.delete(requestId), 30 * 60_000);
+        }, START_TIMEOUT_MS);
       },
     });
 
@@ -97,6 +117,7 @@ export function claimRunRequest(requestId: string, userId: string, claimant: str
   if (!entry || entry.userId !== userId) return false;
   if (entry.claimedBy) return false;
   entry.claimedBy = claimant;
+  entry.onClaimed?.();
   return true;
 }
 

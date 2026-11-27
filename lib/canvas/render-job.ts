@@ -219,13 +219,37 @@ async function inspectReport(settled: Settled, job: RenderJob): Promise<InspectR
   return report;
 }
 
-async function toJpeg(canvas: HTMLCanvasElement): Promise<string> {
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+async function encode(canvas: HTMLCanvasElement, type: 'image/jpeg' | 'image/png', quality?: number): Promise<string> {
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
   if (!blob) throw new Error('the screenshot could not be encoded');
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let binary = '';
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(binary);
+}
+
+const toJpeg = (canvas: HTMLCanvasElement) => encode(canvas, 'image/jpeg', 0.82);
+
+/** A saved image's longest side. */
+const MAX_SAVE_SIDE = 4096;
+/** Base64 a saved image may run to: render relays carry 4 MB. */
+const MAX_SAVE_CHARS = 4 * 1024 * 1024;
+
+/** `region` (page CSS px) of the painted page as one image of `type`. */
+async function saved(bitmap: ImageBitmap, region: { x: number; y: number; w: number; h: number }, type: 'image/png' | 'image/jpeg'): Promise<ScreenshotImage> {
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(region.w));
+  canvas.height = Math.max(1, Math.round(region.h));
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('no 2d context');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, region.x, region.y, region.w, region.h, 0, 0, canvas.width, canvas.height);
+  const data = await encode(canvas, type, type === 'image/jpeg' ? 0.92 : undefined);
+  if (data.length > MAX_SAVE_CHARS) {
+    throw new Error(`the ${canvas.width}×${canvas.height} image is over ${MAX_SAVE_CHARS / 1024 / 1024} MB as ${type === 'image/png' ? 'PNG; save it as .jpg' : 'JPEG; save a smaller region'}`);
+  }
+  return { mediaType: type, data, width: canvas.width, height: canvas.height, region };
 }
 
 /** Cut `region` (page CSS px) out of the painted page, as JPEG tiles. */
@@ -269,20 +293,27 @@ export async function renderPage(job: RenderJob): Promise<RenderResult> {
       if (!report.node) return { ok: false, error: `nothing on ${job.page} matches "${job.target}"` };
       const box = report.node.box;
       if (report.node.hidden || box.w === 0 || box.h === 0) return { ok: false, error: `"${job.target}" is not shown at ${width} px wide` };
-      const x = Math.max(0, box.x - CROP_MARGIN);
-      const y = Math.max(0, box.y - CROP_MARGIN);
-      region = { x, y, w: Math.min(width, box.x + box.w + CROP_MARGIN) - x, h: Math.min(settled.height, box.y + box.h + CROP_MARGIN) - y };
+      // A saved image is the element itself; a model's view has room around it.
+      const margin = job.save ? 0 : CROP_MARGIN;
+      const x = Math.max(0, Math.round(box.x) - margin);
+      const y = Math.max(0, Math.round(box.y) - margin);
+      region = { x, y, w: Math.min(width, Math.round(box.x + box.w) + margin) - x, h: Math.min(settled.height, Math.round(box.y + box.h) + margin) - y };
     } else if (job.full) {
       region = { x: 0, y: 0, w: width, h: settled.height };
     }
-    // Painted down to the region's end, at most as far as the tiles reach.
-    const reach = Math.min(region.y + region.h, region.y + Math.ceil((MAX_TILES + SLIVER) * tileHeightFor(region.w)));
+    if (job.save && Math.max(region.w, region.h) > MAX_SAVE_SIDE) {
+      return { ok: false, error: `the image would be ${region.w}×${region.h} px, and a saved image is at most ${MAX_SAVE_SIDE} px on a side` };
+    }
+    // Painted down to the region's end; for a model's view, at most as far as the tiles reach.
+    const reach = job.save
+      ? region.y + region.h
+      : Math.min(region.y + region.h, region.y + Math.ceil((MAX_TILES + SLIVER) * tileHeightFor(region.w)));
     settled.frame.style.height = `${settled.height}px`;
     const bitmap = await requestFrameCapture(settled.frame, {
       captureWidth: width, captureHeight: reach, fullPage: false, waitForContent: false, minWaitDelay: 0, scale: 1,
     }, CAPTURE_TIMEOUT_MS);
     try {
-      const { images, cut: wasCut } = await cut(bitmap, region);
+      const { images, cut: wasCut } = job.save ? { images: [await saved(bitmap, region, job.save)], cut: false } : await cut(bitmap, region);
       return { ok: true, kind: 'screenshot', images, width, height: settled.devH, pageHeight: settled.height, ...(matches !== undefined ? { matches } : {}), ...(wasCut ? { cut: true } : {}) };
     } finally {
       bitmap.close();

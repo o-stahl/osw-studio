@@ -284,6 +284,21 @@ describe('review mode — serve', () => {
     expect(await response.text()).toBe(readBuilt(reviewDir(), 'styles/main.css'));
   });
 
+  it("sends a folder's page asked for without its slash to the slash form, then serves it", async () => {
+    await addFile('/docs/index.html', HTML, 'html');
+    await publish({ enabled: true });
+    const cookie = cookieFrom(await entry());
+
+    const bare = await asset(['docs'], cookie);
+    expect([bare.status, bare.headers.get('location')]).toEqual([308, 'docs/']);
+
+    const slashed = await reviewAsset(request(`${ORIGIN}/review/${deploymentId}/docs/`, { cookie }), {
+      params: Promise.resolve({ deploymentId, path: ['docs'] }),
+    });
+    expect(slashed.status).toBe(200);
+    expect(await slashed.text()).toBe(readBuilt(reviewDir(), 'docs/index.html'));
+  });
+
   it('refuses the same asset to a caller with no cookie', async () => {
     await publish({ enabled: true });
 

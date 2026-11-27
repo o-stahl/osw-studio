@@ -30,12 +30,12 @@ export const keenable: WebSearchProvider = {
     };
   },
   normalize(raw) {
-    const results = raw?.results;
+    const results: unknown = raw?.results;
     if (!Array.isArray(results)) return [];
-    return results
-      .filter((r: any) => typeof r?.url === 'string' && r.url)
-      .map((r: any) => ({
-        title: r.title || r.url,
+    return (results as { url?: unknown; title?: unknown; snippet?: unknown }[])
+      .filter((r): r is { url: string; title?: unknown; snippet?: unknown } => typeof r?.url === 'string' && r.url.length > 0)
+      .map((r) => ({
+        title: typeof r.title === 'string' && r.title ? r.title : r.url,
         url: r.url,
         snippet: String(r.snippet || '').slice(0, SNIPPET_MAX),
       }));

@@ -1194,8 +1194,12 @@ export class VirtualFileSystem {
     this.ensureInitialized();
     
     const file = await this.readFile(projectId, oldPath);
+    if (newPath === oldPath) return file;
+    // Created before the old one is deleted: createFile refuses a path that exists, and the file
+    // is still where it was.
+    const moved = await this.createFile(projectId, newPath, file.content as string);
     await this.deleteFile(projectId, oldPath);
-    return await this.createFile(projectId, newPath, file.content as string);
+    return moved;
   }
 
   /**

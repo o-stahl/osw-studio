@@ -3,7 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { resolveReviewFilePath, reviewMimeType } from '../serve-path';
+import { folderSlashRedirect, resolveReviewFilePath, reviewMimeType } from '../serve-path';
 
 /**
  * A review build is served by a route rather than a file server, so the containment a file server
@@ -144,5 +144,21 @@ describe('reviewMimeType', () => {
     expect(reviewMimeType('/deployments/dep.html/review-build/LICENSE')).toBe(
       'application/octet-stream'
     );
+  });
+});
+
+describe('folderSlashRedirect', () => {
+  const req = (url: string) => new Request(url);
+
+  it("sends a folder's page asked for without its slash to the slash form, relative to where it is", () => {
+    const res = folderSlashRedirect(req('https://s.example.com/deployments/d1/docs?x=1'), '/root/d1/docs/index.html', ['docs']);
+    expect(res?.status).toBe(308);
+    expect(res?.headers.get('location')).toBe('docs/?x=1');
+  });
+
+  it('leaves a request that has the slash, a page file, and an explicit index.html alone', () => {
+    expect(folderSlashRedirect(req('https://s.example.com/deployments/d1/docs/'), '/root/d1/docs/index.html', ['docs', ''])).toBeNull();
+    expect(folderSlashRedirect(req('https://s.example.com/deployments/d1/about'), '/root/d1/about.html', ['about'])).toBeNull();
+    expect(folderSlashRedirect(req('https://s.example.com/deployments/d1/docs/index.html'), '/root/d1/docs/index.html', ['docs', 'index.html'])).toBeNull();
   });
 });

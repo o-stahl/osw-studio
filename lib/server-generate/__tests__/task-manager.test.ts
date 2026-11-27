@@ -237,3 +237,28 @@ describe('TaskManager', () => {
     tmp.dispose();
   });
 });
+
+describe('finished tasks outlive the provider key', () => {
+  it('keeps a finished task readable after its key is dropped, and clears its events when it goes', async () => {
+    vi.useFakeTimers();
+    try {
+      const cleared: string[] = [];
+      const tmp = new TaskManager({ maxConcurrentPerScope: 3, keyTTLMs: 30 * 60 * 1000, taskRetentionMs: 7 * 24 * 3600 * 1000, onTaskPruned: (id) => cleared.push(id) });
+      const id = tmp.createTask('proj-1', 'session-1', 'sk-1');
+      await tmp.completeTask(id, 'completed');
+
+      vi.advanceTimersByTime(40 * 60 * 1000);
+      tmp.sweepExpiredKeys();
+      expect(tmp.getApiKey(id)).toBeUndefined();
+      expect(tmp.getTask(id)?.status).toBe('completed');
+
+      vi.advanceTimersByTime(7 * 24 * 3600 * 1000);
+      tmp.sweepExpiredKeys();
+      expect(tmp.getTask(id)).toBeUndefined();
+      expect(cleared).toEqual([id]);
+      tmp.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

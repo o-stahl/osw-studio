@@ -27,6 +27,7 @@
 import type { SchedulerTask } from './types';
 import type { OwedMessage, SkippedDigest } from '@/lib/review/digest';
 import type { ReviewComment, ReviewParticipant } from '@/lib/vfs/adapters/review-database';
+import { appUrl as studioUrl } from '@/lib/web/site-origin';
 
 export function createReviewNotificationTask(): SchedulerTask {
   return {
@@ -218,7 +219,7 @@ async function queueDigests(
   const { renderDigest } = await import('@/lib/review/digest-render');
   const { createUnsubscribeToken } = await import('@/lib/review/unsubscribe-token');
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const appUrl = studioUrl();
   const byId = new Map(comments.map((comment) => [comment.id, comment]));
   // Already open and cached by deployment id, so this is the same handle the ReviewDatabase writes
   // through, which is what lets a transaction started here cover its writes.

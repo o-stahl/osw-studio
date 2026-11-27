@@ -4,6 +4,7 @@ import { getUserById, getUserDefaultWorkspace } from '@/lib/auth/system-database
 import { ensureDefaultWorkspace } from '@/lib/auth/default-workspace';
 import { setWorkspaceOnResponse } from '@/lib/web/workspace-cookie';
 import { sanitizeRedirect } from '@/lib/auth/safe-redirect';
+import { configuredAppUrl } from '@/lib/web/site-origin';
 
 const UUID_REGEX = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
@@ -13,17 +14,17 @@ export async function GET(request: NextRequest) {
   const redirect = sanitizeRedirect(rawRedirect);
 
   if (!token) {
-    return NextResponse.redirect(new URL('/admin/login', process.env.NEXT_PUBLIC_APP_URL || request.url));
+    return NextResponse.redirect(new URL('/admin/login', configuredAppUrl() || request.url));
   }
 
   const result = await verifyHandoffToken(token);
   if (!result) {
-    return NextResponse.redirect(new URL('/admin/login', process.env.NEXT_PUBLIC_APP_URL || request.url));
+    return NextResponse.redirect(new URL('/admin/login', configuredAppUrl() || request.url));
   }
 
   const user = getUserById(result.userId);
   if (!user) {
-    return NextResponse.redirect(new URL('/admin/login', process.env.NEXT_PUBLIC_APP_URL || request.url));
+    return NextResponse.redirect(new URL('/admin/login', configuredAppUrl() || request.url));
   }
 
   // Ensure workspace is fully initialized (same as login flow)
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
   // Create a normal OSWS session for this user
   const sessionToken = await createSession(user.id, user.email, !!user.is_admin);
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.url;
+  const baseUrl = configuredAppUrl() || request.url;
   const response = NextResponse.redirect(new URL(redirect, baseUrl));
   setSessionOnResponse(response, sessionToken);
 

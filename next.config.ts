@@ -4,6 +4,10 @@ import createNextIntlPlugin from 'next-intl/plugin';
 const nextConfig: NextConfig = {
   output: 'standalone',
   devIndicators: false,
+  // Next would strip a trailing slash with a redirect before any route runs, turning a published
+  // site's `/docs/` into `/docs` and breaking the relative links on `docs/index.html`. The middleware
+  // strips it everywhere except a site's paths, whose routes add it to a folder's address.
+  skipTrailingSlashRedirect: true,
   // Externalize quickjs-emscripten packages to prevent webpack from mangling WASM loading
   serverExternalPackages: [
     'quickjs-emscripten',
@@ -85,12 +89,8 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     return [
-      // Handle published deployment URLs with standard web server behavior
-      // /deployments/{projectId}/ -> index.html
-      {
-        source: '/deployments/:projectId',
-        destination: '/deployments/:projectId/index.html',
-      },
+      // /deployments/{projectId}/ -> index.html. Without the slash it reaches
+      // app/deployments/[id]/route.ts, which redirects to the slash form.
       {
         source: '/deployments/:projectId/',
         destination: '/deployments/:projectId/index.html',

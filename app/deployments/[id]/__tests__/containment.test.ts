@@ -43,15 +43,16 @@ afterAll(() => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+// Asked for with a trailing slash, so a folder's page is served rather than redirected to it.
 async function file(id: string, segments: string[]) {
-  const response = await GET_FILE(new NextRequest('http://localhost:3000/deployments/x'), {
+  const response = await GET_FILE(new NextRequest('http://localhost:3000/deployments/x/'), {
     params: Promise.resolve({ id, path: segments }),
   });
   return { status: response.status, body: await response.text() };
 }
 
 async function index(id: string) {
-  const response = await GET_INDEX(new NextRequest('http://localhost:3000/deployments/x'), {
+  const response = await GET_INDEX(new NextRequest('http://localhost:3000/deployments/x/'), {
     params: Promise.resolve({ id }),
   });
   return { status: response.status, body: await response.text() };
@@ -101,11 +102,19 @@ describe('a published site file', () => {
 
 describe('a published site root', () => {
   it('serves index.html', async () => {
-    const response = await GET_INDEX(new NextRequest('http://localhost:3000/deployments/d1'), {
+    const response = await GET_INDEX(new NextRequest('http://localhost:3000/deployments/d1/'), {
       params: Promise.resolve({ id: 'd1' }),
     });
     expect(response.status).toBe(200);
     expect(await response.text()).toBe('<h1>site</h1>');
+  });
+
+  it('sends the root asked for without its slash to the slash form, keeping the query', async () => {
+    const response = await GET_INDEX(new NextRequest('http://localhost:3000/deployments/d1?ref=x'), {
+      params: Promise.resolve({ id: 'd1' }),
+    });
+    expect(response.status).toBe(308);
+    expect(response.headers.get('location')).toBe('d1/?ref=x');
   });
 
   it('refuses an id that leaves the deployments folder', async () => {
@@ -157,6 +166,15 @@ describe('a page by its clean URL', () => {
       expect(await file('d1', ['blog', 'first'])).toEqual({ status: 200, body: 'FIRST' });
       expect(await file('d1', ['blog', 'post'])).toEqual({ status: 200, body: 'POST' });
       expect(await file('d1', ['blog'])).toEqual({ status: 200, body: 'BLOG' });
+      // Without the slash a folder's page is a redirect: its relative links need `/blog/post/`.
+      const bare = await GET_FILE(new NextRequest('http://localhost:3000/deployments/d1/blog/post'), {
+        params: Promise.resolve({ id: 'd1', path: ['blog', 'post'] }),
+      });
+      expect([bare.status, bare.headers.get('location')]).toEqual([308, 'post/']);
+      const page = await GET_FILE(new NextRequest('http://localhost:3000/deployments/d1/blog/first'), {
+        params: Promise.resolve({ id: 'd1', path: ['blog', 'first'] }),
+      });
+      expect(page.status).toBe(200);
     } finally {
       fs.rmSync(path.join(site(), 'blog'), { recursive: true });
     }

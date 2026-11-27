@@ -48,7 +48,7 @@ import type { ServerOrchestratorContext } from '@/lib/server-generate/types';
 import type { ApprovalRequest, ApprovalOutcome, PermissionMode, GateDecision } from './permissions';
 import type { ResolvedAssignment, ModelRef } from '@/lib/llm/models/assignment';
 import { transcribeAudio } from '@/lib/llm/transcribe';
-import { generateImage, imageModelFor } from '@/lib/llm/image-gen';
+import { generateImage, imageModelFor, type ImageRequestOptions } from '@/lib/llm/image-gen';
 
 import { AgentLoop } from './core/agent-loop';
 import { ContextManagerImpl } from './core/context-manager';
@@ -643,12 +643,12 @@ export class MultiAgentOrchestrator {
     const generateImageCapability = !this.isImageGenAvailable() ? undefined
       : onImageRequested
       // Server-side the image model and its key live in the browser, which generates it.
-      ? async (prompt: string, opts: { aspectRatio?: string; imageSize?: string }) => {
+      ? async (prompt: string, opts: ImageRequestOptions) => {
           const result = await onImageRequested(prompt, opts);
           if ('error' in result) throw new Error(result.error);
           return result;
         }
-      : async (prompt: string, opts: { aspectRatio?: string; imageSize?: string }) => {
+      : async (prompt: string, opts: ImageRequestOptions) => {
           // Request the model's declared output modalities so image-only models
           // (e.g. FLUX, Grok Imagine) aren't sent an unsupported 'text' modality
           // while multimodal models (e.g. Gemini) still get 'text' as they require.

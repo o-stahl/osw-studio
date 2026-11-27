@@ -79,3 +79,23 @@ export async function resolveReviewFilePath(
 
   return null;
 }
+
+/**
+ * A folder's page asked for without its trailing slash, answered with a redirect to the slash form.
+ *
+ * `docs/index.html` served at `/docs` resolves its relative links against `/`, one level up, so a
+ * file server sends the browser to `/docs/` first. The Location is relative (`docs/`) because the
+ * path this route sees is not always the browser's: behind a site host's Caddy block, `/docs` arrives
+ * here as `/deployments/{id}/docs`.
+ */
+export function folderSlashRedirect(request: Request, filePath: string, segments: string[]): Response | null {
+  const requested = segments.filter((segment) => segment.length > 0);
+  const last = requested[requested.length - 1];
+  if (!last || last === 'index.html' || !/[\\/]index\.html$/.test(filePath)) return null;
+  const url = new URL(request.url);
+  if (url.pathname.endsWith('/')) return null;
+  return new Response(null, {
+    status: 308,
+    headers: { Location: `${encodeURIComponent(last)}/${url.search}` },
+  });
+}

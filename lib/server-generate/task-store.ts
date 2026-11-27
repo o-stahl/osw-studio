@@ -2,9 +2,9 @@ import 'server-only';
 
 import { getSQLiteAdapter } from '@/lib/vfs/adapters/server';
 import type { PersistedServerTask, ServerTask } from './types';
+import { TASK_RETENTION_MS } from './task-manager';
 
 const RESTART_FAILURE = 'Server restarted before generation could finish';
-const TASK_TTL_MS = 30 * 60 * 1000;
 
 function toPersistedTask(task: ServerTask): PersistedServerTask {
   const {
@@ -86,7 +86,7 @@ export class ServerTaskStore {
         SET status = 'failed', failure_reason = ?, updated_at = ?
         WHERE status IN ('running', 'paused', 'stopping')
       `).run(RESTART_FAILURE, now);
-      this.pruneTerminal(now - TASK_TTL_MS);
+      this.pruneTerminal(now - TASK_RETENTION_MS);
       this.initialized = true;
     }
 

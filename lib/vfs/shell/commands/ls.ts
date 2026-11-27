@@ -29,6 +29,14 @@ export async function lsCommand(env: ShellEnv): Promise<ShellResult> {
     return `${size}  ${date}  ${f.path}`;
   };
 
+  // A directory's entries: its children, or with -R everything under it.
+  const listUnder = async (dir: string) => {
+    if (!recursive) return vfs.listDirectory(projectId, dir, { includeTransient: true });
+    const entries = await vfs.getAllFilesAndDirectories(projectId, { includeTransient: true });
+    const prefix = dir === '/' ? '/' : (dir.endsWith('/') ? dir : dir + '/');
+    return entries.filter((e: { path: string }) => e.path === dir || e.path.startsWith(prefix));
+  };
+
   // Multiple paths: each could be a file or directory
   if (lsPaths.length > 1) {
     const lines: string[] = [];
@@ -42,7 +50,7 @@ export async function lsCommand(env: ShellEnv): Promise<ShellResult> {
         continue;
       } catch { /* not a file — try as directory */ }
       // Try as directory
-      const dirFiles = await vfs.listDirectory(projectId, np, { includeTransient: true });
+      const dirFiles = await listUnder(np);
       if (dirFiles.length > 0) {
         if (pi > 0) lines.push(''); // blank line between directory sections
         lines.push(`${np}:`);
@@ -77,23 +85,10 @@ export async function lsCommand(env: ShellEnv): Promise<ShellResult> {
     } catch { /* not a file — fall through to the directory listing */ }
   }
 
-  let lsOutput: string;
-  if (!recursive) {
-    const files = await vfs.listDirectory(projectId, lsPath, { includeTransient: true });
-    const sorted = files.sort((a, b) => a.path.localeCompare(b.path));
-    lsOutput = longFormat
-      ? sorted.map(f => formatFileLong(f)).join('\n')
-      : sorted.map(f => f.path).join('\n');
-  } else {
-    const entries = await vfs.getAllFilesAndDirectories(projectId, { includeTransient: true });
-    const prefix = lsPath === '/' ? '/' : (lsPath.endsWith('/') ? lsPath : lsPath + '/');
-    const filtered = entries
-      .filter((e: any) => e.path === lsPath || e.path.startsWith(prefix))
-      .sort((a: any, b: any) => a.path.localeCompare(b.path));
-    lsOutput = longFormat
-      ? filtered.map((e: any) => formatFileLong(e)).join('\n')
-      : filtered.map((e: any) => e.path).join('\n');
-  }
+  const sorted = (await listUnder(lsPath)).sort((a, b) => a.path.localeCompare(b.path));
+  const lsOutput = longFormat
+    ? sorted.map(f => formatFileLong(f)).join('\n')
+    : sorted.map(f => f.path).join('\n');
   const lsResult: ShellResult = { stdout: truncate(lsOutput), stderr: '', exitCode: 0 };
   if (redirect) return applyRedirectGuarded(vfs, projectId, lsResult.stdout, redirect, ctx);
   return lsResult;

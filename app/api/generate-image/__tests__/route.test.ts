@@ -301,3 +301,69 @@ describe('/api/generate-image and the free allowance', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe('/api/generate-image with a source image', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const SOURCE = 'data:image/png;base64,iVBORw0KGgo=';
+  const reply = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+
+  it('gives OpenRouter the image as a reference, on the first request and on the resend without options', async () => {
+    const fetchMock = vi.fn(async (_url: unknown, init?: RequestInit) =>
+      JSON.parse(init!.body as string).resolution
+        ? new Response(JSON.stringify({ error: { message: 'no 4K' } }), { status: 400 })
+        : reply({ data: [{ b64_json: 'iVBORw0K' }] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await POST(requestFor({ provider: 'openrouter', apiKey: 'k', model: 'm', prompt: 'paint it', image_config: { image_size: '4K' }, source_image: SOURCE }));
+
+    expect(response.status).toBe(200);
+    const reference = [{ type: 'image_url', image_url: { url: SOURCE } }];
+    expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)).toEqual({ model: 'm', prompt: 'paint it', input_references: reference, resolution: '4K' });
+    expect(JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string)).toEqual({ model: 'm', prompt: 'paint it', input_references: reference });
+  });
+
+  it('puts the image beside the prompt for a chat-completions provider', async () => {
+    const fetchMock = vi.fn(async (_url: unknown, _init?: RequestInit) =>
+      reply({ choices: [{ message: { images: [{ image_url: { url: 'data:image/png;base64,x' } }] } }] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await POST(requestFor({ provider: 'vercel', apiKey: 'k', model: 'google/gemini-3.1-flash-image', prompt: 'paint it', source_image: SOURCE }));
+
+    expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string).messages).toEqual([{
+      role: 'user',
+      content: [{ type: 'text', text: 'paint it' }, { type: 'image_url', image_url: { url: SOURCE } }],
+    }]);
+  });
+
+  it('gives Codex the image as an input_image', async () => {
+    const fetchMock = vi.fn(async (_url: unknown, _init?: RequestInit) => new Response(
+      'data: {"item":{"type":"image_generation_call","result":"png"}}\n\n', { headers: { 'Content-Type': 'text/event-stream' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await POST(requestFor({ provider: 'openai-codex', apiKey: codexToken(), model: 'gpt-image-2-low', prompt: 'paint it', source_image: SOURCE }));
+
+    expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string).input[0].content).toEqual([
+      { type: 'input_text', text: 'paint it' },
+      { type: 'input_image', image_url: SOURCE },
+    ]);
+  });
+
+  it('refuses for Pollinations, which generates from a prompt only, rather than dropping the image', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await POST(requestFor({ provider: 'pollinations', apiKey: 'k', model: 'flux', prompt: 'p', source_image: SOURCE }));
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining('prompt only') });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses a source that is not an image data URL', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    for (const source_image of ['https://example.com/a.png', 'data:text/html;base64,PGgxPg==', 42]) {
+      const response = await POST(requestFor({ provider: 'openrouter', apiKey: 'k', model: 'm', prompt: 'p', source_image }));
+      expect(response.status, String(source_image)).toBe(400);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

@@ -25,5 +25,6 @@ export async function POST(request: NextRequest) {
   if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
   if (task.sessionId !== session.userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  return NextResponse.json({ granted: claimImageRequest(task, requestId) });
+  const claim = claimImageRequest(task, requestId);
+  return NextResponse.json(claim ? { granted: true, ...claim } : { granted: false });
 }

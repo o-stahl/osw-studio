@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Copy, ExternalLink, Loader2 } from 'lucide-react';
-import { publishToSpace, PublishProgress } from '@/lib/publishing/hf-space-publisher';
+import { previouslyPublishedFor, publishToSpace, spaceRecord, PublishProgress } from '@/lib/publishing/hf-space-publisher';
 import { TerminalRuntimeError } from '@/lib/publishing/compile-static-site';
 import { suggestSpaceSlug, isValidSpaceSlug } from '@/lib/publishing/hf-slug';
 import { hasPublishScope, loginHF, checkHFCapabilities } from '@/lib/auth/hf-auth';
@@ -153,6 +153,8 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
       setErrorMsg('');
       setProgressPhase(null);
 
+      // Read now, not from when the dialog opened: a publish since then has a newer record.
+      const published = (await vfs.getProject(projectId))?.settings?.hfSpace;
       const res = await publishToSpace(
         vfs,
         projectId,
@@ -164,6 +166,7 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
           description,
           includeFooter,
           mode,
+          previouslyPublished: previouslyPublishedFor(published, `${auth.username}/${slug}`, mode),
         },
         (p) => setProgressPhase(p.phase)
       );
@@ -172,12 +175,7 @@ export function HFSpaceTarget({ projectId, onClose }: { projectId: string; onClo
       if (proj) {
         proj.settings = {
           ...proj.settings,
-          hfSpace: {
-            repoId: res.repoId,
-            url: res.url,
-            isPrivate,
-            lastPublishedAt: new Date().toISOString(),
-          },
+          hfSpace: spaceRecord(res, isPrivate),
         };
         await vfs.updateProject(proj);
         vfs.scheduleAutoSync(proj.id);

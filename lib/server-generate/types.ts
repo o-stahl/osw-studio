@@ -1,4 +1,5 @@
 import type { PendingImageRequest } from './image-requests';
+import type { ImageRequestOptions } from '@/lib/llm/image-gen';
 import type { ServerConfigManager } from './server-config-manager';
 // lib/server-generate/types.ts
 import type { MultiAgentOrchestrator } from '@/lib/llm/multi-agent-orchestrator';
@@ -36,7 +37,7 @@ export interface ServerOrchestratorContext {
   /** Client has a web-search provider configured — drives whether `search` is advertised. */
   webSearchAvailable?: boolean;
   /** Delegate an image generation to the connected browser (its image model and key run it). */
-  onImageRequested?: (prompt: string, opts: { aspectRatio?: string; imageSize?: string }) => Promise<ImageDelegationResult>;
+  onImageRequested?: (prompt: string, opts: ImageRequestOptions) => Promise<ImageDelegationResult>;
   /** Client has an image-capable model assigned — drives whether `generate-image` is advertised. */
   imageGenAvailable?: boolean;
   /** Selector matching for the agent's `style` command; the server has no DOM. */
@@ -125,6 +126,8 @@ export type PersistedServerTask = Pick<
 export interface BuildResult {
   success: boolean;
   errors?: string[];
+  /** No open tab compiled the project in time, so nothing was checked. */
+  deferred?: boolean;
 }
 
 /** SSE event envelope */

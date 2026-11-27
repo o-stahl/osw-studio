@@ -452,6 +452,23 @@ describe('awaitBuildResult', () => {
     expect(result).toEqual({ success: true });
   });
 
+  it('tells the agent a build no tab answered did not run, rather than that it passed', async () => {
+    vi.useFakeTimers();
+    try {
+      const { buildCommand } = await import('@/lib/vfs/shell/commands/build');
+      const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
+      const deps = makeDeps();
+      const running = buildCommand({ vfs: {} as never, projectId: 'proj-1', args: [], ctx: { onBuildRequested: () => awaitBuildResult(taskId, deps) } } as never);
+      await vi.advanceTimersByTimeAsync(30_000);
+      const out = await running;
+      expect(out.stdout).not.toContain('successful');
+      expect(out.exitCode).not.toBe(0);
+      expect(out.stderr).toContain('not run');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('resolves with deferred result after 30s timeout', async () => {
     vi.useFakeTimers();
     try {
@@ -464,8 +481,8 @@ describe('awaitBuildResult', () => {
       await vi.advanceTimersByTimeAsync(30_000);
 
       const result = await resultPromise;
-      expect(result.success).toBe(true);
-      expect(result.errors).toContain('Build deferred — client disconnected');
+      expect(result.success).toBe(false);
+      expect(result.deferred).toBe(true);
 
       const task = tm.getTask(taskId)!;
       expect(task.buildDeferred).toBe(true);
@@ -574,9 +591,20 @@ describe('awaitImageResult', () => {
     void awaitImageResult(taskId, deps(), 'x', {});
     const [request] = requests(taskId);
     const task = tm.getTask(taskId)!;
-    expect(claimImageRequest(task, request.requestId)).toBe(true);
+    expect(claimImageRequest(task, request.requestId)).toEqual({});
     expect(claimImageRequest(task, request.requestId)).toBe(false);
     expect(claimImageRequest(task, 'unknown')).toBe(false);
+  });
+
+  it('hands a source image to the tab that claims the request, and leaves it out of the event every tab gets', () => {
+    const taskId = tm.createTask('proj-1', 'sess-1', 'sk-test');
+    const source = { base64: 'iVBORw0KGgo=', mimeType: 'image/png' };
+    void awaitImageResult(taskId, deps(), 'paint it', { aspectRatio: '16:9', source });
+    const event = bus.getBuffer(taskId).find((e) => e.event === 'image_requested')!.data as Record<string, unknown>;
+    expect(event).toMatchObject({ prompt: 'paint it', aspectRatio: '16:9' });
+    expect(event).not.toHaveProperty('source');
+    const task = tm.getTask(taskId)!;
+    expect(claimImageRequest(task, event.requestId as string)).toEqual({ source });
   });
 
   it('tells the agent to continue without it when no browser answers, and forgets only that request', async () => {

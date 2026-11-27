@@ -23,8 +23,17 @@ export type SitesMode = 'proxy' | 'host' | 'same-origin';
 const DEFAULT_APP_URL = 'http://localhost:3000';
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 
+/**
+ * The studio's address as configured, or undefined. `APP_URL` is read at start, so one build serves
+ * any address; `NEXT_PUBLIC_APP_URL`, the older name, is still read after it.
+ */
+export function configuredAppUrl(): string | undefined {
+  return process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || undefined;
+}
+
+/** The studio's address, `http://localhost:3000` when none is configured. */
 export function appUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || DEFAULT_APP_URL;
+  return configuredAppUrl() || DEFAULT_APP_URL;
 }
 
 /** The origin of a URL, or null for one that does not parse. */

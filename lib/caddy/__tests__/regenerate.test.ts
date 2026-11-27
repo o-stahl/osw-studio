@@ -256,4 +256,13 @@ describe('wwwCounterpart', () => {
       expect(block.indexOf('handle @platform'), host).toBeLessThan(block.indexOf(`rewrite * /deployments/${id}{uri}`));
     }
   });
+
+  it("sends a site's folder page asked for without its slash to the slash form, unless a file answers first", () => {
+    // Checked against Caddy v2.11.7: /docs → 308 /docs/ (query kept), /both with both.html → 200.
+    const result = generateCaddyfile({ ...BASE_CONFIG, slugRoutes: [{ deployment_id: 'abc123', slug: 'sunny-oak-river' }] });
+    expect(result).toContain('    not path */');
+    expect(result).toContain('      try_files /deployments/abc123{path}/index.html');
+    expect(result).toContain('      try_files /deployments/abc123{path} /deployments/abc123{path}.html');
+    expect(result).toContain('  redir @folder {path}/{?query} 308');
+  });
 });

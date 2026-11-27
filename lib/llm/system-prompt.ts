@@ -64,7 +64,7 @@ function imageGenCommandDoc(modelSupportsTools: boolean): string {
     : "```bash\ngenerate-image 'sunset over mountains'\n```";
   return `Image command (generate an image with the project's image model):
   ${example}
-Optional flags: --out <path> (default saves under /.generated/, which is excluded from the published build), --aspect <1:1|16:9|4:3|2:3>, --size <0.5K|1K|2K|4K>. Reports the saved path.`;
+Optional flags: --out <path> (default saves under /.generated/, which is excluded from the published build), --aspect <1:1|16:9|4:3|2:3>, --size <0.5K|1K|2K|4K>, --image <path> (an image in the project to rework rather than start from nothing, such as a page or element saved with screenshot /index.html ".hero" --out /shots/hero.png). Reports the saved path.`;
 }
 
 /** Docs for the optional `search` command (only when a web search provider is configured). */
@@ -125,7 +125,7 @@ function pageReadingLines(pages: PageFacts): string {
 - Read a rendered page: inspect /index.html [element] [--width N] — the page as a browser lays it out: each element with its position in source (/index.html:16:5) and its size. With an element, in quotes, its CSS values and the rule that sets each: inspect /index.html ".hero h1" --width 375`;
   if (pages.canSeeImages) {
     lines += `
-- Look at a page: screenshot /index.html [element] [--width N] [--full] — an image of the first screen, of the whole page (--full) or of one element. Use it to check how your work looks.`;
+- Look at a page: screenshot /index.html [element] [--width N] [--full] — an image of the first screen, of the whole page (--full) or of one element. Use it to check how your work looks. --out <file.png|file.jpg> saves exactly that as an image file instead.`;
   }
   return lines;
 }

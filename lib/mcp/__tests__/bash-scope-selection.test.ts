@@ -18,6 +18,8 @@ describe('does an MCP bash command line write', () => {
     'cat /a > /b',
     'ls / | grep x > /out',
     'curl -o /logo.png https://example.com/x.png',
+    'screenshot / ".hero" --out /shots/hero.png',
+    'screenshot / --out=/shots/home.jpg',
     'ls /\nrm /index.html',
     // The shell splits a redirect written against its path, so these write.
     "cat >/index.html << 'EOF'\n<h1>Hi</h1>\nEOF",
@@ -37,6 +39,7 @@ describe('does an MCP bash command line write', () => {
     'ls / | grep html | wc -l',
     'rg -n pattern /',
     'curl localhost/',
+    'screenshot / ".hero"',
     "sed 's/a/b/' /index.html",
     // A heredoc body is the command's input, not more command line.
     "cat << 'EOF'\nnav > a { color: red; }\nEOF",

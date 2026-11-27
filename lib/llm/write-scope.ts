@@ -6,7 +6,7 @@
  * has no symlinks, so a plain reject is sufficient.
  */
 
-import { alwaysWriteCommands, isScriptCommand, isSedInPlaceFlag, parseSedArgs } from '@/lib/vfs/shell-commands';
+import { alwaysWriteCommands, isScreenshotOutFlag, isScriptCommand, isSedInPlaceFlag, parseSedArgs } from '@/lib/vfs/shell-commands';
 import { sqliteChangesData } from './permissions';
 import { normalizePath } from '@/lib/vfs/shell/paths';
 import { commandStages } from './bash-command';
@@ -27,6 +27,7 @@ function isWriteCommand(cmd: string[]): boolean {
   if (WRITE_COMMANDS.has(c)) return true;
   if (c === 'sed' && cmd.slice(1).some(isSedInPlaceFlag)) return true;
   if (c === 'curl' && (cmd.includes('-o') || cmd.includes('--output'))) return true;
+  if (c === 'screenshot' && cmd.slice(1).some(isScreenshotOutFlag)) return true;
   if (hasRedirect(cmd)) return true;
   return false;
 }
@@ -69,6 +70,12 @@ function ownTargets(cmd: string[]): string[] | null {
     // Writes the image to --out/-o when given, otherwise to /.generated/.
     const outs = flagValues(cmd, ['--out', '-o']);
     return outs === null ? null : outs.length > 0 ? outs : ['/.generated/'];
+  }
+
+  if (c === 'screenshot') {
+    // Writes the image to --out; the target follows the flag or its `=`.
+    const outs = cmd.flatMap((arg, i) => !isScreenshotOutFlag(arg) ? [] : arg === '--out' ? [cmd[i + 1]] : [arg.slice('--out='.length)]);
+    return outs.every(Boolean) ? outs : null;
   }
 
   if (c === 'style') {

@@ -228,6 +228,21 @@ function siteBlock(host: string, deploymentId: string, publicRoot: string, pream
     '  handle @platform {',
     ...proxyToApp('    '),
     '  }',
+    // A folder's page asked for without its slash goes to the slash form first, as the app's route
+    // does: served at `/docs`, `docs/index.html` resolves its relative links one level up. Not when
+    // `/docs` or `/docs.html` is a file, which try_files below serves first.
+    '  @folder {',
+    '    not path */',
+    `    file {`,
+    `      root ${publicRoot}`,
+    `      try_files /deployments/${deploymentId}{path}/index.html`,
+    '    }',
+    `    not file {`,
+    `      root ${publicRoot}`,
+    `      try_files /deployments/${deploymentId}{path} /deployments/${deploymentId}{path}.html`,
+    '    }',
+    '  }',
+    '  redir @folder {path}/{?query} 308',
     '  handle {',
     `    root * ${publicRoot}`,
     `    rewrite * /deployments/${deploymentId}{uri}`,

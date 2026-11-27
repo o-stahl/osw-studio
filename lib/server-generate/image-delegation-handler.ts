@@ -1,7 +1,7 @@
 // lib/server-generate/image-delegation-handler.ts
 import { configManager } from '@/lib/config/storage';
 import { getProjectAssignment } from '@/lib/llm/models/project-assignment';
-import { generateImage, imageModelFor } from '@/lib/llm/image-gen';
+import { generateImage, imageModelFor, type SourceImage } from '@/lib/llm/image-gen';
 
 /**
  * Runs a server-delegated image generation in the browser, which holds the project's image model
@@ -22,7 +22,7 @@ export async function handleImageRequested(data: {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ taskId, requestId }),
-  }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { granted?: boolean; source?: SourceImage } | null;
   if (!claim?.granted) return;
 
   let body: Record<string, string>;
@@ -37,6 +37,7 @@ export async function handleImageRequested(data: {
       aspectRatio,
       imageSize,
       modalities: model.modalities,
+      ...(claim.source ? { source: claim.source } : {}),
     });
     body = { base64: image.base64, mimeType: image.mimeType };
   } catch (e) {

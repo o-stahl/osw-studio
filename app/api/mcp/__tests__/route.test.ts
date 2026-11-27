@@ -133,7 +133,7 @@ describe('POST /api/mcp', () => {
     const tools = out.result.tools as { name: string; description: string }[];
 
     expect(tools.map(t => t.name).sort()).toEqual([
-      'agent_cancel', 'agent_run', 'agent_status', 'analytics_overview',
+      'agent_cancel', 'agent_list', 'agent_run', 'agent_status', 'analytics_overview',
       'backend_delete', 'backend_list', 'backend_upsert', 'bash', 'canvas_selection',
       'deployments_create', 'deployments_duplicate', 'deployments_list', 'deployments_publish',
       'deployments_sql', 'deployments_unpublish', 'deployments_update',
@@ -384,6 +384,31 @@ describe('POST /api/mcp', () => {
 
     expect(out.isError).toBe(true);
     expect(out.text).toMatch(/No task/);
+  });
+
+  it("lists this account's tasks in the workspace, newest first, and can narrow to one project or to running ones", async () => {
+    const { taskManager } = await import('@/lib/server-generate/singleton');
+    await taskManager.initialize();
+    const done = taskManager.createTask('p-list-a', userId, '', workspaceId);
+    taskManager.getTask(done)!.prompt = 'make the header blue';
+    await taskManager.completeTask(done, 'completed');
+    const running = taskManager.createTask('p-list-b', userId, '', workspaceId);
+    const theirs = taskManager.createTask('p-list-a', 'someone-else', '', workspaceId);
+    const elsewhere = taskManager.createTask('p-list-c', userId, '', 'another-workspace');
+
+    const all = JSON.parse((await callTool('agent_list', { workspaceId })).text!).tasks as { taskId: string; status: string; prompt?: string }[];
+    const ids = all.map(t => t.taskId);
+    expect(ids).toEqual(expect.arrayContaining([done, running]));
+    expect(ids).not.toContain(theirs);
+    expect(ids).not.toContain(elsewhere);
+    expect(all.find(t => t.taskId === done)).toMatchObject({ status: 'completed', prompt: 'make the header blue' });
+
+    const one = JSON.parse((await callTool('agent_list', { workspaceId, projectId: 'p-list-a' })).text!).tasks;
+    expect(one.map((t: { taskId: string }) => t.taskId)).toEqual([done]);
+    const active = JSON.parse((await callTool('agent_list', { workspaceId, active: true })).text!).tasks;
+    expect(active.map((t: { taskId: string }) => t.taskId)).toContain(running);
+    expect(active.map((t: { taskId: string }) => t.taskId)).not.toContain(done);
+    await taskManager.completeTask(running, 'cancelled');
   });
 
   it("reports the task's real last event id, whatever id the caller asked from", async () => {

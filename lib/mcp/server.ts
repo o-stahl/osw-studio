@@ -13,6 +13,7 @@ import { commandLineWrites } from '@/lib/llm/write-scope';
 import { createTransfer, MAX_UPLOAD_BYTES, TRANSFER_TTL_MS } from './transfers';
 import { copyName, deploymentCopy, renameSkillFile, skillCopyName } from './duplicate';
 import type { Deployment, EdgeFunction, ScheduledFunction, Secret, ServerFunction } from '@/lib/vfs/types';
+import { appUrl } from '@/lib/web/site-origin';
 
 /**
  * Files are worked on through the same single `bash` tool the in-app agent has. The project
@@ -22,16 +23,17 @@ import type { Deployment, EdgeFunction, ScheduledFunction, Secret, ServerFunctio
  */
 const BASH_DESCRIPTION = `Run a command against a project's files, exactly as the OSW Studio agent does.
 
-Commands: cat, head, tail, ls, tree, grep, rg, find, wc, sort, uniq, tr, echo, mkdir, rmdir, touch, mv, cp, rm, sed, ss, style, curl, inspect, runtime.
+Commands: cat, head, tail, ls, tree, grep, rg, find, wc, sort, uniq, tr, echo, printf, mkdir, rmdir, touch, mv, cp, rm, sed, ss, style, curl, inspect, screenshot, runtime.
 Pipes, redirects (> file, >> file), heredocs (<< 'EOF'), chaining (&&, ||, ;) and brace expansion are supported.
 
 curl localhost/ renders a page through the project's compiler, which is how to check output without publishing.
 
 Pages can be read as a browser lays them out (the command has --help):
 - inspect /index.html [element] [--width N] gives the page's elements with their positions in source, and for one element its CSS values and the rule that sets each. It needs an OSW Studio tab open for this account.
+- screenshot /index.html [element] [--width N] [--full] --out <file.png|file.jpg> saves the page, or exactly that element, as an image file in the project. To look at a page yourself, use preview_screenshot.
 - An element is a page and a selector (/index.html ".hero h1"), a position (/index.html:16, the element whose tag starts on line 16), or a marker (@h7x2m4qp, the value of the element's data-osw-id attribute).
 
-Not available here: build, python, python3 and lua need the browser runtime, and sqlite3 needs a deployment selected in the app. Use deployments_sql for a deployment's database. screenshot is preview_screenshot here. status is the in-app agent's task-completion command and does nothing for an outside client.
+Not available here: build, python, python3 and lua need the browser runtime, and sqlite3 needs a deployment selected in the app. Use deployments_sql for a deployment's database. status is the in-app agent's task-completion command and does nothing for an outside client.
 
 Read a file: cat /index.html
 Create a file: cat > /about.html << 'EOF'\ncontent\nEOF
@@ -633,7 +635,7 @@ export function createOswMcpServer(principal: McpPrincipal, instance?: { origin?
 
   /** Where a transfer URL points: the instance the client reached, so it resolves from there. */
   function transferUrl(token: string): string {
-    return `${(instance?.baseUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/$/, '')}/api/mcp/files/${token}`;
+    return `${(instance?.baseUrl ?? appUrl()).replace(/\/$/, '')}/api/mcp/files/${token}`;
   }
 
   tool('files_upload_url', FILES_UPLOAD_URL_DESCRIPTION, {
@@ -781,6 +783,34 @@ export function createOswMcpServer(principal: McpPrincipal, instance?: { origin?
       // The task's newest event, reported or not, so a caller resumes from the stream's real end.
       lastEventId: buffered.length > 0 ? buffered[buffered.length - 1].id : 0,
       events: events.map(e => ({ id: e.id, event: e.event, data: summarise(e.event, e.data) })),
+    });
+  });
+
+  tool('agent_list', "This account's tasks in a workspace, newest first: to find a task whose id was lost, or to check a project is idle before starting another. Finished tasks are kept for 7 days. Needs agent.", {
+    workspaceId: ws,
+    projectId: z.string().optional().describe('Only tasks on this project'),
+    active: z.boolean().default(false).describe('Only tasks still running, paused or stopping'),
+  }, async ({ workspaceId, projectId, active }) => {
+    await workspace(workspaceId, 'agent');
+    const { taskManager } = await import('@/lib/server-generate/singleton');
+    await taskManager.initialize();
+    const tasks = (await taskManager.getReattachTasks(principal.userId))
+      .filter(t => t.workspaceId === workspaceId)
+      .filter(t => !projectId || t.projectId === projectId)
+      .filter(t => !active || t.status === 'running' || t.status === 'paused' || t.status === 'stopping')
+      .sort((a, b) => b.startedAt - a.startedAt)
+      .slice(0, 50);
+    return text({
+      tasks: tasks.map(t => ({
+        taskId: t.taskId,
+        projectId: t.projectId,
+        ...(t.projectName ? { projectName: t.projectName } : {}),
+        status: t.status,
+        startedAt: new Date(t.startedAt).toISOString(),
+        updatedAt: new Date(t.updatedAt).toISOString(),
+        ...(t.prompt ? { prompt: t.prompt.length > 200 ? `${t.prompt.slice(0, 200)}…` : t.prompt } : {}),
+        ...(t.failureReason ? { failureReason: t.failureReason } : {}),
+      })),
     });
   });
 

@@ -6,6 +6,28 @@ Welcome to OSW Studio! This page highlights the latest features and updates.
 
 ---
 
+## v1.113.0 - Page Images and Keenable Search (2026-11-27)
+
+The agent can now save a page of your project, or one element on it, as an image file and give that file to your image model to rework, so a layout or a 3D scene it built becomes a finished picture with the same composition. Keenable joins the web search providers and works without a key, and republishing a HuggingFace Space now removes the pages your project no longer has.
+
+### The agent
+- **Pages as images**: `screenshot /index.html ".hero" --out /shots/hero.png` saves a page or one element as a PNG or JPEG in the project
+- **Reworking an image**: `generate-image --image <path>` gives the image model a project image to start from; Pollinations image models don't take one
+- **Shell**: `printf` is a command now, and `mv` onto an existing file replaces it as on any Unix shell
+
+### Web search
+- **Keenable**: works without a key on a limit shared by everyone on your address, and a free key gives you your own; Keenable logs queries. Thanks to @KGKallasmaa for the pull request that added it
+
+### Publishing
+- **HuggingFace Spaces**: republishing removes files an earlier publish from OSW Studio wrote that the project no longer has; files you added to the Space yourself stay, and the first republish after updating only records what it wrote
+- **Folder pages**: in Server Mode and the desktop app, a published page in a folder such as `/docs/` keeps its trailing slash, so its relative links work
+- **`APP_URL`**: self-hosted Server Mode reads the studio's address from `APP_URL` when the server starts, so one build serves any address; `NEXT_PUBLIC_APP_URL` still works
+
+### MCP
+- **Tasks**: `agent_list` finds a task a connected client lost track of, finished tasks stay readable for 7 days instead of 30 minutes, and `agent_run` no longer reports a timeout for a task that then starts
+
+---
+
 ## v1.112.0 - Checkpoint Improvements (2026-11-23)
 
 Agent runs no longer push out your saves, each checkpoint shows the files and lines it changed and its size, and you can now rename checkpoints and delete several at once. The desktop app also has the MCP connector on, and in Server Mode, Discard Changes and checkpoint restores now reach the server.

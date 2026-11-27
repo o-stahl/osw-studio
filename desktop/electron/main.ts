@@ -13,7 +13,7 @@
 import { app, BrowserWindow, Menu, dialog, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { migrateLegacyDir } from './migrate-legacy';
-import { choosePort, movedPortWarning } from './server-port';
+import { choosePort, movedPortWarning, serverAddressEnv } from './server-port';
 import { chooseSitePort, startSiteProxy } from './site-proxy';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -59,9 +59,7 @@ async function startNextServer(host: string = 'localhost'): Promise<number> {
   const port = choice.port;
   if (choice.movedFromPreferred) logToFile(movedPortWarning(choice));
 
-  process.env.PORT = String(port);
-  process.env.HOSTNAME = host;
-  process.env.NEXT_PUBLIC_APP_URL = `http://${host}:${port}`;
+  Object.assign(process.env, serverAddressEnv(host, port));
   process.env.OSW_DESKTOP = 'true';
   // The MCP connector is on: a client still needs the person to approve it in the app, and this
   // server answers only loopback hosts and same-origin pages. MCP_ENABLED=false turns it off.

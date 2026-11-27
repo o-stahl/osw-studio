@@ -11,6 +11,7 @@
  */
 
 import type { ToolExecutor, ToolCall, ToolResult, ToolExecContext, ToolDef, ProgressReporter } from './core/types';
+import type { ImageRequestOptions } from '@/lib/llm/image-gen';
 import { STATUS_SEGMENT_RE, parseStatusCommand, type StatusFlags } from './status-command';
 import { toolRegistry, ToolExecutionContext } from './tool-registry';
 import { Agent } from './agent';
@@ -28,7 +29,7 @@ export interface OswsToolExecutorConfig {
   getAgent: () => Agent;
   chatMode: boolean;
   abortSignal: AbortSignal;
-  generateImage?: (prompt: string, opts: { aspectRatio?: string; imageSize?: string }) => Promise<{ base64: string; mimeType: string }>;
+  generateImage?: (prompt: string, opts: ImageRequestOptions) => Promise<{ base64: string; mimeType: string }>;
   onApprovalNeeded?: (req: ApprovalRequest) => Promise<ApprovalOutcome>;
   permissionMode?: PermissionMode;
   permissionOverrides?: Record<string, GateDecision>;
@@ -37,7 +38,7 @@ export interface OswsToolExecutorConfig {
    *  executors, so a baseline recorded in one task survives into the next. */
   readVersions?: Map<string, number>;
   /** Delegate a build to the browser (server-side generation only). */
-  onBuildRequested?: () => Promise<{ success: boolean; errors?: string[] }>;
+  onBuildRequested?: () => Promise<{ success: boolean; errors?: string[]; deferred?: boolean }>;
   /** Delegate a web search to the browser (server-side generation only). */
   onSearchRequested?: (args: string[]) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
   /** Server-side generation: pause (awaiting_user) on gated commands instead of prompting. */

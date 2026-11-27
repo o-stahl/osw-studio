@@ -1,10 +1,35 @@
 # Changelog
 
-## Unreleased
+## v1.113.0 - 2026-11-27
 
 ### Web search
-- **Keenable is a web search provider with an optional key**: `providers/keenable.ts` calls `/v1/search/public` (`X-Keenable-Title`) keyless, or `/v1/search` (`X-API-Key`) with `webSearch.keys.keenable`. Connections auth `optional-key`; a keyless save makes it active.
-- **The search provider picker is alphabetical and marks Keenable as recommended**: `SEARCH_PROVIDERS` order sets the picker, the connected cards and which provider becomes active after a disconnect; `recommended` shows `connections.searchRecommended`. Nothing connects by default.
+- **Keenable is a web search provider with an optional key**: `providers/keenable.ts` calls `/v1/search/public` (`X-Keenable-Title`) keyless, or `/v1/search` (`X-API-Key`) with `webSearch.keys.keenable`. Connections auth `optional-key`; a keyless save makes it active. Contributed by [@KGKallasmaa](https://github.com/KGKallasmaa) in [#33](https://github.com/o-stahl/osw-studio/pull/33).
+- **The search provider picker is alphabetical and marks Keenable as recommended**: `SEARCH_PROVIDERS` order sets the picker, the connected cards and which provider becomes active after a disconnect; `recommended` shows `connections.searchRecommended`. Nothing connects by default. Contributed by [@KGKallasmaa](https://github.com/KGKallasmaa) in [#33](https://github.com/o-stahl/osw-studio/pull/33).
+
+### Images from pages
+- **`screenshot --out <file.png|file.jpg>` saves one image file**: `RenderJob.save` renders exactly the element, first screen or full page as one PNG or JPEG, at most 4096 px a side and 4 MB (`MAX_SAVE_SIDE`, `MAX_SAVE_CHARS`). `sanitizeRenderResult` keeps `image/png`, so it works over MCP `bash`. A write in Chat mode and write scopes.
+- **`generate-image --image <path>` sends a project image as the source**: `source_image` on `/api/generate-image` becomes OpenRouter `input_references`, Codex `input_image` or chat-completions image parts; Pollinations answers 400. Server runs hand the source to the claiming tab only (`claimImageRequest`).
+- **`generate-image --out` takes the extension of the format the model returned**: a `.png` name for JPEG data saves as `.jpg`, and the output says so. JPEG bytes were written under the `.png` name.
+
+### Shell
+- **`mv` replaces a file at the target and moves into a directory under the source's name**: POSIX behaviour in `shell/commands/mv.ts`. A missing source, a move into itself or a directory over a file fails without changing anything.
+- **`vfs.renameFile` creates the target before deleting the source**: an existing target fails in `createFile` with the source intact. It deleted the source first and lost it.
+- **`ls -R` with several paths recurses into each directory**: `listUnder` in `shell/commands/ls.ts`; only the first level of each was listed.
+- **`printf` is a shell command**: `shell/commands/printf.ts` formats `%s %d %i %u %f %e %g %x %o %c %b %%` with flags, width (capped at 10,000) and precision, reads backslash escapes and reuses the format for leftover arguments, as bash does.
+- **A server run's `build` that no tab answers says it did not run**: `awaitBuildResult` resolves `{ success: false, deferred: true }` after 30 s and `build` exits 1. It reported a successful build with no errors.
+
+### Agent and MCP
+- **`agent_run` waits 15 s for a tab to take the request, then 5 minutes for the task**: `CLAIM_TIMEOUT_MS`, `START_TIMEOUT_MS` (`lib/mcp/agent-delegation.ts`). One 30 s limit covered the push and checkpoint before the task existed, so the caller heard nothing answered while the task started.
+- **`agent_list` lists this account's tasks in a workspace**: newest first, filtered by `projectId` or `active`, with status, prompt and failure reason.
+- **Finished server tasks are kept for 7 days**: `TASK_RETENTION_MS` in `TaskManager` and `lib/server-generate/task-store.ts`, apart from the 30-minute provider key (`keyTTLMs`); `onTaskPruned` clears the task's event buffer. Tasks were gone 30 minutes after they ended.
+
+### Publishing and Server Mode
+- **A published site's folder page keeps its trailing slash**: `skipTrailingSlashRedirect` in `next.config.ts`, with `middleware.ts` stripping it outside `/deployments/` and `/review/`. The deployment and review routes (`folderSlashRedirect`), the site root route and the Caddy site block (`@folder`) send `/docs` to `/docs/`.
+- **Republishing a HuggingFace Space deletes what the last publish wrote and the project no longer has**: `publishToSpace` takes `previouslyPublished` (`previouslyPublishedFor`) and returns `publishedPaths`, stored in `settings.hfSpace` by `spaceRecord`. Only files still in the Space, never a dot path; the first republish records without pruning.
+- **`APP_URL` sets the studio's address when the server starts**: `configuredAppUrl()` (`lib/web/site-origin.ts`) reads `APP_URL`, then `NEXT_PUBLIC_APP_URL`, for the origin guard, MCP metadata and file URLs, auth handoff, `resolve-domain` and review notifications. Desktop sets both (`serverAddressEnv`).
+
+### Tests
+- **New test files**: `cli-shell-image-files`, `cli-shell-mv`, `cli-shell-printf` (`lib/vfs/__tests__/`) and `app-url` (`lib/web/__tests__/`, which also holds that only `site-origin.ts` reads the address variables and no client module does).
 
 ## v1.112.0 - 2026-11-23
 

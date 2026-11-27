@@ -63,6 +63,12 @@ describe('writeTargets', () => {
     expect(writeTargets(['generate-image', 'a dragon'])).toEqual(['/.generated/']);
   });
 
+  it('returns the --out target for screenshot, and nothing without one', () => {
+    expect(writeTargets(['screenshot', '/', '.hero', '--out', '/shots/hero.png'])).toEqual(['/shots/hero.png']);
+    expect(writeTargets(['screenshot', '/', '--out=/shots/home.jpg'])).toEqual(['/shots/home.jpg']);
+    expect(writeTargets(['screenshot', '/', '.hero'])).toEqual([]);
+  });
+
   it('normalizes a relative target to an absolute path', () => {
     expect(writeTargets(['cat', '>', 'feature.md'])).toEqual(['/feature.md']);
   });

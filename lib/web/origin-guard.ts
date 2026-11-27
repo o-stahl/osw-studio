@@ -21,6 +21,8 @@
  * without anyone remembering to add it. Kept free of Node-only imports: middleware runs it.
  */
 
+import { configuredAppUrl } from './site-origin';
+
 /** API routes other pages reach by design, each with the reason. */
 const CROSS_ORIGIN_ROUTES: ReadonlyArray<{ pattern: RegExp; why: string }> = [
   { pattern: /^\/api\/deployments\/[^/]+\/functions\//, why: 'published sites call their functions, from custom domains too' },
@@ -47,7 +49,7 @@ function hostOf(value: string | null | undefined): string | null {
 /**
  * The hosts this app is reached at. `Host` is what a direct request carries; a reverse proxy that
  * rewrites it to the upstream usually passes the public one as `X-Forwarded-Host`, and where it
- * passes neither, `NEXT_PUBLIC_APP_URL` or `ALLOWED_ORIGINS` names it. `SPACE_HOST` is the
+ * passes neither, the configured address (`APP_URL`) or `ALLOWED_ORIGINS` names it. `SPACE_HOST` is the
  * HuggingFace Space's public host. The scheme is not compared: the desktop app is plain http.
  */
 function ownHosts(headers: Headers): Set<string> {
@@ -55,7 +57,7 @@ function ownHosts(headers: Headers): Set<string> {
     headers.get('host'),
     headers.get('x-forwarded-host')?.split(',')[0]?.trim(),
     process.env.SPACE_HOST,
-    process.env.NEXT_PUBLIC_APP_URL,
+    configuredAppUrl(),
     ...(process.env.ALLOWED_ORIGINS ?? '').split(','),
   ];
   return new Set(hosts.map((h) => hostOf(h?.trim())).filter((h): h is string => Boolean(h)));

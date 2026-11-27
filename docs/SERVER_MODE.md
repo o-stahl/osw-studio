@@ -87,7 +87,7 @@ ANALYTICS_SECRET=your_analytics_secret_here
 SECRETS_ENCRYPTION_KEY=your_encryption_key_here
 
 # Optional: App URL (the studio's address; used for SEO/sitemaps and origin checks)
-NEXT_PUBLIC_APP_URL=https://your-domain.com
+APP_URL=https://your-domain.com
 
 # Optional: a separate address for published sites (see "Where Published Sites Are Served")
 # SITES_ORIGIN=https://sites.example.com
@@ -237,7 +237,7 @@ For bulk operations or troubleshooting, use the Sync button in the sidebar. This
      ```
      NEXT_PUBLIC_SERVER_MODE=true
      SESSION_SECRET=<generate>
-     NEXT_PUBLIC_APP_URL=https://${{ RAILWAY_PUBLIC_DOMAIN }}
+     APP_URL=https://${{ RAILWAY_PUBLIC_DOMAIN }}
      ```
    - With only the Railway domain, published sites are served from the studio's address. To serve them separately, add a second domain to the service and set `SITES_ORIGIN` to it.
 
@@ -287,7 +287,7 @@ With the Nginx set-up from the [VPS Deployment guide](?doc=vps-deployment):
 
 1. Add a DNS record for the sites address (for example `sites.example.com`) pointing at the same server.
 2. Add a certificate for it: `sudo certbot --nginx -d sites.example.com`.
-3. Add `SITES_ORIGIN=https://sites.example.com` to `.env`, and set `NEXT_PUBLIC_APP_URL` to the address you open the studio on. Without it the studio's address keeps serving sites. `NEXT_PUBLIC_APP_URL` is read when the app is built, so run `npm run build` before restarting if you set or change it.
+3. Add `SITES_ORIGIN=https://sites.example.com` to `.env`, and set `APP_URL` to the address you open the studio on. Without it the studio's address keeps serving sites. `APP_URL` is read when the server starts, so restart after setting or changing it.
 4. Republish your sites, so their sitemaps and canonical URLs use the new address.
 
 The guide's Nginx configuration answers any host name and passes the `Host` header through. Any proxy in front of OSW Studio must do the same (`proxy_set_header Host $host;` in Nginx). Otherwise the app cannot tell the two addresses apart and the redirect loops.
@@ -298,7 +298,7 @@ A separate domain (such as `example-sites.com`) keeps sites further from the stu
 
 With `STATIC_PROXY=true`, OSW Studio writes a Caddyfile that serves each deployment from its own subdomain (`{slug}.{your instance domain}`) or custom domain, and reloads Caddy when it changes. It needs:
 
-- `NEXT_PUBLIC_APP_URL` set to the studio's address, which the subdomains hang off
+- `APP_URL` set to the studio's address, which the subdomains hang off
 - wildcard DNS for `*.{your instance domain}` pointing at the server
 - a Caddy build with the Cloudflare DNS module and `CLOUDFLARE_API_TOKEN`, for the wildcard certificate
 - Caddy's admin API on `localhost:2019`
@@ -327,7 +327,7 @@ A site's review copy is served from the site's address too, or from the sites ad
 | `ANALYTICS_SECRET` | No | Secret for analytics API |
 | `SECRETS_ENCRYPTION_KEY` | No | 256-bit key for encrypting secrets |
 | `SECURE_COOKIES` | No | Set to `false` to allow insecure cookies (pre-SSL only) |
-| `NEXT_PUBLIC_APP_URL` | No | The studio's address. Used for SEO, sitemaps and origin checks, and for site subdomains with `STATIC_PROXY` |
+| `APP_URL` | No | The studio's address, read when the server starts. Used for SEO, sitemaps and origin checks, and for site subdomains with `STATIC_PROXY`. `NEXT_PUBLIC_APP_URL`, the older name, still works |
 | `SITES_ORIGIN` | No | A separate address to serve published sites from, e.g. `https://sites.example.com`. See [Where Published Sites Are Served](#where-published-sites-are-served) |
 | `STATIC_PROXY` | No | Set to `true` when Caddy serves each site on its own subdomain or custom domain (the generated Caddyfile) |
 | `TRUSTED_PROXIES` | No | With `STATIC_PROXY`: comma-separated addresses or CIDR ranges of proxies in front of Caddy, such as a CDN in front of a custom domain. Caddy then passes on the visitor's address instead of the proxy's, for analytics and rate limits. See [Behind a Proxy or CDN](SELF_HOSTED_DOMAINS.md#behind-a-proxy-or-cdn) |

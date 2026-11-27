@@ -1,9 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import type { PersistedServerTask, ServerTask } from './types';
 
+/** How long a finished task stays readable (agent_status, reattaching), its events with it. */
+export const TASK_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
 interface TaskManagerOptions {
   maxConcurrentPerScope: number;
+  /** How long a task's provider key is held. */
   keyTTLMs: number;
+  /** How long a finished task is kept; the key's lifetime when not given. */
+  taskRetentionMs?: number;
+  /** Called for each finished task dropped, so what belongs to it (its events) goes too. */
+  onTaskPruned?: (taskId: string) => void;
 }
 
 export interface TaskPersistence {
@@ -156,11 +164,12 @@ export class TaskManager {
     // Retire terminal tasks from memory and the durable store together, on the same terminal
     // updatedAt clock, so a completed task never appears "missing" to a reattaching client before
     // it has genuinely expired. Running/paused/stopping tasks are never pruned.
-    const cutoff = now - this.options.keyTTLMs;
+    const cutoff = now - (this.options.taskRetentionMs ?? this.options.keyTTLMs);
     for (const [taskId, task] of this.tasks) {
       const terminal = task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled';
       if (terminal && task.updatedAt < cutoff) {
         this.tasks.delete(taskId);
+        this.options.onTaskPruned?.(taskId);
       }
     }
     void this.persistence?.prune?.(cutoff);

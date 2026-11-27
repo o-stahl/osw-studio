@@ -94,6 +94,13 @@ describe('read-only mode blocks every writing command', () => {
     expect(result).toContain('read-only');
   });
 
+  it('refuses a screenshot saved to a file, and allows one only looked at', async () => {
+    const { toolRegistry } = await import('../tool-registry');
+
+    expect(await toolRegistry.execute(bash('screenshot / --out /shot.png'), 'p', readOnlyCtx)).toContain('read-only');
+    expect(await toolRegistry.execute(bash('screenshot /'), 'p', readOnlyCtx)).not.toContain('read-only');
+  });
+
   it('still allows reading', async () => {
     const { toolRegistry } = await import('../tool-registry');
 

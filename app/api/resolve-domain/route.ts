@@ -20,6 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDeploymentByDomain, getDeploymentBySlug, getAllDomainRoutes } from '@/lib/auth/system-database';
 import { wwwCounterpart } from '@/lib/caddy/regenerate';
+import { configuredAppUrl } from '@/lib/web/site-origin';
 
 export async function GET(request: NextRequest) {
   // Bulk list mode — for Caddy config generation
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
 
   // Try subdomain slug (e.g., my-site.oswstudio.com → slug "my-site")
   if (!match) {
-    const appHost = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/^https?:\/\//, '').split(':')[0];
+    const appHost = (configuredAppUrl() || '').replace(/^https?:\/\//, '').split(':')[0];
     if (appHost && domain.endsWith(`.${appHost}`)) {
       const slug = domain.slice(0, -(appHost.length + 1));
       if (slug && !slug.includes('.')) {

@@ -8,6 +8,13 @@ export async function buildCommand(env: ShellEnv): Promise<ShellResult> {
   if (typeof window === 'undefined' && ctx?.onBuildRequested) {
     try {
       const result = await ctx.onBuildRequested();
+      if (result.deferred) {
+        return {
+          stdout: '',
+          stderr: 'build: not run. The build compiles in an open OSW Studio tab, and none answered within 30 seconds, so the project was not checked. This says nothing about errors in your files.',
+          exitCode: 1,
+        };
+      }
       if (result.success) {
         return { stdout: 'Build successful — 0 errors', stderr: '', exitCode: 0 };
       }

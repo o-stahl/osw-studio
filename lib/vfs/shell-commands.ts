@@ -51,6 +51,7 @@ export const SHELL_COMMANDS: ShellCommandSpec[] = [
   { name: 'uniq', writes: 'never', handledBy: 'shell', summary: 'Collapse repeated lines' },
   { name: 'tr', writes: 'never', handledBy: 'shell', summary: 'Translate or delete characters' },
   { name: 'echo', writes: 'never', handledBy: 'shell', summary: 'Output text (writes when redirected)' },
+  { name: 'printf', writes: 'never', handledBy: 'shell', summary: 'Formatted output (writes when redirected)' },
 
   // ── Writing ─────────────────────────────────────────────────────────────
   { name: 'ss', writes: 'always', handledBy: 'shell', summary: 'Search-and-replace edit of an existing file' },
@@ -72,7 +73,7 @@ export const SHELL_COMMANDS: ShellCommandSpec[] = [
   { name: 'sqlite3', writes: 'never', handledBy: 'shell', summary: 'Run SQL against a deployment database (Server Mode)' },
   { name: 'build', writes: 'never', handledBy: 'shell', summary: 'Compile the project and report errors' },
   { name: 'inspect', writes: 'never', handledBy: 'shell', summary: 'Read a rendered page: elements, source positions, winning styles' },
-  { name: 'screenshot', writes: 'never', handledBy: 'shell', summary: 'Look at a rendered page, or one element on it' },
+  { name: 'screenshot', writes: 'conditional', handledBy: 'shell', summary: 'Look at a rendered page, or one element on it; --out saves it as an image' },
   { name: 'status', writes: 'never', handledBy: 'shell', summary: 'Report task progress and completion' },
   // Writes /.PROMPT.md when changing the runtime, which is why it counts as a write.
   { name: 'runtime', writes: 'always', handledBy: 'shell', summary: 'Show or change the project runtime' },
@@ -120,6 +121,11 @@ export function isScriptCommand(name: string): boolean {
  */
 export function isSedInPlaceFlag(arg: string): boolean {
   return arg === '-i' || (arg.startsWith('-i') && arg.length > 2 && !/^-i[a-z]$/i.test(arg));
+}
+
+/** Whether a `screenshot` argument saves the image to a file: `--out <path>` or `--out=<path>`. */
+export function isScreenshotOutFlag(arg: string): boolean {
+  return arg === '--out' || arg.startsWith('--out=');
 }
 
 /** A `sed` command line as the shell's `sed` reads it. */

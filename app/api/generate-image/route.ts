@@ -51,6 +51,9 @@ function codexImageSize(aspectRatio?: string): string {
   return '1024x1024';
 }
 
+/** A source image as the route takes it: a base64 data URL of an image type models read. */
+const SOURCE_IMAGE = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
+
 /** Base64 image data's type, read from its first bytes. */
 function base64ImageType(b64: string): string {
   if (b64.startsWith('/9j/')) return 'image/jpeg';
@@ -109,23 +112,30 @@ async function generateOpenRouterImage(
   model: string,
   prompt: string,
   imageConfig: { aspect_ratio?: string; image_size?: string } | undefined,
+  sourceImage: string | undefined,
   signal: AbortSignal,
 ): Promise<NextResponse> {
   const options: Record<string, string> = {};
   if (imageConfig?.aspect_ratio) options.aspect_ratio = imageConfig.aspect_ratio;
   if (imageConfig?.image_size) options.resolution = imageConfig.image_size;
 
-  const request = (body: Record<string, string>) => fetch(`${baseUrl.replace(/\/$/, '')}/images`, {
+  // The image to start from, which OpenRouter calls a reference.
+  const base = {
+    model,
+    prompt,
+    ...(sourceImage ? { input_references: [{ type: 'image_url', image_url: { url: sourceImage } }] } : {}),
+  };
+  const request = (body: Record<string, unknown>) => fetch(`${baseUrl.replace(/\/$/, '')}/images`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`, ...OPENROUTER_ATTRIBUTION },
     body: JSON.stringify(body),
     signal,
   });
 
-  let response = await request({ model, prompt, ...options });
+  let response = await request({ ...base, ...options });
   if (response.status === 400 && Object.keys(options).length > 0) {
     await response.body?.cancel();
-    response = await request({ model, prompt });
+    response = await request(base);
   }
   if (!response.ok) {
     const error = await upstreamError(response, `OpenRouter image request failed (${response.status})`);
@@ -195,6 +205,7 @@ async function generateCodexImage(
   model: string,
   prompt: string,
   aspectRatio: string | undefined,
+  sourceImage: string | undefined,
   signal: AbortSignal,
 ): Promise<Response> {
   const quality = CODEX_IMAGE_QUALITIES[model];
@@ -221,7 +232,10 @@ async function generateCodexImage(
       input: [{
         type: 'message',
         role: 'user',
-        content: [{ type: 'input_text', text: prompt }],
+        content: [
+          { type: 'input_text', text: prompt },
+          ...(sourceImage ? [{ type: 'input_image', image_url: sourceImage }] : []),
+        ],
       }],
       tools: [{
         type: 'image_generation',
@@ -267,11 +281,16 @@ async function generateCodexImage(
  */
 export async function POST(request: NextRequest) {
   try {
-    const { provider, apiKey, model, prompt, image_config, modalities } = await request.json();
+    const { provider, apiKey, model, prompt, image_config, modalities, source_image } = await request.json();
 
     if (!model || !prompt) {
       return NextResponse.json({ error: 'model and prompt are required' }, { status: 400 });
     }
+    // An image to start from, as a data URL.
+    if (source_image !== undefined && (typeof source_image !== 'string' || !SOURCE_IMAGE.test(source_image))) {
+      return NextResponse.json({ error: 'source_image must be a base64 data URL of a PNG, JPEG, WebP or GIF image' }, { status: 400 });
+    }
+    const sourceImage: string | undefined = source_image;
 
     const selectedProvider: ProviderId = provider || 'openrouter';
     // The free allowance offers its agent model only; nothing here may reach its server.
@@ -290,7 +309,7 @@ export async function POST(request: NextRequest) {
 
     if (selectedProvider === 'openai-codex') {
       try {
-        return await generateCodexImage(apiKey, model, prompt, image_config?.aspect_ratio, signal);
+        return await generateCodexImage(apiKey, model, prompt, image_config?.aspect_ratio, sourceImage, signal);
       } catch (err) {
         if (wasCutShort(signal, err)) return abortedResponse(request);
         throw err;
@@ -301,7 +320,7 @@ export async function POST(request: NextRequest) {
 
     if (selectedProvider === 'openrouter') {
       try {
-        return await generateOpenRouterImage(baseUrl, apiKey, model, prompt, image_config, signal);
+        return await generateOpenRouterImage(baseUrl, apiKey, model, prompt, image_config, sourceImage, signal);
       } catch (err) {
         if (wasCutShort(signal, err)) return abortedResponse(request);
         throw err;
@@ -309,6 +328,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (selectedProvider === 'pollinations') {
+      if (sourceImage) {
+        return NextResponse.json({ error: 'Pollinations image models generate from a prompt only. Leave out --image, or pick an image model from another provider.' }, { status: 400 });
+      }
       try {
         return await generatePollinationsImage(baseUrl, apiKey, model, prompt, image_config?.aspect_ratio, signal);
       } catch (err) {
@@ -329,12 +351,17 @@ export async function POST(request: NextRequest) {
 
     const body: {
       model: string;
-      messages: { role: string; content: string }[];
+      messages: { role: string; content: string | Array<Record<string, unknown>> }[];
       modalities: string[];
       image_config?: Record<string, unknown>;
     } = {
       model,
-      messages: [{ role: 'user', content: prompt }],
+      messages: [{
+        role: 'user',
+        content: sourceImage
+          ? [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: sourceImage } }]
+          : prompt,
+      }],
       modalities: requestedModalities,
     };
     if (image_config && typeof image_config === 'object' && Object.keys(image_config).length > 0) {

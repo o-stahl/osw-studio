@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { ACTIVE_SCOPES } from './scopes';
+import { configuredAppUrl } from '@/lib/web/site-origin';
 
 /**
  * The two OAuth discovery documents a client reads before it can authorize. Claude fetches
@@ -8,12 +9,13 @@ import { ACTIVE_SCOPES } from './scopes';
  * authorization server.
  *
  * The issuer comes from the request, so an instance behind a proxy or on a custom domain
- * advertises the URL the client actually reached, not a configured guess. NEXT_PUBLIC_APP_URL
- * wins when set, since that is the value the rest of the app uses for absolute URLs.
+ * advertises the URL the client actually reached, not a configured guess. The configured address
+ * (`APP_URL`, or `NEXT_PUBLIC_APP_URL`) wins when set, since that is the value the rest of the app
+ * uses for absolute URLs.
  */
 
 export function issuerFor(request: NextRequest | Request): string {
-  const configured = process.env.NEXT_PUBLIC_APP_URL;
+  const configured = configuredAppUrl();
   if (configured) return configured.replace(/\/$/, '');
   const url = new URL(request.url);
   const proto = (request.headers.get('x-forwarded-proto') ?? url.protocol.replace(':', '')).split(',')[0].trim();

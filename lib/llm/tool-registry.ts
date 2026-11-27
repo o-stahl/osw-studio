@@ -4,9 +4,10 @@
  */
 
 import { ToolDefinition, ToolCall } from './types';
+import type { ImageRequestOptions } from '@/lib/llm/image-gen';
 import { getActiveVFS } from '@/lib/vfs';
 import { vfsShell } from '@/lib/vfs/cli-shell';
-import { alwaysWriteCommands, isScriptCommand, isSedInPlaceFlag } from '@/lib/vfs/shell-commands';
+import { alwaysWriteCommands, isScreenshotOutFlag, isScriptCommand, isSedInPlaceFlag } from '@/lib/vfs/shell-commands';
 import { logger } from '../utils';
 import { checkWriteScope, commandLineWrites } from './write-scope';
 import { parseBashCommand, splitHeredoc, splitNewlineCommands, unescapeHtmlEntities } from './bash-command';
@@ -90,7 +91,7 @@ export interface ToolExecutionContext {
   onProgress?: (event: string, data?: any) => void;
   /** Resolves the project's image-generation model + key and produces an image.
    *  Absent when the project has no image model configured. */
-  generateImage?: (prompt: string, opts: { aspectRatio?: string; imageSize?: string }) => Promise<{ base64: string; mimeType: string }>;
+  generateImage?: (prompt: string, opts: ImageRequestOptions) => Promise<{ base64: string; mimeType: string }>;
   /** Held-promise approval gate. Absent when no interactive UI is available;
    *  in that case gated commands are allowed (cannot prompt, do not block). */
   onApprovalNeeded?: (req: ApprovalRequest) => Promise<ApprovalOutcome>;
@@ -103,7 +104,7 @@ export interface ToolExecutionContext {
    *  last full read. Absent on callers that don't track it (guard disabled). */
   readVersions?: Map<string, number>;
   /** Delegate a build to the browser (server-side generation only). */
-  onBuildRequested?: () => Promise<{ success: boolean; errors?: string[] }>;
+  onBuildRequested?: () => Promise<{ success: boolean; errors?: string[]; deferred?: boolean }>;
   /** Delegate a web search to the browser (server-side generation only). */
   onSearchRequested?: (args: string[]) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
   /** Selector matching where there is no DOM (server runs, MCP). See `ShellContext`. */
@@ -152,7 +153,7 @@ export class ToolRegistry {
         name: 'bash',
         description: `Run commands in the virtual file system.
 
-Commands: cat, head, tail, ls, tree, grep, rg, find, mkdir, mv, cp, rm, touch, sed, ss, style, echo, wc, sort, uniq, tr, curl, inspect, screenshot, search, sqlite3, python, python3, lua, preview, build, status, agent, runtime, ask.
+Commands: cat, head, tail, ls, tree, grep, rg, find, mkdir, mv, cp, rm, touch, sed, ss, style, echo, printf, wc, sort, uniq, tr, curl, inspect, screenshot, search, sqlite3, python, python3, lua, preview, build, status, agent, runtime, ask.
 Pipes (cmd1 | cmd2), redirects (> file, >> file), heredocs (<< 'EOF'), chaining (&&, ||, ;), and brace expansion ({a,b,c}) are supported.
 Run scripts: python <file>, lua <file> (for computation/output only — they run in a sandbox and CANNOT edit project files; use ss or cat > for edits). Files written to /output/ persist. Show output in preview: preview <path>.
 
@@ -844,6 +845,11 @@ function isWriteOperation(cmd: string[]): boolean {
 
   // sed -i is a write operation (in-place edit), sed without -i is read-only (stdout)
   if (cmd[0] === 'sed' && cmd.slice(1).some(isSedInPlaceFlag)) {
+    return true;
+  }
+
+  // screenshot --out saves the image; plain screenshot only looks
+  if (cmd[0] === 'screenshot' && cmd.slice(1).some(isScreenshotOutFlag)) {
     return true;
   }
 

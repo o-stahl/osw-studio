@@ -102,3 +102,49 @@ describe('agent delegation', () => {
     expect(bus.emitted[0]).toMatchObject({ event: 'mcp_run_requested', data: { projectId: 'p1', prompt: 'go' } });
   });
 });
+
+describe('a tab that takes a request and is slow to start it', () => {
+  const pendingId = () => [...(globalThis as unknown as { __mcpPendingRuns: Map<string, unknown> }).__mcpPendingRuns.keys()][0];
+
+  it('is waited for: a task reported 45 s after the claim reaches the caller', async () => {
+    vi.useFakeTimers();
+    bus.listeners.add('u1');
+    const { requestRunFromClient, claimRunRequest, settleRunRequest } = await import('@/lib/mcp/agent-delegation');
+    const run = requestRunFromClient(args);
+    await vi.advanceTimersByTimeAsync(1_000);
+    const id = pendingId();
+    expect(claimRunRequest(id, 'u1', 'tab-a')).toBe(true);
+    // Pushing the project and taking a checkpoint come before the task exists.
+    await vi.advanceTimersByTimeAsync(44_000);
+    expect(settleRunRequest(id, 'u1', { ok: true, taskId: 't-late' })).toBe(true);
+    expect(await run).toMatchObject({ ok: true, taskId: 't-late' });
+  });
+
+  it('says nothing was started when no tab takes the request, and refuses a claim after that', async () => {
+    vi.useFakeTimers();
+    bus.listeners.add('u1');
+    const { requestRunFromClient, claimRunRequest } = await import('@/lib/mcp/agent-delegation');
+    const run = requestRunFromClient(args);
+    await vi.advanceTimersByTimeAsync(0);
+    const id = pendingId();
+    await vi.advanceTimersByTimeAsync(20_000);
+    const result = await run;
+    // Refused, and nothing can start it afterwards: a tab that claims it now is turned away.
+    expect(result.ok).toBe(false);
+    expect(claimRunRequest(id, 'u1', 'tab-a')).toBe(false);
+  });
+
+  it('when a taken request never reports back, says the task may still start and where to look', async () => {
+    vi.useFakeTimers();
+    bus.listeners.add('u1');
+    const { requestRunFromClient, claimRunRequest } = await import('@/lib/mcp/agent-delegation');
+    const run = requestRunFromClient(args);
+    await vi.advanceTimersByTimeAsync(0);
+    const id = pendingId();
+    claimRunRequest(id, 'u1', 'tab-a');
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    const result = await run;
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/agent_list/);
+  });
+});

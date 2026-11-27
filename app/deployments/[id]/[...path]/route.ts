@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import { deploymentStaticFile } from '@/lib/compiler/deployment-static-dir';
-import { resolveReviewFilePath, reviewMimeType } from '@/lib/review/serve-path';
+import { folderSlashRedirect, resolveReviewFilePath, reviewMimeType } from '@/lib/review/serve-path';
 
 /** A request for a page: a path with no extension, or .html. */
 const PAGE = /^(.*\/)?[^/.]*(\.html?)?$/;
@@ -53,6 +53,8 @@ export async function GET(
     if (!staticFilePath) {
       return await notFound(id, requestedPath);
     }
+    const toFolder = folderSlashRedirect(request, staticFilePath, pathSegments);
+    if (toFolder) return toFolder;
 
     const content = await fs.readFile(staticFilePath);
     const mimeType = reviewMimeType(staticFilePath);

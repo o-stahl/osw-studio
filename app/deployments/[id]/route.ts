@@ -28,6 +28,12 @@ export async function GET(
       return new NextResponse('Deployment not found', { status: 404 });
     }
 
+    // The site's root without its slash: relative links on index.html would resolve one level up.
+    const url = new URL(request.url);
+    if (!url.pathname.endsWith('/')) {
+      return new NextResponse(null, { status: 308, headers: { Location: `${encodeURIComponent(id)}/${url.search}` } });
+    }
+
     const content = await fs.readFile(indexPath, 'utf-8');
 
     return new NextResponse(content, {

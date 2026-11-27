@@ -26,6 +26,7 @@ import { inspectCommand } from './commands/inspect';
 import { lsCommand } from './commands/ls';
 import { mkdirCommand } from './commands/mkdir';
 import { mvCommand } from './commands/mv';
+import { printfCommand } from './commands/printf';
 import { proposecreateCommand } from './commands/propose-create';
 import { rgCommand } from './commands/rg';
 import { rmCommand } from './commands/rm';
@@ -64,6 +65,7 @@ export const SHELL_HANDLERS: Record<string, ShellHandler> = {
   'ls': lsCommand,
   'mkdir': mkdirCommand,
   'mv': mvCommand,
+  'printf': printfCommand,
   'propose-create': proposecreateCommand,
   'rg': rgCommand,
   'rm': rmCommand,
